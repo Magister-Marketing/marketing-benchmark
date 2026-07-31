@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "cross-ga4-search-console",
+  "suite": "integrations-cross-tool",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "Distinguish search visibility and acquisition evidence from onsite conversion evidence.",
+  "prompt": "Read the analytics skill. Use the connected synthetic sources to determine whether the week-over-week purchase decline is better explained by organic search visibility/acquisition or by onsite conversion. Discover the sources, compare the two documented complete weeks in both GA4 and Search Console, state source definitions and limitations, avoid causal certainty, recommend the next test, and save the analysis to deliverables/cross-tool-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "marketing-funnel-cross-tool-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read", "search.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["integrations.list", "ga4.reports.summary", "search_console.performance.query"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "diagnosis",
+        "required": true,
+        "relative_path": "deliverables/cross-tool-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 300
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "cross-tool-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 480,
+  "max_model_calls": 12,
+  "tags": ["cross-tool", "ga4", "search-console", "grounding", "draft-only"]
+}

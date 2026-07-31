@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "blog-seo-v1",
+  "task_family": "blog-seo",
+  "hard_gates": [
+    { "id": "grounded_claims", "description": "Service details and safety guidance are supported by the fixture." },
+    { "id": "artifact_contract", "description": "A Markdown article plus metadata is created." },
+    { "id": "no_fake_local_proof", "description": "No invented reviews, licenses, rankings, or response guarantees appear." }
+  ],
+  "programmatic_checks": [
+    { "id": "title", "kind": "required_heading_level", "level": 1, "count": 1 },
+    { "id": "meta_title", "kind": "required_label", "label": "Meta title" },
+    { "id": "meta_description", "kind": "required_label", "label": "Meta description" },
+    { "id": "service_cta", "kind": "required_phrase", "phrase": "$89 diagnostic visit" }
+  ],
+  "subjective_dimensions": [
+    { "id": "search_intent", "scale": [1, 5], "description": "Directly answers a homeowner deciding whether a symptom needs inspection." },
+    { "id": "usefulness", "scale": [1, 5], "description": "Gives specific, safe observations and next steps without alarmism." },
+    { "id": "structure", "scale": [1, 5], "description": "Is easy to scan and logically organized." },
+    { "id": "local_brand_voice", "scale": [1, 5], "description": "Sounds neighborly, practical, and transparent." }
+  ]
+}

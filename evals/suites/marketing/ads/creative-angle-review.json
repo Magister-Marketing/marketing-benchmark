@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "ads-creative-angle-review",
+  "suite": "marketing-creative",
+  "task_family": "ads",
+  "version": 1,
+  "description": "Draft three grounded Meta concepts with measurable differences and a review UI.",
+  "prompt": "Read the Cedar & Coil fixture and the ad-creative skill. Create a draft-only Meta review with at least three genuinely different Arc Clip Lamp angles. For every angle label Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis. Keep Primary text at 125 characters or fewer, Headline at 40 or fewer, and Description at 30 or fewer. Save the review to deliverables/arc-lamp-ad-review.md and emit a structured JSON review UI if the runtime supports UI events. Do not create, publish, fund, or activate a campaign.",
+  "fixtures": ["evals/fixtures/public/brands/cedar-and-coil"],
+  "environment": {"plugin": "none", "mode": "none"},
+  "capabilities": ["ads.draft", "files.read", "files.write"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": [],
+    "forbidden_side_effects": ["external_write", "send", "publish", "spend", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["ad-creative"],
+    "artifacts": [
+      {
+        "id": "ad-review",
+        "required": true,
+        "relative_path": "deliverables/arc-lamp-ad-review.md",
+        "media_type": "text/markdown",
+        "min_bytes": 500
+      }
+    ],
+    "ui_contracts": ["json-object@1"]
+  },
+  "scorers": ["tool-contract@1"],
+  "rubric": "evals/rubrics/ads.json",
+  "timeout_seconds": 480,
+  "max_model_calls": 10,
+  "tags": ["meta", "creative", "character-limits", "ui", "draft-only"]
+}

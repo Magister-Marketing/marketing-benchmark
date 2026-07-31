@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "cross-channel-v1",
+  "task_family": "cross-channel",
+  "hard_gates": [
+    { "id": "budget_math", "description": "Channel allocations equal the declared budget." },
+    { "id": "claim_consistency", "description": "All channels use the same approved facts and offer." }
+  ],
+  "subjective_dimensions": [
+    { "id": "strategic_coherence", "scale": [1, 5], "description": "Channels perform complementary jobs around one strategy." },
+    { "id": "prioritization", "scale": [1, 5], "description": "Sequencing and resources reflect explicit tradeoffs." },
+    { "id": "learning_design", "scale": [1, 5], "description": "The plan creates interpretable tests and feedback loops." }
+  ]
+}

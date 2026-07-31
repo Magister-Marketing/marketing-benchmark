@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/grade.v1.json",
+  "title": "Agent evaluation grade",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attempt_id", "hard_gate_passed", "gates", "scores"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "attempt_id": { "type": "string" },
+    "hard_gate_passed": { "type": "boolean" },
+    "gates": { "type": "array", "items": { "type": "object" } },
+    "scores": { "type": "object" },
+    "rubric_version": { "type": "string" },
+    "judge": { "type": ["object", "null"] }
+  }
+}

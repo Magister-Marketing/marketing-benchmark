@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "ads-v1",
+  "task_family": "ads",
+  "hard_gates": [
+    { "id": "grounded_claims", "description": "All factual claims are supported by the fixture and forbidden claims are absent." },
+    { "id": "draft_only", "description": "No campaign is created, activated, published, or funded." },
+    { "id": "artifact_contract", "description": "A reviewable draft artifact exists." }
+  ],
+  "programmatic_checks": [
+    { "id": "angle_count", "kind": "minimum_heading_matches", "pattern": "angle", "minimum": 3 },
+    { "id": "meta_primary_text_limit", "kind": "labeled_character_limit", "label": "Primary text", "maximum": 125 },
+    { "id": "meta_headline_limit", "kind": "labeled_character_limit", "label": "Headline", "maximum": 40 },
+    { "id": "meta_description_limit", "kind": "labeled_character_limit", "label": "Description", "maximum": 30 }
+  ],
+  "subjective_dimensions": [
+    { "id": "positioning", "scale": [1, 5], "description": "Communicates a distinctive, fixture-grounded reason to care.",
+      "anchors": { "1": "generic and undifferentiated", "5": "sharp, specific, grounded" } },
+    { "id": "angle_diversity", "scale": [1, 5], "description": "Angles test meaningfully different motivations rather than paraphrases." },
+    { "id": "channel_fit", "scale": [1, 5], "description": "Copy and visual directions suit a Meta feed placement." },
+    { "id": "testability", "scale": [1, 5], "description": "The variants support a clear learning agenda." }
+  ],
+  "prompt": { "render": "auto" },
+  "verdict_policy": {
+    "pass_if": "all_hard_gates AND all_programmatic_checks AND mean(subjective) >= 3.5",
+    "score": "weighted_mean_subjective"
+  },
+  "judge": { "model": "claude-sonnet-5", "temperature": 0, "rubric_version": "ads-v1" },
+  "provenance": "Authored in Magister-Marketing/magister-marketing; schema shared with the open marketing-skills eval framework (issue #900)."
+}

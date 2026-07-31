@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "website-education-landing-page",
+  "suite": "marketing-creative",
+  "task_family": "website",
+  "version": 1,
+  "description": "Create a clear landing-page copy and CRO brief for a regulated educational service.",
+  "prompt": "Read the Harborline Sleep Education fixture plus the copywriting, site-architecture, and cro skills. Produce a landing-page copy, information architecture, and CRO brief with sections labeled Hero, How it works, What is included, Limitations and safety, FAQ, and CTA. Include the approved 45-minute and $160 facts and state clearly that the service is educational, is not diagnosis or treatment, and is not emergency care. Save it to deliverables/sleep-education-landing-page.md. Do not promise outcomes, claim insurance coverage, build a public site, or deploy anything.",
+  "fixtures": ["evals/fixtures/public/brands/harborline-sleep"],
+  "environment": {"plugin": "none", "mode": "none"},
+  "capabilities": ["content.draft", "files.read", "files.write"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": [],
+    "forbidden_side_effects": ["external_write", "send", "publish", "spend", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["copywriting", "site-architecture", "cro"],
+    "artifacts": [
+      {
+        "id": "landing-page",
+        "required": true,
+        "relative_path": "deliverables/sleep-education-landing-page.md",
+        "media_type": "text/markdown",
+        "min_bytes": 900
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1"],
+  "rubric": "evals/rubrics/website.json",
+  "timeout_seconds": 540,
+  "max_model_calls": 12,
+  "tags": ["landing-page", "ia", "cro", "regulated", "draft-only"]
+}

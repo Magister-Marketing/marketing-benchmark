@@ -1,0 +1,4 @@
+{
+  "fixture_version": 1,
+  "description": "Failure scripts are selected by scenario ID from manifest.json. This separate file reserves the public declarative state-machine contract for future non-GA4 replay packs."
+}

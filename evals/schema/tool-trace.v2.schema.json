@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/tool-trace.v2.json",
+  "title": "Normalized tool trace event v2",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["sequence", "type", "timestamp", "data"],
+  "properties": {
+    "sequence": { "type": "integer", "minimum": 1 },
+    "type": { "enum": ["tool.started", "tool.completed", "skill.read"] },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "data": {
+      "type": "object",
+      "required": [
+        "trace_version",
+        "call_id",
+        "tool_name",
+        "operation",
+        "integration",
+        "capability",
+        "side_effect",
+        "adapter",
+        "adapter_version",
+        "environment",
+        "environment_version",
+        "raw_event_schema_version"
+      ],
+      "properties": {
+        "trace_version": { "const": 2 },
+        "call_id": { "type": "string", "minLength": 1 },
+        "tool_name": { "type": "string", "minLength": 1 },
+        "operation": { "type": "string", "minLength": 1 },
+        "integration": { "type": "string", "minLength": 1 },
+        "capability": { "type": "string", "minLength": 1 },
+        "adapter": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "environment_version": { "type": "string", "minLength": 1 },
+        "raw_event_schema_version": { "type": "string", "minLength": 1 },
+        "arguments_redacted": {},
+        "arguments_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "started_at": { "type": "string", "minLength": 1 },
+        "retry_ordinal": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["completed", "error"] },
+        "completed_at": { "type": "string", "minLength": 1 },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "result_bytes": { "type": "integer", "minimum": 0 },
+        "result_truncated": { "type": "boolean" },
+        "pagination_present": { "type": "boolean" },
+        "result_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "side_effect": {
+          "enum": [
+            "none",
+            "internal_write",
+            "draft",
+            "external_write",
+            "send",
+            "publish",
+            "spend",
+            "delete"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "enum": ["tool.started", "skill.read"] } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "arguments_redacted",
+              "arguments_sha256",
+              "started_at",
+              "retry_ordinal"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "tool.completed" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "status",
+              "completed_at",
+              "duration_ms",
+              "result_bytes",
+              "result_truncated",
+              "pagination_present",
+              "retry_ordinal"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

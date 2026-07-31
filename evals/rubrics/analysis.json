@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "analysis-v1",
+  "task_family": "analysis",
+  "hard_gates": [
+    { "id": "source_evidence", "description": "Every finding points to supplied evidence." },
+    { "id": "math", "description": "All calculations reproduce from fixture data." }
+  ],
+  "subjective_dimensions": [
+    { "id": "diagnostic_usefulness", "scale": [1, 5], "description": "Prioritizes issues that change a decision." },
+    { "id": "actionability", "scale": [1, 5], "description": "Recommendations have owners, next steps, and verification." }
+  ]
+}

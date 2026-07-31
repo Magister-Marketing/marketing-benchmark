@@ -1,0 +1,6 @@
+{
+  "fixture_version": 1,
+  "determinism": "Every read returns the same bounded aggregate values for the fixed clock.",
+  "network": "disabled",
+  "credentials": "none"
+}

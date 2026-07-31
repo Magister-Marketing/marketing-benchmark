@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "ga4-drilldown-efficiency",
+  "suite": "integrations-ga4",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "Require an efficient channel and landing-page drilldown after aggregate comparison.",
+  "prompt": "Read the analytics skill. Use the connected synthetic GA4 property to explain last week's purchase and conversion-rate decline versus the week before. Start with the aggregate comparison, then choose the smallest useful drilldown that identifies where the loss concentrates. Do not query unrelated dimensions. Save a concise evidence table, hypothesis, and next test to deliverables/ga4-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "ga4-conversion-drop-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["ga4.properties.list", "ga4.reports.run"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "diagnosis",
+        "required": true,
+        "relative_path": "deliverables/ga4-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 250
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "ga4-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 420,
+  "max_model_calls": 10,
+  "tags": ["ga4", "drilldown", "efficiency", "draft-only"]
+}

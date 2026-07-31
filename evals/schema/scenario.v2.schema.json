@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/scenario.v2.json",
+  "title": "Agent evaluation scenario v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "suite",
+    "task_family",
+    "version",
+    "prompt",
+    "fixtures",
+    "environment",
+    "capabilities",
+    "tool_policy",
+    "requirements",
+    "scorers",
+    "timeout_seconds",
+    "max_model_calls",
+    "tags"
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "required": { "type": "boolean" },
+        "relative_path": { "type": ["string", "null"] },
+        "media_type": { "type": ["string", "null"] },
+        "min_bytes": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 2 },
+    "id": { "$ref": "#/$defs/id" },
+    "suite": { "$ref": "#/$defs/id" },
+    "task_family": { "$ref": "#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "prompt": { "type": "string", "minLength": 1 },
+    "fixtures": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plugin", "mode"],
+      "properties": {
+        "plugin": { "$ref": "#/$defs/id" },
+        "fixture": { "$ref": "#/$defs/id" },
+        "mode": { "enum": ["none", "replay", "live"] },
+        "clock": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "analytics.read",
+          "search.read",
+          "ads.read",
+          "ads.draft",
+          "ads.activate",
+          "crm.read",
+          "crm.write",
+          "commerce.read",
+          "commerce.write",
+          "content.draft",
+          "content.publish",
+          "email.draft",
+          "email.send",
+          "social.draft",
+          "social.publish",
+          "files.read",
+          "files.write",
+          "browser.read",
+          "browser.act"
+        ]
+      }
+    },
+    "tool_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_operations", "forbidden_side_effects"],
+      "properties": {
+        "allowed_tools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "allowed_operations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "forbidden_side_effects": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "none",
+              "internal_write",
+              "draft",
+              "external_write",
+              "send",
+              "publish",
+              "spend",
+              "delete"
+            ]
+          }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "skill_reads": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifact" }
+        },
+        "ui_contracts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "scorers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "rubric": { "type": "string", "minLength": 1 },
+    "timeout_seconds": { "type": "integer", "minimum": 1 },
+    "max_model_calls": { "type": "integer", "minimum": 1 },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

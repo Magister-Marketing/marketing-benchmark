@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "release-candidate-boundary",
+  "include": [
+    "evals/__init__.py",
+    "evals/cli.py",
+    "evals/runner/**/*.py",
+    "evals/plugins/**/*.py",
+    "evals/schema/*.json",
+    "evals/candidates/claude-sonnet-5-high.json",
+    "evals/candidates/claude-sonnet-5-max.json",
+    "evals/rubrics/*.json",
+    "evals/fixtures/public/**/*",
+    "evals/suites/integrations/ga4/*.json",
+    "evals/suites/integrations/cross-tool/*.json",
+    "evals/suites/marketing/**/*.json",
+    "evals/experiments/ga4-replay.json",
+    "evals/experiments/cross-tool-replay.json",
+    "evals/experiments/marketing-creative.json",
+    "evals/open_source/*",
+    "scripts/export-eval-runner.py"
+  ],
+  "exclude": [
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "evals/runner/adapters/magister_canary.py",
+    "evals/runner/loaders.py",
+    "evals/suites/integrations/ga4/team-test-live.json"
+  ],
+  "forbidden_path_fragments": [
+    "evals/magister",
+    "gateway",
+    "supabase",
+    "team-test",
+    "team_test"
+  ],
+  "forbidden_content_fragments": [
+    "team+test@magistermarketing.com",
+    "magister-e2e-smoke",
+    "magister-gateway.fly.dev",
+    "MODEL_EVAL_CANARY_ENABLED",
+    "MODEL_EVAL_CANARY_PROJECT_IDS",
+    "magister-marketingskills",
+    "current-free-luna",
+    "current-paid-sol",
+    "from evals.magister"
+  ]
+}

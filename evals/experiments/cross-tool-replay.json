@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "id": "cross-tool-replay",
+  "description": "Repeated credential-free comparison of grounded reasoning across marketing integrations.",
+  "comparison_mode": "model",
+  "candidates": ["claude-sonnet-5-high", "claude-sonnet-5-max"],
+  "scenarios": [
+    "cross-ga4-search-console",
+    "cross-ads-ga4",
+    "cross-commerce-ga4",
+    "cross-crm-ads-ga4"
+  ],
+  "repetitions": 3,
+  "concurrency": 1,
+  "random_seed": 20260801,
+  "budget": {
+    "max_provider_cost_usd": 30,
+    "max_attempts": 24,
+    "deadline_seconds": 10800
+  },
+  "judge": { "enabled": true }
+}

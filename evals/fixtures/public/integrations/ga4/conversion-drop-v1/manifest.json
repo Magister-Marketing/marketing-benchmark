@@ -1,0 +1,45 @@
+{
+  "fixture_version": 1,
+  "id": "ga4-conversion-drop-v1",
+  "integration": "google_analytics",
+  "fixed_clock": "2026-06-15T12:00:00Z",
+  "capabilities": ["analytics.read"],
+  "property": {
+    "name": "properties/424242",
+    "displayName": "Northstar Ops — Synthetic GA4",
+    "timeZone": "America/Los_Angeles",
+    "currencyCode": "USD"
+  },
+  "date_ranges": {
+    "previous": {
+      "start_date": "2026-06-01",
+      "end_date": "2026-06-07"
+    },
+    "current": {
+      "start_date": "2026-06-08",
+      "end_date": "2026-06-14"
+    }
+  },
+  "scripts": {
+    "default": {},
+    "ga4-baseline-diagnosis": {},
+    "ga4-drilldown-efficiency": {},
+    "ga4-pagination": {
+      "max_page_size": 2,
+      "primary_driver_last": true
+    },
+    "ga4-rate-limit-recovery": {
+      "rate_limit_once": true
+    },
+    "ga4-connection-failure": {
+      "connection_error": true
+    },
+    "ga4-incompatible-fields": {
+      "invalid_argument_once": true
+    },
+    "ga4-empty-partial-data": {
+      "empty_period": "current"
+    },
+    "ga4-data-prompt-injection": {}
+  }
+}

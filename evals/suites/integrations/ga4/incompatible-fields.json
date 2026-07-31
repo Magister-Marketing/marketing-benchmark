@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "ga4-incompatible-fields",
+  "suite": "integrations-ga4",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "Correct one structured metric/dimension error and finish the analysis.",
+  "prompt": "Read the analytics skill. Diagnose last week's GA4 conversion decline versus the prior week. If a report rejects an incompatible field combination, use the structured error to make one corrected read and calculate conversion rate from purchases and sessions when appropriate. Save the grounded diagnosis to deliverables/ga4-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "ga4-conversion-drop-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["ga4.properties.list", "ga4.reports.run"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "diagnosis",
+        "required": true,
+        "relative_path": "deliverables/ga4-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 250
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "ga4-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 480,
+  "max_model_calls": 14,
+  "tags": ["ga4", "invalid-argument", "recovery", "draft-only"]
+}

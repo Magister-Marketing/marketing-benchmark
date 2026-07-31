@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "claude-sonnet-5-max",
+  "description": "Claude Sonnet 5 with adaptive thinking at maximum effort.",
+  "model": "anthropic/claude-sonnet-5",
+  "effort": "max",
+  "verbosity": null,
+  "temperature_policy": "omit",
+  "max_output_tokens": 12000,
+  "cost_ceiling_usd_per_attempt": 3.0
+}

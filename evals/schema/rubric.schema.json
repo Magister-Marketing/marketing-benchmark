@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/rubric.v1.json",
+  "title": "Agent evaluation rubric",
+  "description": "Three-layer rubric shared with the open marketing-skills eval framework (Magister-Marketing/magister-marketing#900). hard_gates and programmatic_checks are deterministic in every engine; only subjective_dimensions touch a model.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "task_family",
+    "hard_gates",
+    "subjective_dimensions"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "task_family": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "hard_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "programmatic_checks": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "kind"] }
+    },
+    "subjective_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "scale", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "scale": {
+            "type": "array",
+            "prefixItems": [
+              { "type": "integer" },
+              { "type": "integer" }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": { "type": "string", "minLength": 1 },
+          "anchors": {
+            "type": "object",
+            "description": "Optional score anchors keyed by in-scale integer values, e.g. {\"1\": \"generic\", \"5\": \"sharp and grounded\"}.",
+            "propertyNames": { "pattern": "^-?[0-9]+$" },
+            "additionalProperties": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "description": "How an LLM-judge prompt is derived: \"auto\" renders it from the three layers above; any other string is the explicit prose prompt.",
+      "additionalProperties": false,
+      "required": ["render"],
+      "properties": {
+        "render": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verdict_policy": {
+      "type": "object",
+      "description": "How a layered result collapses to one verdict and a 0..1 ranking score in engines that need a single PASS/FAIL (the open benchmark side). Magister reporting keeps the axes separate.",
+      "additionalProperties": false,
+      "required": ["pass_if", "score"],
+      "properties": {
+        "pass_if": { "type": "string", "minLength": 1 },
+        "score": { "type": "string", "minLength": 1 }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "description": "Pinned judge identity. temperature must be 0 so a number is reproducible.",
+      "additionalProperties": false,
+      "required": ["model", "temperature", "rubric_version"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "temperature": { "const": 0 },
+        "rubric_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "description": "Provenance of the human truth signal: answer key, labeler, published agreement, and method.",
+      "additionalProperties": false,
+      "properties": {
+        "answer_key": { "type": ["string", "null"] },
+        "labeler": { "type": "string", "minLength": 1 },
+        "agreement": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": { "type": "string", "minLength": 1 }
+  }
+}

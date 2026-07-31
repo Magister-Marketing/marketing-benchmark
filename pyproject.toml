@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marketing-benchmark"
+version = "0.1.0a1"
+description = "Evidence-first benchmarks for marketing models and tool-using agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+ui = ["jsonschema>=4.23,<5", "playwright>=1.52,<2"]
+dev = ["build>=1.2,<2", "jsonschema>=4.23,<5", "pytest>=8,<9"]
+
+[project.scripts]
+marketing-benchmark = "evals.cli:main"
+agent-evals = "evals.cli:main"
+
+[project.entry-points."marketing_benchmark.adapters"]
+# custom-agent = "your_package:build_adapter"
+
+[project.entry-points."marketing_benchmark.environments"]
+# custom-tools = "your_package:build_environment"
+
+[project.urls]
+Repository = "https://github.com/Magister-Marketing/marketing-benchmark"
+
+[tool.setuptools.packages.find]
+include = ["evals*"]
+
+[tool.setuptools.package-data]
+evals = [
+  "schema/*.json",
+  "candidates/*.json",
+  "rubrics/*.json",
+  "fixtures/public/**/*",
+  "suites/integrations/**/*.json",
+  "suites/marketing/**/*.json",
+  "experiments/*.json",
+  "open_source/*"
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

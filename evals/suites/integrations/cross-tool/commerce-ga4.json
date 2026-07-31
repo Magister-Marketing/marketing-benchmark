@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "cross-commerce-ga4",
+  "suite": "integrations-cross-tool",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "Triangulate analytics purchase events with commerce orders and revenue.",
+  "prompt": "Read the analytics skill. Discover the connected synthetic GA4 and commerce sources and diagnose the week-over-week business decline using the two documented complete weeks. Compare sessions, analytics purchases, paid orders, and revenue; explain why browser events and paid-order totals need not match exactly; separate evidence from hypothesis; recommend the next test; and save the analysis to deliverables/cross-tool-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "marketing-funnel-cross-tool-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read", "commerce.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["integrations.list", "ga4.reports.summary", "commerce.orders.summary"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "diagnosis",
+        "required": true,
+        "relative_path": "deliverables/cross-tool-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 300
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "cross-tool-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 480,
+  "max_model_calls": 12,
+  "tags": ["cross-tool", "ga4", "commerce", "revenue", "grounding", "draft-only"]
+}

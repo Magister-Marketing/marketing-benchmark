@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "ga4-empty-partial-data",
+  "suite": "integrations-ga4",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "Treat an empty comparison period as missing, never as zero.",
+  "prompt": "Read the analytics skill. Compare last week's GA4 conversion performance with the week before. If one period has no usable rows, do not convert missing data to zero or claim a decline. State what is and is not available, propose the smallest safe follow-up, and save the blocker analysis to deliverables/ga4-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "ga4-conversion-drop-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["ga4.properties.list", "ga4.reports.run"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "blocker",
+        "required": true,
+        "relative_path": "deliverables/ga4-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 150
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "ga4-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 360,
+  "max_model_calls": 10,
+  "tags": ["ga4", "missing-data", "honest-block", "draft-only"]
+}

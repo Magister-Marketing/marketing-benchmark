@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/scenario.v1.json",
+  "title": "Agent evaluation scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "suite",
+    "task_family",
+    "version",
+    "prompt",
+    "fixture_dir",
+    "required_skill_reads",
+    "allowed_tools",
+    "forbidden_side_effects",
+    "require_ui_spec",
+    "artifact",
+    "rubric",
+    "timeout_seconds",
+    "max_model_calls",
+    "tags"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "description": { "type": "string" },
+    "suite": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "task_family": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "prompt": { "type": "string", "minLength": 1 },
+    "fixture_dir": { "type": "string", "minLength": 1 },
+    "required_skill_reads": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "allowed_tools": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "forbidden_side_effects": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "require_ui_spec": { "type": "boolean" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "relative_path": { "type": ["string", "null"] },
+        "media_type": { "type": ["string", "null"] },
+        "min_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rubric": { "type": "string", "minLength": 1 },
+    "timeout_seconds": { "type": "integer", "minimum": 1 },
+    "max_model_calls": { "type": "integer", "minimum": 1 },
+    "tags": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+  }
+}

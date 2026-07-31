@@ -1,0 +1,73 @@
+{
+  "fixture_version": 1,
+  "tools": [
+    {
+      "name": "list_properties",
+      "operation": "ga4.properties.list",
+      "capability": "analytics.read",
+      "side_effect": "none",
+      "description": "List the GA4 properties connected to this synthetic project. Use this before selecting a property; never guess a property ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "run_report",
+      "operation": "ga4.reports.run",
+      "capability": "analytics.read",
+      "side_effect": "none",
+      "description": "Run a read-only synthetic GA4 report. Use property 'properties/424242'. Supported dimensions are sessionDefaultChannelGroup, landingPagePlusQueryString, and sessionCampaignName. Supported metrics are sessions, ecommercePurchases, and sessionConversionRate. For pagination compare offset + returned rows with rowCount and request the next offset when needed.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["property", "dateRanges", "metrics"],
+        "properties": {
+          "property": { "type": "string" },
+          "dateRanges": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["startDate", "endDate"],
+              "properties": {
+                "startDate": { "type": "string" },
+                "endDate": { "type": "string" }
+              }
+            }
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": { "name": { "type": "string" } }
+                }
+              ]
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": { "name": { "type": "string" } }
+                }
+              ]
+            }
+          },
+          "limit": { "type": "integer", "minimum": 1 },
+          "offset": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  ]
+}

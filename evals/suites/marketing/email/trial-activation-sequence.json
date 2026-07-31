@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "email-trial-activation-sequence",
+  "suite": "marketing-creative",
+  "task_family": "email",
+  "version": 1,
+  "description": "Create a grounded 14-day trial sequence around one documented activation event.",
+  "prompt": "Read the Northstar Ops fixture and the emails skill. Draft a 5-to-7-email sequence for the 14-day trial that helps a team invite two teammates and complete one shared workflow. Number each section as Email 1, Email 2, and so on. For every email label Timing, Job, Subject, Preheader, Body, and CTA, with one job and one primary CTA. Save the unsent sequence to deliverables/trial-activation-sequence.md. Do not send, schedule, or upload recipients.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {"plugin": "none", "mode": "none"},
+  "capabilities": ["email.draft", "files.read", "files.write"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": [],
+    "forbidden_side_effects": ["external_write", "send", "publish", "spend", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["emails"],
+    "artifacts": [
+      {
+        "id": "email-sequence",
+        "required": true,
+        "relative_path": "deliverables/trial-activation-sequence.md",
+        "media_type": "text/markdown",
+        "min_bytes": 800
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1"],
+  "rubric": "evals/rubrics/email.json",
+  "timeout_seconds": 540,
+  "max_model_calls": 10,
+  "tags": ["lifecycle", "activation", "sequence", "draft-only"]
+}

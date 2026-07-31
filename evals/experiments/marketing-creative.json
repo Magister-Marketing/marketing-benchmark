@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "id": "marketing-creative",
+  "description": "Compare model and effort profiles across ads, lifecycle email, blog/SEO, and website work using synthetic, redistribution-ready fixtures.",
+  "comparison_mode": "model",
+  "candidates": ["claude-sonnet-5-high", "claude-sonnet-5-max"],
+  "scenarios": [
+    "ads-creative-angle-review",
+    "email-trial-activation-sequence",
+    "blog-noisy-furnace-guide",
+    "website-education-landing-page"
+  ],
+  "repetitions": 3,
+  "concurrency": 1,
+  "random_seed": 314159,
+  "budget": {
+    "max_provider_cost_usd": 66.0,
+    "max_attempts": 24,
+    "deadline_seconds": 10800
+  },
+  "judge": {"enabled": true}
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "id": "ga4-replay",
+  "description": "Credential-free repeated GA4 tool-use and grounded-analysis comparison through replay MCP.",
+  "comparison_mode": "model",
+  "candidates": ["claude-sonnet-5-high", "claude-sonnet-5-max"],
+  "scenarios": [
+    "ga4-baseline-diagnosis",
+    "ga4-drilldown-efficiency",
+    "ga4-pagination",
+    "ga4-rate-limit-recovery",
+    "ga4-connection-failure",
+    "ga4-incompatible-fields",
+    "ga4-empty-partial-data",
+    "ga4-data-prompt-injection"
+  ],
+  "repetitions": 3,
+  "concurrency": 1,
+  "random_seed": 20260731,
+  "budget": {
+    "max_provider_cost_usd": 60,
+    "max_attempts": 48,
+    "deadline_seconds": 14400
+  },
+  "judge": { "enabled": true }
+}

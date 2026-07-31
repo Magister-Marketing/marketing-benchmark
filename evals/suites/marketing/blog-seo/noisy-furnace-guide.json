@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "id": "blog-noisy-furnace-guide",
+  "suite": "marketing-creative",
+  "task_family": "blog-seo",
+  "version": 1,
+  "description": "Write a grounded local-service article that preserves critical safety guidance.",
+  "prompt": "Read the Brightline Heating fixture and the copywriting skill. Write a useful SEO article for the query 'when should I call furnace repair for a strange noise?' Include labeled Meta title and Meta description fields, distinguish safe observations from issues needing professional inspection, include the approved $95 diagnostic CTA, and preserve the gas-smell emergency guidance. Save it to deliverables/noisy-furnace-guide.md. Do not invent reviews, rankings, licenses, savings, diagnoses, or response guarantees.",
+  "fixtures": ["evals/fixtures/public/brands/brightline-heating"],
+  "environment": {"plugin": "none", "mode": "none"},
+  "capabilities": ["content.draft", "files.read", "files.write"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": [],
+    "forbidden_side_effects": ["external_write", "send", "publish", "spend", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["copywriting"],
+    "artifacts": [
+      {
+        "id": "article",
+        "required": true,
+        "relative_path": "deliverables/noisy-furnace-guide.md",
+        "media_type": "text/markdown",
+        "min_bytes": 1000
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1"],
+  "rubric": "evals/rubrics/blog-seo.json",
+  "timeout_seconds": 540,
+  "max_model_calls": 10,
+  "tags": ["seo", "local-service", "grounding", "safety", "draft-only"]
+}

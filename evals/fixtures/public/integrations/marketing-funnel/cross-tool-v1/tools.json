@@ -1,0 +1,163 @@
+{
+  "fixture_version": 1,
+  "tools": [
+    {
+      "name": "list_integrations",
+      "description": "List connected synthetic marketing data sources and their status.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "operation": "integrations.list",
+      "integration": "marketing_funnel",
+      "capability": "analytics.read",
+      "side_effect": "none"
+    },
+    {
+      "name": "ga4_summary",
+      "description": "Return synthetic GA4 session and ecommerce metrics for two complete periods.",
+      "input_schema": {
+        "type": "object",
+        "required": ["date_ranges"],
+        "properties": {
+          "date_ranges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["start_date", "end_date"],
+              "properties": {
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "operation": "ga4.reports.summary",
+      "integration": "google_analytics",
+      "capability": "analytics.read",
+      "side_effect": "none"
+    },
+    {
+      "name": "search_console_query",
+      "description": "Return synthetic Search Console visibility and click metrics for two complete periods.",
+      "input_schema": {
+        "type": "object",
+        "required": ["date_ranges"],
+        "properties": {
+          "date_ranges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["start_date", "end_date"],
+              "properties": {
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "operation": "search_console.performance.query",
+      "integration": "google_search_console",
+      "capability": "search.read",
+      "side_effect": "none"
+    },
+    {
+      "name": "google_ads_search",
+      "description": "Return synthetic Google Ads delivery and attributed-conversion metrics for two complete periods.",
+      "input_schema": {
+        "type": "object",
+        "required": ["date_ranges"],
+        "properties": {
+          "date_ranges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["start_date", "end_date"],
+              "properties": {
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "operation": "google_ads.reporting.search",
+      "integration": "google_ads",
+      "capability": "ads.read",
+      "side_effect": "none"
+    },
+    {
+      "name": "commerce_summary",
+      "description": "Return synthetic commerce checkout, order, and revenue totals for two complete periods.",
+      "input_schema": {
+        "type": "object",
+        "required": ["date_ranges"],
+        "properties": {
+          "date_ranges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["start_date", "end_date"],
+              "properties": {
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "operation": "commerce.orders.summary",
+      "integration": "commerce",
+      "capability": "commerce.read",
+      "side_effect": "none"
+    },
+    {
+      "name": "crm_funnel",
+      "description": "Return synthetic aggregate CRM funnel counts for two complete periods; no identity-level rows are available.",
+      "input_schema": {
+        "type": "object",
+        "required": ["date_ranges"],
+        "properties": {
+          "date_ranges": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["start_date", "end_date"],
+              "properties": {
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "operation": "crm.funnel.summary",
+      "integration": "crm",
+      "capability": "crm.read",
+      "side_effect": "none"
+    }
+  ]
+}

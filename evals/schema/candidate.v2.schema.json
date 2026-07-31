@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/candidate.v2.json",
+  "title": "Agent evaluation candidate v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "agent_adapter",
+    "model",
+    "settings",
+    "unsupported_setting_policy",
+    "cost_ceiling_usd_per_attempt"
+  ],
+  "$defs": {
+    "setting": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "value"],
+          "properties": {
+            "mode": { "const": "set" },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "enum": ["omit", "provider_default"] }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 2 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "description": { "type": "string", "minLength": 1 },
+    "agent_adapter": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "model": { "type": "string", "minLength": 1 },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasoning_effort",
+        "text_verbosity",
+        "temperature",
+        "max_output_tokens"
+      ],
+      "properties": {
+        "reasoning_effort": { "$ref": "#/$defs/setting" },
+        "text_verbosity": { "$ref": "#/$defs/setting" },
+        "temperature": { "$ref": "#/$defs/setting" },
+        "max_output_tokens": { "$ref": "#/$defs/setting" }
+      }
+    },
+    "unsupported_setting_policy": { "const": "error" },
+    "cost_ceiling_usd_per_attempt": { "type": "number", "exclusiveMinimum": 0 }
+  }
+}

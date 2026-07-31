@@ -1,0 +1,31 @@
+{
+  "fixture_version": 1,
+  "id": "marketing-funnel-cross-tool-v1",
+  "service_type": "cross_tool",
+  "integration": "marketing_funnel",
+  "fixed_clock": "2026-06-15T12:00:00Z",
+  "capabilities": [
+    "analytics.read",
+    "search.read",
+    "ads.read",
+    "commerce.read",
+    "crm.read"
+  ],
+  "date_ranges": {
+    "previous": {
+      "start_date": "2026-06-01",
+      "end_date": "2026-06-07"
+    },
+    "current": {
+      "start_date": "2026-06-08",
+      "end_date": "2026-06-14"
+    }
+  },
+  "scripts": {
+    "default": {},
+    "cross-ga4-search-console": {},
+    "cross-ads-ga4": {},
+    "cross-commerce-ga4": {},
+    "cross-crm-ads-ga4": {}
+  }
+}

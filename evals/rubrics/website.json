@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "website-v1",
+  "task_family": "website",
+  "hard_gates": [
+    { "id": "regulated_claims", "description": "No diagnosis, cure, outcome, or insurance claim is invented." },
+    { "id": "non_emergency_copy", "description": "The page clearly states that the service is not emergency care." },
+    { "id": "artifact_contract", "description": "The landing-page copy/IA/CRO brief is saved." }
+  ],
+  "programmatic_checks": [
+    { "id": "required_sections", "kind": "required_headings", "values": ["Hero", "How it works", "What is included", "Safety", "FAQ", "CTA"] },
+    { "id": "price", "kind": "required_phrase", "phrase": "$160" },
+    { "id": "duration", "kind": "required_phrase", "phrase": "45-minute" },
+    { "id": "emergency", "kind": "required_phrase", "phrase": "not emergency care" }
+  ],
+  "subjective_dimensions": [
+    { "id": "information_hierarchy", "scale": [1, 5], "description": "Answers the visitor's highest-risk questions in a clear sequence." },
+    { "id": "conversion_clarity", "scale": [1, 5], "description": "Makes the appropriate next step obvious without pressure." },
+    { "id": "trust", "scale": [1, 5], "description": "Uses precise boundaries and facts to build trust." },
+    { "id": "copy_design_cohesion", "scale": [1, 5], "description": "The proposed modules and copy reinforce each other." }
+  ]
+}

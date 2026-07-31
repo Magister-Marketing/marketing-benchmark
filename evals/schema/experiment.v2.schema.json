@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://magistermarketing.com/evals/schema/experiment.v2.json",
+  "title": "Agent evaluation experiment v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "comparison_mode",
+    "candidates",
+    "scenarios",
+    "repetitions",
+    "concurrency",
+    "random_seed",
+    "budget",
+    "judge"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,95}$" },
+    "description": { "type": "string", "minLength": 1 },
+    "comparison_mode": { "enum": ["model", "agent_system"] },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "repetitions": { "type": "integer", "minimum": 1 },
+    "concurrency": { "type": "integer", "minimum": 1 },
+    "random_seed": { "type": "integer" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_provider_cost_usd", "max_attempts", "deadline_seconds"],
+      "properties": {
+        "max_provider_cost_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "deadline_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": { "enabled": { "type": "boolean" } }
+    }
+  }
+}

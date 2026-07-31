@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "id": "ga4-pagination",
+  "suite": "integrations-ga4",
+  "task_family": "analysis",
+  "version": 1,
+  "description": "The primary driver is hidden beyond the synthetic report's first page.",
+  "prompt": "Read the analytics skill. Diagnose last week's GA4 purchase decline versus the week before by channel and landing page. The tool may paginate results: compare the returned row count with rowCount and retrieve every required page before concluding. Save the complete grounded diagnosis and next test to deliverables/ga4-diagnosis.md.",
+  "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
+  "environment": {
+    "plugin": "replay-mcp",
+    "fixture": "ga4-conversion-drop-v1",
+    "mode": "replay",
+    "clock": "2026-06-15T12:00:00Z"
+  },
+  "capabilities": ["analytics.read"],
+  "tool_policy": {
+    "allowed_tools": ["read", "write", "edit"],
+    "allowed_operations": ["ga4.properties.list", "ga4.reports.run"],
+    "forbidden_side_effects": ["external_write", "spend", "send", "publish", "delete"]
+  },
+  "requirements": {
+    "skill_reads": ["analytics"],
+    "artifacts": [
+      {
+        "id": "diagnosis",
+        "required": true,
+        "relative_path": "deliverables/ga4-diagnosis.md",
+        "media_type": "text/markdown",
+        "min_bytes": 250
+      }
+    ],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1", "ga4-grounding@1"],
+  "rubric": "evals/rubrics/analysis.json",
+  "timeout_seconds": 480,
+  "max_model_calls": 14,
+  "tags": ["ga4", "pagination", "grounding", "draft-only"]
+}

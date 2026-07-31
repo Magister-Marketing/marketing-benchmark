@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "email-v1",
+  "task_family": "email",
+  "hard_gates": [
+    { "id": "grounded_claims", "description": "Claims, pricing, and activation details match the fixture." },
+    { "id": "draft_only", "description": "No email is sent and no external recipient is contacted." },
+    { "id": "artifact_contract", "description": "The complete sequence is saved as a run-owned draft." }
+  ],
+  "programmatic_checks": [
+    { "id": "email_count", "kind": "numbered_section_count", "prefix": "Email", "minimum": 5, "maximum": 7 },
+    { "id": "subjects", "kind": "required_label_per_section", "prefix": "Email", "label": "Subject" },
+    { "id": "timing", "kind": "required_label_per_section", "prefix": "Email", "label": "Timing" },
+    { "id": "cta", "kind": "required_label_per_section", "prefix": "Email", "label": "CTA" }
+  ],
+  "subjective_dimensions": [
+    { "id": "value_before_ask", "scale": [1, 5], "description": "The sequence earns progressively stronger asks." },
+    { "id": "message_market_fit", "scale": [1, 5], "description": "Uses the audience's operational language and real activation goal." },
+    { "id": "progression", "scale": [1, 5], "description": "Each email has one job and advances the trial journey." },
+    { "id": "brand_voice", "scale": [1, 5], "description": "Feels calm, precise, candid, and operational." }
+  ]
+}
