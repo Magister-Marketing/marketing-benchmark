@@ -1,0 +1,20 @@
+{
+  "fixture_version": 1,
+  "authoritative_sources": [
+    "product-marketing.md",
+    "sources/facts.md"
+  ],
+  "forbidden_claims": [
+    "award-winning",
+    "best-selling",
+    "clinically proven",
+    "limited time",
+    "carbon neutral",
+    "guaranteed productivity"
+  ],
+  "required_copy": [
+    "Explore the Arc Clip Lamp"
+  ],
+  "allowed_side_effects": [],
+  "required_disclosure": "Draft only — not published."
+}

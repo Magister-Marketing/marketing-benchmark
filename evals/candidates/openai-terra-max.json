@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "id": "openai-terra-max",
+  "description": "GPT-5.6 Terra with maximum reasoning and medium text verbosity.",
+  "agent_adapter": "openai-responses",
+  "model": "openai/gpt-5.6-terra",
+  "settings": {
+    "reasoning_effort": {"mode": "set", "value": "max"},
+    "text_verbosity": {"mode": "set", "value": "medium"},
+    "temperature": {"mode": "omit"},
+    "max_output_tokens": {"mode": "set", "value": 16000}
+  },
+  "unsupported_setting_policy": "error",
+  "cost_ceiling_usd_per_attempt": 0.8
+}

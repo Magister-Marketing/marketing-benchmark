@@ -9,6 +9,7 @@
     "evals/schema/*.json",
     "evals/candidates/claude-sonnet-5-high.json",
     "evals/candidates/claude-sonnet-5-max.json",
+    "evals/candidates/openai-*.json",
     "evals/rubrics/*.json",
     "evals/fixtures/public/**/*",
     "evals/suites/integrations/ga4/*.json",
@@ -17,6 +18,7 @@
     "evals/experiments/ga4-replay.json",
     "evals/experiments/cross-tool-replay.json",
     "evals/experiments/marketing-creative.json",
+    "evals/experiments/openai-marketing-quick.json",
     "evals/open_source/*",
     "scripts/export-eval-runner.py"
   ],

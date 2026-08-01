@@ -20,7 +20,8 @@ returned data, and creates strong marketing work across repeated trials.
   commerce, and CRM data.
 - Synthetic creative packs for ads, lifecycle email, blog/SEO, and website
   copy/architecture work.
-- A Claude Code adapter and a provider-neutral subprocess/JSONL adapter.
+- Claude Code, direct OpenAI Responses API, and provider-neutral
+  subprocess/JSONL adapters.
 - Plugin contracts for private or third-party adapters and tool environments.
 
 Validation, planning, grading, judging-packet generation, reporting, and
@@ -58,6 +59,23 @@ Run one replay case through a locally authenticated Claude Code CLI:
 Claude Code generation bills the account to which the local `claude` CLI is
 authenticated. Temporary workspaces and strict MCP configuration reduce
 ambient access, but they are not an operating-system sandbox.
+
+Compare the reviewed OpenAI Luna, Terra, and Sol profiles on the same compact
+creative task by supplying `OPENAI_API_KEY` in the process environment:
+
+```bash
+OPENAI_API_KEY='<provider-key>' \
+  .venv/bin/marketing-benchmark run \
+  --experiment evals/experiments/openai-marketing-quick.json \
+  --adapter openai-responses \
+  --confirm RUN_LOCAL_OPENAI_EVALS \
+  --max-provider-cost-usd 10.80
+```
+
+The key is never accepted as a command-line option or written to evidence.
+Avoid putting it in shell history; prefer a secret manager or an already
+configured, least-privilege environment. The experiment fixes text verbosity
+at medium, omits temperature, and changes only model tier and reasoning effort.
 
 The creative pack covers ads, email, blog/SEO, and website work. Start with a
 single reviewed case before running its full repeated matrix:
@@ -136,14 +154,23 @@ marketing-benchmark judge-import \
   --judge-id <stable-lowercase-id>
 
 marketing-benchmark report --run <run-id>
+marketing-benchmark public-report --run <run-id>
 ```
 
 Reports include:
 
 - `report.md` and `report.json`
+- `public-report.md` and `public-report.json`, a plain-language leaderboard
 - `routing.json`
 - `capability-matrix.json`
 - `error-matrix.json`
+
+The public report puts pass/fail validity, blind preference, elapsed time, and
+estimated provider cost in one table, then states the sample size and limits in
+plain language. It is a scan-friendly companion to the auditable technical
+report, not a replacement for its traces and gate-level evidence.
+
+See the first dogfood result: [GPT-5.6 marketing quick screen](docs/results/2026-07-31-openai-marketing-quick.md).
 
 Replay and live evidence are never pooled. Routing recommendations are decision
 support; the runner does not change a production model default automatically.

@@ -18,10 +18,49 @@ class ProgrammaticResult:
 
 
 def _label_values(text: str, label: str) -> list[str]:
+    """Extract labeled copy while ignoring Markdown presentation annotations.
+
+    Agents commonly write ``**Headline (23/40):**`` or
+    ``**Headline** *(23/40)*:``. Character limits apply to the copy, not those
+    annotations or surrounding quotation marks. When emphasized labels exist,
+    prefer them over unformatted prose such as a later ``Headline: each option
+    is within the limit`` checklist.
+    """
+
+    lines = text.splitlines()
+    matches: list[tuple[str, bool]] = []
     pattern = re.compile(
-        rf"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?{re.escape(label)}(?:\*\*)?\s*:\s*(.+?)\s*$"
+        rf"^{re.escape(label)}(?:\s*\([^)]*\))?\s*:\s*(.*)$",
+        re.IGNORECASE,
     )
-    return [match.group(1).strip().strip("*_") for match in pattern.finditer(text)]
+    for index, raw_line in enumerate(lines):
+        without_bullet = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?", "", raw_line)
+        prefix = without_bullet.split(":", 1)[0]
+        emphasized = "**" in prefix or "__" in prefix
+        normalized = re.sub(r"[*_`]", "", without_bullet).strip()
+        match = pattern.match(normalized)
+        if match is None:
+            continue
+        value = match.group(1).strip()
+        if not value:
+            for following in lines[index + 1 :]:
+                value = re.sub(r"[*_`]", "", following).strip()
+                if not value:
+                    continue
+                if value.startswith("#") or re.match(
+                    r"^[A-Za-z][^:]{0,48}:\s*", value
+                ):
+                    value = ""
+                break
+        value = value.strip()
+        for opening, closing in (("“", "”"), ('"', '"'), ("'", "'")):
+            if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
+                value = value[len(opening) : -len(closing)].strip()
+                break
+        if value:
+            matches.append((value, emphasized))
+    emphasized_values = [value for value, emphasized in matches if emphasized]
+    return emphasized_values or [value for value, _ in matches]
 
 
 def grade_programmatic(

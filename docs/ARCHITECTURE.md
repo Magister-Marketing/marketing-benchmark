@@ -33,8 +33,10 @@ It has no gateway, database, deployment, or product-identity dependency.
 - `subprocess_jsonl` runs an operator-selected command through the
   `agent-eval-jsonl-v1` protocol without a shell.
 
-The Claude Code adapter is a reference agent host. Product-specific hosts can
-implement the same adapter contract.
+The Claude Code adapter is a reference agent host. The direct OpenAI Responses
+adapter stages only declared fixtures and skills, exposes attempt-scoped read,
+write, and UI functions, and keeps provider credentials out of manifests and
+evidence. Product-specific hosts can implement the same adapter contract.
 
 ## Trust boundaries
 
@@ -43,6 +45,8 @@ implement the same adapter contract.
 - Tool arguments/results are redacted and bounded, with hashes retained for
   correlation.
 - Unknown operations fail closed as external writes.
+- Direct provider credentials come only from the operator environment. They
+  cannot be supplied by candidates, scenarios, experiments, or CLI flags.
 - The hidden oracle is not mounted into an agent workspace.
 - Every adapter/environment must perform idempotent cleanup after success,
   failure, cancellation, and timeout.

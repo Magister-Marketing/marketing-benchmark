@@ -25,12 +25,13 @@ def test_validate_loads_the_bundled_catalog() -> None:
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["candidate_count"] == 2
+    assert payload["candidate_count"] == 13
     assert payload["scenario_count"] == 16
     assert {row["id"] for row in payload["experiments"]} == {
         "ga4-replay",
         "cross-tool-replay",
         "marketing-creative",
+        "openai-marketing-quick",
     }
 
 
@@ -104,5 +105,29 @@ def test_cli_exposes_the_complete_offline_workflow() -> None:
         "judge-plan",
         "judge-import",
         "report",
+        "public-report",
     ):
         assert command in result.stdout
+
+
+def test_openai_quick_plan_has_all_requested_profiles() -> None:
+    result = run_cli(
+        "plan",
+        "--experiment",
+        "evals/experiments/openai-marketing-quick.json",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["generation_attempts"] == 11
+    assert payload["warnings"] == []
+    assert {row["model"] for row in payload["candidates"]} == {
+        "openai/gpt-5.6-luna",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-sol",
+    }
+    assert {row["verbosity"] for row in payload["candidates"]} == {"medium"}
+    assert {
+        row["settings"]["temperature"]["mode"] for row in payload["candidates"]
+    } == {"omit"}

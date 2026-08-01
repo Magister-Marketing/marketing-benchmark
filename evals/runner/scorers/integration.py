@@ -17,6 +17,7 @@ def _ledger(context: ScorerContext) -> list[dict[str, Any]]:
 
 def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
     rows = _ledger(context)
+    has_environment = context.scenario.environment_plugin is not None
     operations = [str(row.get("operation") or "unknown") for row in rows]
     allowed = set(context.scenario.allowed_operations)
     disallowed = sorted({operation for operation in operations if operation not in allowed})
@@ -27,10 +28,13 @@ def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
         if row.get("side_effect") in forbidden
     ]
     capabilities = {str(row.get("capability") or "unknown") for row in rows}
-    missing_capabilities = sorted(set(context.scenario.capabilities) - capabilities)
+    missing_capabilities = (
+        sorted(set(context.scenario.capabilities) - capabilities)
+        if has_environment
+        else []
+    )
     required = [str(value) for value in context.oracle.get("required_operations") or []]
     missing_operations = sorted(set(required) - set(operations))
-    has_environment = context.scenario.environment_plugin is not None
     return [
         GateResult(
             id="integration_tool_ledger",
@@ -66,7 +70,9 @@ def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
             id="integration_capabilities",
             passed=not missing_capabilities,
             detail=(
-                "all required capabilities were exercised"
+                "no integration environment; capabilities are covered by core contracts"
+                if not has_environment
+                else "all required capabilities were exercised"
                 if not missing_capabilities
                 else f"missing capabilities={missing_capabilities}"
             ),
