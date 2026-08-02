@@ -14,12 +14,20 @@ from pathlib import Path
 from .plugins.replay_mcp import ReplayMcpEnvironment
 from .plugins.subprocess_jsonl import SubprocessJsonlAdapter
 from .runner.adapters.claude_code import ClaudeCodeAdapter
+from .runner.adapters.codex_cli import CodexCliAdapter
+from .runner.adapters.openai_responses import OpenAIResponsesAdapter
 from .runner.conformance import assert_conformant, check_agent_adapter, check_environment
+from .runner.comparison import (
+    build_agent_system_comparison,
+    import_comparison_judging,
+    prepare_comparison_judging,
+)
 from .runner.engine import execute_experiment, generate_run_id, plan_experiment
 from .runner.environments import EnvironmentRouter
 from .runner.grading import grade_run
 from .runner.judging import import_pairwise_results, prepare_pairwise_judging
 from .runner.plugins import PluginRegistry
+from .runner.public_report import build_public_report
 from .runner.report import build_run_report, render_plan_markdown
 from .runner.schema import Catalog, Experiment, ManifestError
 from .runner.validators import (
@@ -59,6 +67,24 @@ def _run_path(root: Path, value: str) -> Path:
     return resolved
 
 
+def _comparison_path(root: Path, value: str) -> Path:
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        direct = root / candidate
+        candidate = (
+            direct if direct.exists() else root / "artifacts" / "comparisons" / value
+        )
+    resolved = candidate.resolve()
+    comparison_root = (root / "artifacts" / "comparisons").resolve()
+    try:
+        resolved.relative_to(comparison_root)
+    except ValueError as exc:
+        raise ManifestError("comparison path must be inside artifacts/comparisons") from exc
+    if not resolved.is_dir():
+        raise ManifestError(f"comparison directory not found: {resolved}")
+    return resolved
+
+
 _CATALOG_DIRECTORIES = (
     "candidates",
     "experiments",
@@ -66,6 +92,7 @@ _CATALOG_DIRECTORIES = (
     "rubrics",
     "schema",
     "suites",
+    "treatments",
 )
 
 
@@ -171,6 +198,16 @@ def _adapter_registry() -> PluginRegistry[object]:
         lambda **kwargs: SubprocessJsonlAdapter(**kwargs),
         implementation_version="1",
     )
+    registry.register(
+        "openai-responses",
+        lambda **kwargs: OpenAIResponsesAdapter(**kwargs),
+        implementation_version="1",
+    )
+    registry.register(
+        "codex-cli",
+        lambda **kwargs: CodexCliAdapter(**kwargs),
+        implementation_version="1",
+    )
     return registry
 
 
@@ -195,6 +232,8 @@ def command_run(args: argparse.Namespace) -> int:
     confirmation = {
         "claude-code": "RUN_LOCAL_CLAUDE_CODE_EVALS",
         "subprocess-jsonl": "RUN_LOCAL_SUBPROCESS_EVALS",
+        "openai-responses": "RUN_LOCAL_OPENAI_EVALS",
+        "codex-cli": "RUN_LOCAL_CODEX_EVALS",
     }[args.adapter]
     if args.confirm != confirmation:
         raise ManifestError(
@@ -281,6 +320,60 @@ def command_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_public_report(args: argparse.Namespace) -> int:
+    output = build_public_report(_run_path(args.repo_root, args.run))
+    print(json.dumps({"status": "public-report-ready", "path": str(output)}))
+    return 0
+
+
+def command_compare(args: argparse.Namespace) -> int:
+    output = build_agent_system_comparison(
+        repo_root=args.repo_root,
+        baseline_run_dir=_run_path(args.repo_root, args.baseline_run),
+        treatment_run_dir=_run_path(args.repo_root, args.treatment_run),
+        declaration_path=_path(args.repo_root, args.declaration),
+        baseline_candidate_id=args.baseline_candidate,
+        treatment_candidate_id=args.treatment_candidate,
+    )
+    payload = json.loads((output / "comparison.json").read_text())
+    print(
+        json.dumps(
+            {
+                "status": "comparison-ready" if payload["valid"] else "comparison-invalid",
+                "valid": payload["valid"],
+                "path": str(output),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if payload["valid"] else 2
+
+
+def command_compare_judge_plan(args: argparse.Namespace) -> int:
+    output = prepare_comparison_judging(
+        repo_root=args.repo_root,
+        comparison_dir=_comparison_path(args.repo_root, args.comparison),
+        baseline_run_dir=_run_path(args.repo_root, args.baseline_run),
+        treatment_run_dir=_run_path(args.repo_root, args.treatment_run),
+    )
+    print(json.dumps({"status": "comparison-judge-plan-ready", "path": str(output)}))
+    return 0
+
+
+def command_compare_judge_import(args: argparse.Namespace) -> int:
+    output = import_comparison_judging(
+        comparison_dir=_comparison_path(args.repo_root, args.comparison),
+        results_path=_path(args.repo_root, args.results),
+        judge_id=args.judge_id,
+    )
+    print(
+        json.dumps(
+            {"status": "comparison-judge-results-imported", "path": str(output)}
+        )
+    )
+    return 0
+
+
 def command_judge_plan(args: argparse.Namespace) -> int:
     output = prepare_pairwise_judging(
         args.repo_root,
@@ -302,11 +395,26 @@ def command_judge_import(args: argparse.Namespace) -> int:
 
 def command_conformance(args: argparse.Namespace) -> int:
     run_id = "structural-conformance"
-    adapter = ClaudeCodeAdapter(
+    claude_adapter = ClaudeCodeAdapter(
         repo_root=args.repo_root,
         run_id=run_id,
         deadline_seconds=60,
         workspace_root=args.repo_root / "artifacts" / "evals-conformance-workspace",
+        skill_roots=_skill_roots(args.repo_root),
+    )
+    openai_adapter = OpenAIResponsesAdapter(
+        repo_root=args.repo_root,
+        run_id=run_id,
+        deadline_seconds=60,
+        workspace_root=args.repo_root / "artifacts" / "evals-conformance-openai",
+        skill_roots=_skill_roots(args.repo_root),
+        api_key="offline-structural-placeholder",
+    )
+    codex_adapter = CodexCliAdapter(
+        repo_root=args.repo_root,
+        run_id=run_id,
+        deadline_seconds=60,
+        workspace_root=args.repo_root / "artifacts" / "evals-conformance-codex",
         skill_roots=_skill_roots(args.repo_root),
     )
     environment = ReplayMcpEnvironment(
@@ -314,11 +422,18 @@ def command_conformance(args: argparse.Namespace) -> int:
         run_id=run_id,
         workspace_root=args.repo_root / "artifacts" / "evals-conformance-replay",
     )
-    findings = [*check_agent_adapter(adapter), *check_environment(environment)]
+    findings = [
+        *check_agent_adapter(claude_adapter),
+        *check_agent_adapter(openai_adapter),
+        *check_agent_adapter(codex_adapter),
+        *check_environment(environment),
+    ]
     try:
         assert_conformant(findings)
     finally:
-        adapter.close()
+        claude_adapter.close()
+        openai_adapter.close()
+        codex_adapter.close()
         environment.close()
     print(
         json.dumps(
@@ -350,7 +465,11 @@ def build_parser() -> argparse.ArgumentParser:
     plan.set_defaults(func=command_plan)
     run = commands.add_parser("run")
     run.add_argument("--experiment", required=True)
-    run.add_argument("--adapter", choices=("claude-code", "subprocess-jsonl"), required=True)
+    run.add_argument(
+        "--adapter",
+        choices=("claude-code", "codex-cli", "openai-responses", "subprocess-jsonl"),
+        required=True,
+    )
     run.add_argument("--confirm", required=True)
     run.add_argument("--max-provider-cost-usd", required=True, type=float)
     run.add_argument("--subprocess-command")
@@ -364,6 +483,36 @@ def build_parser() -> argparse.ArgumentParser:
     report = commands.add_parser("report")
     report.add_argument("--run", required=True)
     report.set_defaults(func=command_report)
+    public_report = commands.add_parser(
+        "public-report", help="write a plain-language benchmark leaderboard"
+    )
+    public_report.add_argument("--run", required=True)
+    public_report.set_defaults(func=command_public_report)
+    compare = commands.add_parser(
+        "compare", help="compare matched baseline and treatment agent-system runs"
+    )
+    compare.add_argument("--baseline-run", required=True)
+    compare.add_argument("--treatment-run", required=True)
+    compare.add_argument("--baseline-candidate")
+    compare.add_argument("--treatment-candidate")
+    compare.add_argument("--declaration", required=True)
+    compare.set_defaults(func=command_compare)
+    compare_judge_plan = commands.add_parser(
+        "compare-judge-plan",
+        help="prepare identity-blinded quality packets for a valid comparison",
+    )
+    compare_judge_plan.add_argument("--comparison", required=True)
+    compare_judge_plan.add_argument("--baseline-run", required=True)
+    compare_judge_plan.add_argument("--treatment-run", required=True)
+    compare_judge_plan.set_defaults(func=command_compare_judge_plan)
+    compare_judge_import = commands.add_parser(
+        "compare-judge-import",
+        help="import blinded quality decisions into a comparison",
+    )
+    compare_judge_import.add_argument("--comparison", required=True)
+    compare_judge_import.add_argument("--results", required=True)
+    compare_judge_import.add_argument("--judge-id", required=True)
+    compare_judge_import.set_defaults(func=command_compare_judge_import)
     judge_plan = commands.add_parser("judge-plan")
     judge_plan.add_argument("--run", required=True)
     judge_plan.set_defaults(func=command_judge_plan)

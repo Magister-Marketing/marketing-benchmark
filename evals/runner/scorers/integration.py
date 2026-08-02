@@ -17,6 +17,7 @@ def _ledger(context: ScorerContext) -> list[dict[str, Any]]:
 
 def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
     rows = _ledger(context)
+    has_environment = context.scenario.environment_plugin is not None
     operations = [str(row.get("operation") or "unknown") for row in rows]
     allowed = set(context.scenario.allowed_operations)
     disallowed = sorted({operation for operation in operations if operation not in allowed})
@@ -27,10 +28,13 @@ def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
         if row.get("side_effect") in forbidden
     ]
     capabilities = {str(row.get("capability") or "unknown") for row in rows}
-    missing_capabilities = sorted(set(context.scenario.capabilities) - capabilities)
+    missing_capabilities = (
+        sorted(set(context.scenario.capabilities) - capabilities)
+        if has_environment
+        else []
+    )
     required = [str(value) for value in context.oracle.get("required_operations") or []]
     missing_operations = sorted(set(required) - set(operations))
-    has_environment = context.scenario.environment_plugin is not None
     return [
         GateResult(
             id="integration_tool_ledger",
@@ -66,7 +70,9 @@ def grade_tool_contract(context: ScorerContext) -> list[GateResult]:
             id="integration_capabilities",
             passed=not missing_capabilities,
             detail=(
-                "all required capabilities were exercised"
+                "no integration environment; capabilities are covered by core contracts"
+                if not has_environment
+                else "all required capabilities were exercised"
                 if not missing_capabilities
                 else f"missing capabilities={missing_capabilities}"
             ),
@@ -92,6 +98,30 @@ def _argument_names(value: Any) -> set[str]:
         str(item.get("name") if isinstance(item, dict) else item)
         for item in value
     }
+
+
+def _has_unqualified_causal_claim(text: str) -> bool:
+    """Return true for causal assertions, while allowing explicit disclaimers."""
+    for sentence in re.split(r"[.!?\n]+", text):
+        if "caused the decline" not in sentence:
+            continue
+        if re.search(
+            r"\b(?:cannot|can't|did not|does not|do not|not|unknown|unproven)\b",
+            sentence,
+        ):
+            continue
+        if any(
+            phrase in sentence
+            for phrase in (
+                "no evidence",
+                "not enough evidence",
+                "unable to establish",
+                "unable to determine",
+            )
+        ):
+            continue
+        return True
+    return False
 
 
 def grade_ga4_grounding(context: ScorerContext) -> list[GateResult]:
@@ -218,7 +248,7 @@ def grade_ga4_grounding(context: ScorerContext) -> list[GateResult]:
             re.search(r"\b(?:hypothesis|correlation|test)\b", combined)
             or "does not prove" in combined
             or "not proof" in combined
-        ) and "caused the decline" not in combined
+        ) and not _has_unqualified_causal_claim(combined)
         grounded_output = (
             primary
             and purchase_evidence

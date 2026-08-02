@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "id": "codex-luna-xhigh",
+  "description": "Vanilla Codex CLI with GPT-5.6 Luna, xhigh reasoning, and medium verbosity.",
+  "agent_adapter": "codex-cli",
+  "model": "openai/gpt-5.6-luna",
+  "settings": {
+    "reasoning_effort": {"mode": "set", "value": "xhigh"},
+    "text_verbosity": {"mode": "set", "value": "medium"},
+    "temperature": {"mode": "omit"},
+    "max_output_tokens": {"mode": "provider_default"}
+  },
+  "unsupported_setting_policy": "error",
+  "cost_ceiling_usd_per_attempt": 0.4
+}

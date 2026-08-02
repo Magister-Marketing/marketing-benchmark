@@ -25,12 +25,16 @@ def test_validate_loads_the_bundled_catalog() -> None:
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["candidate_count"] == 2
-    assert payload["scenario_count"] == 16
+    assert payload["candidate_count"] == 16
+    assert payload["scenario_count"] == 17
     assert {row["id"] for row in payload["experiments"]} == {
         "ga4-replay",
         "cross-tool-replay",
+        "claude-agent-system-repeated",
+        "codex-agent-system-repeated",
+        "general-chat-repeated",
         "marketing-creative",
+        "openai-marketing-quick",
     }
 
 
@@ -66,7 +70,7 @@ def test_init_scaffolds_an_independent_repository(tmp_path: Path) -> None:
 
     validated = run_cli("--repo-root", str(target), "validate")
     assert validated.returncode == 0, validated.stderr
-    assert json.loads(validated.stdout)["scenario_count"] == 16
+    assert json.loads(validated.stdout)["scenario_count"] == 17
 
     repeated = run_cli("init", str(target))
     assert repeated.returncode == 2
@@ -101,8 +105,35 @@ def test_cli_exposes_the_complete_offline_workflow() -> None:
         "plan",
         "run",
         "grade",
+        "compare",
+        "compare-judge-plan",
+        "compare-judge-import",
         "judge-plan",
         "judge-import",
         "report",
+        "public-report",
     ):
         assert command in result.stdout
+
+
+def test_openai_quick_plan_has_all_requested_profiles() -> None:
+    result = run_cli(
+        "plan",
+        "--experiment",
+        "evals/experiments/openai-marketing-quick.json",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["generation_attempts"] == 11
+    assert payload["warnings"] == []
+    assert {row["model"] for row in payload["candidates"]} == {
+        "openai/gpt-5.6-luna",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-sol",
+    }
+    assert {row["verbosity"] for row in payload["candidates"]} == {"medium"}
+    assert {
+        row["settings"]["temperature"]["mode"] for row in payload["candidates"]
+    } == {"omit"}

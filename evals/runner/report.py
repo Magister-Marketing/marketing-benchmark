@@ -58,6 +58,7 @@ def render_plan_markdown(plan: RunPlan) -> str:
     for scenario in plan.scenarios:
         lines.append(
             f"- `{scenario['id']}` ({scenario['task_family']}): "
+            f"evals={', '.join(scenario.get('evaluation_types') or []) or 'legacy'}, "
             f"skills={', '.join(scenario['required_skill_reads']) or 'none'}, "
             f"UI={'required' if scenario['require_ui_spec'] else 'optional'}"
         )
@@ -165,6 +166,180 @@ def aggregate_run_results(
             }
         )
     return aggregates
+
+
+_EVALUATION_TYPE_ORDER = (
+    "general_chat",
+    "skill_use",
+    "ui_rendering",
+    "integration",
+)
+
+
+def build_scorecards(
+    manifest: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    grades: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate product-facing scores over every planned attempt.
+
+    Unlike conditional model-quality aggregates, missing, contaminated, and
+    infrastructure-failed cells stay in the denominator. Category scores are
+    macro-averaged by scenario so a larger suite cannot dominate a capability.
+    """
+
+    attempt_by_id = {str(row["attempt_id"]): row for row in attempts}
+    grade_by_id = {str(row["attempt_id"]): row for row in grades}
+    scenario_by_id = {
+        str(row["id"]): row for row in manifest.get("scenarios") or []
+    }
+    evaluation_types_by_scenario: dict[str, list[str]] = {
+        scenario_id: list(row.get("evaluation_types") or [])
+        for scenario_id, row in scenario_by_id.items()
+    }
+    for grade in grades:
+        scenario_id = str(grade.get("scenario_id") or "")
+        if scenario_id and not evaluation_types_by_scenario.get(scenario_id):
+            evaluation_types_by_scenario[scenario_id] = list(
+                grade.get("evaluation_types") or []
+            )
+
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for trial in manifest.get("trials") or []:
+        attempt_id = str(trial.get("attempt_id") or "")
+        candidate_id = str(trial.get("candidate_id") or "")
+        scenario_id = str(trial.get("scenario_id") or "")
+        scenario = scenario_by_id.get(scenario_id, {})
+        attempt = attempt_by_id.get(attempt_id)
+        grade = grade_by_id.get(attempt_id)
+        mode = str(
+            (scenario.get("environment") or {}).get("mode")
+            or (grade or {}).get("environment_mode")
+            or "none"
+        )
+        status = str((attempt or {}).get("status") or "missing")
+        executed = status == "completed" and grade is not None
+        complete = executed and bool(
+            (grade or {}).get(
+                "complete_passed",
+                bool((grade or {}).get("hard_gate_passed"))
+                and all(
+                    bool(check.get("passed"))
+                    for check in ((grade or {}).get("scores") or {}).get(
+                        "programmatic", []
+                    )
+                ),
+            )
+        )
+        category_results = (grade or {}).get("category_results") or {}
+        category_passes = {
+            evaluation_type: (
+                executed
+                and bool((category_results.get(evaluation_type) or {}).get("passed"))
+            )
+            for evaluation_type in evaluation_types_by_scenario.get(scenario_id, [])
+        }
+        grouped[(candidate_id, mode)].append(
+            {
+                "attempt_id": attempt_id,
+                "scenario_id": scenario_id,
+                "status": status,
+                "executed": executed,
+                "complete": complete,
+                "category_passes": category_passes,
+                "attempt": attempt,
+            }
+        )
+
+    rows: list[dict[str, Any]] = []
+    for (candidate_id, mode), cells in sorted(grouped.items()):
+        planned = len(cells)
+        execution_passes = sum(1 for cell in cells if cell["executed"])
+        complete_passes = sum(1 for cell in cells if cell["complete"])
+
+        def binary_interval(passes: int, total: int) -> list[float] | None:
+            if total == 0:
+                return None
+            return list(wilson_interval(passes, total))
+
+        categories: dict[str, Any] = {}
+        for evaluation_type in _EVALUATION_TYPE_ORDER:
+            applicable = [
+                cell
+                for cell in cells
+                if evaluation_type in cell["category_passes"]
+            ]
+            if not applicable:
+                categories[evaluation_type] = None
+                continue
+            scenario_cells: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for cell in applicable:
+                scenario_cells[cell["scenario_id"]].append(cell)
+            scenario_rates = {
+                scenario_id: (
+                    sum(
+                        1
+                        for cell in values
+                        if cell["category_passes"][evaluation_type]
+                    )
+                    / len(values)
+                )
+                for scenario_id, values in sorted(scenario_cells.items())
+            }
+            passes = sum(
+                1 for cell in applicable if cell["category_passes"][evaluation_type]
+            )
+            categories[evaluation_type] = {
+                "score": mean(list(scenario_rates.values())),
+                "passes": passes,
+                "planned": len(applicable),
+                "wilson_95": binary_interval(passes, len(applicable)),
+                "scenario_rates": scenario_rates,
+                "thin_evidence": len(applicable) < 10,
+            }
+
+        completed_attempts = [
+            cell["attempt"]
+            for cell in cells
+            if cell["executed"] and cell["attempt"] is not None
+        ]
+        durations = [
+            float(attempt.get("timings", {}).get("completion_seconds") or 0)
+            for attempt in completed_attempts
+        ]
+        costs = [
+            float(cell["attempt"].get("provider_cost_usd") or 0)
+            for cell in cells
+            if cell["attempt"] is not None
+        ]
+        statuses = sorted({str(cell["status"]) for cell in cells})
+        rows.append(
+            {
+                "candidate_id": candidate_id,
+                "environment_mode": mode,
+                "planned_attempts": planned,
+                "execution_passes": execution_passes,
+                "execution_rate": execution_passes / planned if planned else None,
+                "execution_wilson_95": binary_interval(execution_passes, planned),
+                "end_to_end_passes": complete_passes,
+                "end_to_end_rate": complete_passes / planned if planned else None,
+                "end_to_end_wilson_95": binary_interval(complete_passes, planned),
+                "categories": categories,
+                "attempt_statuses": {
+                    status: sum(1 for cell in cells if cell["status"] == status)
+                    for status in statuses
+                },
+                "mean_completion_seconds": mean(durations),
+                "provider_cost_usd": round(sum(costs), 6),
+                "thin_evidence": planned < 10,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "denominator": "planned_attempts",
+        "category_aggregation": "macro_average_of_scenario_pass_rates",
+        "rows": rows,
+    }
 
 
 _CAPABILITY_GATE_AXES: dict[str, tuple[str, ...]] = {
@@ -535,6 +710,7 @@ def build_run_report(run_dir: Path) -> Path:
     manifest = json.loads((run_dir / "manifest.json").read_text())
     comparison_mode = str(manifest.get("comparison_mode") or "model")
     aggregates = aggregate_run_results(attempts, grades)
+    scorecards = build_scorecards(manifest, attempts, grades)
     capability_matrix = build_capability_matrix(attempts, grades)
     subjective_rows = [
         row
@@ -552,10 +728,55 @@ def build_run_report(run_dir: Path) -> Path:
         "Subjective creative judging has not been run when its column is blank.",
         "",
         "Contaminated and infrastructure attempts are shown but excluded from quality denominators.",
+    ]
+    if scorecards["rows"]:
+        lines.extend(
+            [
+                "",
+                "## Product scorecards",
+                "",
+                "Execution and end-to-end rates use every planned attempt. Capability scores are macro-averaged by scenario; missing, contaminated, and infrastructure attempts do not pass.",
+                "",
+                "| Candidate | Mode | Planned | Execution | End-to-end | General chat | Skill use | UI rendering | Integrations |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+
+        def scorecard_cell(value: dict[str, Any] | None) -> str:
+            if value is None or value.get("score") is None:
+                return "—"
+            return (
+                f"{float(value['score']):.0%} "
+                f"({int(value['passes'])}/{int(value['planned'])})"
+            )
+
+        for row in scorecards["rows"]:
+            categories = row["categories"]
+            lines.append(
+                "| {candidate} | {mode} | {planned} | {execution:.0%} ({execution_passes}/{planned}) | "
+                "{end_to_end:.0%} ({end_to_end_passes}/{planned}) | {chat} | {skills} | {ui} | {integration} |".format(
+                    candidate=row["candidate_id"],
+                    mode=row["environment_mode"],
+                    planned=row["planned_attempts"],
+                    execution=row["execution_rate"] or 0,
+                    execution_passes=row["execution_passes"],
+                    end_to_end=row["end_to_end_rate"] or 0,
+                    end_to_end_passes=row["end_to_end_passes"],
+                    chat=scorecard_cell(categories["general_chat"]),
+                    skills=scorecard_cell(categories["skill_use"]),
+                    ui=scorecard_cell(categories["ui_rendering"]),
+                    integration=scorecard_cell(categories["integration"]),
+                )
+            )
+    lines.extend(
+        [
+        "",
+        "## Conditional model-quality results",
         "",
         "| Candidate | Domain | Mode | All | Quality | Contam. | Infra | Hard gates (95% CI) | Objective checks | Cost | Cost/pass | Mean sec | p95 sec | Subjective |",
         "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-    ]
+        ]
+    )
     for row in aggregates:
         interval = row["hard_gate_wilson_95"]
         objective = row["programmatic_pass_rate"]
@@ -604,8 +825,8 @@ def build_run_report(run_dir: Path) -> Path:
                 "",
                 "Tool protocol, analytical correctness, grounded output, artifact, and UI remain separate axes. Live and replay evidence are never pooled.",
                 "",
-                "| Candidate | Capability | Mode | Quality | Hard gates | Tool contract | Analysis | Grounding | Artifact | UI | Setting gaps | Tool errors |",
-                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                "| Candidate | Capability | Mode | Quality | Hard gates | Tool contract | Analysis | Grounding | Artifact | UI | Skill use | Setting gaps | Tool errors |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
 
@@ -616,7 +837,7 @@ def build_run_report(run_dir: Path) -> Path:
             axes = row["axes"]
             lines.append(
                 "| {candidate} | {capability} | {mode} | {quality} | {hard} | "
-                "{tool} | {analysis} | {grounding} | {artifact} | {ui} | {gaps} | "
+                "{tool} | {analysis} | {grounding} | {artifact} | {ui} | {skills} | {gaps} | "
                 "{errors} |".format(
                     candidate=row["candidate_id"],
                     capability=row["capability"],
@@ -628,6 +849,7 @@ def build_run_report(run_dir: Path) -> Path:
                     grounding=rate(axes["grounded_output"]),
                     artifact=rate(axes["artifact"]),
                     ui=rate(axes["ui"]),
+                    skills=rate(axes["skill_use"]),
                     gaps=row["settings_unobservable_attempts"],
                     errors=(
                         "—"
@@ -750,6 +972,7 @@ def build_run_report(run_dir: Path) -> Path:
     output.write_text("\n".join(lines) + "\n")
     write_json(run_dir / "routing.json", routing)
     write_json(run_dir / "capability-matrix.json", capability_matrix)
+    write_json(run_dir / "scorecards.json", scorecards)
     write_json(
         run_dir / "error-matrix.json",
         {
@@ -780,6 +1003,7 @@ def build_run_report(run_dir: Path) -> Path:
             "routing": routing,
             "comparison_mode": comparison_mode,
             "capabilities": capability_matrix,
+            "scorecards": scorecards,
         },
     )
     return output

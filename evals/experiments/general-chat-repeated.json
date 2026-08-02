@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "id": "general-chat-repeated",
+  "description": "Repeated general-chat screen for decision quality and instruction reliability.",
+  "comparison_mode": "model",
+  "candidates": ["claude-sonnet-5-high", "claude-sonnet-5-max"],
+  "scenarios": ["chat-channel-prioritization"],
+  "repetitions": 3,
+  "concurrency": 1,
+  "random_seed": 20260801,
+  "budget": {
+    "max_provider_cost_usd": 16.5,
+    "max_attempts": 6,
+    "deadline_seconds": 3600
+  },
+  "judge": {"enabled": true}
+}

@@ -9,7 +9,7 @@ Marketing Benchmark owns:
 
 - schemas, planning, evidence, normalized traces, grading, judging, and reports;
 - public candidates, rubrics, synthetic fixtures, and replay environments;
-- Claude Code and subprocess/JSONL reference adapters;
+- Claude Code, Codex CLI, and subprocess/JSONL reference adapters;
 - plugin contracts and conformance checks.
 
 Magister owns:
@@ -36,6 +36,34 @@ reviewed Magister change that:
 5. Records core, plugin, fixture, adapter, and runtime versions in every run.
 6. Runs the public conformance suite against the private plugins.
 7. Deletes the duplicate portable implementation only after parity tests pass.
+
+## Matched public comparison
+
+The public claim is a controlled comparison between two agent systems, not a
+comparison between different models:
+
+1. Freeze one agent-system experiment with the model, requested setting modes,
+   scenario/fixture/rubric hashes, repetition keys, seed, replay clock, and tool
+   responses held constant.
+2. Run the baseline through `claude-code` or `codex-cli` in this repository.
+3. Run the treatment through the Magister canary plugin on Team+Test. Keep the
+   feature dark and allowlisted; do not send ordinary users through it.
+4. Export only sanitized, normalized run evidence from Magister. Private
+   identity, credentials, URLs, and live-property identifiers stay downstream.
+5. Run `marketing-benchmark compare` with the two run directories and a
+   reviewed treatment declaration.
+
+The comparator rejects model, setting, hash, seed, or environment mismatches
+and rejects completed attempts with unverified setting application. Its public
+report shows baseline and treatment scores plus paired uplift separately for
+execution, end-to-end completion, general chat, skill use, UI rendering, and
+integrations. Reliability W–T–L is deterministic task completion; creative
+blind preference remains a separate judging step.
+
+Replay results should establish repeatable behavior first. Any later live GA4
+acceptance must use the exact Team+Test property, read-only capabilities, a
+second explicit operator confirmation, and a separate report. Live and replay
+scores are never pooled.
 
 After that cutover, portable changes land here first. Magister updates its pin
 and private compatibility tests in a normal dependency-update pull request.

@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "id": "chat-channel-prioritization",
+  "suite": "general-chat",
+  "task_family": "general-chat",
+  "version": 1,
+  "description": "Give a decisive, grounded answer to an underspecified paid-versus-content marketing question.",
+  "prompt": "A founder asks: ‘We need more leads next month. Should we spend on ads or content?’ Their B2B workflow product has a $6,000 annual contract value, 25 customers, a two-person marketing team, an $8,000 one-month test budget, no reliable conversion tracking, and a typical six-week sales cycle. Answer as a general chat assistant without using tools or creating files. Use exactly four Markdown sections headed Recommendation, Why, Next 30 days, and Questions. Make a clear choice or sequence, explain the tradeoff, give a practical 30-day plan, and ask only the most decision-relevant follow-ups. Do not guarantee lead volume or revenue.",
+  "fixtures": [],
+  "environment": {"plugin": "none", "mode": "none"},
+  "evaluation_types": ["general_chat"],
+  "capabilities": [],
+  "tool_policy": {
+    "allowed_tools": [],
+    "allowed_operations": [],
+    "forbidden_side_effects": ["external_write", "send", "publish", "spend", "delete"]
+  },
+  "requirements": {
+    "skill_reads": [],
+    "artifacts": [],
+    "ui_contracts": []
+  },
+  "scorers": ["tool-contract@1"],
+  "rubric": "evals/rubrics/general-chat.json",
+  "timeout_seconds": 300,
+  "max_model_calls": 4,
+  "tags": ["chat", "decision", "instruction-following", "grounding"]
+}

@@ -8,6 +8,7 @@
   "prompt": "Read the Northstar Ops fixture and the emails skill. Draft a 5-to-7-email sequence for the 14-day trial that helps a team invite two teammates and complete one shared workflow. Number each section as Email 1, Email 2, and so on. For every email label Timing, Job, Subject, Preheader, Body, and CTA, with one job and one primary CTA. Save the unsent sequence to deliverables/trial-activation-sequence.md. Do not send, schedule, or upload recipients.",
   "fixtures": ["evals/fixtures/public/brands/northstar-ops"],
   "environment": {"plugin": "none", "mode": "none"},
+  "evaluation_types": ["skill_use"],
   "capabilities": ["email.draft", "files.read", "files.write"],
   "tool_policy": {
     "allowed_tools": ["read", "write", "edit"],

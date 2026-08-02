@@ -17,11 +17,77 @@ class ProgrammaticResult:
         return asdict(self)
 
 
+def _clean_labeled_value(value: str) -> str:
+    value = value.strip()
+    value = re.sub(
+        r"\s*\((?:\d+\s*/\s*\d+|\d+\s*(?:chars?|characters?))\)\s*$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    ).strip()
+    for opening, closing in (("“", "”"), ('"', '"'), ("'", "'")):
+        if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
+            return value[len(opening) : -len(closing)].strip()
+    return value
+
+
 def _label_values(text: str, label: str) -> list[str]:
+    """Extract labeled copy while ignoring Markdown presentation annotations.
+
+    Agents commonly write ``**Headline (23/40):**`` or
+    ``**Headline** *(23/40)*:``. Character limits apply to the copy, not those
+    annotations or surrounding quotation marks. When emphasized labels exist,
+    prefer them over unformatted prose such as a later ``Headline: each option
+    is within the limit`` checklist.
+    """
+
+    lines = text.splitlines()
+    matches: list[tuple[str, bool]] = []
     pattern = re.compile(
-        rf"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?{re.escape(label)}(?:\*\*)?\s*:\s*(.+?)\s*$"
+        rf"^{re.escape(label)}(?:\s*\([^)]*\))?\s*:\s*(.*)$",
+        re.IGNORECASE,
     )
-    return [match.group(1).strip().strip("*_") for match in pattern.finditer(text)]
+    emphasized_label_pattern = re.compile(
+        rf"^{re.escape(label)}(?:\s*\([^)]*\))?\s*$",
+        re.IGNORECASE,
+    )
+    table_pattern = re.compile(
+        rf"^\|\s*{re.escape(label)}(?:\s*\([^)]*\))?\s*\|\s*([^|]*?)\s*\|\s*$",
+        re.IGNORECASE,
+    )
+    for index, raw_line in enumerate(lines):
+        without_bullet = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?", "", raw_line)
+        prefix = without_bullet.split(":", 1)[0]
+        emphasized = "**" in prefix or "__" in prefix
+        normalized = re.sub(r"[*_`]", "", without_bullet).strip()
+        table_match = table_pattern.match(normalized)
+        if table_match is not None:
+            value = _clean_labeled_value(table_match.group(1))
+            if value:
+                # A table row is an explicitly structured field even when the
+                # label is not bold; prefer it over prose checklists.
+                matches.append((value, True))
+            continue
+        match = pattern.match(normalized)
+        label_only = emphasized and emphasized_label_pattern.match(normalized)
+        if match is None and label_only is None:
+            continue
+        value = match.group(1).strip() if match is not None else ""
+        if not value:
+            for following in lines[index + 1 :]:
+                value = re.sub(r"[*_`]", "", following).strip()
+                if not value:
+                    continue
+                if value.startswith("#") or re.match(
+                    r"^[A-Za-z][^:]{0,48}:\s*", value
+                ):
+                    value = ""
+                break
+        value = _clean_labeled_value(value)
+        if value:
+            matches.append((value, emphasized))
+    emphasized_values = [value for value, emphasized in matches if emphasized]
+    return emphasized_values or [value for value, _ in matches]
 
 
 def grade_programmatic(

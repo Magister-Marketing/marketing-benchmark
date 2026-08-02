@@ -13,6 +13,7 @@
     "mode": "replay",
     "clock": "2026-06-15T12:00:00Z"
   },
+  "evaluation_types": ["skill_use", "integration"],
   "capabilities": ["analytics.read", "search.read"],
   "tool_policy": {
     "allowed_tools": ["read", "write", "edit"],

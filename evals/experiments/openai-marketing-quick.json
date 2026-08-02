@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "id": "openai-marketing-quick",
+  "description": "Quick one-task screen of GPT-5.6 Luna, Terra, and Sol reasoning profiles with medium verbosity and temperature omitted.",
+  "comparison_mode": "model",
+  "candidates": [
+    "openai-luna-high",
+    "openai-luna-xhigh",
+    "openai-luna-max",
+    "openai-terra-medium",
+    "openai-terra-high",
+    "openai-terra-xhigh",
+    "openai-terra-max",
+    "openai-sol-medium",
+    "openai-sol-high",
+    "openai-sol-xhigh",
+    "openai-sol-max"
+  ],
+  "scenarios": ["ads-creative-angle-review"],
+  "repetitions": 1,
+  "concurrency": 1,
+  "random_seed": 20260731,
+  "budget": {
+    "max_provider_cost_usd": 10.8,
+    "max_attempts": 11,
+    "deadline_seconds": 10800
+  },
+  "judge": {"enabled": true}
+}

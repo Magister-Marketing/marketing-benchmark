@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "id": "claude-agent-system-repeated",
+  "description": "Vanilla Claude Code baseline for matched general-chat, skill/UI, and GA4 agent-system comparisons.",
+  "comparison_mode": "agent_system",
+  "candidates": ["claude-sonnet-5-high"],
+  "scenarios": [
+    "chat-channel-prioritization",
+    "ads-creative-angle-review",
+    "ga4-baseline-diagnosis"
+  ],
+  "repetitions": 3,
+  "concurrency": 1,
+  "random_seed": 20260801,
+  "budget": {
+    "max_provider_cost_usd": 22.5,
+    "max_attempts": 9,
+    "deadline_seconds": 7200
+  },
+  "judge": {"enabled": false}
+}

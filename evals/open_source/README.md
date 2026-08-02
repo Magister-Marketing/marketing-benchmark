@@ -3,8 +3,9 @@
 Marketing Benchmark evaluates models and tool-using agents with versioned
 manifests, repeated randomized trials, immutable evidence, deterministic hard
 gates, blinded pairwise review packets, and capability/task-family reports.
-It includes credential-free replay MCP fixtures, a Claude Code adapter, and a
-generic subprocess/JSONL adapter.
+It includes credential-free replay MCP fixtures, Claude Code and Codex CLI
+adapters, direct OpenAI Responses support, and a generic subprocess/JSONL
+adapter.
 
 No provider call occurs during validation, planning, grading, judging-packet
 generation, reporting, conformance, or replay-server tests. A generation run
@@ -15,6 +16,12 @@ marketing-benchmark validate
 marketing-benchmark conformance
 marketing-benchmark plan --experiment evals/experiments/ga4-replay.json
 ```
+
+Reports keep execution and end-to-end reliability separate from general chat,
+skill use, UI rendering, integrations, blind preference, time, and cost. The
+offline `compare` workflow can join matched vanilla and product-harness runs,
+withhold scores when controls differ, and produce treatment-minus-baseline
+uplift by evaluation type.
 
 To run one Claude Code replay attempt, review the plan and ensure the local CLI
 is authenticated:
