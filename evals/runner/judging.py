@@ -45,6 +45,30 @@ def _fixture_packet(repo_root: Path, fixture_dir: str) -> list[dict[str, str]]:
     return rows
 
 
+def _scenario_sources(
+    repo_root: Path,
+    fixture_dirs: tuple[str, ...],
+    cache: dict[str, list[dict[str, str]]],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    multiple = len(fixture_dirs) > 1
+    for fixture_dir in fixture_dirs:
+        packet = cache.setdefault(
+            fixture_dir,
+            _fixture_packet(repo_root, fixture_dir),
+        )
+        rows.extend(
+            {
+                "path": (
+                    f"{fixture_dir}/{row['path']}" if multiple else row["path"]
+                ),
+                "content": row["content"],
+            }
+            for row in packet
+        )
+    return rows
+
+
 def _attempt_output(run_dir: Path, attempt_id: str, relative_path: str | None) -> str:
     attempt_dir = run_dir / "raw" / attempt_id
     if relative_path:
@@ -165,9 +189,10 @@ def prepare_pairwise_judging(repo_root: Path, run_dir: Path) -> Path:
         if not output.strip():
             skipped.append({"attempt_id": attempt_id, "reason": "output is empty"})
             continue
-        sources = fixture_cache.setdefault(
-            scenario.fixture_dir,
-            _fixture_packet(repo_root, scenario.fixture_dir),
+        sources = _scenario_sources(
+            repo_root,
+            scenario.fixture_dirs,
+            fixture_cache,
         )
         eligible_outputs.append(
             {
@@ -338,7 +363,10 @@ def import_pairwise_results(
             }
         )
     grade_dir = run_dir / "grades"
+    grade_dir.mkdir(parents=True, exist_ok=True)
     output = grade_dir / f"subjective-{judge_id}.jsonl"
+    if output.exists() or (run_dir / "judge" / f"results-{judge_id}.jsonl").exists():
+        raise ManifestError(f"judge results already exist for judge_id={judge_id}")
     write_jsonl(output, mapped)
     write_jsonl(run_dir / "judge" / f"results-{judge_id}.jsonl", validated)
     write_json(

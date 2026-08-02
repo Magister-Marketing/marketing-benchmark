@@ -25,11 +25,14 @@ def test_validate_loads_the_bundled_catalog() -> None:
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["candidate_count"] == 13
-    assert payload["scenario_count"] == 16
+    assert payload["candidate_count"] == 16
+    assert payload["scenario_count"] == 17
     assert {row["id"] for row in payload["experiments"]} == {
         "ga4-replay",
         "cross-tool-replay",
+        "claude-agent-system-repeated",
+        "codex-agent-system-repeated",
+        "general-chat-repeated",
         "marketing-creative",
         "openai-marketing-quick",
     }
@@ -67,7 +70,7 @@ def test_init_scaffolds_an_independent_repository(tmp_path: Path) -> None:
 
     validated = run_cli("--repo-root", str(target), "validate")
     assert validated.returncode == 0, validated.stderr
-    assert json.loads(validated.stdout)["scenario_count"] == 16
+    assert json.loads(validated.stdout)["scenario_count"] == 17
 
     repeated = run_cli("init", str(target))
     assert repeated.returncode == 2
@@ -102,6 +105,9 @@ def test_cli_exposes_the_complete_offline_workflow() -> None:
         "plan",
         "run",
         "grade",
+        "compare",
+        "compare-judge-plan",
+        "compare-judge-import",
         "judge-plan",
         "judge-import",
         "report",

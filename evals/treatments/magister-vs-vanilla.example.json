@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "magister-vs-vanilla",
+  "baseline": {
+    "id": "vanilla-agent",
+    "label": "Vanilla first-party agent",
+    "runtime": "Claude Code or Codex CLI",
+    "prompt_layer": "Portable benchmark instructions only",
+    "skills": "Frozen benchmark skill files",
+    "ui": "Portable deliverables/ui.json bridge",
+    "integrations": "Credential-free replay MCP"
+  },
+  "treatment": {
+    "id": "magister-harness",
+    "label": "Magister agent harness",
+    "runtime": "Magister canary runtime",
+    "prompt_layer": "Magister system and orchestration layer",
+    "skills": "Magister native skill loading over the same frozen skill content",
+    "ui": "Magister native UI renderer for the same declared contract",
+    "integrations": "Magister tool orchestration over the same replay responses"
+  },
+  "intended_differences": [
+    "Agent runtime and orchestration",
+    "Skill discovery and loading",
+    "UI emission and rendering path",
+    "Integration tool selection and recovery behavior"
+  ]
+}

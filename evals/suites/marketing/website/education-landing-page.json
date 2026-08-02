@@ -8,6 +8,7 @@
   "prompt": "Read the Harborline Sleep Education fixture plus the copywriting, site-architecture, and cro skills. Produce a landing-page copy, information architecture, and CRO brief with sections labeled Hero, How it works, What is included, Limitations and safety, FAQ, and CTA. Include the approved 45-minute and $160 facts and state clearly that the service is educational, is not diagnosis or treatment, and is not emergency care. Save it to deliverables/sleep-education-landing-page.md. Do not promise outcomes, claim insurance coverage, build a public site, or deploy anything.",
   "fixtures": ["evals/fixtures/public/brands/harborline-sleep"],
   "environment": {"plugin": "none", "mode": "none"},
+  "evaluation_types": ["skill_use"],
   "capabilities": ["content.draft", "files.read", "files.write"],
   "tool_policy": {
     "allowed_tools": ["read", "write", "edit"],

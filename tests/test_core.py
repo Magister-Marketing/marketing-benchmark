@@ -10,15 +10,25 @@ from jsonschema import Draft202012Validator
 
 from evals.plugins.replay_mcp.server import load_service
 from evals.runner.adapters.base import AttemptRequest
+from evals.runner.adapters.claude_code import ClaudeCodeAdapter
+from evals.runner.adapters.codex_cli import CodexCliAdapter
 from evals.runner.adapters.openai_responses import OpenAIResponsesAdapter
+from evals.runner.comparison import (
+    build_agent_system_comparison,
+    import_comparison_judging,
+    prepare_comparison_judging,
+)
 from evals.runner.engine import plan_experiment
+from evals.runner.environments.base import AttemptEnvironment, ToolBinding
 from evals.runner.events import AgentEvent, upgrade_tool_trace, validate_tool_trace
 from evals.runner.evidence import contained_path, prepare_owned_directory, redact
+from evals.runner.grading import _category_results
 from evals.runner.plugins import PluginRegistry
 from evals.runner.public_report import build_public_report
+from evals.runner.report import build_scorecards
 from evals.runner.schema import Catalog, ManifestError, Trial
 from evals.runner.scorers.base import ScorerContext
-from evals.runner.scorers.integration import grade_tool_contract
+from evals.runner.scorers.integration import grade_ga4_grounding, grade_tool_contract
 from evals.runner.scorers.programmatic import grade_programmatic
 
 
@@ -35,6 +45,18 @@ def test_all_version_two_manifests_and_tool_contracts_match_json_schema() -> Non
     )
     for schema in (*schemas.values(), trace_schema):
         Draft202012Validator.check_schema(schema)
+    treatment_schema = json.loads(
+        (REPO_ROOT / "evals/schema/treatment-declaration.schema.json").read_text()
+    )
+    Draft202012Validator.check_schema(treatment_schema)
+    Draft202012Validator(treatment_schema).validate(
+        json.loads(
+            (
+                REPO_ROOT
+                / "evals/treatments/magister-vs-vanilla.example.json"
+            ).read_text()
+        )
+    )
 
     patterns = {
         "candidate": "evals/candidates/*.json",
@@ -64,8 +86,8 @@ def test_catalog_and_randomized_plan_are_complete_and_deterministic() -> None:
         REPO_ROOT / "evals/experiments/ga4-replay.json",
     )
 
-    assert len(catalog.candidates) == 13
-    assert len(catalog.scenarios) == 16
+    assert len(catalog.candidates) == 16
+    assert len(catalog.scenarios) == 17
     assert plan.generation_attempts == 48
     assert plan.as_dict() == repeated.as_dict()
     assert len({trial.attempt_id for trial in plan.trials}) == 48
@@ -85,6 +107,508 @@ def test_catalog_and_randomized_plan_are_complete_and_deterministic() -> None:
     assert openai.generation_attempts == 11
     assert openai.conservative_cost_ceiling_usd == 10.8
     assert openai.warnings == ()
+
+
+def test_scorecards_use_planned_attempts_and_macro_average_scenarios() -> None:
+    manifest = {
+        "scenarios": [
+            {
+                "id": "skill-a",
+                "evaluation_types": ["skill_use"],
+                "environment": {"mode": "none"},
+            },
+            {
+                "id": "skill-b",
+                "evaluation_types": ["skill_use"],
+                "environment": {"mode": "none"},
+            },
+        ],
+        "trials": [
+            {
+                "attempt_id": "a-1",
+                "candidate_id": "candidate-a",
+                "scenario_id": "skill-a",
+                "repetition": 1,
+            },
+            {
+                "attempt_id": "a-2",
+                "candidate_id": "candidate-a",
+                "scenario_id": "skill-a",
+                "repetition": 2,
+            },
+            {
+                "attempt_id": "b-1",
+                "candidate_id": "candidate-a",
+                "scenario_id": "skill-b",
+                "repetition": 1,
+            },
+        ],
+    }
+    attempts = [
+        {
+            "attempt_id": "a-1",
+            "candidate_id": "candidate-a",
+            "status": "completed",
+            "timings": {"completion_seconds": 10},
+            "provider_cost_usd": 0.1,
+        },
+        {
+            "attempt_id": "a-2",
+            "candidate_id": "candidate-a",
+            "status": "infrastructure_error",
+            "provider_cost_usd": 0,
+        },
+    ]
+    grades = [
+        {
+            "attempt_id": "a-1",
+            "scenario_id": "skill-a",
+            "hard_gate_passed": True,
+            "complete_passed": True,
+            "category_results": {"skill_use": {"passed": True}},
+            "scores": {"programmatic": []},
+        }
+    ]
+
+    scorecards = build_scorecards(manifest, attempts, grades)
+    row = scorecards["rows"][0]
+    assert row["planned_attempts"] == 3
+    assert row["execution_rate"] == pytest.approx(1 / 3)
+    assert row["end_to_end_rate"] == pytest.approx(1 / 3)
+    skill = row["categories"]["skill_use"]
+    assert skill["passes"] == 1
+    assert skill["planned"] == 3
+    # skill-a is 1/2 and skill-b is 0/1, so the scenario macro-average is 25%.
+    assert skill["score"] == pytest.approx(0.25)
+
+
+def test_category_grades_fail_closed_when_required_gates_are_missing() -> None:
+    results = _category_results(
+        ("skill_use", "ui_rendering", "integration"),
+        [],
+        programmatic_pass_rate=None,
+    )
+
+    assert results["skill_use"]["passed"] is False
+    assert results["ui_rendering"]["passed"] is False
+    assert results["integration"]["passed"] is False
+
+
+def test_agent_system_comparison_pairs_runs_and_reports_uplift(
+    tmp_path: Path,
+) -> None:
+    def write_run(name: str, *, complete: bool) -> Path:
+        run_dir = tmp_path / "artifacts" / "evals" / name
+        (run_dir / "grades").mkdir(parents=True)
+        manifest = {
+            "comparison_mode": "agent_system",
+            "random_seed": 7,
+            "candidates": [
+                {
+                    "id": f"{name}-candidate",
+                    "model": "anthropic/claude-sonnet-5",
+                    "settings": {
+                        "reasoning_effort": {"mode": "set", "value": "high"},
+                        "text_verbosity": {"mode": "omit"},
+                        "temperature": {"mode": "omit"},
+                        "max_output_tokens": {"mode": "set", "value": 12000},
+                    },
+                }
+            ],
+            "scenarios": [
+                {
+                    "id": "skill-ui",
+                    "manifest_hash": "scenario-hash",
+                    "prompt_hash": "prompt-hash",
+                    "fixture_hash": "fixture-hash",
+                    "rubric_hash": "rubric-hash",
+                    "evaluation_types": ["skill_use", "ui_rendering"],
+                    "ui_contracts": ["json-object@1"],
+                    "environment": {"plugin": "none", "mode": "none"},
+                },
+                {
+                    "id": "integration-replay",
+                    "manifest_hash": "integration-scenario-hash",
+                    "prompt_hash": "integration-prompt-hash",
+                    "fixture_hash": "integration-fixture-hash",
+                    "rubric_hash": "integration-rubric-hash",
+                    "evaluation_types": ["integration"],
+                    "ui_contracts": [],
+                    "environment": {
+                        "plugin": "replay-mcp",
+                        "mode": "replay",
+                        "fixture": "fixture-v1",
+                        "clock": "2026-01-01T00:00:00Z",
+                    },
+                },
+            ],
+            "trials": [
+                {
+                    "attempt_id": f"{name}-attempt",
+                    "candidate_id": f"{name}-candidate",
+                    "scenario_id": "skill-ui",
+                    "repetition": 1,
+                    "ordinal": 1,
+                },
+                {
+                    "attempt_id": f"{name}-integration-attempt",
+                    "candidate_id": f"{name}-candidate",
+                    "scenario_id": "integration-replay",
+                    "repetition": 1,
+                    "ordinal": 2,
+                },
+            ],
+        }
+        (run_dir / "manifest.json").write_text(json.dumps(manifest))
+        (run_dir / "attempts.jsonl").write_text(
+            "\n".join(
+                json.dumps(row)
+                for row in (
+                    {
+                        "attempt_id": f"{name}-attempt",
+                        "candidate_id": f"{name}-candidate",
+                        "scenario_id": "skill-ui",
+                        "status": "completed",
+                        "settings": {"comparison_eligible": True},
+                        "provider_cost_usd": 0.1 if complete else 0.08,
+                        "timings": {"completion_seconds": 10 if complete else 12},
+                    },
+                    {
+                        "attempt_id": f"{name}-integration-attempt",
+                        "candidate_id": f"{name}-candidate",
+                        "scenario_id": "integration-replay",
+                        "status": "completed",
+                        "settings": {"comparison_eligible": True},
+                        "provider_cost_usd": 0.2 if complete else 0.16,
+                        "timings": {"completion_seconds": 20 if complete else 24},
+                    },
+                )
+            )
+            + "\n"
+        )
+        (run_dir / "grades" / "deterministic-v1.jsonl").write_text(
+            "\n".join(
+                json.dumps(row)
+                for row in (
+                    {
+                        "attempt_id": f"{name}-attempt",
+                        "scenario_id": "skill-ui",
+                        "hard_gate_passed": complete,
+                        "complete_passed": complete,
+                        "evaluation_types": ["skill_use", "ui_rendering"],
+                        "category_results": {
+                            "skill_use": {"passed": complete},
+                            "ui_rendering": {"passed": complete},
+                        },
+                        "scores": {"programmatic": []},
+                    },
+                    {
+                        "attempt_id": f"{name}-integration-attempt",
+                        "scenario_id": "integration-replay",
+                        "hard_gate_passed": complete,
+                        "complete_passed": complete,
+                        "evaluation_types": ["integration"],
+                        "category_results": {
+                            "integration": {"passed": complete}
+                        },
+                        "scores": {"programmatic": []},
+                    },
+                )
+            )
+            + "\n"
+        )
+        return run_dir
+
+    baseline = write_run("baseline", complete=False)
+    treatment = write_run("treatment", complete=True)
+    declaration = tmp_path / "declaration.json"
+    declaration.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "test-comparison",
+                "baseline": {
+                    "id": "baseline",
+                    "label": "Vanilla",
+                    "runtime": "Claude Code",
+                    "prompt_layer": "benchmark only",
+                    "skills": "staged files",
+                    "ui": "file bridge",
+                    "integrations": "replay MCP",
+                },
+                "treatment": {
+                    "id": "treatment",
+                    "label": "Harness",
+                    "runtime": "product agent",
+                    "prompt_layer": "product orchestration",
+                    "skills": "native loader",
+                    "ui": "native renderer",
+                    "integrations": "native tool router",
+                },
+                "intended_differences": ["agent harness"],
+            }
+        )
+    )
+
+    output = build_agent_system_comparison(
+        repo_root=tmp_path,
+        baseline_run_dir=baseline,
+        treatment_run_dir=treatment,
+        declaration_path=declaration,
+    )
+    payload = json.loads((output / "comparison.json").read_text())
+    assert payload["valid"] is True
+    assert payload["metrics"] == {}
+    assert payload["reliability_record"] is None
+    blocks = {row["environment_mode"]: row for row in payload["score_blocks"]}
+    assert blocks["none"]["metrics"]["end_to_end"]["delta"] == 1.0
+    assert blocks["none"]["metrics"]["skill_use"]["delta"] == 1.0
+    assert blocks["replay"]["metrics"]["integration"]["delta"] == 1.0
+    assert blocks["replay"]["reliability_record"] == {
+        "wins": 1,
+        "ties": 0,
+        "losses": 0,
+    }
+    assert "not blind creative preference" in (output / "public-report.md").read_text()
+
+    treatment_attempt_path = treatment / "attempts.jsonl"
+    treatment_attempts = [
+        json.loads(line)
+        for line in treatment_attempt_path.read_text().splitlines()
+        if line
+    ]
+    treatment_attempts[0]["settings"] = {
+        "comparison_eligible": False,
+        "mismatches": [],
+        "unobservable": ["max_output_tokens"],
+    }
+    treatment_attempt_path.write_text(
+        "\n".join(json.dumps(row) for row in treatment_attempts) + "\n"
+    )
+    invalid_output = build_agent_system_comparison(
+        repo_root=tmp_path,
+        baseline_run_dir=baseline,
+        treatment_run_dir=treatment,
+        declaration_path=declaration,
+    )
+    invalid_payload = json.loads((invalid_output / "comparison.json").read_text())
+    assert invalid_payload["valid"] is False
+    assert invalid_payload["metrics"] == {}
+    assert any(
+        "treatment.attempt" in mismatch["field"]
+        for mismatch in invalid_payload["parity_mismatches"]
+    )
+
+    treatment_attempts[0]["settings"] = {"comparison_eligible": True}
+    treatment_attempt_path.write_text(
+        "\n".join(json.dumps(row) for row in treatment_attempts) + "\n"
+    )
+    treatment_manifest_path = treatment / "manifest.json"
+    treatment_manifest = json.loads(treatment_manifest_path.read_text())
+    treatment_manifest["trials"][1]["repetition"] = 2
+    treatment_manifest_path.write_text(json.dumps(treatment_manifest))
+    unmatched_output = build_agent_system_comparison(
+        repo_root=tmp_path,
+        baseline_run_dir=baseline,
+        treatment_run_dir=treatment,
+        declaration_path=declaration,
+    )
+    unmatched = json.loads((unmatched_output / "comparison.json").read_text())
+    assert unmatched["valid"] is False
+    assert any(
+        mismatch["field"] == "trial.keys"
+        for mismatch in unmatched["parity_mismatches"]
+    )
+    assert unmatched["pairing"]["missing_baseline"]
+    assert unmatched["pairing"]["missing_treatment"]
+
+
+def test_comparison_blind_judging_uses_only_passing_cross_run_pairs(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "evals/candidates").mkdir(parents=True)
+    (tmp_path / "evals/suites/general-chat").mkdir(parents=True)
+    (tmp_path / "evals/rubrics").mkdir(parents=True)
+    for source, destination in (
+        (
+            REPO_ROOT / "evals/candidates/claude-sonnet-5-high.json",
+            tmp_path / "evals/candidates/claude-sonnet-5-high.json",
+        ),
+        (
+            REPO_ROOT / "evals/suites/general-chat/channel-prioritization.json",
+            tmp_path / "evals/suites/general-chat/channel-prioritization.json",
+        ),
+        (
+            REPO_ROOT / "evals/rubrics/general-chat.json",
+            tmp_path / "evals/rubrics/general-chat.json",
+        ),
+    ):
+        destination.write_text(source.read_text())
+
+    settings = {
+        "reasoning_effort": {"mode": "set", "value": "high"},
+        "text_verbosity": {"mode": "omit"},
+        "temperature": {"mode": "omit"},
+        "max_output_tokens": {"mode": "set", "value": 12000},
+    }
+
+    def write_run(name: str, system: str, response: str) -> Path:
+        run_dir = tmp_path / "artifacts/evals" / name
+        attempt_id = f"{system}-chat-r01"
+        (run_dir / "grades").mkdir(parents=True)
+        (run_dir / "raw" / attempt_id).mkdir(parents=True)
+        manifest = {
+            "comparison_mode": "agent_system",
+            "random_seed": 42,
+            "candidates": [
+                {
+                    "id": f"{system}-candidate",
+                    "model": "anthropic/claude-sonnet-5",
+                    "settings": settings,
+                }
+            ],
+            "scenarios": [
+                {
+                    "id": "chat-channel-prioritization",
+                    "manifest_hash": "scenario-hash",
+                    "prompt_hash": "prompt-hash",
+                    "fixture_hash": "fixture-hash",
+                    "rubric_hash": "rubric-hash",
+                    "evaluation_types": ["general_chat"],
+                    "ui_contracts": [],
+                    "environment": {"plugin": "none", "mode": "none"},
+                }
+            ],
+            "trials": [
+                {
+                    "attempt_id": attempt_id,
+                    "candidate_id": f"{system}-candidate",
+                    "scenario_id": "chat-channel-prioritization",
+                    "repetition": 1,
+                    "ordinal": 1,
+                }
+            ],
+        }
+        (run_dir / "manifest.json").write_text(json.dumps(manifest))
+        (run_dir / "attempts.jsonl").write_text(
+            json.dumps(
+                {
+                    "attempt_id": attempt_id,
+                    "candidate_id": f"{system}-candidate",
+                    "scenario_id": "chat-channel-prioritization",
+                    "repetition": 1,
+                    "status": "completed",
+                    "settings": {"comparison_eligible": True},
+                    "provider_cost_usd": 0.1,
+                    "timings": {"completion_seconds": 10},
+                }
+            )
+            + "\n"
+        )
+        (run_dir / "grades/deterministic-v1.jsonl").write_text(
+            json.dumps(
+                {
+                    "attempt_id": attempt_id,
+                    "scenario_id": "chat-channel-prioritization",
+                    "hard_gate_passed": True,
+                    "complete_passed": True,
+                    "evaluation_types": ["general_chat"],
+                    "category_results": {"general_chat": {"passed": True}},
+                    "scores": {"programmatic": []},
+                }
+            )
+            + "\n"
+        )
+        (run_dir / "raw" / attempt_id / "response.json").write_text(
+            json.dumps({"response": response})
+        )
+        return run_dir
+
+    baseline = write_run("chat-baseline", "baseline", "A serviceable answer.")
+    treatment = write_run("chat-treatment", "treatment", "A clearer answer.")
+    declaration = tmp_path / "declaration.json"
+    declaration.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chat-comparison",
+                "baseline": {
+                    "id": "baseline",
+                    "label": "Vanilla",
+                    "runtime": "Reference CLI",
+                    "prompt_layer": "portable",
+                    "skills": "portable",
+                    "ui": "portable",
+                    "integrations": "replay",
+                },
+                "treatment": {
+                    "id": "treatment",
+                    "label": "Harness",
+                    "runtime": "product",
+                    "prompt_layer": "product",
+                    "skills": "native",
+                    "ui": "native",
+                    "integrations": "native",
+                },
+                "intended_differences": ["agent harness"],
+            }
+        )
+    )
+    comparison = build_agent_system_comparison(
+        repo_root=tmp_path,
+        baseline_run_dir=baseline,
+        treatment_run_dir=treatment,
+        declaration_path=declaration,
+    )
+    packet_path = prepare_comparison_judging(
+        repo_root=tmp_path,
+        comparison_dir=comparison,
+        baseline_run_dir=baseline,
+        treatment_run_dir=treatment,
+    )
+    packet = json.loads(packet_path.read_text())
+    assert packet["sources"] == []
+    mapping = json.loads((comparison / "judge/pair-map.json").read_text())["pairs"]
+    pair_map = mapping[packet["pair_id"]]
+    treatment_side = (
+        "A" if pair_map["A"]["candidate_id"] == "treatment-system" else "B"
+    )
+    results = tmp_path / "judge-results.jsonl"
+    results.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "pair_id": packet["pair_id"],
+                "winner": treatment_side,
+                "dimension_decisions": [
+                    {
+                        "dimension_id": dimension["id"],
+                        "winner": treatment_side,
+                        "evidence": "The treatment is more specific and actionable.",
+                    }
+                    for dimension in packet["rubric"]["subjective_dimensions"]
+                ],
+                "overall_rationale": "The treatment is clearer.",
+            }
+        )
+        + "\n"
+    )
+    import_comparison_judging(
+        comparison_dir=comparison,
+        results_path=results,
+        judge_id="judge-config-1",
+    )
+    payload = json.loads((comparison / "comparison.json").read_text())
+    blind = payload["blind_quality"]["by_environment"][0]
+    assert blind["treatment_preference_rate"] == 1.0
+    assert blind["wins"] == 1
+    assert "Blind quality review" in (comparison / "public-report.md").read_text()
+    with pytest.raises(ManifestError, match="already exist"):
+        import_comparison_judging(
+            comparison_dir=comparison,
+            results_path=results,
+            judge_id="judge-config-1",
+        )
 
 
 def test_openai_adapter_records_real_tool_artifact_and_ui_evidence(
@@ -221,6 +745,240 @@ def test_openai_adapter_records_real_tool_artifact_and_ui_evidence(
     assert adapter._cost("gpt-5.6-luna", 1_000, 400, 500) == pytest.approx(
         0.000728
     )
+
+
+def test_claude_adapter_stages_fixture_manifest_and_hides_tool_discovery(
+    tmp_path: Path,
+) -> None:
+    catalog = Catalog.load(REPO_ROOT)
+    candidate = catalog.candidates["claude-sonnet-5-high"]
+    scenario = catalog.scenarios["ads-creative-angle-review"]
+    adapter = ClaudeCodeAdapter(
+        repo_root=REPO_ROOT,
+        run_id="claude-unit",
+        deadline_seconds=60,
+        workspace_root=tmp_path / "workspaces",
+    )
+    request = AttemptRequest(
+        run_id="claude-unit",
+        trial=Trial(
+            attempt_id="claude-manifest-r01",
+            scenario_id=scenario.id,
+            candidate_id=candidate.id,
+            repetition=1,
+            ordinal=1,
+        ),
+        candidate=candidate,
+        scenario=scenario,
+        repo_root=REPO_ROOT,
+        output_dir=tmp_path / "evidence",
+    )
+
+    workspace = adapter._stage_workspace(request)
+    manifest = (workspace / "fixture" / "MANIFEST.md").read_text()
+    prompt = adapter._prompt(request)
+    assert "fixture/product-marketing.md" in manifest
+    assert "fixture/sources/facts.md" in manifest
+    assert "fixture/MANIFEST.md" in prompt
+    assert "deliverables/ui.json" in prompt
+
+    (workspace / "deliverables" / "ui.json").write_text(
+        json.dumps({"type": "review", "title": "Arc Lamp concepts"})
+    )
+    ui_events = adapter._collect_ui_events(
+        request,
+        workspace,
+        starting_sequence=4,
+    )
+    assert len(ui_events) == 1
+    assert ui_events[0].type == "ui.emitted"
+    assert ui_events[0].data["contract_id"] == "json-object@1"
+
+    raw_lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "search-1",
+                            "name": "ToolSearch",
+                            "input": {"query": "select:Write"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "search-1",
+                            "content": [{"tool_name": "Write"}],
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": "done",
+                "usage": {},
+            }
+        ),
+    ]
+    events, _, summary = adapter._normalize(raw_lines, workspace)
+    assert summary["result_seen"] is True
+    assert [event.type for event in events] == [
+        "backend.event",
+        "backend.event",
+        "turn.completed",
+    ]
+    assert [event.data["subtype"] for event in events[:2]] == [
+        "tool_discovery",
+        "tool_discovery_result",
+    ]
+    adapter.close()
+
+
+def test_codex_adapter_uses_clean_exec_and_normalizes_skill_reads(
+    tmp_path: Path,
+) -> None:
+    catalog = Catalog.load(REPO_ROOT)
+    candidate = catalog.candidates["codex-terra-xhigh"]
+    scenario = catalog.scenarios["ads-creative-angle-review"]
+    adapter = CodexCliAdapter(
+        repo_root=REPO_ROOT,
+        run_id="codex-unit",
+        deadline_seconds=60,
+        workspace_root=tmp_path / "workspaces",
+    )
+    request = AttemptRequest(
+        run_id="codex-unit",
+        trial=Trial(
+            attempt_id="codex-skill-r01",
+            scenario_id=scenario.id,
+            candidate_id=candidate.id,
+            repetition=1,
+            ordinal=1,
+        ),
+        candidate=candidate,
+        scenario=scenario,
+        repo_root=REPO_ROOT,
+        output_dir=tmp_path / "evidence",
+        environment=AttemptEnvironment(
+            plugin="test-replay",
+            version="1",
+            attempt_id="codex-skill-r01",
+            mode="replay",
+            bindings=(
+                ToolBinding(
+                    kind="mcp_stdio",
+                    name="eval_integrations",
+                    config={
+                        "command": "/usr/bin/env",
+                        "args": ["python3", "server.py"],
+                        "env": {"EVAL_ATTEMPT_ID": "codex-skill-r01"},
+                    },
+                ),
+            ),
+        ),
+    )
+    workspace = adapter._stage_workspace(request)
+    command = adapter._command(request, adapter._prompt(request))
+    joined = " ".join(command)
+    assert "exec" in command
+    assert "--json" in command
+    assert "--ephemeral" in command
+    assert "--ignore-user-config" in command
+    assert "--ignore-rules" in command
+    assert 'web_search="disabled"' in command
+    assert 'shell_environment_policy.inherit="core"' in command
+    assert "shell_environment_policy.ignore_default_excludes=false" in command
+    assert "gpt-5.6-terra" in command
+    assert "skills/ad-creative/SKILL.md" in joined
+    assert "mcp_servers.eval_integrations.command" in joined
+    assert 'mcp_servers."eval_integrations"' not in joined
+    assert 'mcp_servers.eval_integrations.default_tools_approval_mode="approve"' in joined
+
+    assert adapter._command_tool("node -e 'console.log(1 + 1)'") == "backend"
+    assert adapter._command_tool("curl https://example.com") == "bash"
+    assert adapter._command_tool("curl https://example.com | jq .") == "bash"
+    assert adapter._command_tool("rm deliverables/draft.md") == "bash"
+    assert adapter._command_tool("ls deliverables 2>/dev/null") == "read"
+    shell_command = (
+        "bash -lc 'sed -n 1,120p skills/ad-creative/SKILL.md && "
+        "sed -n 1,120p fixture/MANIFEST.md'"
+    )
+    raw_lines = [
+        json.dumps({"type": "thread.started", "thread_id": "thread-1"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps(
+            {
+                "type": "item.started",
+                "item": {
+                    "id": "command-1",
+                    "type": "command_execution",
+                    "command": shell_command,
+                    "status": "in_progress",
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "command-1",
+                    "type": "command_execution",
+                    "command": shell_command,
+                    "status": "completed",
+                    "exit_code": 0,
+                    "output": "skill contents",
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "message-1",
+                    "type": "agent_message",
+                    "text": "Draft ready.",
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 100,
+                    "cached_input_tokens": 20,
+                    "output_tokens": 30,
+                },
+            }
+        ),
+    ]
+    events, _, summary = adapter._normalize_codex(
+        raw_lines, workspace, "gpt-5.6-terra"
+    )
+    assert summary["result_seen"] is True
+    assert summary["response"] == "Draft ready."
+    skill_event = next(event for event in events if event.type == "skill.read")
+    assert skill_event.data["skill"] == "ad-creative"
+    assert any(
+        event.type == "tool.started"
+        and event.data.get("args", {}).get("path") == "fixture/MANIFEST.md"
+        for event in events
+    )
+    assert any(event.type == "tool.completed" for event in events)
+    assert events[-1].type == "turn.completed"
+    adapter.close()
 
 
 def test_public_report_is_plain_language_and_keeps_audit_link(tmp_path: Path) -> None:
@@ -360,12 +1118,72 @@ def test_public_report_is_plain_language_and_keeps_audit_link(tmp_path: Path) ->
     assert payload["rows"][0]["task_families"] == ["ads", "email"]
 
 
+def test_public_report_keeps_fully_missing_planned_profiles(tmp_path: Path) -> None:
+    run_dir = tmp_path / "missing-run"
+    (run_dir / "grades").mkdir(parents=True)
+    manifest = {
+        "experiment_id": "missing-evidence",
+        "comparison_mode": "model",
+        "candidates": [
+            {
+                "id": "candidate-a",
+                "model": "openai/gpt-5.6-terra",
+                "effort": "high",
+                "settings": {},
+            }
+        ],
+        "scenarios": [
+            {
+                "id": "chat-a",
+                "task_family": "general-chat",
+                "evaluation_types": ["general_chat"],
+                "environment": {"mode": "none"},
+            }
+        ],
+        "trials": [
+            {
+                "attempt_id": "missing-attempt",
+                "candidate_id": "candidate-a",
+                "scenario_id": "chat-a",
+                "repetition": 1,
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest))
+    (run_dir / "attempts.jsonl").write_text("")
+    (run_dir / "grades/deterministic-v1.jsonl").write_text("")
+    (run_dir / "report.md").write_text("# Technical report\n")
+    (run_dir / "report.json").write_text(
+        json.dumps(
+            {
+                "aggregates": [],
+                "scorecards": build_scorecards(manifest, [], []),
+            }
+        )
+    )
+
+    build_public_report(run_dir)
+    payload = json.loads((run_dir / "public-report.json").read_text())
+    row = payload["rows"][0]
+    assert payload["profiles"] == 1
+    assert payload["task"] == ["chat-a"]
+    assert row["attempts"] == 1
+    assert row["execution_rate"] == 0.0
+    assert row["complete_pass_rate"] == 0.0
+    assert row["estimated_cost_usd"] is None
+
+
 def test_character_limits_accept_common_markdown_label_annotations() -> None:
     artifact = """\
 ## Angle 1
 **Primary text (12/125):** Short copy.
-**Headline** *(8/40)*: A header
-**Description (9/30):** “Tiny text”
+**Headline** *(8/40)*: A header (8 chars)
+**Description (9/30):** Tiny text (9 characters)
+
+| Primary text (12/125) | Table copy. |
+| **Headline** (8/40) | A table header (14/40 characters) |
+| **Description** (9/30) | Table text |
+| Headline | 40 characters | Every option is within the limit |
 
 ## Review checklist
 - Primary text: each option is within the 125-character limit.
@@ -382,7 +1200,20 @@ def test_character_limits_accept_common_markdown_label_annotations() -> None:
     )
 
     assert all(result.passed for result in results)
-    assert all("1 labeled value" in result.detail for result in results)
+    assert all("2 labeled value" in result.detail for result in results)
+
+    label_on_own_line = grade_programmatic(
+        "**Primary text** *(11/125 characters)*\nCopy below.\n",
+        [
+            {
+                "id": "primary",
+                "kind": "labeled_character_limit",
+                "label": "Primary text",
+                "maximum": 125,
+            }
+        ],
+    )
+    assert label_on_own_line[0].passed is True
 
     missing_value = grade_programmatic(
         "**Primary text:**\n**Headline:** A real headline\n",
@@ -422,6 +1253,44 @@ def test_non_integration_scenario_does_not_require_environment_capability_ledger
 
     assert capability_gate.passed is True
     assert "no integration environment" in capability_gate.detail
+
+
+def test_ga4_grounding_allows_explicitly_negated_causal_language(
+    tmp_path: Path,
+) -> None:
+    scenario = Catalog.load(REPO_ROOT).scenarios["ga4-baseline-diagnosis"]
+    oracle = json.loads(
+        (
+            REPO_ROOT
+            / "evals/fixtures/public/integrations/ga4/conversion-drop-v1/oracle.json"
+        ).read_text()
+    )["default"]
+    evidence = (
+        "Paid Search sessions landing on /pricing declined from 500 purchases "
+        "to 395 while sessions moved from 10,000 to 10,100 and conversion fell "
+        "from 5.0% to 3.91%. This is a hypothesis to test; the data do not "
+        "establish which mechanism caused the decline."
+    )
+
+    def grounded(text: str) -> bool:
+        gates = grade_ga4_grounding(
+            ScorerContext(
+                repo_root=REPO_ROOT,
+                attempt_dir=tmp_path,
+                attempt={},
+                scenario=scenario,
+                events=[],
+                files=[],
+                response=text,
+                artifact_text="",
+                environment={},
+                oracle=oracle,
+            )
+        )
+        return next(gate for gate in gates if gate.id == "ga4_grounded_output").passed
+
+    assert grounded(evidence) is True
+    assert grounded(evidence + " Paid Search caused the decline.") is False
 
 
 def test_plugin_registry_fails_closed_for_unknown_and_duplicate_ids() -> None:

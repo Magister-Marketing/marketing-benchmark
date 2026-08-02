@@ -20,7 +20,7 @@ returned data, and creates strong marketing work across repeated trials.
   commerce, and CRM data.
 - Synthetic creative packs for ads, lifecycle email, blog/SEO, and website
   copy/architecture work.
-- Claude Code, direct OpenAI Responses API, and provider-neutral
+- Claude Code, Codex CLI, direct OpenAI Responses API, and provider-neutral
   subprocess/JSONL adapters.
 - Plugin contracts for private or third-party adapters and tool environments.
 
@@ -59,6 +59,25 @@ Run one replay case through a locally authenticated Claude Code CLI:
 Claude Code generation bills the account to which the local `claude` CLI is
 authenticated. Temporary workspaces and strict MCP configuration reduce
 ambient access, but they are not an operating-system sandbox.
+
+Run the same frozen general-chat, skill/UI, and GA4 replay protocol through a
+clean, locally authenticated Codex CLI:
+
+```bash
+.venv/bin/marketing-benchmark run \
+  --experiment evals/experiments/codex-agent-system-repeated.json \
+  --adapter codex-cli \
+  --confirm RUN_LOCAL_CODEX_EVALS \
+  --max-provider-cost-usd 7.20 \
+  --candidate codex-terra-xhigh
+```
+
+The Codex adapter uses non-interactive, ephemeral execution, ignores ambient
+user configuration and repository rules, disables web search, and attaches
+only the experiment-owned replay MCP. Model-generated shell commands inherit a
+trimmed environment with Codex's default KEY/SECRET/TOKEN exclusions. Its
+output-token setting is explicitly recorded as the Codex/provider default
+because the CLI does not expose a documented override.
 
 Compare the reviewed OpenAI Luna, Terra, and Sol profiles on the same compact
 creative task by supplying `OPENAI_API_KEY` in the process environment:
@@ -138,7 +157,7 @@ marketing-benchmark --repo-root /path/to/your-repository run \
 The command is operator configuration and is executed without a shell. It can
 never be supplied by an experiment or scenario manifest.
 
-## Grade, judge, and report
+## Grade, compare, judge, and report
 
 Generation and evaluation are separate, so the same evidence can be regraded
 without another provider call:
@@ -157,6 +176,35 @@ marketing-benchmark report --run <run-id>
 marketing-benchmark public-report --run <run-id>
 ```
 
+For a harness comparison, generate the baseline and treatment as separate runs
+with `comparison_mode: agent_system`, the same model settings, scenario hashes,
+repetition keys, seed, and replay environment. Then join the sanitized evidence
+offline:
+
+```bash
+marketing-benchmark compare \
+  --baseline-run <vanilla-run-id-or-path> \
+  --treatment-run <harness-run-id-or-path> \
+  --declaration evals/treatments/magister-vs-vanilla.example.json
+
+marketing-benchmark compare-judge-plan \
+  --comparison <comparison-id> \
+  --baseline-run <vanilla-run-id-or-path> \
+  --treatment-run <harness-run-id-or-path>
+
+# Give only artifacts/comparisons/<comparison-id>/judge/pairs.jsonl to a judge.
+marketing-benchmark compare-judge-import \
+  --comparison <comparison-id> \
+  --results <blinded-results.jsonl> \
+  --judge-id <stable-lowercase-id>
+```
+
+The comparison fails closed and withholds uplift scores when a control differs
+or a completed attempt cannot prove that its requested settings were applied.
+The treatment declaration makes the intended harness differences visible.
+Only matched pairs where both systems passed end-to-end enter blind quality
+review; one-sided failures remain deterministic reliability wins or losses.
+
 Reports include:
 
 - `report.md` and `report.json`
@@ -164,13 +212,33 @@ Reports include:
 - `routing.json`
 - `capability-matrix.json`
 - `error-matrix.json`
+- `scorecards.json`, with planned-attempt scores for general chat, skill use,
+  UI rendering, and integrations
 
 The public report puts pass/fail validity, blind preference, elapsed time, and
 estimated provider cost in one table, then states the sample size and limits in
 plain language. It is a scan-friendly companion to the auditable technical
 report, not a replacement for its traces and gate-level evidence.
 
-See the first dogfood result: [GPT-5.6 marketing quick screen](docs/results/2026-07-31-openai-marketing-quick.md).
+Scores are intentionally separate instead of being collapsed into an opaque
+overall number:
+
+- **Execution** is the share of planned attempts that completed with gradeable
+  evidence.
+- **End-to-end** is the share of planned attempts that passed all required
+  gates and objective checks.
+- **General chat**, **skill use**, **UI rendering**, and **integrations** use the
+  deterministic gates assigned to that evaluation type. Missing,
+  infrastructure-error, and contaminated attempts count as failures.
+- Category scores are macro-averaged across scenarios so a large scenario does
+  not dominate a smaller one. Reports show passes/planned counts, 95% Wilson
+  intervals in technical evidence, and a thin-evidence warning below ten
+  attempts.
+
+Dogfood results:
+
+- [Repeated general-chat, skill/UI, and integration baselines](docs/results/2026-08-01-repeated-agent-baselines.md)
+- [GPT-5.6 marketing quick screen](docs/results/2026-07-31-openai-marketing-quick.md)
 
 Replay and live evidence are never pooled. Routing recommendations are decision
 support; the runner does not change a production model default automatically.

@@ -27,6 +27,84 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def _category_results(
+    evaluation_types: tuple[str, ...],
+    gates: list[Any],
+    *,
+    programmatic_pass_rate: float | None,
+) -> dict[str, dict[str, Any]]:
+    by_id = {str(gate.id): gate for gate in gates}
+
+    def result(
+        gate_ids: list[str],
+        *,
+        require_objectives: bool = False,
+    ) -> dict[str, Any]:
+        requested_ids = list(dict.fromkeys(gate_ids))
+        selected = [
+            by_id[gate_id] for gate_id in requested_ids if gate_id in by_id
+        ]
+        objectives_passed = (
+            programmatic_pass_rate is None or programmatic_pass_rate == 1.0
+        )
+        passed = (
+            bool(requested_ids)
+            and len(selected) == len(requested_ids)
+            and all(gate.passed for gate in selected)
+        )
+        if require_objectives:
+            passed = passed and objectives_passed
+        return {
+            "applicable": True,
+            "passed": passed,
+            "gate_ids": [gate.id for gate in selected],
+            "objectives_required": require_objectives,
+            "objectives_passed": objectives_passed if require_objectives else None,
+        }
+
+    rows: dict[str, dict[str, Any]] = {}
+    if "general_chat" in evaluation_types:
+        rows["general_chat"] = result(
+            [
+                "allowed_tools",
+                "forbidden_side_effects",
+                "grounded_claims",
+                "honest_terminal_state",
+            ],
+            require_objectives=True,
+        )
+    if "skill_use" in evaluation_types:
+        rows["skill_use"] = result(["required_skill_reads"])
+    if "ui_rendering" in evaluation_types:
+        rows["ui_rendering"] = result(["ui_contract"])
+    if "integration" in evaluation_types:
+        integration_gate_ids = [
+            "integration_tool_ledger",
+            "integration_allowed_operations",
+            "integration_required_operations",
+            "integration_capabilities",
+            "integration_side_effects",
+        ]
+        integration_gate_ids.extend(sorted(
+            gate_id
+            for gate_id in by_id
+            if gate_id.startswith(("ga4_", "cross_tool_"))
+        ))
+        integration_gate_ids.extend(
+            gate_id
+            for gate_id in (
+                "allowed_tools",
+                "read_containment",
+                "write_containment",
+                "forbidden_side_effects",
+                "grounded_claims",
+                "honest_terminal_state",
+            )
+        )
+        rows["integration"] = result(integration_gate_ids)
+    return rows
+
+
 def grade_run(
     repo_root: Path,
     run_dir: Path,
@@ -100,6 +178,15 @@ def grade_run(
             if programmatic
             else None
         )
+        objective_passed = (
+            programmatic_passed is None or programmatic_passed == 1.0
+        )
+        complete_passed = hard_gate_passed and objective_passed
+        category_results = _category_results(
+            scenario.evaluation_types,
+            gates,
+            programmatic_pass_rate=programmatic_passed,
+        )
         grades.append(
             {
                 "schema_version": 1,
@@ -107,6 +194,7 @@ def grade_run(
                 "scenario_id": scenario.id,
                 "candidate_id": attempt["candidate_id"],
                 "task_family": scenario.task_family,
+                "evaluation_types": list(scenario.evaluation_types),
                 "capabilities": list(scenario.capabilities),
                 "environment_mode": scenario.environment_mode,
                 "environment_plugin": scenario.environment_plugin or "none",
@@ -120,6 +208,9 @@ def grade_run(
                     if contract.required
                 ],
                 "hard_gate_passed": hard_gate_passed,
+                "objective_passed": objective_passed,
+                "complete_passed": complete_passed,
+                "category_results": category_results,
                 "gates": [gate.as_dict() for gate in gates],
                 "scores": {
                     "programmatic_pass_rate": programmatic_passed,

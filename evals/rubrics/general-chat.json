@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "general-chat-v1",
+  "task_family": "general-chat",
+  "hard_gates": [
+    {"id": "instruction_following", "description": "The response follows the requested decision format and constraints."},
+    {"id": "grounded_advice", "description": "The recommendation uses only the facts in the user's message and avoids guaranteed outcomes."}
+  ],
+  "programmatic_checks": [
+    {
+      "id": "decision_sections",
+      "kind": "required_headings",
+      "values": ["Recommendation", "Why", "Next 30 days", "Questions"]
+    },
+    {"id": "measurement_first", "kind": "required_phrase", "phrase": "tracking"}
+  ],
+  "subjective_dimensions": [
+    {"id": "judgment", "scale": [1, 5], "description": "Makes a clear recommendation with sensible tradeoffs instead of hedging generically."},
+    {"id": "helpfulness", "scale": [1, 5], "description": "Turns limited context into useful next actions and asks only decision-relevant questions."},
+    {"id": "clarity", "scale": [1, 5], "description": "Is concise, well structured, and easy for a marketing operator to act on."},
+    {"id": "grounding", "scale": [1, 5], "description": "Uses the supplied budget, team, customer, tracking, and sales-cycle facts without invention."}
+  ],
+  "prompt": {"render": "auto"},
+  "verdict_policy": {
+    "pass_if": "all_hard_gates AND all_programmatic_checks AND mean(subjective) >= 3.5",
+    "score": "weighted_mean_subjective"
+  },
+  "provenance": "Authored for the portable Marketing Benchmark agent-system comparison protocol."
+}

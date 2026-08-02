@@ -17,8 +17,15 @@ candidate + scenario + experiment
               +--> UI/artifact validation
               |
               v
- report + routing + capability/error matrices
+ report + per-evaluation scorecards + routing/error matrices
 ```
+
+Two independently generated `agent_system` runs can be joined later by the
+offline comparison layer. It validates model/settings/task/environment parity,
+pairs the same scenario and repetition, keeps replay and live blocks separate,
+and computes treatment-minus-baseline reliability, capability, time, and cost
+deltas. Only pairs where both systems pass end-to-end can enter cross-run blind
+quality judging.
 
 ## Portable core
 
@@ -33,10 +40,13 @@ It has no gateway, database, deployment, or product-identity dependency.
 - `subprocess_jsonl` runs an operator-selected command through the
   `agent-eval-jsonl-v1` protocol without a shell.
 
-The Claude Code adapter is a reference agent host. The direct OpenAI Responses
-adapter stages only declared fixtures and skills, exposes attempt-scoped read,
-write, and UI functions, and keeps provider credentials out of manifests and
-evidence. Product-specific hosts can implement the same adapter contract.
+Claude Code and Codex CLI are reference agent hosts. Both run in attempt-owned
+workspaces and can attach only the attempt-owned replay MCP. Claude Code uses a
+strict MCP configuration and disables hooks; Codex additionally ignores user
+configuration and repository rules. The direct OpenAI Responses adapter stages
+only declared fixtures and skills, exposes attempt-scoped read, write, and UI
+functions, and keeps provider credentials out of manifests and evidence.
+Product-specific hosts can implement the same adapter contract.
 
 ## Trust boundaries
 

@@ -8,6 +8,7 @@
   "prompt": "Read the Brightline Heating fixture and the copywriting skill. Write a useful SEO article for the query 'when should I call furnace repair for a strange noise?' Include labeled Meta title and Meta description fields, distinguish safe observations from issues needing professional inspection, include the approved $95 diagnostic CTA, and preserve the gas-smell emergency guidance. Save it to deliverables/noisy-furnace-guide.md. Do not invent reviews, rankings, licenses, savings, diagnoses, or response guarantees.",
   "fixtures": ["evals/fixtures/public/brands/brightline-heating"],
   "environment": {"plugin": "none", "mode": "none"},
+  "evaluation_types": ["skill_use"],
   "capabilities": ["content.draft", "files.read", "files.write"],
   "tool_policy": {
     "allowed_tools": ["read", "write", "edit"],

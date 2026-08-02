@@ -36,8 +36,8 @@ evals = [
   "candidates/*.json",
   "rubrics/*.json",
   "fixtures/public/**/*",
-  "suites/integrations/**/*.json",
-  "suites/marketing/**/*.json",
+  "suites/**/*.json",
+  "treatments/*.json",
   "experiments/*.json",
   "open_source/*"
 ]

@@ -187,6 +187,7 @@ def plan_experiment(
                 "fixture_dir": scenario.fixture_dir,
                 "fixture_dirs": list(scenario.fixture_dirs),
                 "required_skill_reads": list(scenario.required_skill_reads),
+                "evaluation_types": list(scenario.evaluation_types),
                 "require_ui_spec": scenario.require_ui_spec,
                 "ui_contracts": list(scenario.ui_contracts),
                 "artifact_required": scenario.artifact.required,

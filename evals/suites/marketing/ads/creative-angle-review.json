@@ -8,6 +8,7 @@
   "prompt": "Read the Cedar & Coil fixture and the ad-creative skill. Create a draft-only Meta review with at least three genuinely different Arc Clip Lamp angles. For every angle label Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis. Keep Primary text at 125 characters or fewer, Headline at 40 or fewer, and Description at 30 or fewer. Save the review to deliverables/arc-lamp-ad-review.md and emit a structured JSON review UI if the runtime supports UI events. Do not create, publish, fund, or activate a campaign.",
   "fixtures": ["evals/fixtures/public/brands/cedar-and-coil"],
   "environment": {"plugin": "none", "mode": "none"},
+  "evaluation_types": ["skill_use", "ui_rendering"],
   "capabilities": ["ads.draft", "files.read", "files.write"],
   "tool_policy": {
     "allowed_tools": ["read", "write", "edit"],

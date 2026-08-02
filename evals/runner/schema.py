@@ -52,6 +52,9 @@ SIDE_EFFECT_CLASSES = frozenset(
     }
 )
 ENVIRONMENT_MODES = frozenset({"none", "replay", "live"})
+EVALUATION_TYPES = frozenset(
+    {"general_chat", "skill_use", "ui_rendering", "integration"}
+)
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,95}$")
 _PROGRAMMATIC_KINDS = frozenset(
     {
@@ -469,7 +472,7 @@ class Candidate:
     effort: str | None
     verbosity: str | None
     temperature_policy: str
-    max_output_tokens: int
+    max_output_tokens: int | None
     cost_ceiling_usd_per_attempt: float
     source_path: Path = field(repr=False)
     manifest_hash: str
@@ -549,9 +552,10 @@ class Candidate:
                 for name in sorted(settings)
             }
             max_tokens = requests["max_output_tokens"]
-            if max_tokens.mode != "set":
+            if max_tokens.mode not in {"set", "provider_default"}:
                 raise ManifestError(
-                    f"settings.max_output_tokens in {path} must use mode=set"
+                    f"settings.max_output_tokens in {path} must use mode=set or "
+                    "provider_default"
                 )
             policy = data.get("unsupported_setting_policy", "error")
             if policy != "error":
@@ -572,7 +576,9 @@ class Candidate:
                     else None
                 ),
                 temperature_policy=requests["temperature"].mode,
-                max_output_tokens=int(max_tokens.value),
+                max_output_tokens=(
+                    int(max_tokens.value) if max_tokens.mode == "set" else None
+                ),
                 cost_ceiling_usd_per_attempt=_positive_number(
                     data.get("cost_ceiling_usd_per_attempt"),
                     "cost_ceiling_usd_per_attempt",
@@ -724,6 +730,7 @@ class Scenario:
     artifacts: tuple[ArtifactContract, ...] = ()
     ui_contracts: tuple[str, ...] = ()
     scorers: tuple[str, ...] = ()
+    evaluation_types: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, path: Path, repo_root: Path) -> "Scenario":
@@ -828,6 +835,7 @@ class Scenario:
                 "prompt",
                 "fixtures",
                 "environment",
+                "evaluation_types",
                 "capabilities",
                 "tool_policy",
                 "requirements",
@@ -850,6 +858,7 @@ class Scenario:
                 "prompt",
                 "fixtures",
                 "environment",
+                "evaluation_types",
                 "capabilities",
                 "tool_policy",
                 "requirements",
@@ -954,6 +963,19 @@ class Scenario:
         ui_contracts = _string_list(
             requirements.get("ui_contracts"), "requirements.ui_contracts", path
         )
+        evaluation_types = _string_list(
+            data.get("evaluation_types"), "evaluation_types", path
+        )
+        if not evaluation_types:
+            raise ManifestError(f"evaluation_types in {path} cannot be empty")
+        unknown_evaluation_types = sorted(
+            set(evaluation_types) - EVALUATION_TYPES
+        )
+        if unknown_evaluation_types:
+            raise ManifestError(
+                f"unknown evaluation_types in {path}: "
+                + ", ".join(unknown_evaluation_types)
+            )
         capabilities = _string_list(data.get("capabilities"), "capabilities", path)
         unknown_capabilities = sorted(set(capabilities) - KNOWN_CAPABILITIES)
         if unknown_capabilities:
@@ -1019,6 +1041,7 @@ class Scenario:
             artifacts=artifacts,
             ui_contracts=ui_contracts,
             scorers=_string_list(data.get("scorers"), "scorers", path),
+            evaluation_types=evaluation_types,
         )
 
 

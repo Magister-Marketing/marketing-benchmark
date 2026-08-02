@@ -100,6 +100,30 @@ def _argument_names(value: Any) -> set[str]:
     }
 
 
+def _has_unqualified_causal_claim(text: str) -> bool:
+    """Return true for causal assertions, while allowing explicit disclaimers."""
+    for sentence in re.split(r"[.!?\n]+", text):
+        if "caused the decline" not in sentence:
+            continue
+        if re.search(
+            r"\b(?:cannot|can't|did not|does not|do not|not|unknown|unproven)\b",
+            sentence,
+        ):
+            continue
+        if any(
+            phrase in sentence
+            for phrase in (
+                "no evidence",
+                "not enough evidence",
+                "unable to establish",
+                "unable to determine",
+            )
+        ):
+            continue
+        return True
+    return False
+
+
 def grade_ga4_grounding(context: ScorerContext) -> list[GateResult]:
     rows = _ledger(context)
     oracle = context.oracle
@@ -224,7 +248,7 @@ def grade_ga4_grounding(context: ScorerContext) -> list[GateResult]:
             re.search(r"\b(?:hypothesis|correlation|test)\b", combined)
             or "does not prove" in combined
             or "not proof" in combined
-        ) and "caused the decline" not in combined
+        ) and not _has_unqualified_causal_claim(combined)
         grounded_output = (
             primary
             and purchase_evidence

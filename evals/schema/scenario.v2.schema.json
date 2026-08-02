@@ -13,6 +13,7 @@
     "prompt",
     "fixtures",
     "environment",
+    "evaluation_types",
     "capabilities",
     "tool_policy",
     "requirements",
@@ -58,6 +59,14 @@
         "fixture": { "$ref": "#/$defs/id" },
         "mode": { "enum": ["none", "replay", "live"] },
         "clock": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evaluation_types": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["general_chat", "skill_use", "ui_rendering", "integration"]
       }
     },
     "capabilities": {

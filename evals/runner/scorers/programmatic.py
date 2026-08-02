@@ -17,6 +17,20 @@ class ProgrammaticResult:
         return asdict(self)
 
 
+def _clean_labeled_value(value: str) -> str:
+    value = value.strip()
+    value = re.sub(
+        r"\s*\((?:\d+\s*/\s*\d+|\d+\s*(?:chars?|characters?))\)\s*$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    ).strip()
+    for opening, closing in (("“", "”"), ('"', '"'), ("'", "'")):
+        if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
+            return value[len(opening) : -len(closing)].strip()
+    return value
+
+
 def _label_values(text: str, label: str) -> list[str]:
     """Extract labeled copy while ignoring Markdown presentation annotations.
 
@@ -33,15 +47,32 @@ def _label_values(text: str, label: str) -> list[str]:
         rf"^{re.escape(label)}(?:\s*\([^)]*\))?\s*:\s*(.*)$",
         re.IGNORECASE,
     )
+    emphasized_label_pattern = re.compile(
+        rf"^{re.escape(label)}(?:\s*\([^)]*\))?\s*$",
+        re.IGNORECASE,
+    )
+    table_pattern = re.compile(
+        rf"^\|\s*{re.escape(label)}(?:\s*\([^)]*\))?\s*\|\s*([^|]*?)\s*\|\s*$",
+        re.IGNORECASE,
+    )
     for index, raw_line in enumerate(lines):
         without_bullet = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?", "", raw_line)
         prefix = without_bullet.split(":", 1)[0]
         emphasized = "**" in prefix or "__" in prefix
         normalized = re.sub(r"[*_`]", "", without_bullet).strip()
-        match = pattern.match(normalized)
-        if match is None:
+        table_match = table_pattern.match(normalized)
+        if table_match is not None:
+            value = _clean_labeled_value(table_match.group(1))
+            if value:
+                # A table row is an explicitly structured field even when the
+                # label is not bold; prefer it over prose checklists.
+                matches.append((value, True))
             continue
-        value = match.group(1).strip()
+        match = pattern.match(normalized)
+        label_only = emphasized and emphasized_label_pattern.match(normalized)
+        if match is None and label_only is None:
+            continue
+        value = match.group(1).strip() if match is not None else ""
         if not value:
             for following in lines[index + 1 :]:
                 value = re.sub(r"[*_`]", "", following).strip()
@@ -52,11 +83,7 @@ def _label_values(text: str, label: str) -> list[str]:
                 ):
                     value = ""
                 break
-        value = value.strip()
-        for opening, closing in (("“", "”"), ('"', '"'), ("'", "'")):
-            if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
-                value = value[len(opening) : -len(closing)].strip()
-                break
+        value = _clean_labeled_value(value)
         if value:
             matches.append((value, emphasized))
     emphasized_values = [value for value, emphasized in matches if emphasized]
