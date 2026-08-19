@@ -145,6 +145,67 @@ def test_ad_performance_csv_oracle_totals():
     assert round(retargeting["spend"] / retargeting["conv"], 2) == 19.28
 
 
+def test_build_request_anthropic_tool_versions():
+    url, headers, body = providers.build_request(
+        "anthropic/claude-sonnet-5", "hi", 100, web_search=True, api_key="k")
+    assert url == providers.ANTHROPIC_URL
+    assert headers["x-api-key"] == "k"
+    assert body["tools"] == [{"type": "web_search_20260209", "name": "web_search",
+                              "max_uses": providers.WEB_SEARCH_MAX_USES}]
+    _, _, body = providers.build_request(
+        "anthropic/claude-haiku-4-5", "hi", 100, web_search=True, api_key="k")
+    assert body["tools"][0]["type"] == "web_search_20250305"
+    _, _, body = providers.build_request(
+        "anthropic/claude-sonnet-5", "hi", 100, web_search=False, api_key="k")
+    assert "tools" not in body
+    assert "temperature" not in body
+    assert body["max_tokens"] == 100
+
+
+def test_build_request_openai_responses_api():
+    url, headers, body = providers.build_request(
+        "openai/gpt-5.6-sol", "hi", 100, web_search=True, api_key="k")
+    assert url == providers.OPENAI_URL and url.endswith("/v1/responses")
+    assert headers["Authorization"] == "Bearer k"
+    assert body == {"model": "gpt-5.6-sol", "max_output_tokens": 100,
+                    "input": "hi", "tools": [{"type": "web_search"}]}
+    _, _, body = providers.build_request(
+        "openai/gpt-5.6-sol", "hi", 100, web_search=False, api_key="k")
+    assert "tools" not in body and "temperature" not in body
+
+
+def test_parse_response_anthropic_with_web_search():
+    payload = {
+        "content": [
+            {"type": "server_tool_use", "id": "x", "name": "web_search"},
+            {"type": "web_search_tool_result", "tool_use_id": "x", "content": []},
+            {"type": "text", "text": "part one "},
+            {"type": "text", "text": "part two"},
+        ],
+        "usage": {"input_tokens": 10, "output_tokens": 20,
+                  "server_tool_use": {"web_search_requests": 3}},
+    }
+    result = providers.parse_response("anthropic", payload)
+    assert result == {"text": "part one part two", "input_tokens": 10,
+                      "output_tokens": 20, "web_search_calls": 3}
+
+
+def test_parse_response_openai_with_web_search():
+    payload = {
+        "output": [
+            {"type": "web_search_call", "id": "ws1", "status": "completed"},
+            {"type": "web_search_call", "id": "ws2", "status": "completed"},
+            {"type": "message", "content": [
+                {"type": "output_text", "text": "answer"},
+            ]},
+        ],
+        "usage": {"input_tokens": 5, "output_tokens": 7},
+    }
+    result = providers.parse_response("openai", payload)
+    assert result == {"text": "answer", "input_tokens": 5,
+                      "output_tokens": 7, "web_search_calls": 2}
+
+
 def test_provider_refuses_without_env_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(providers.ProviderError, match="ANTHROPIC_API_KEY"):

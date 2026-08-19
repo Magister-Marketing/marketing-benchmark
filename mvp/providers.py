@@ -5,8 +5,12 @@ Stdlib only. Credentials come exclusively from the operator environment
 flags, or files, and never written to evidence.
 
 Default API settings: temperature is always omitted so each provider uses
-its own default. The only knob we set is an output-token ceiling, uniform
-across models and recorded in run evidence.
+its own default. The only knobs are an output-token ceiling, uniform
+across models and recorded in run evidence, and an optional provider-
+hosted web-search tool (the `--tools` arm).
+
+Request building and response parsing are pure functions so the exact
+wire shapes are covered by offline tests.
 """
 
 from __future__ import annotations
@@ -19,7 +23,17 @@ import urllib.request
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_URL = "https://api.openai.com/v1/responses"
+
+# Server-side web search tool versions. Newer Anthropic models take the
+# dated 2026-02-09 tool; every other model keeps the basic variant.
+ANTHROPIC_WEB_SEARCH_CURRENT = "web_search_20260209"
+ANTHROPIC_WEB_SEARCH_BASIC = "web_search_20250305"
+ANTHROPIC_CURRENT_TOOL_MODELS = (
+    "opus-5", "opus-4-8", "opus-4-7", "opus-4-6", "sonnet-5", "sonnet-4-6",
+    "fable-5", "mythos-5",
+)
+WEB_SEARCH_MAX_USES = 8
 
 REQUEST_TIMEOUT_SECONDS = 600
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504, 529}
@@ -46,11 +60,89 @@ def split_model_spec(model_spec: str) -> tuple[str, str]:
     return provider, model
 
 
-def generate(model_spec: str, prompt: str, max_output_tokens: int) -> dict:
+def anthropic_web_search_tool(model: str) -> dict:
+    current = any(marker in model for marker in ANTHROPIC_CURRENT_TOOL_MODELS)
+    tool_type = ANTHROPIC_WEB_SEARCH_CURRENT if current else ANTHROPIC_WEB_SEARCH_BASIC
+    return {"type": tool_type, "name": "web_search", "max_uses": WEB_SEARCH_MAX_USES}
+
+
+def build_request(
+    model_spec: str, prompt: str, max_output_tokens: int, web_search: bool, api_key: str
+) -> tuple[str, dict, dict]:
+    """Return (url, headers, body) for one generation request."""
+    provider, model = split_model_spec(model_spec)
+    if provider == "anthropic":
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": ANTHROPIC_VERSION,
+            "content-type": "application/json",
+        }
+        body: dict = {
+            "model": model,
+            "max_tokens": max_output_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if web_search:
+            body["tools"] = [anthropic_web_search_tool(model)]
+        return ANTHROPIC_URL, headers, body
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "content-type": "application/json",
+    }
+    body = {
+        "model": model,
+        "max_output_tokens": max_output_tokens,
+        "input": prompt,
+    }
+    if web_search:
+        body["tools"] = [{"type": "web_search"}]
+    return OPENAI_URL, headers, body
+
+
+def parse_response(provider: str, payload: dict) -> dict:
+    """Extract {text, input_tokens, output_tokens, web_search_calls}."""
+    if provider == "anthropic":
+        text = "".join(
+            block.get("text", "")
+            for block in payload.get("content", [])
+            if block.get("type") == "text"
+        )
+        usage = payload.get("usage", {})
+        searches = (usage.get("server_tool_use") or {}).get("web_search_requests", 0)
+        return {
+            "text": text,
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "web_search_calls": searches,
+        }
+
+    text_parts = []
+    searches = 0
+    for item in payload.get("output", []):
+        if item.get("type") == "message":
+            for content in item.get("content", []):
+                if content.get("type") == "output_text":
+                    text_parts.append(content.get("text", ""))
+        elif item.get("type") == "web_search_call":
+            searches += 1
+    usage = payload.get("usage", {})
+    return {
+        "text": "".join(text_parts),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "web_search_calls": searches,
+    }
+
+
+def generate(
+    model_spec: str, prompt: str, max_output_tokens: int, web_search: bool = False
+) -> dict:
     """One prompt in, one text completion out.
 
-    Returns {text, input_tokens, output_tokens, latency_seconds, provider, model}.
-    Raises ProviderError on missing keys or exhausted retries.
+    Returns {text, input_tokens, output_tokens, web_search_calls,
+    latency_seconds, provider, model}. Raises ProviderError on missing
+    keys or exhausted retries.
     """
     provider, model = split_model_spec(model_spec)
     api_key = os.environ.get(required_env_key(provider), "")
@@ -59,61 +151,24 @@ def generate(model_spec: str, prompt: str, max_output_tokens: int) -> dict:
             f"{required_env_key(provider)} is not set; refusing to call {provider}"
         )
 
-    if provider == "anthropic":
-        url = ANTHROPIC_URL
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-        }
-        body = {
-            "model": model,
-            "max_tokens": max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-    else:
-        url = OPENAI_URL
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "content-type": "application/json",
-        }
-        body = {
-            "model": model,
-            "max_completion_tokens": max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-
+    url, headers, body = build_request(
+        model_spec, prompt, max_output_tokens, web_search, api_key
+    )
     started = time.monotonic()
     payload = _post_json_with_retries(url, headers, body, provider)
     latency = time.monotonic() - started
 
-    if provider == "anthropic":
-        text = "".join(
-            block.get("text", "")
-            for block in payload.get("content", [])
-            if block.get("type") == "text"
-        )
-        usage = payload.get("usage", {})
-        input_tokens = usage.get("input_tokens")
-        output_tokens = usage.get("output_tokens")
-    else:
-        choices = payload.get("choices", [])
-        text = choices[0]["message"].get("content") or "" if choices else ""
-        usage = payload.get("usage", {})
-        input_tokens = usage.get("prompt_tokens")
-        output_tokens = usage.get("completion_tokens")
-
-    if not text.strip():
+    result = parse_response(provider, payload)
+    if not result["text"].strip():
         raise ProviderError(f"{provider} returned an empty completion for {model}")
-
-    return {
-        "provider": provider,
-        "model": model,
-        "text": text,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "latency_seconds": round(latency, 2),
-    }
+    result.update(
+        {
+            "provider": provider,
+            "model": model,
+            "latency_seconds": round(latency, 2),
+        }
+    )
+    return result
 
 
 def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) -> dict:

@@ -19,9 +19,16 @@ quality.
 - Provider errors and judge failures count as failed repetitions.
 - Temperature is never sent; the only setting is a uniform
   `max_output_tokens` recorded in `run.json`.
-- Skill guidance from `evals/fixtures/public/skills/` is included in the
-  prompt by default; `--no-skills` runs the baseline arm so skill uplift
-  is measurable with the same tasks and rubric.
+- Two independent arm toggles, both recorded in evidence:
+  - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
+    prompt by default; `--no-skills` is the baseline arm, so skill
+    uplift is measurable with the same tasks and rubric.
+  - **Tools**: off by default; `--tools` enables provider-hosted web
+    search on the same API call (Anthropic server web-search tool,
+    OpenAI Responses `web_search`). Tasks and rubrics do not change, so
+    on fixture-grounded tasks the tools arm also measures tool
+    discipline — staying inside supplied sources when search is
+    available. The judge is always tool-less and blind to the arm.
 
 ## Rubric shape
 
@@ -69,6 +76,9 @@ python3 -m mvp.bench run --models claude-haiku-4-5,claude-sonnet-5
 # optional baseline arm without skill guidance in the prompt
 python3 -m mvp.bench run --models claude-haiku-4-5 --no-skills
 
+# optional tools arm: same tasks, provider-hosted web search enabled
+python3 -m mvp.bench run --models claude-haiku-4-5 --tools
+
 # 2) judge every attempt (paid; default judge claude-sonnet-5)
 python3 -m mvp.bench grade --run mvp/results/<run-id>
 
@@ -84,10 +94,27 @@ Each run writes immutable evidence under `mvp/results/<run-id>/`:
 `judgments.jsonl`, `human_verdicts.jsonl`, `report.md`. Results are
 gitignored; commit a `report.md` into `docs/results/` when publishing.
 
+## The ladder: same tasks, rising tiers
+
+The tasks in `tasks/*.json` are the constant. Each tier changes only
+what generates the response, so results stay comparable up the stack:
+
+| Tier | Generator | Status |
+|---|---|---|
+| 0 | Raw model, direct API call (`skills` x `tools` arms) | **this directory** |
+| 1 | Coding-agent harnesses: Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
+| 2 | The Magister harness (real product path) | planned |
+
+Rules that keep the ladder honest:
+
+- Task prompts, fixtures, and rubrics are never forked per tier. A tier
+  that needs a different prompt gets a new task id instead.
+- The judge, rubric, and pass^3 protocol are identical at every tier.
+- Every run records its tier and arms (`run.json`), so any two runs can
+  be compared attempt-for-attempt.
+
 ## Deliberately deferred
 
-- **Tools / live integrations** — the `evals/` runner already owns the
-  tool-using comparison; add a with-tools arm there, not here.
 - **Prime Intellect / verifiers** — task JSONs are self-contained
   (prompt + fixtures + binary rubric), so porting to a `verifiers`
   Environment later is mechanical.
