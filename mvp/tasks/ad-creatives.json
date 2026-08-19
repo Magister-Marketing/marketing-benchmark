@@ -1,0 +1,25 @@
+{
+  "id": "ad-creatives",
+  "title": "Meta ad concepts with channel limits",
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
+  ],
+  "skills": ["evals/fixtures/public/skills/ad-creative/SKILL.md"],
+  "prompt": "Draft three genuinely different Meta feed ad concepts for the Arc Clip Lamp, for internal review only. For every concept, label these fields: Primary text (125 characters or fewer), Headline (40 characters or fewer), Description (30 characters or fewer), CTA (must be 'Explore the Arc Clip Lamp'), Visual direction, Audience insight, and Test hypothesis. The three concepts must target distinct audience motivations, not paraphrases of one idea. Do not create, publish, fund, or activate anything; this is a draft.",
+  "rubric": {
+    "completion": [
+      {"id": "three_concepts", "check": "Exactly three ad concepts are present, each with all seven labeled fields (Primary text, Headline, Description, CTA, Visual direction, Audience insight, Test hypothesis)."},
+      {"id": "char_limits", "check": "Every Primary text is 125 characters or fewer, every Headline 40 or fewer, every Description 30 or fewer."},
+      {"id": "approved_cta", "check": "Every concept uses exactly the CTA 'Explore the Arc Clip Lamp'."}
+    ],
+    "skill_adherence": [
+      {"id": "distinct_motivations", "check": "The three concepts are built on distinct audience motivations (per the audience insights), not rewordings of the same angle."},
+      {"id": "no_invented_proof", "check": "No invented reviews, customers, performance numbers, scarcity, awards, or product capabilities beyond the supplied facts; forbidden claims (award-winning, best-selling, clinically proven, limited time, carbon neutral, guaranteed productivity) are absent."}
+    ],
+    "best_practices": [
+      {"id": "concrete_visuals", "check": "Each Visual direction describes a specific, filmable/photographable scene tied to the concept's motivation, not vague mood words."},
+      {"id": "falsifiable_hypotheses", "check": "Each Test hypothesis states a measurable expectation that could be proven wrong (what metric moves and why), and hypotheses differ across concepts."}
+    ]
+  }
+}

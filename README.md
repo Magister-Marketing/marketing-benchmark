@@ -9,6 +9,25 @@ returned data, and creates strong marketing work across repeated trials.
 > does not grant a redistribution license. It is being prepared for a reviewed
 > public release.
 
+## Start here: the MVP eval
+
+For model-level marketing quality without agents, tools, or sandboxes, use
+the small direct-API runner in [`mvp/`](mvp/README.md). It calls models with
+default API settings, judges each response against a binary rubric
+(completion, skill adherence, best practices), supports human verification of
+every judgment, and passes a task only when all three repetitions pass.
+
+```bash
+python3 -m mvp.bench validate
+python3 -m mvp.bench run --models claude-haiku-4-5,claude-sonnet-5
+python3 -m mvp.bench grade  --run mvp/results/<run-id>
+python3 -m mvp.bench verify --run mvp/results/<run-id>
+python3 -m mvp.bench report --run mvp/results/<run-id>
+```
+
+The full evidence-first runner below remains the path for tool-using agent
+comparisons.
+
 ## What is included
 
 - Versioned candidate, scenario, experiment, rubric, and tool-trace schemas.

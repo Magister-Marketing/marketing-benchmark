@@ -25,9 +25,11 @@ jobs:
       - name: Install
         run: python -m pip install -e '.[dev]'
       - name: Compile
-        run: python -m compileall -q evals tests
+        run: python -m compileall -q evals mvp tests
       - name: Validate manifests
         run: marketing-benchmark validate
+      - name: Validate MVP manifests
+        run: python -m mvp.bench validate
       - name: Check plugin conformance
         run: marketing-benchmark conformance
       - name: Check private boundary

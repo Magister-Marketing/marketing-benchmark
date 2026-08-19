@@ -8,6 +8,7 @@ build/
 dist/
 *.egg-info/
 artifacts/
+mvp/results/
 playwright-report/
 test-results/
 .DS_Store

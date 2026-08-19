@@ -1,0 +1,27 @@
+{
+  "id": "marketing-plan",
+  "title": "90-day marketing plan for a fictional B2B SaaS",
+  "fixtures": [
+    "evals/fixtures/public/brands/northstar-ops/product-marketing.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md",
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Create a 90-day go-to-market marketing plan for Northstar Ops with a $15,000 total budget. Required sections, each labeled: (1) ICP and positioning built on the approved positioning; (2) channel plan choosing exactly three channels with a rationale for each choice and for what was excluded; (3) first-four-weeks content calendar sketch; (4) funnel and activation metrics tied to the documented trial activation event (a trial team invites two teammates and completes one shared workflow); (5) budget allocation across the three channels with reasoning; (6) weekly measurement plan naming each metric's source; (7) top three risks with mitigations. Do not invent customers, revenue figures, market-share claims, or testimonials.",
+  "rubric": {
+    "completion": [
+      {"id": "all_sections", "check": "All seven labeled sections are present: ICP/positioning, channel plan, content calendar, activation metrics, budget allocation, measurement plan, risks."},
+      {"id": "three_channels", "check": "Exactly three channels are chosen, each with a rationale, and the budget allocation across them sums to the $15,000 total."},
+      {"id": "activation_anchored", "check": "Funnel metrics are explicitly tied to the documented activation event (inviting two teammates and completing one shared workflow), not a generic signup metric."}
+    ],
+    "skill_adherence": [
+      {"id": "no_invented_proof", "check": "No invented customers, logos, revenue, market statistics, benchmark conversion rates stated as fact, or testimonials; assumptions are labeled as assumptions."},
+      {"id": "measurement_defined", "check": "Each tracked metric names its source/definition (where the number comes from), and the measurement plan is weekly as requested."}
+    ],
+    "best_practices": [
+      {"id": "focused_strategy", "check": "The plan concentrates on the three chosen channels with reasoning that references the ICP, rather than spreading across every possible tactic."},
+      {"id": "sequenced_90_days", "check": "The 90 days are phased (e.g. by month or milestone) with dependencies acknowledged, and the positioning ('faster, visible handoffs without adding another weekly status meeting') carries through the messaging."}
+    ]
+  }
+}

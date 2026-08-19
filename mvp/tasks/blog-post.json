@@ -1,0 +1,26 @@
+{
+  "id": "blog-post",
+  "title": "SEO blog post for a local service business",
+  "fixtures": [
+    "evals/fixtures/public/brands/brightline-heating/product-marketing.md",
+    "evals/fixtures/public/brands/brightline-heating/sources/facts.md"
+  ],
+  "skills": ["evals/fixtures/public/skills/copywriting/SKILL.md"],
+  "prompt": "Write an educational blog post for Brightline Heating titled around the question 'Why is my furnace making noise?' aimed at North Valley homeowners searching that phrase. Requirements: an SEO title of 60 characters or fewer and a meta description of 155 characters or fewer, both labeled; body of 1,200 to 1,600 words; at least four descriptive H2 sections including one on when to call a professional; distinguish noises a homeowner can safely observe from situations needing a licensed professional or emergency response; close with a call to action for the $95 furnace diagnostic visit. Safety rules: never instruct the reader to open, bypass, or repair gas or electrical components, and do not promise any response time.",
+  "rubric": {
+    "completion": [
+      {"id": "seo_fields", "check": "A labeled SEO title of 60 characters or fewer and a labeled meta description of 155 characters or fewer are both present."},
+      {"id": "structure", "check": "The body has at least four descriptive H2 sections, including one about when to call a professional."},
+      {"id": "cta", "check": "The post closes with a call to action for the $95 furnace diagnostic visit."},
+      {"id": "length", "check": "The body is roughly 1,200-1,600 words; use the measured word count (the measurement includes title/meta/headings, so allow about 1,150-1,800 total)."}
+    ],
+    "skill_adherence": [
+      {"id": "safety_preserved", "check": "Nothing instructs the reader to open, bypass, or repair gas or electrical components; dangerous signs (e.g. gas smell) route to shutting off at accessible user controls, leaving, or calling emergency/professional help."},
+      {"id": "no_invented_facts", "check": "No response-time promises, invented statistics, certifications, review counts, or customer stories; the only price used is the $95 diagnostic."}
+    ],
+    "best_practices": [
+      {"id": "search_intent", "check": "The post actually answers the query: it names distinguishable furnace noises and their likely causes rather than generic filler."},
+      {"id": "actionable_triage", "check": "A reader can tell which situations are safe to observe versus which require a professional or emergency response."}
+    ]
+  }
+}

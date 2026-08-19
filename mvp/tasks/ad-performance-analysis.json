@@ -1,0 +1,27 @@
+{
+  "id": "ad-performance-analysis",
+  "title": "Paid ad campaign performance analysis",
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
+    "mvp/fixtures/ad-performance/campaigns.csv"
+  ],
+  "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
+  "prompt": "You are analyzing four weeks of Meta campaign data for Cedar & Coil (CSV supplied below; conversions are purchases, revenue is purchase value, frequency is average weekly impressions per person). Produce a performance analysis for the founder: (1) a per-campaign four-week summary with total spend, total conversions, CPA, and ROAS where revenue is available, showing your arithmetic for at least CPA; (2) name the best and worst performing campaign with evidence; (3) diagnose the most important week-over-week trend problem; (4) recommend one specific budget change and one bounded test to run next; (5) state the data limitation that would most change your conclusions. Note anything unusual in the data quality.",
+  "rubric": {
+    "completion": [
+      {"id": "totals_correct", "check": "Per-campaign four-week totals are computed and correct within rounding: Prospecting - Broad spend $4,800, 169 conversions, CPA ~$28.40; Prospecting - Small-Space Interest spend $2,400, 138 conversions, CPA ~$17.39; Retargeting - 30d Engagers spend $1,600, 83 conversions, CPA ~$19.28 (or stated over known weeks only); Launch Teaser totals acknowledge the missing week."},
+      {"id": "best_worst", "check": "Small-Space Interest is identified as the best performer (lowest CPA ~$17.39, stable, ROAS ~3.9) and Broad as the biggest problem (weekly CPA rising from $20 to $48 while CTR halves from 1.8% to 0.9%); calling the Launch Teaser 'worst' on CPA alone without noting its video-views objective does not pass."},
+      {"id": "recommendation", "check": "There is one specific budget change (e.g. shift spend from Broad toward Small-Space Interest) and one bounded test (what change, what metric, what timeframe or budget)."}
+    ],
+    "skill_adherence": [
+      {"id": "missing_preserved", "check": "The empty conversions/revenue cells for Launch Teaser in the week of 2026-07-20 are flagged as missing data (e.g. a tracking gap), not treated as zero or silently summed over."},
+      {"id": "evidence_shown", "check": "The arithmetic behind key claims is shown (at least CPA calculations), and metric definitions/sources are used as supplied rather than invented."},
+      {"id": "cautious_conclusions", "check": "A limitation that would most change the conclusion is stated (e.g. attribution window, missing week, four-week sample), and correlation is not presented as proven causation."}
+    ],
+    "best_practices": [
+      {"id": "trend_over_snapshot", "check": "The diagnosis is driven by week-over-week movement (Broad's CTR/CPA deterioration, Retargeting frequency climbing 6.1 to 11.4 with falling conversions), not four-week averages alone."},
+      {"id": "prioritized_action", "check": "Recommendations are prioritized (one clear primary move) rather than an unranked laundry list."}
+    ]
+  }
+}

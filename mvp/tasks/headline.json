@@ -1,0 +1,25 @@
+{
+  "id": "headline",
+  "title": "Website hero headlines for a product launch",
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
+  ],
+  "skills": ["evals/fixtures/public/skills/copywriting/SKILL.md"],
+  "prompt": "You are the copywriter for Cedar & Coil. Write 5 launch headline options for the website hero introducing the Arc Clip Lamp. Requirements: label them Option 1 through Option 5; keep every headline at 60 characters or fewer; at least two options must lead with a concrete product fact from the supplied sources; add a one-line rationale under each option explaining the appeal it tests. This is draft copy for internal review only.",
+  "rubric": {
+    "completion": [
+      {"id": "five_options", "check": "Exactly five headline options are present and labeled Option 1 through Option 5."},
+      {"id": "char_limit", "check": "Every headline is 60 characters or fewer (count the headline text only, not the label or rationale)."},
+      {"id": "rationales", "check": "Each option has a one-line rationale explaining the appeal it tests."}
+    ],
+    "skill_adherence": [
+      {"id": "grounded_claims", "check": "No invented customers, rankings, certifications, guarantees, or outcomes; none of the forbidden claims appear (award-winning, best-selling, clinically proven, limited time, carbon neutral, guaranteed productivity); any price stated is $68."},
+      {"id": "specific_language", "check": "At least two headlines lead with a concrete supplied product fact (e.g. clamp-anywhere design, up to eight hours battery on lowest brightness, three brightness / two color-temperature settings, $68) rather than generic superlatives."}
+    ],
+    "best_practices": [
+      {"id": "positioning_fit", "check": "The set communicates the approved positioning - adaptable light without surrendering permanent surface space, for renters, students, and makers in compact spaces - not generic lamp copy."},
+      {"id": "distinct_appeals", "check": "The five options test meaningfully different appeals or motivations rather than paraphrasing one idea."}
+    ]
+  }
+}

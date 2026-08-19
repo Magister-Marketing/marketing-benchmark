@@ -1,0 +1,27 @@
+{
+  "id": "shopify-meta-capi",
+  "title": "Shopify to Meta ads conversion tracking implementation",
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
+  ],
+  "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
+  "prompt": "Cedar & Coil sells the Arc Clip Lamp on Shopify and is preparing Meta ads. Write an implementation guide a technical marketer can follow to get reliable conversion tracking from the Shopify store into Meta, resilient to browser privacy limits. Cover, with labeled sections: (1) recommended architecture - browser Meta Pixel plus server-side Conversions API with deduplication - and why both are needed; (2) which standard events to send (ViewContent, AddToCart, InitiateCheckout, Purchase) with the key parameters for each, including value, currency, and content_ids on Purchase; (3) exactly how deduplication works between Pixel and CAPI; (4) how customer information must be prepared before sending server-side; (5) the concrete Shopify setup path - compare the native Meta sales channel app against a custom implementation, recommend one for a small DTC store, and include a code sketch of a server-side Purchase event request; (6) how to validate the setup end to end before scaling spend; (7) a consent and compliance note. Do not promise specific attribution recovery percentages.",
+  "rubric": {
+    "completion": [
+      {"id": "architecture", "check": "The guide recommends browser Pixel plus server-side Conversions API with deduplication and explains why both are needed under browser privacy limits."},
+      {"id": "events_mapped", "check": "All four standard events (ViewContent, AddToCart, InitiateCheckout, Purchase) are covered with key parameters, including value, currency, and content_ids on Purchase."},
+      {"id": "code_sketch", "check": "A concrete server-side Purchase event code sketch or request example is included showing event_name, event_time, event_id, action_source, and a user_data block."},
+      {"id": "validation", "check": "End-to-end validation is described using Meta's Events Manager test events tool and an explicit check that duplicate browser/server events are being deduplicated."}
+    ],
+    "skill_adherence": [
+      {"id": "sources_defined", "check": "For each event it is clear where it fires (browser vs server) and what the source of truth is (e.g. Purchase from the Shopify order webhook/server, not only the thank-you page)."},
+      {"id": "limits_stated", "check": "Limitations are stated honestly: no promised attribution-recovery percentages, and consent/regional rules are noted as constraints on what may be sent."}
+    ],
+    "best_practices": [
+      {"id": "dedup_correct", "check": "Deduplication is technically correct: the same event_id and event_name sent on both the Pixel and CAPI event so Meta drops the duplicate; not a vague mention."},
+      {"id": "pii_hashing", "check": "Customer data handling is correct: personally identifiable fields (e.g. email) are normalized (trimmed, lowercased) and SHA-256 hashed before sending in user_data."},
+      {"id": "actionable_path", "check": "The recommended Shopify path is decisive and executable for a small DTC store (a clear recommendation with concrete setup steps, not an undifferentiated list of options)."}
+    ]
+  }
+}

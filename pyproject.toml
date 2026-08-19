@@ -28,9 +28,10 @@ agent-evals = "evals.cli:main"
 Repository = "https://github.com/Magister-Marketing/marketing-benchmark"
 
 [tool.setuptools.packages.find]
-include = ["evals*"]
+include = ["evals*", "mvp*"]
 
 [tool.setuptools.package-data]
+mvp = ["models.json", "tasks/*.json", "fixtures/**/*"]
 evals = [
   "schema/*.json",
   "candidates/*.json",

@@ -1,0 +1,28 @@
+{
+  "id": "landing-page",
+  "title": "Single-file HTML landing page",
+  "fixtures": [
+    "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
+    "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/cro/SKILL.md",
+    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+  ],
+  "prompt": "Build a complete, production-quality landing page for Harborline Sleep Education's 45-minute virtual routine-planning consultation ($160) as a single HTML file with inline CSS and no external assets, scripts, fonts, or images. Order the sections the way a cautious first-time visitor decides: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is NOT for (it is educational coaching, not a medical clinic, does not diagnose or treat sleep disorders, is not emergency care, outcomes are not guaranteed, insurance is not represented); common objections; then the next step. Use one primary call to action ('Book a consultation'), appearing at most twice. Use semantic HTML with descriptive headings. Output only the HTML file contents.",
+  "rubric": {
+    "completion": [
+      {"id": "single_file_html", "check": "The response is one complete HTML document (doctype through closing html tag) with inline CSS only - no external stylesheets, scripts, fonts, images, or CDN references."},
+      {"id": "sections_complete", "check": "All required sections exist: relevance/who it is for, how it works, what is included, price ($160 for 45 minutes), limitations/not-for, objections, next step."},
+      {"id": "cta_discipline", "check": "The primary CTA 'Book a consultation' appears once or twice, and no competing primary actions are added."}
+    ],
+    "skill_adherence": [
+      {"id": "decision_order", "check": "Sections appear in the cautious-visitor order (relevance, mechanism, included value, risk/limitations, objections, next step) with one job and a descriptive heading per section."},
+      {"id": "no_dark_patterns", "check": "No fake urgency, countdown, invented testimonials or reviews, guaranteed outcomes, or hidden terms; disclosures (not medical care, no diagnosis/treatment, not emergency care, outcomes not guaranteed, no insurance representation) are preserved and readable."}
+    ],
+    "best_practices": [
+      {"id": "semantic_quality", "check": "Semantic HTML is used (header/main/section/footer or equivalent landmark structure, one h1, ordered heading levels), not a div-only page."},
+      {"id": "conversion_clarity", "check": "The primary action is visually and structurally unmistakable, and copy answers visitor questions concretely instead of vague wellness language."}
+    ]
+  }
+}
