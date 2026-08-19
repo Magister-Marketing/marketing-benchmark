@@ -249,9 +249,84 @@ def test_finish_reason_surfaces_truncation():
 
 def test_luna_candidates_defined():
     models = bench.load_models()
-    for candidate_id, effort in (("gpt-5.6-luna-xhigh", "xhigh"), ("gpt-5.6-luna-max", "max")):
+    for candidate_id, effort, cap in (
+        ("gpt-5.6-luna-xhigh", "xhigh", 32000),
+        ("gpt-5.6-luna-max", "max", 64000),
+    ):
         assert models[candidate_id]["model"] == "openai/gpt-5.6-luna"
         assert models[candidate_id]["reasoning_effort"] == effort
+        assert models[candidate_id]["max_output_tokens"] == cap
+
+
+def test_max_output_tokens_override_and_validation():
+    _, _, body = providers.build_request(
+        "openai/gpt-5.6-luna", "hi", 16000, web_search=False, api_key="k",
+        settings={"max_output_tokens": 64000})
+    assert body["max_output_tokens"] == 64000
+    _, _, body = providers.build_request(
+        "anthropic/claude-sonnet-5", "hi", 16000, web_search=False, api_key="k",
+        settings={"max_output_tokens": 32000})
+    assert body["max_tokens"] == 32000  # allowed on anthropic, unlike effort
+    with pytest.raises(providers.ProviderError, match="invalid max_output_tokens"):
+        providers.build_request("openai/gpt-5.6-luna", "hi", 1, False, "k",
+                                settings={"max_output_tokens": "lots"})
+
+
+def test_ceiling_retry_doubles_cap_once(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    calls = []
+
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"output": [], "usage": {}, "status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"}}
+        return {"output": [{"type": "message", "content": [
+                    {"type": "output_text", "text": "recovered"}]}],
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+                "status": "completed"}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    result = providers.generate("openai/gpt-5.6-luna", "hi", 16000,
+                                settings={"reasoning_effort": "max",
+                                          "max_output_tokens": 32000})
+    assert [c["max_output_tokens"] for c in calls] == [32000, 64000]
+    assert result["text"] == "recovered"
+    assert result["ceiling_retried"] is True
+    assert calls[1]["reasoning"] == {"effort": "max"}  # other settings preserved
+
+
+def test_ceiling_retry_gives_up_after_one_doubling(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    incomplete = {"output": [], "usage": {}, "status": "incomplete",
+                  "incomplete_details": {"reason": "max_output_tokens"}}
+    monkeypatch.setattr(providers, "_post_json_with_retries",
+                        lambda *args: dict(incomplete))
+    with pytest.raises(providers.ProviderError, match="ceiling_retried=True"):
+        providers.generate("openai/gpt-5.6-luna", "hi", 16000)
+
+
+def test_attempt_mark_letters():
+    assert bench.attempt_mark({"error": "boom"}, None) == "E"
+    assert bench.attempt_mark({"finish_reason": "incomplete:max_output_tokens"}, {"pass": False}) == "T"
+    assert bench.attempt_mark({"finish_reason": "completed"}, {"pass": True}) == "P"
+    assert bench.attempt_mark({"finish_reason": "end_turn"}, {"pass": False}) == "F"
+    assert bench.attempt_mark(None, None) == "F"  # never attempted
+
+
+def test_criterion_tally_excludes_truncated_attempts():
+    judgments = [
+        _judgment("t", "m", 1, False),  # normal finish: counts
+        _judgment("t", "m", 2, False),  # truncated: excluded
+    ]
+    attempts_by_key = {
+        ("t", "m", 1): {"finish_reason": "completed"},
+        ("t", "m", 2): {"finish_reason": "incomplete:max_output_tokens"},
+    }
+    verdicts = {("t", "m", 1): {"pass": False, "source": "judge"},
+                ("t", "m", 2): {"pass": False, "source": "judge"}}
+    counts = bench.criterion_failure_counts(judgments, verdicts, attempts_by_key)
+    assert counts == {("t", "c1"): 1}
 
 
 def test_provider_refuses_without_env_key(monkeypatch):

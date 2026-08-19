@@ -51,6 +51,7 @@ MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
 JUDGE_DEFAULT = "claude-sonnet-5"
 RUN_CONCURRENCY = 4
 RUBRIC_SECTIONS = ("completion", "skill_adherence", "best_practices")
+NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed")
 
 
 # ---------------------------------------------------------------- loading
@@ -419,6 +420,37 @@ def all_pass(task_id: str, model_id: str, repetitions: int, verdicts: dict) -> b
     return all(verdicts.get(key, {}).get("pass", False) for key in keys)
 
 
+def attempt_mark(attempt: dict | None, verdict: dict | None) -> str:
+    """One grid letter: E run error, T truncated/abnormal finish, P pass, F fail."""
+    if attempt is not None and "error" in attempt:
+        return "E"
+    if attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS:
+        return "T"
+    return "P" if (verdict or {}).get("pass") else "F"
+
+
+def criterion_failure_counts(judgments: list, verdicts: dict, attempts_by_key: dict) -> dict:
+    """(task_id, criterion_id) -> failures, from quality evidence only.
+
+    Truncated/abnormal-finish attempts are excluded: their criterion
+    failures measure the missing tail of the text, not the model's work.
+    Human pass-overrides are excluded too.
+    """
+    counts: dict[tuple[str, str], int] = {}
+    for judgment in judgments:
+        key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
+        attempt = attempts_by_key.get(key, {})
+        if attempt.get("finish_reason") not in NORMAL_FINISH_REASONS:
+            continue
+        if verdicts.get(key, {}).get("source") == "human" and verdicts[key]["pass"]:
+            continue
+        for criterion in judgment.get("criteria", []):
+            if not criterion["pass"]:
+                counter_key = (judgment["task_id"], criterion["id"])
+                counts[counter_key] = counts.get(counter_key, 0) + 1
+    return counts
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
     run_meta = json.loads((run_dir / "run.json").read_text())
@@ -428,6 +460,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     human_path = run_dir / "human_verdicts.jsonl"
     human = _read_jsonl(human_path) if human_path.exists() else []
     verdicts = attempt_verdicts(attempts, judgments, human)
+    attempts_by_key = {
+        (a["task_id"], a["model_id"], a["repetition"]): a for a in attempts
+    }
 
     model_ids = list(run_meta["models"])
     task_ids = run_meta["tasks"]
@@ -454,7 +489,10 @@ def cmd_report(args: argparse.Namespace) -> int:
             passed = all_pass(task_id, model_id, repetitions, verdicts)
             task_pass_counts[model_id] += passed
             marks = "".join(
-                "P" if verdicts.get((task_id, model_id, rep), {}).get("pass") else "F"
+                attempt_mark(
+                    attempts_by_key.get((task_id, model_id, rep)),
+                    verdicts.get((task_id, model_id, rep)),
+                )
                 for rep in range(1, repetitions + 1)
             )
             row.append(f"{'PASS' if passed else 'FAIL'} ({marks})")
@@ -464,19 +502,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         + " | ".join(f"**{task_pass_counts[m]}/{len(task_ids)}**" for m in model_ids)
         + " |",
         "",
-        "## Criterion failures (judge verdicts, human overrides applied)",
+        "Per-repetition marks: P pass, F fail, T truncated/abnormal finish",
+        "(counts as a failure; not quality evidence), E provider error.",
+        "",
+        "## Criterion failures (quality evidence only: judge verdicts on",
+        "normally-finished attempts, human overrides applied)",
         "",
     ]
 
-    failure_counts: dict[tuple[str, str], int] = {}
-    for judgment in judgments:
-        key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
-        if verdicts.get(key, {}).get("source") == "human" and verdicts[key]["pass"]:
-            continue  # human overrode to pass; don't count judge's criterion failures
-        for criterion in judgment.get("criteria", []):
-            if not criterion["pass"]:
-                counter_key = (judgment["task_id"], criterion["id"])
-                failure_counts[counter_key] = failure_counts.get(counter_key, 0) + 1
+    failure_counts = criterion_failure_counts(judgments, verdicts, attempts_by_key)
     if failure_counts:
         lines.append("| Task | Criterion | Failures |")
         lines.append("|---|---|---|")
@@ -491,8 +525,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     total_searches = sum(a.get("web_search_calls") or 0 for a in attempts)
     truncated = sum(
         1 for a in attempts
-        if a.get("finish_reason") not in (None, "end_turn", "stop_sequence", "completed")
+        if "error" not in a and a.get("finish_reason") not in NORMAL_FINISH_REASONS
     )
+    ceiling_retries = sum(1 for a in attempts if a.get("ceiling_retried"))
     run_errors = sum(1 for a in attempts if "error" in a)
     ungraded = sum(1 for j in judgments if "error" in j)
     lines += [
@@ -504,6 +539,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Total output tokens: {total_output_tokens}",
         f"- Total web searches: {total_searches}",
         f"- Attempts with abnormal finish (truncation/refusal; check finish_reason): {truncated}",
+        f"- Attempts that needed a doubled output ceiling (reasoning overflow): {ceiling_retries}",
         "",
         "Generated by `mvp/bench.py report`. Judge verdicts are advisory until",
         "human-verified; the grid above already applies any human overrides.",

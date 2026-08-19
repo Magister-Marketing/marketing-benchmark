@@ -61,7 +61,9 @@ def split_model_spec(model_spec: str) -> tuple[str, str]:
 
 
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
-ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity")
+ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens")
+OPENAI_ONLY_SETTINGS = ("reasoning_effort", "text_verbosity")
+CEILING_RETRY_MULTIPLIER = 2  # one retry with a doubled cap on empty+incomplete
 
 
 def anthropic_web_search_tool(model: str) -> dict:
@@ -92,12 +94,17 @@ def build_request(
     effort = settings.get("reasoning_effort")
     if effort is not None and effort not in REASONING_EFFORTS:
         raise ProviderError(f"invalid reasoning_effort {effort!r}")
+    cap_override = settings.get("max_output_tokens")
+    if cap_override is not None and (not isinstance(cap_override, int) or cap_override <= 0):
+        raise ProviderError(f"invalid max_output_tokens {cap_override!r}")
+    max_output_tokens = cap_override or max_output_tokens
 
     if provider == "anthropic":
-        if settings:
+        openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
+        if openai_only:
             raise ProviderError(
                 "reasoning_effort/text_verbosity settings are OpenAI-only for now; "
-                f"got {sorted(settings)} for {model_spec}"
+                f"got {sorted(openai_only)} for {model_spec}"
             )
         headers = {
             "x-api-key": api_key,
@@ -192,18 +199,36 @@ def generate(
             f"{required_env_key(provider)} is not set; refusing to call {provider}"
         )
 
+    started = time.monotonic()
+    ceiling_retried = False
     url, headers, body = build_request(
         model_spec, prompt, max_output_tokens, web_search, api_key, settings
     )
-    started = time.monotonic()
     payload = _post_json_with_retries(url, headers, body, provider)
+    result = parse_response(provider, payload)
+
+    # A reasoning model can spend the whole output budget thinking and emit
+    # no text. That is a runner ceiling, not a model answer: retry once with
+    # a doubled cap so the attempt records an answer or a real failure.
+    finish = result["finish_reason"] or ""
+    if not result["text"].strip() and "incomplete" in finish:
+        ceiling_retried = True
+        effective_cap = (settings or {}).get("max_output_tokens") or max_output_tokens
+        raised = dict(settings or {})
+        raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
+        url, headers, body = build_request(
+            model_spec, prompt, max_output_tokens, web_search, api_key, raised
+        )
+        payload = _post_json_with_retries(url, headers, body, provider)
+        result = parse_response(provider, payload)
     latency = time.monotonic() - started
 
-    result = parse_response(provider, payload)
+    result["ceiling_retried"] = ceiling_retried
     if not result["text"].strip():
         raise ProviderError(
             f"{provider} returned an empty completion for {model} "
-            f"(finish_reason={result['finish_reason']!r})"
+            f"(finish_reason={result['finish_reason']!r}, "
+            f"ceiling_retried={ceiling_retried})"
         )
     result.update(
         {
