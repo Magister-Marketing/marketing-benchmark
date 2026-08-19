@@ -187,7 +187,8 @@ def test_parse_response_anthropic_with_web_search():
     }
     result = providers.parse_response("anthropic", payload)
     assert result == {"text": "part one part two", "input_tokens": 10,
-                      "output_tokens": 20, "web_search_calls": 3}
+                      "output_tokens": 20, "web_search_calls": 3,
+                      "finish_reason": None}
 
 
 def test_parse_response_openai_with_web_search():
@@ -203,7 +204,54 @@ def test_parse_response_openai_with_web_search():
     }
     result = providers.parse_response("openai", payload)
     assert result == {"text": "answer", "input_tokens": 5,
-                      "output_tokens": 7, "web_search_calls": 2}
+                      "output_tokens": 7, "web_search_calls": 2,
+                      "finish_reason": None}
+
+
+def test_candidate_settings_reach_openai_request():
+    _, _, body = providers.build_request(
+        "openai/gpt-5.6-luna", "hi", 16000, web_search=False, api_key="k",
+        settings={"reasoning_effort": "xhigh", "text_verbosity": "medium"})
+    assert body["reasoning"] == {"effort": "xhigh"}
+    assert body["text"] == {"verbosity": "medium"}
+    _, _, body = providers.build_request(
+        "openai/gpt-5.6-luna", "hi", 16000, web_search=False, api_key="k",
+        settings={"reasoning_effort": "max"})
+    assert body["reasoning"] == {"effort": "max"}
+    assert "text" not in body
+
+
+def test_candidate_settings_validated():
+    with pytest.raises(providers.ProviderError, match="invalid reasoning_effort"):
+        providers.build_request("openai/gpt-5.6-luna", "hi", 1, False, "k",
+                                settings={"reasoning_effort": "ultra"})
+    with pytest.raises(providers.ProviderError, match="unknown candidate settings"):
+        providers.build_request("openai/gpt-5.6-luna", "hi", 1, False, "k",
+                                settings={"temperature": 0})
+    with pytest.raises(providers.ProviderError, match="OpenAI-only"):
+        providers.build_request("anthropic/claude-sonnet-5", "hi", 1, False, "k",
+                                settings={"reasoning_effort": "high"})
+
+
+def test_finish_reason_surfaces_truncation():
+    anthropic_payload = {"content": [{"type": "text", "text": "cut off"}],
+                         "usage": {"input_tokens": 1, "output_tokens": 2},
+                         "stop_reason": "max_tokens"}
+    assert providers.parse_response("anthropic", anthropic_payload)["finish_reason"] == "max_tokens"
+    openai_payload = {"output": [{"type": "message", "content": [
+                          {"type": "output_text", "text": "cut off"}]}],
+                      "usage": {"input_tokens": 1, "output_tokens": 2},
+                      "status": "incomplete",
+                      "incomplete_details": {"reason": "max_output_tokens"}}
+    assert providers.parse_response("openai", openai_payload)["finish_reason"] == \
+        "incomplete:max_output_tokens"
+
+
+def test_luna_candidates_defined():
+    models = bench.load_models()
+    for candidate_id, effort in (("gpt-5.6-luna-xhigh", "xhigh"), ("gpt-5.6-luna-max", "max")):
+        assert models[candidate_id]["model"] == "openai/gpt-5.6-luna"
+        assert models[candidate_id]["reasoning_effort"] == effort
 
 
 def test_provider_refuses_without_env_key(monkeypatch):

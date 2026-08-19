@@ -60,6 +60,10 @@ def split_model_spec(model_spec: str) -> tuple[str, str]:
     return provider, model
 
 
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity")
+
+
 def anthropic_web_search_tool(model: str) -> dict:
     current = any(marker in model for marker in ANTHROPIC_CURRENT_TOOL_MODELS)
     tool_type = ANTHROPIC_WEB_SEARCH_CURRENT if current else ANTHROPIC_WEB_SEARCH_BASIC
@@ -67,11 +71,34 @@ def anthropic_web_search_tool(model: str) -> dict:
 
 
 def build_request(
-    model_spec: str, prompt: str, max_output_tokens: int, web_search: bool, api_key: str
+    model_spec: str,
+    prompt: str,
+    max_output_tokens: int,
+    web_search: bool,
+    api_key: str,
+    settings: dict | None = None,
 ) -> tuple[str, dict, dict]:
-    """Return (url, headers, body) for one generation request."""
+    """Return (url, headers, body) for one generation request.
+
+    `settings` are optional per-candidate knobs from models.json
+    (reasoning_effort, text_verbosity). Absent settings are omitted from
+    the request so the provider default applies.
+    """
     provider, model = split_model_spec(model_spec)
+    settings = settings or {}
+    unknown = set(settings) - set(ALLOWED_SETTINGS)
+    if unknown:
+        raise ProviderError(f"unknown candidate settings: {sorted(unknown)}")
+    effort = settings.get("reasoning_effort")
+    if effort is not None and effort not in REASONING_EFFORTS:
+        raise ProviderError(f"invalid reasoning_effort {effort!r}")
+
     if provider == "anthropic":
+        if settings:
+            raise ProviderError(
+                "reasoning_effort/text_verbosity settings are OpenAI-only for now; "
+                f"got {sorted(settings)} for {model_spec}"
+            )
         headers = {
             "x-api-key": api_key,
             "anthropic-version": ANTHROPIC_VERSION,
@@ -95,13 +122,17 @@ def build_request(
         "max_output_tokens": max_output_tokens,
         "input": prompt,
     }
+    if effort is not None:
+        body["reasoning"] = {"effort": effort}
+    if settings.get("text_verbosity") is not None:
+        body["text"] = {"verbosity": settings["text_verbosity"]}
     if web_search:
         body["tools"] = [{"type": "web_search"}]
     return OPENAI_URL, headers, body
 
 
 def parse_response(provider: str, payload: dict) -> dict:
-    """Extract {text, input_tokens, output_tokens, web_search_calls}."""
+    """Extract {text, input_tokens, output_tokens, web_search_calls, finish_reason}."""
     if provider == "anthropic":
         text = "".join(
             block.get("text", "")
@@ -115,6 +146,7 @@ def parse_response(provider: str, payload: dict) -> dict:
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
             "web_search_calls": searches,
+            "finish_reason": payload.get("stop_reason"),
         }
 
     text_parts = []
@@ -127,22 +159,31 @@ def parse_response(provider: str, payload: dict) -> dict:
         elif item.get("type") == "web_search_call":
             searches += 1
     usage = payload.get("usage", {})
+    finish = payload.get("status")
+    incomplete = (payload.get("incomplete_details") or {}).get("reason")
+    if incomplete:
+        finish = f"{finish}:{incomplete}"
     return {
         "text": "".join(text_parts),
         "input_tokens": usage.get("input_tokens"),
         "output_tokens": usage.get("output_tokens"),
         "web_search_calls": searches,
+        "finish_reason": finish,
     }
 
 
 def generate(
-    model_spec: str, prompt: str, max_output_tokens: int, web_search: bool = False
+    model_spec: str,
+    prompt: str,
+    max_output_tokens: int,
+    web_search: bool = False,
+    settings: dict | None = None,
 ) -> dict:
     """One prompt in, one text completion out.
 
     Returns {text, input_tokens, output_tokens, web_search_calls,
-    latency_seconds, provider, model}. Raises ProviderError on missing
-    keys or exhausted retries.
+    finish_reason, latency_seconds, provider, model}. Raises
+    ProviderError on missing keys or exhausted retries.
     """
     provider, model = split_model_spec(model_spec)
     api_key = os.environ.get(required_env_key(provider), "")
@@ -152,7 +193,7 @@ def generate(
         )
 
     url, headers, body = build_request(
-        model_spec, prompt, max_output_tokens, web_search, api_key
+        model_spec, prompt, max_output_tokens, web_search, api_key, settings
     )
     started = time.monotonic()
     payload = _post_json_with_retries(url, headers, body, provider)
@@ -160,7 +201,10 @@ def generate(
 
     result = parse_response(provider, payload)
     if not result["text"].strip():
-        raise ProviderError(f"{provider} returned an empty completion for {model}")
+        raise ProviderError(
+            f"{provider} returned an empty completion for {model} "
+            f"(finish_reason={result['finish_reason']!r})"
+        )
     result.update(
         {
             "provider": provider,
