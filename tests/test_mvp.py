@@ -329,12 +329,29 @@ def test_model_efficiency_pools_criteria_on_normal_finishes_only():
         {"task_id": "t", "model_id": "m", "repetition": 2, "completed": True,
          "criteria": [{"id": "a", "pass": False, "evidence": ""}]},  # truncated: excluded
     ]
-    stats = bench.model_efficiency(["m"], attempts, judgments)["m"]
+    models_meta = {"m": {"model": "anthropic/x",
+                         "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}}
+    for a in attempts:
+        a["input_tokens"] = 1000
+    section_of = {("t", "a"): "completion", ("t", "b"): "best_practices"}
+    stats = bench.model_efficiency(["m"], attempts, judgments, models_meta, section_of)["m"]
     assert stats["completed_attempts"] == 2
     assert stats["mean_latency_seconds"] == 20.0
     assert stats["total_output_tokens"] == 1000
     assert (stats["criteria_passed"], stats["criteria_judged"]) == (1, 2)
     assert stats["criterion_pass_rate"] == 0.5
+    # 2 attempts x (1000 in x $1/M + (100|900) out x $5/M)
+    assert stats["cost_usd"] == round((1000 * 1 + 100 * 5 + 1000 * 1 + 900 * 5) / 1e6, 4)
+    assert stats["section_pass_rates"] == {
+        "completion": 1.0, "skill_adherence": None, "best_practices": 0.0}
+
+
+def test_attempt_cost_requires_pricing():
+    attempt = {"input_tokens": 1000, "output_tokens": 1000}
+    assert bench.attempt_cost_usd(attempt, {"model": "openai/x"}) is None
+    spec = {"pricing": {"input_per_mtok": 3.0, "output_per_mtok": 15.0}}
+    assert bench.attempt_cost_usd(attempt, spec) == 0.018
+    assert bench.attempt_cost_usd({"error": "boom"}, spec) is None
 
 
 def test_criterion_tally_excludes_truncated_attempts():

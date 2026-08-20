@@ -71,7 +71,17 @@ def load_models() -> dict:
 
 
 def _candidate_settings(spec: dict) -> dict:
-    return {key: value for key, value in spec.items() if key != "model"}
+    return {key: value for key, value in spec.items() if key not in ("model", "pricing")}
+
+
+def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
+    pricing = spec.get("pricing")
+    if not pricing or "error" in attempt:
+        return None
+    return (
+        (attempt.get("input_tokens") or 0) * pricing["input_per_mtok"]
+        + (attempt.get("output_tokens") or 0) * pricing["output_per_mtok"]
+    ) / 1_000_000
 
 
 def load_tasks() -> dict:
@@ -429,12 +439,20 @@ def attempt_mark(attempt: dict | None, verdict: dict | None) -> str:
     return "P" if (verdict or {}).get("pass") else "F"
 
 
-def model_efficiency(model_ids: list, attempts: list, judgments: list) -> dict:
+def model_efficiency(
+    model_ids: list,
+    attempts: list,
+    judgments: list,
+    models_meta: dict | None = None,
+    section_of: dict | None = None,
+) -> dict:
     """Per-model efficiency + resolution stats for the report.
 
     criterion_pass_rate pools every judged criterion on normally-finished
     attempts — it separates two strong candidates when the task-level
-    all-pass grid saturates.
+    all-pass grid saturates. `models_meta` (models.json specs) enables
+    cost; `section_of` maps (task_id, criterion_id) -> rubric section for
+    per-section pass rates.
     """
     stats = {}
     normal_keys = {
@@ -446,6 +464,7 @@ def model_efficiency(model_ids: list, attempts: list, judgments: list) -> dict:
         rows = [a for a in attempts if a["model_id"] == model_id and "error" not in a]
         latencies = [a["latency_seconds"] for a in rows if a.get("latency_seconds")]
         passed = judged = 0
+        sections: dict[str, list[int]] = {s: [0, 0] for s in RUBRIC_SECTIONS}
         for judgment in judgments:
             key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
             if judgment["model_id"] != model_id or key not in normal_keys:
@@ -453,13 +472,25 @@ def model_efficiency(model_ids: list, attempts: list, judgments: list) -> dict:
             for criterion in judgment.get("criteria", []):
                 judged += 1
                 passed += bool(criterion["pass"])
+                section = (section_of or {}).get((judgment["task_id"], criterion["id"]))
+                if section in sections:
+                    sections[section][1] += 1
+                    sections[section][0] += bool(criterion["pass"])
+        spec = (models_meta or {}).get(model_id, {})
+        costs = [attempt_cost_usd(a, spec) for a in rows]
+        known_costs = [c for c in costs if c is not None]
         stats[model_id] = {
             "completed_attempts": len(rows),
             "mean_latency_seconds": round(sum(latencies) / len(latencies), 1) if latencies else None,
             "total_output_tokens": sum(a.get("output_tokens") or 0 for a in rows),
+            "cost_usd": round(sum(known_costs), 4) if known_costs else None,
             "criteria_passed": passed,
             "criteria_judged": judged,
             "criterion_pass_rate": round(passed / judged, 3) if judged else None,
+            "section_pass_rates": {
+                section: (round(hit / total, 3) if total else None)
+                for section, (hit, total) in sections.items()
+            },
         }
     return stats
 
@@ -566,21 +597,44 @@ def cmd_report(args: argparse.Namespace) -> int:
     else:
         lines.append("None.")
 
-    efficiency = model_efficiency(model_ids, attempts, judgments)
+    section_of = {
+        (task["id"], criterion["id"]): section
+        for task in load_tasks().values()
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+    }
+    efficiency = model_efficiency(
+        model_ids, attempts, judgments, run_meta["models"], section_of
+    )
     lines += [
         "",
         "## Model efficiency and criterion resolution",
         "",
-        "| Model | Completed | Mean latency | Output tokens | Criteria passed | Criterion pass rate |",
-        "|---|---|---|---|---|---|",
+        "| Model | Completed | Mean latency | Output tokens | Cost (USD) | Criteria passed | Criterion pass rate |",
+        "|---|---|---|---|---|---|---|",
     ]
     for model_id in model_ids:
         stats = efficiency[model_id]
+        cost = f"${stats['cost_usd']:.2f}" if stats["cost_usd"] is not None else "n/a (no pricing)"
         lines.append(
             f"| {model_id} | {stats['completed_attempts']}/{repetitions * len(task_ids)} "
             f"| {stats['mean_latency_seconds']}s | {stats['total_output_tokens']} "
+            f"| {cost} "
             f"| {stats['criteria_passed']}/{stats['criteria_judged']} "
             f"| {stats['criterion_pass_rate']} |"
+        )
+    lines += [
+        "",
+        "Pass rate by rubric section (normally-finished attempts only):",
+        "",
+        "| Model | " + " | ".join(RUBRIC_SECTIONS) + " |",
+        "|---|" + "---|" * len(RUBRIC_SECTIONS),
+    ]
+    for model_id in model_ids:
+        rates = efficiency[model_id]["section_pass_rates"]
+        lines.append(
+            "| " + model_id + " | "
+            + " | ".join(str(rates[section]) for section in RUBRIC_SECTIONS) + " |"
         )
 
     total_output_tokens = sum(a.get("output_tokens") or 0 for a in attempts)
