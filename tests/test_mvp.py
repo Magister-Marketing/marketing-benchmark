@@ -314,6 +314,29 @@ def test_attempt_mark_letters():
     assert bench.attempt_mark(None, None) == "F"  # never attempted
 
 
+def test_model_efficiency_pools_criteria_on_normal_finishes_only():
+    attempts = [
+        {"task_id": "t", "model_id": "m", "repetition": 1,
+         "finish_reason": "completed", "latency_seconds": 10.0, "output_tokens": 100},
+        {"task_id": "t", "model_id": "m", "repetition": 2,
+         "finish_reason": "incomplete:max_output_tokens", "latency_seconds": 30.0,
+         "output_tokens": 900},
+    ]
+    judgments = [
+        {"task_id": "t", "model_id": "m", "repetition": 1, "completed": True,
+         "criteria": [{"id": "a", "pass": True, "evidence": ""},
+                      {"id": "b", "pass": False, "evidence": ""}]},
+        {"task_id": "t", "model_id": "m", "repetition": 2, "completed": True,
+         "criteria": [{"id": "a", "pass": False, "evidence": ""}]},  # truncated: excluded
+    ]
+    stats = bench.model_efficiency(["m"], attempts, judgments)["m"]
+    assert stats["completed_attempts"] == 2
+    assert stats["mean_latency_seconds"] == 20.0
+    assert stats["total_output_tokens"] == 1000
+    assert (stats["criteria_passed"], stats["criteria_judged"]) == (1, 2)
+    assert stats["criterion_pass_rate"] == 0.5
+
+
 def test_criterion_tally_excludes_truncated_attempts():
     judgments = [
         _judgment("t", "m", 1, False),  # normal finish: counts

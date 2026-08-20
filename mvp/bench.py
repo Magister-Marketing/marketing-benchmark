@@ -429,6 +429,41 @@ def attempt_mark(attempt: dict | None, verdict: dict | None) -> str:
     return "P" if (verdict or {}).get("pass") else "F"
 
 
+def model_efficiency(model_ids: list, attempts: list, judgments: list) -> dict:
+    """Per-model efficiency + resolution stats for the report.
+
+    criterion_pass_rate pools every judged criterion on normally-finished
+    attempts — it separates two strong candidates when the task-level
+    all-pass grid saturates.
+    """
+    stats = {}
+    normal_keys = {
+        (a["task_id"], a["model_id"], a["repetition"])
+        for a in attempts
+        if "error" not in a and a.get("finish_reason") in NORMAL_FINISH_REASONS
+    }
+    for model_id in model_ids:
+        rows = [a for a in attempts if a["model_id"] == model_id and "error" not in a]
+        latencies = [a["latency_seconds"] for a in rows if a.get("latency_seconds")]
+        passed = judged = 0
+        for judgment in judgments:
+            key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
+            if judgment["model_id"] != model_id or key not in normal_keys:
+                continue
+            for criterion in judgment.get("criteria", []):
+                judged += 1
+                passed += bool(criterion["pass"])
+        stats[model_id] = {
+            "completed_attempts": len(rows),
+            "mean_latency_seconds": round(sum(latencies) / len(latencies), 1) if latencies else None,
+            "total_output_tokens": sum(a.get("output_tokens") or 0 for a in rows),
+            "criteria_passed": passed,
+            "criteria_judged": judged,
+            "criterion_pass_rate": round(passed / judged, 3) if judged else None,
+        }
+    return stats
+
+
 def criterion_failure_counts(judgments: list, verdicts: dict, attempts_by_key: dict) -> dict:
     """(task_id, criterion_id) -> failures, from quality evidence only.
 
@@ -474,7 +509,17 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
         f"- Repetitions per task: {repetitions} (all must pass)",
-        f"- Max output tokens: {run_meta['max_output_tokens']}; temperature omitted",
+        f"- Max output tokens: {run_meta['max_output_tokens']} default"
+        + (
+            "; per-candidate overrides: " + ", ".join(
+                f"{m}={spec['max_output_tokens']}"
+                for m, spec in run_meta["models"].items()
+                if spec.get("max_output_tokens")
+            )
+            if any(spec.get("max_output_tokens") for spec in run_meta["models"].values())
+            else ""
+        )
+        + "; temperature omitted",
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         "",
         "## Task grid (pass = all repetitions passed every rubric criterion)",
@@ -520,6 +565,23 @@ def cmd_report(args: argparse.Namespace) -> int:
             lines.append(f"| {task_id} | {criterion_id} | {count} |")
     else:
         lines.append("None.")
+
+    efficiency = model_efficiency(model_ids, attempts, judgments)
+    lines += [
+        "",
+        "## Model efficiency and criterion resolution",
+        "",
+        "| Model | Completed | Mean latency | Output tokens | Criteria passed | Criterion pass rate |",
+        "|---|---|---|---|---|---|",
+    ]
+    for model_id in model_ids:
+        stats = efficiency[model_id]
+        lines.append(
+            f"| {model_id} | {stats['completed_attempts']}/{repetitions * len(task_ids)} "
+            f"| {stats['mean_latency_seconds']}s | {stats['total_output_tokens']} "
+            f"| {stats['criteria_passed']}/{stats['criteria_judged']} "
+            f"| {stats['criterion_pass_rate']} |"
+        )
 
     total_output_tokens = sum(a.get("output_tokens") or 0 for a in attempts)
     total_searches = sum(a.get("web_search_calls") or 0 for a in attempts)
