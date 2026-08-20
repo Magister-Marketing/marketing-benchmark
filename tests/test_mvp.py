@@ -369,6 +369,59 @@ def test_criterion_tally_excludes_truncated_attempts():
     assert counts == {("t", "c1"): 1}
 
 
+def test_report_scoreboard_and_json(tmp_path, capsys):
+    """End-to-end cmd_report on a synthetic 1-task, 1-model, 2-rep run."""
+    run_dir = tmp_path / "run1"
+    (run_dir / "responses").mkdir(parents=True)
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "run1", "created_at": "x",
+        "models": {"claude-haiku-4-5": {
+            "model": "anthropic/claude-haiku-4-5",
+            "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}},
+        "tasks": ["headline"], "repetitions": 2, "skills_included": True,
+        "tools_enabled": False, "max_output_tokens": 16000,
+        "temperature": "omitted", "protocol": "all-pass",
+    }))
+    attempts = [
+        {"run_id": "run1", "task_id": "headline", "model_id": "claude-haiku-4-5",
+         "repetition": r, "skills_included": True, "tools_enabled": False,
+         "prompt_sha256": "h", "finish_reason": "end_turn",
+         "latency_seconds": 5.0, "input_tokens": 1000, "output_tokens": 1000,
+         "web_search_calls": 0, "response_path": "responses/x.md"}
+        for r in (1, 2)
+    ]
+    judgments = [
+        {"task_id": "headline", "model_id": "claude-haiku-4-5", "repetition": r,
+         "judge_model": "claude-sonnet-5", "completed": True,
+         "criteria": [{"id": "five_options", "pass": True, "evidence": ""}]}
+        for r in (1, 2)
+    ]
+    (run_dir / "attempts.jsonl").write_text(
+        "".join(json.dumps(a) + "\n" for a in attempts))
+    (run_dir / "judgments.jsonl").write_text(
+        "".join(json.dumps(j) + "\n" for j in judgments))
+
+    (run_dir / "prompts").mkdir()
+    (run_dir / "prompts" / "headline.md").write_text("the prompt")
+    (run_dir / "responses" / "headline--claude-haiku-4-5--r1.md").write_text("answer")
+
+    import argparse
+    assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
+    report = (run_dir / "report.md").read_text()
+    assert "## Scoreboard" in report
+    assert "**1/1 (100%)**" in report
+    assert "[prompt](prompts/headline.md)" in report
+    assert "[r1 P](responses/headline--claude-haiku-4-5--r1.md)" in report
+    assert "r2 P" in report  # response file absent -> plain mark, no dead link
+    assert "$0.01" in report  # 2 x (1000x$1 + 1000x$5)/1M = $0.012
+    summary = json.loads((run_dir / "report.json").read_text())
+    model = summary["models"]["claude-haiku-4-5"]
+    assert model["tasks_passed"] == 1
+    assert model["task_passes"] == {"headline": True}
+    assert model["cost_usd"] == 0.012
+    assert summary["run_health"]["provider_errors"] == 0
+
+
 def test_provider_refuses_without_env_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(providers.ProviderError, match="ANTHROPIC_API_KEY"):
@@ -378,3 +431,28 @@ def test_provider_refuses_without_env_key(monkeypatch):
 def test_provider_rejects_unknown_spec():
     with pytest.raises(providers.ProviderError, match="unsupported model spec"):
         providers.split_model_spec("gemini/some-model")
+
+
+def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *args, **kwargs: {
+            "provider": "anthropic", "model": "claude-haiku-4-5",
+            "text": "the submission", "input_tokens": 10, "output_tokens": 20,
+            "web_search_calls": 0, "finish_reason": "end_turn",
+            "ceiling_retried": False, "latency_seconds": 0.1,
+        },
+    )
+    import argparse
+    args = argparse.Namespace(models="claude-haiku-4-5", tasks="headline",
+                              repetitions=2, no_skills=False, tools=False, yes=True)
+    assert bench.cmd_run(args) == 0
+    run_dir = next(tmp_path.iterdir())
+    assert (run_dir / "prompts" / "headline.md").read_text().startswith(
+        "You are the copywriter for Cedar & Coil")
+    for rep in (1, 2):
+        path = run_dir / "responses" / f"headline--claude-haiku-4-5--r{rep}.md"
+        assert path.read_text() == "the submission"
+    attempts = [json.loads(l) for l in (run_dir / "attempts.jsonl").read_text().splitlines()]
+    assert len(attempts) == 2 and all("error" not in a for a in attempts)

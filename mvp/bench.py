@@ -164,6 +164,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     run_id = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     run_dir = RESULTS_DIR / run_id
     (run_dir / "responses").mkdir(parents=True)
+    (run_dir / "prompts").mkdir()
+    for task_id in selected_tasks:
+        prompt_text = assemble_prompt(tasks[task_id], include_skills)
+        (run_dir / "prompts" / f"{task_id}.md").write_text(prompt_text)
     (run_dir / "run.json").write_text(json.dumps({
         "run_id": run_id,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
@@ -534,6 +538,25 @@ def cmd_report(args: argparse.Namespace) -> int:
     task_ids = run_meta["tasks"]
     repetitions = run_meta["repetitions"]
 
+    section_of = {
+        (task["id"], criterion["id"]): section
+        for task in load_tasks().values()
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+    }
+    efficiency = model_efficiency(
+        model_ids, attempts, judgments, run_meta["models"], section_of
+    )
+    passes = {
+        (task_id, model_id): all_pass(task_id, model_id, repetitions, verdicts)
+        for task_id in task_ids
+        for model_id in model_ids
+    }
+    task_pass_counts = {
+        model_id: sum(passes[(task_id, model_id)] for task_id in task_ids)
+        for model_id in model_ids
+    }
+
     lines = [
         f"# MVP eval report — {run_meta['run_id']}",
         "",
@@ -553,17 +576,32 @@ def cmd_report(args: argparse.Namespace) -> int:
         + "; temperature omitted",
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         "",
+        "## Scoreboard",
+        "",
+        "The score is the task pass rate under the all-repetitions-pass",
+        "protocol. Cost and latency sit beside it and are never blended in.",
+        "",
+        "| Model | Score | Criterion pass rate | Cost (USD) | Mean latency |",
+        "|---|---|---|---|---|",
+    ]
+    for model_id in model_ids:
+        stats = efficiency[model_id]
+        score_pct = round(100 * task_pass_counts[model_id] / len(task_ids))
+        cost = f"${stats['cost_usd']:.2f}" if stats["cost_usd"] is not None else "n/a"
+        lines.append(
+            f"| {model_id} | **{task_pass_counts[model_id]}/{len(task_ids)} ({score_pct}%)** "
+            f"| {stats['criterion_pass_rate']} | {cost} | {stats['mean_latency_seconds']}s |"
+        )
+    lines += [
+        "",
         "## Task grid (pass = all repetitions passed every rubric criterion)",
         "",
         "| Task | " + " | ".join(model_ids) + " |",
         "|---|" + "---|" * len(model_ids),
     ]
-    task_pass_counts = dict.fromkeys(model_ids, 0)
     for task_id in task_ids:
         row = [task_id]
         for model_id in model_ids:
-            passed = all_pass(task_id, model_id, repetitions, verdicts)
-            task_pass_counts[model_id] += passed
             marks = "".join(
                 attempt_mark(
                     attempts_by_key.get((task_id, model_id, rep)),
@@ -571,7 +609,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 )
                 for rep in range(1, repetitions + 1)
             )
-            row.append(f"{'PASS' if passed else 'FAIL'} ({marks})")
+            row.append(f"{'PASS' if passes[(task_id, model_id)] else 'FAIL'} ({marks})")
         lines.append("| " + " | ".join(row) + " |")
     lines += [
         "| **Tasks passed** | "
@@ -597,15 +635,35 @@ def cmd_report(args: argparse.Namespace) -> int:
     else:
         lines.append("None.")
 
-    section_of = {
-        (task["id"], criterion["id"]): section
-        for task in load_tasks().values()
-        for section in RUBRIC_SECTIONS
-        for criterion in task["rubric"][section]
-    }
-    efficiency = model_efficiency(
-        model_ids, attempts, judgments, run_meta["models"], section_of
-    )
+    lines += [
+        "",
+        "## Task prompts and model submissions",
+        "",
+        "Every cell links to the exact text: the full prompt sent (fixtures",
+        "and skills included) and each repetition's raw submission.",
+        "",
+        "| Task | Prompt | " + " | ".join(model_ids) + " |",
+        "|---|---|" + "---|" * len(model_ids),
+    ]
+    for task_id in task_ids:
+        prompt_file = run_dir / "prompts" / f"{task_id}.md"
+        prompt_cell = f"[prompt](prompts/{task_id}.md)" if prompt_file.exists() else "—"
+        row = [task_id, prompt_cell]
+        for model_id in model_ids:
+            cells = []
+            for rep in range(1, repetitions + 1):
+                mark = attempt_mark(
+                    attempts_by_key.get((task_id, model_id, rep)),
+                    verdicts.get((task_id, model_id, rep)),
+                )
+                response_rel = f"responses/{task_id}--{model_id}--r{rep}.md"
+                if (run_dir / response_rel).exists():
+                    cells.append(f"[r{rep} {mark}]({response_rel})")
+                else:
+                    cells.append(f"r{rep} {mark}")
+            row.append(" · ".join(cells))
+        lines.append("| " + " | ".join(row) + " |")
+
     lines += [
         "",
         "## Model efficiency and criterion resolution",
@@ -661,10 +719,36 @@ def cmd_report(args: argparse.Namespace) -> int:
         "human-verified; the grid above already applies any human overrides.",
     ]
 
+    summary = {
+        "run_id": run_meta["run_id"],
+        "skills_included": run_meta["skills_included"],
+        "tools_enabled": run_meta.get("tools_enabled", False),
+        "repetitions": repetitions,
+        "tasks": task_ids,
+        "models": {
+            model_id: {
+                "tasks_passed": task_pass_counts[model_id],
+                "tasks_total": len(task_ids),
+                "task_passes": {t: passes[(t, model_id)] for t in task_ids},
+                **efficiency[model_id],
+            }
+            for model_id in model_ids
+        },
+        "run_health": {
+            "provider_errors": run_errors,
+            "judge_failures": ungraded,
+            "truncated_attempts": truncated,
+            "ceiling_retries": ceiling_retries,
+            "human_verdicts": len(human),
+            "total_output_tokens": total_output_tokens,
+        },
+    }
+    (run_dir / "report.json").write_text(json.dumps(summary, indent=2) + "\n")
+
     report_path = run_dir / "report.md"
     report_path.write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
-    print(f"\nWrote {report_path}")
+    print(f"\nWrote {report_path} and report.json")
     return 0
 
 
