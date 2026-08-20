@@ -40,14 +40,16 @@ quality.
     identity. It grades the exact recorded prompt, so it sees skill text when
     that text was part of the candidate prompt but does not see tools metadata.
 
-Reports open with one compact leaderboard containing task score, criterion
-score, candidate output tokens, request latency, per-response cost, and total
-candidate cost. Values use arithmetic mean [minimum–maximum] across candidate
-calls; the range is descriptive, not an error bar or confidence interval. A
-standalone `report.html` renders the same results as a polished screenshot and
-print artifact, while `report.md` retains detailed evidence. Costs use recorded
-input/output usage and the current price catalog and do not include LLM-judge
-spend.
+Reports open with one compact task matrix: overall task score, a binary result
+and passed/total criterion count for every task, total candidate output tokens,
+total candidate cost, and average task time. The binary result is the score;
+criterion counts only explain near misses. The standalone `report.html` makes
+every task/model cell clickable, with deep-linkable judge evidence, exact
+responses, per-call efficiency, model summaries, and task comparisons. It is
+self-contained and formatted for screenshots and printing. `report.md` keeps
+the same all-in-one table at the top and retains full advanced analysis below,
+including mean [minimum–maximum] distributions. Costs use recorded input/output
+usage and the current price catalog and do not include LLM-judge spend.
 
 ## Rubric shape
 

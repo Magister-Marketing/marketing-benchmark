@@ -19,7 +19,8 @@ verification, and defaults to one run per task (pass@1). A larger run count is
 an explicit `--repetitions N` choice. Seven development tasks support rubric
 calibration; four untouched holdout tasks test whether that calibration
 generalizes. Each run produces a detailed Markdown report plus a polished,
-self-contained HTML leaderboard for viewing, printing, or capturing.
+self-contained interactive HTML task matrix for drilling into model responses,
+viewing, printing, or capturing.
 
 ```bash
 python3 -m mvp.bench validate

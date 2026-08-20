@@ -660,6 +660,10 @@ def test_criterion_tally_excludes_truncated_attempts():
                 ("t", "m", 2): {"pass": False, "source": "judge"}}
     counts = bench.criterion_failure_counts(judgments, verdicts, attempts_by_key)
     assert counts == {("t", "c1"): 1}
+    task_counts = bench.task_criterion_counts(
+        ["t"], ["m"], judgments, attempts_by_key
+    )
+    assert task_counts == {("t", "m"): {"passed": 0, "judged": 1}}
 
 
 def test_report_scoreboard_html_and_json(tmp_path, capsys):
@@ -680,13 +684,15 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
          "repetition": r, "skills_included": True, "tools_enabled": False,
          "prompt_sha256": "h", "finish_reason": "end_turn",
          "latency_seconds": 5.0, "input_tokens": 1000, "output_tokens": 1000,
-         "web_search_calls": 0, "response_path": "responses/x.md"}
+         "web_search_calls": 0,
+         "response_path": "responses/headline--claude-haiku-4-5--r1.md"}
         for r in (1,)
     ]
     judgments = [
         {"task_id": "headline", "model_id": "claude-haiku-4-5", "repetition": r,
          "judge_model": "claude-sonnet-5", "completed": True,
-         "criteria": [{"id": "five_options", "pass": True, "evidence": ""}]}
+         "criteria": [{"id": "five_options", "pass": True,
+                       "evidence": "Present </script> in the response."}]}
         for r in (1,)
     ]
     (run_dir / "attempts.jsonl").write_text(
@@ -696,7 +702,9 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
 
     (run_dir / "prompts").mkdir()
     (run_dir / "prompts" / "headline.md").write_text("the prompt")
-    (run_dir / "responses" / "headline--claude-haiku-4-5--r1.md").write_text("answer")
+    (run_dir / "responses" / "headline--claude-haiku-4-5--r1.md").write_text(
+        "answer </pre><script>alert('unsafe')</script>"
+    )
 
     import argparse
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
@@ -704,7 +712,13 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "## Results at a glance" in report
     assert "| Model | Pass@1 |" in report
     assert "**1/1 (100%)**" in report
-    assert "Criterion score" in report
+    assert "**PASS**<br><sub>1/1 criteria</sub>" in report
+    assert "Output tokens (total)" in report
+    assert "Candidate cost (total)" in report
+    assert "Avg task time" in report
+    headline = report.split("---", 1)[0]
+    assert "Criterion score" not in headline
+    assert "μ " not in headline
     assert "Output tokens / response" in report
     assert "Latency / response" in report
     assert "Est. cost / response" in report
@@ -720,17 +734,26 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert html.startswith("<!doctype html>")
     assert "<style>" in html
     assert "Results at a glance" in html
-    assert "Leaderboard" in html
+    assert "Results matrix" in html
     assert "Pass@1" in html
     assert "claude-haiku-4-5" in html
     assert "1/1" in html
     assert "$0.0060" in html
-    assert "<script" not in html
-    assert "https://" not in html  # self-contained; no remote fonts or assets
+    assert 'data-panel="result-1-1"' in html
+    assert 'role="dialog"' in html
+    assert "Copy view link" in html
+    assert "View exact candidate response" in html
+    assert "answer &lt;/pre&gt;&lt;script&gt;alert(&#x27;unsafe&#x27;)" in html
+    assert "answer </pre><script>alert('unsafe')</script>" not in html
+    assert html.count("<script>") == 1  # self-contained interaction only
+    assert '<script src=' not in html
+    assert 'href="http' not in html
+    assert 'src="http' not in html
     summary = json.loads((run_dir / "report.json").read_text())
     model = summary["models"]["claude-haiku-4-5"]
     assert model["tasks_passed"] == 1
     assert model["task_passes"] == {"headline": True}
+    assert model["task_criteria"] == {"headline": {"passed": 1, "judged": 1}}
     assert model["runs_passed"] == 1
     assert model["runs_total"] == 1
     assert model["run_pass_rate"] == 1.0
