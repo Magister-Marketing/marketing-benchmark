@@ -544,8 +544,20 @@ def cmd_report(args: argparse.Namespace) -> int:
         for section in RUBRIC_SECTIONS
         for criterion in task["rubric"][section]
     }
+    # Cost uses the best-known prices: the current models.json pricing wins
+    # over whatever was recorded at run time, so correcting a price (or adding
+    # one a run predates) backfills cost on the next `report` from the run's
+    # recorded token usage. Every other recorded setting stays as-run.
+    current_models = load_models()
+    models_meta = {}
+    for m, spec in run_meta["models"].items():
+        merged = dict(spec)
+        current_pricing = (current_models.get(m) or {}).get("pricing")
+        if current_pricing:
+            merged["pricing"] = current_pricing
+        models_meta[m] = merged
     efficiency = model_efficiency(
-        model_ids, attempts, judgments, run_meta["models"], section_of
+        model_ids, attempts, judgments, models_meta, section_of
     )
     passes = {
         (task_id, model_id): all_pass(task_id, model_id, repetitions, verdicts)
@@ -563,7 +575,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
         f"- Repetitions per task: {repetitions} (all must pass)",
-        f"- Max output tokens: {run_meta['max_output_tokens']} default"
+        f"- Max output tokens: {run_meta['max_output_tokens']} Anthropic ceiling"
+        " (required by the API); OpenAI uncapped unless a candidate sets one"
         + (
             "; per-candidate overrides: " + ", ".join(
                 f"{m}={spec['max_output_tokens']}"
@@ -696,7 +709,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
 
     total_output_tokens = sum(a.get("output_tokens") or 0 for a in attempts)
-    total_searches = sum(a.get("web_search_calls") or 0 for a in attempts)
+    tool_totals: dict[str, int] = {}
+    for a in attempts:
+        calls = a.get("tool_calls")
+        if calls is None and a.get("web_search_calls"):
+            # Attempts recorded before per-tool breakdowns existed.
+            calls = {"web_search": a["web_search_calls"]}
+        for name, count in (calls or {}).items():
+            tool_totals[name] = tool_totals.get(name, 0) + count
+    tool_summary = (
+        ", ".join(f"{name}={count}" for name, count in sorted(tool_totals.items()))
+        or "none"
+    )
     truncated = sum(
         1 for a in attempts
         if "error" not in a and a.get("finish_reason") not in NORMAL_FINISH_REASONS
@@ -711,7 +735,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Attempts: {len(attempts)} planned, {run_errors} provider errors (count as failures)",
         f"- Judge failures (ungraded, count as failures): {ungraded}",
         f"- Total output tokens: {total_output_tokens}",
-        f"- Total web searches: {total_searches}",
+        f"- Tool calls (all tools, by name): {tool_summary}",
         f"- Attempts with abnormal finish (truncation/refusal; check finish_reason): {truncated}",
         f"- Attempts that needed a doubled output ceiling (reasoning overflow): {ceiling_retries}",
         "",
@@ -741,6 +765,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             "ceiling_retries": ceiling_retries,
             "human_verdicts": len(human),
             "total_output_tokens": total_output_tokens,
+            "tool_calls": tool_totals,
         },
     }
     (run_dir / "report.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -765,6 +790,25 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     }
     print(f"OK: {len(tasks)} tasks, {len(models)} models, criteria per section: {counts}")
     return 0
+
+
+# ----------------------------------------------------------------- eval
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    """run -> grade -> report in one command (the ./eval.py path)."""
+    before = set(RESULTS_DIR.glob("*")) if RESULTS_DIR.exists() else set()
+    run_exit = cmd_run(args)
+    new_dirs = sorted(set(RESULTS_DIR.glob("*")) - before)
+    if not new_dirs:
+        return run_exit or 1  # aborted at the confirmation prompt
+    run_dir = new_dirs[-1]
+    # Grade and report even when some attempts errored: errors auto-fail
+    # and the report is where they become visible.
+    grade_args = argparse.Namespace(run=str(run_dir), judge=args.judge)
+    grade_exit = cmd_grade(grade_args)
+    report_exit = cmd_report(argparse.Namespace(run=str(run_dir)))
+    print(f"\nEval finished: {run_dir}/report.md")
+    return max(run_exit, grade_exit, report_exit)
 
 
 # ------------------------------------------------------------------ io
@@ -817,6 +861,19 @@ def main(argv: list[str] | None = None) -> int:
     report_parser = sub.add_parser("report", help="write report.md")
     report_parser.add_argument("--run", required=True)
     report_parser.set_defaults(func=cmd_report)
+
+    eval_parser = sub.add_parser("eval", help="run + grade + report in one go (paid)")
+    eval_parser.add_argument("--models", help="comma-separated ids from mvp/models.json")
+    eval_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
+    eval_parser.add_argument("--repetitions", type=int, default=REPETITIONS_DEFAULT)
+    eval_parser.add_argument("--no-skills", action="store_true",
+                             help="omit skill guidance from prompts (baseline arm)")
+    eval_parser.add_argument("--tools", action="store_true",
+                             help="enable provider-hosted web search (tools arm)")
+    eval_parser.add_argument("--judge", default=JUDGE_DEFAULT,
+                             help=f"judge model id (default {JUDGE_DEFAULT})")
+    eval_parser.add_argument("--yes", action="store_true", help="skip confirmation prompt")
+    eval_parser.set_defaults(func=cmd_eval)
 
     args = parser.parse_args(argv)
     return args.func(args)

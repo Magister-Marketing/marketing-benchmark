@@ -83,8 +83,10 @@ def build_request(
     """Return (url, headers, body) for one generation request.
 
     `settings` are optional per-candidate knobs from models.json
-    (reasoning_effort, text_verbosity). Absent settings are omitted from
-    the request so the provider default applies.
+    (reasoning_effort, text_verbosity, max_output_tokens). Absent settings
+    are omitted from the request so the provider default applies. The
+    `max_output_tokens` argument is the Anthropic-required ceiling; OpenAI
+    requests carry no cap unless the candidate sets one explicitly.
     """
     provider, model = split_model_spec(model_spec)
     settings = settings or {}
@@ -97,7 +99,6 @@ def build_request(
     cap_override = settings.get("max_output_tokens")
     if cap_override is not None and (not isinstance(cap_override, int) or cap_override <= 0):
         raise ProviderError(f"invalid max_output_tokens {cap_override!r}")
-    max_output_tokens = cap_override or max_output_tokens
 
     if provider == "anthropic":
         openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
@@ -111,9 +112,11 @@ def build_request(
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
+        # The Messages API requires max_tokens; it is a pure ceiling (unused
+        # headroom costs nothing, and no extended thinking is enabled here).
         body: dict = {
             "model": model,
-            "max_tokens": max_output_tokens,
+            "max_tokens": cap_override or max_output_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }
         if web_search:
@@ -124,11 +127,18 @@ def build_request(
         "Authorization": f"Bearer {api_key}",
         "content-type": "application/json",
     }
+    # The Responses API's max_output_tokens is optional, and reasoning tokens
+    # count against it — an artificial cap can starve the visible answer
+    # (observed: max-effort attempts spent the whole budget thinking and
+    # returned empty). Benchmark policy is "let the model work": omit the cap
+    # unless the candidate explicitly sets one, so the only ceiling is the
+    # model's own maximum.
     body = {
         "model": model,
-        "max_output_tokens": max_output_tokens,
         "input": prompt,
     }
+    if cap_override is not None:
+        body["max_output_tokens"] = cap_override
     if effort is not None:
         body["reasoning"] = {"effort": effort}
     if settings.get("text_verbosity") is not None:
@@ -139,32 +149,53 @@ def build_request(
 
 
 def parse_response(provider: str, payload: dict) -> dict:
-    """Extract {text, input_tokens, output_tokens, web_search_calls, finish_reason}."""
+    """Extract {text, input_tokens, output_tokens, tool_calls,
+    web_search_calls, finish_reason}.
+
+    `tool_calls` is a {tool_name: count} breakdown of every tool the model
+    invoked, not just web search — Anthropic server tools appear as
+    server_tool_use blocks named by tool, OpenAI Responses tools as output
+    items whose type ends in `_call`. `web_search_calls` stays as a
+    convenience view of the one tool the --tools arm currently enables.
+    """
+    tool_calls: dict[str, int] = {}
     if provider == "anthropic":
         text = "".join(
             block.get("text", "")
             for block in payload.get("content", [])
             if block.get("type") == "text"
         )
+        for block in payload.get("content", []):
+            if block.get("type") in ("server_tool_use", "tool_use"):
+                name = block.get("name") or "unknown_tool"
+                tool_calls[name] = tool_calls.get(name, 0) + 1
         usage = payload.get("usage", {})
-        searches = (usage.get("server_tool_use") or {}).get("web_search_requests", 0)
+        # web_search_calls keeps the billing-accurate usage counter (one
+        # tool_use block can bill several search requests); tool_calls
+        # counts invocations per tool.
+        searches = (usage.get("server_tool_use") or {}).get(
+            "web_search_requests", tool_calls.get("web_search", 0)
+        )
         return {
             "text": text,
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
+            "tool_calls": tool_calls,
             "web_search_calls": searches,
             "finish_reason": payload.get("stop_reason"),
         }
 
     text_parts = []
-    searches = 0
     for item in payload.get("output", []):
-        if item.get("type") == "message":
+        item_type = item.get("type") or ""
+        if item_type == "message":
             for content in item.get("content", []):
                 if content.get("type") == "output_text":
                     text_parts.append(content.get("text", ""))
-        elif item.get("type") == "web_search_call":
-            searches += 1
+        elif item_type.endswith("_call"):
+            name = item.get("name") if item_type == "function_call" else item_type[: -len("_call")]
+            name = name or "unknown_tool"
+            tool_calls[name] = tool_calls.get(name, 0) + 1
     usage = payload.get("usage", {})
     finish = payload.get("status")
     incomplete = (payload.get("incomplete_details") or {}).get("reason")
@@ -174,7 +205,8 @@ def parse_response(provider: str, payload: dict) -> dict:
         "text": "".join(text_parts),
         "input_tokens": usage.get("input_tokens"),
         "output_tokens": usage.get("output_tokens"),
-        "web_search_calls": searches,
+        "tool_calls": tool_calls,
+        "web_search_calls": tool_calls.get("web_search", 0),
         "finish_reason": finish,
     }
 
@@ -207,15 +239,17 @@ def generate(
     payload = _post_json_with_retries(url, headers, body, provider)
     result = parse_response(provider, payload)
 
-    # A reasoning model can spend the whole output budget thinking and emit
-    # no text. That is a runner ceiling, not a model answer: retry once with
-    # a doubled cap so the attempt records an answer or a real failure.
+    # A reasoning model can spend an explicit output cap thinking and emit no
+    # text. That is a runner ceiling, not a model answer: retry once with a
+    # doubled cap so the attempt records an answer or a real failure. With no
+    # explicit cap the request was already bounded only by the model's own
+    # maximum — doubling cannot help, so the truncation is recorded honestly.
     finish = result["finish_reason"] or ""
-    if not result["text"].strip() and "incomplete" in finish:
+    explicit_cap = (settings or {}).get("max_output_tokens")
+    if not result["text"].strip() and "incomplete" in finish and explicit_cap:
         ceiling_retried = True
-        effective_cap = (settings or {}).get("max_output_tokens") or max_output_tokens
         raised = dict(settings or {})
-        raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
+        raised["max_output_tokens"] = explicit_cap * CEILING_RETRY_MULTIPLIER
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )

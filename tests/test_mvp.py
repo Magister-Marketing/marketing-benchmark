@@ -167,11 +167,15 @@ def test_build_request_openai_responses_api():
         "openai/gpt-5.6-sol", "hi", 100, web_search=True, api_key="k")
     assert url == providers.OPENAI_URL and url.endswith("/v1/responses")
     assert headers["Authorization"] == "Bearer k"
-    assert body == {"model": "gpt-5.6-sol", "max_output_tokens": 100,
+    assert body == {"model": "gpt-5.6-sol",
                     "input": "hi", "tools": [{"type": "web_search"}]}
     _, _, body = providers.build_request(
         "openai/gpt-5.6-sol", "hi", 100, web_search=False, api_key="k")
     assert "tools" not in body and "temperature" not in body
+    # No artificial output cap unless the candidate sets one: reasoning
+    # tokens count against max_output_tokens, so a default cap can starve
+    # the visible answer. The Anthropic default still applies (required).
+    assert "max_output_tokens" not in body
 
 
 def test_parse_response_anthropic_with_web_search():
@@ -188,6 +192,7 @@ def test_parse_response_anthropic_with_web_search():
     result = providers.parse_response("anthropic", payload)
     assert result == {"text": "part one part two", "input_tokens": 10,
                       "output_tokens": 20, "web_search_calls": 3,
+                      "tool_calls": {"web_search": 1},
                       "finish_reason": None}
 
 
@@ -205,7 +210,37 @@ def test_parse_response_openai_with_web_search():
     result = providers.parse_response("openai", payload)
     assert result == {"text": "answer", "input_tokens": 5,
                       "output_tokens": 7, "web_search_calls": 2,
+                      "tool_calls": {"web_search": 2},
                       "finish_reason": None}
+
+
+def test_parse_response_captures_all_tool_kinds():
+    # Tool use is not only web search: every invoked tool is counted by name.
+    openai_payload = {
+        "output": [
+            {"type": "web_search_call", "id": "ws1"},
+            {"type": "code_interpreter_call", "id": "ci1"},
+            {"type": "code_interpreter_call", "id": "ci2"},
+            {"type": "function_call", "name": "lookup_prices", "id": "f1"},
+            {"type": "message", "content": [{"type": "output_text", "text": "ok"}]},
+        ],
+        "usage": {"input_tokens": 1, "output_tokens": 2},
+    }
+    result = providers.parse_response("openai", openai_payload)
+    assert result["tool_calls"] == {"web_search": 1, "code_interpreter": 2,
+                                    "lookup_prices": 1}
+    assert result["web_search_calls"] == 1
+    anthropic_payload = {
+        "content": [
+            {"type": "server_tool_use", "id": "a", "name": "web_search"},
+            {"type": "server_tool_use", "id": "b", "name": "code_execution"},
+            {"type": "text", "text": "ok"},
+        ],
+        "usage": {"input_tokens": 1, "output_tokens": 2},
+    }
+    result = providers.parse_response("anthropic", anthropic_payload)
+    assert result["tool_calls"] == {"web_search": 1, "code_execution": 1}
+    assert result["web_search_calls"] == 1  # falls back to invocation count
 
 
 def test_candidate_settings_reach_openai_request():
@@ -247,15 +282,23 @@ def test_finish_reason_surfaces_truncation():
         "incomplete:max_output_tokens"
 
 
-def test_luna_candidates_defined():
+def test_candidate_manifest_shape():
     models = bench.load_models()
-    for candidate_id, effort, cap in (
-        ("gpt-5.6-luna-xhigh", "xhigh", 32000),
-        ("gpt-5.6-luna-max", "max", 64000),
+    for candidate_id, model_spec, effort in (
+        ("gpt-5.6-luna-medium", "openai/gpt-5.6-luna", "medium"),
+        ("gpt-5.6-luna-xhigh", "openai/gpt-5.6-luna", "xhigh"),
+        ("gpt-5.6-luna-max", "openai/gpt-5.6-luna", "max"),
+        ("gpt-5.6-terra-medium", "openai/gpt-5.6-terra", "medium"),
+        ("gpt-5.6-sol-medium", "openai/gpt-5.6-sol", "medium"),
     ):
-        assert models[candidate_id]["model"] == "openai/gpt-5.6-luna"
+        assert models[candidate_id]["model"] == model_spec
         assert models[candidate_id]["reasoning_effort"] == effort
-        assert models[candidate_id]["max_output_tokens"] == cap
+    for candidate_id, spec in models.items():
+        # Every candidate must carry real pricing so cost never silently
+        # reports n/a, and none may cap output ("let the model work").
+        assert spec["pricing"]["input_per_mtok"] > 0, candidate_id
+        assert spec["pricing"]["output_per_mtok"] > 0, candidate_id
+        assert "max_output_tokens" not in spec, candidate_id
 
 
 def test_max_output_tokens_override_and_validation():
@@ -303,7 +346,27 @@ def test_ceiling_retry_gives_up_after_one_doubling(monkeypatch):
     monkeypatch.setattr(providers, "_post_json_with_retries",
                         lambda *args: dict(incomplete))
     with pytest.raises(providers.ProviderError, match="ceiling_retried=True"):
+        providers.generate("openai/gpt-5.6-luna", "hi", 16000,
+                           settings={"max_output_tokens": 16000})
+
+
+def test_uncapped_truncation_never_retries(monkeypatch):
+    # With no explicit cap the request is bounded only by the model's own
+    # maximum; doubling cannot help, so the failure is recorded honestly
+    # in a single call.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    calls = []
+
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        return {"output": [], "usage": {}, "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"}}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    with pytest.raises(providers.ProviderError, match="ceiling_retried=False"):
         providers.generate("openai/gpt-5.6-luna", "hi", 16000)
+    assert len(calls) == 1
+    assert "max_output_tokens" not in calls[0]
 
 
 def test_attempt_mark_letters():

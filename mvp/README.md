@@ -64,7 +64,20 @@ numbers, not vibes.
 ## Usage
 
 Keys come only from the environment: `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`. Candidates live in `models.json`.
+`OPENAI_API_KEY` (or `--env-file <KEY=value file>` on `eval.py`, which
+reads only those two names and never prints values). Candidates live in
+`models.json`.
+
+**The one-liner** — run, grade, and report in a single command from the
+repo root:
+
+```bash
+./eval.py gpt-5.6-luna-medium gpt-5.6-terra-medium gpt-5.6-sol-medium
+./eval.py claude-sonnet-5 --tools          # web-search arm
+./eval.py claude-haiku-4-5 --no-skills -y  # baseline arm, no prompt
+```
+
+The individual stages, when you need them separately:
 
 ```bash
 # offline sanity check (also run in CI)
