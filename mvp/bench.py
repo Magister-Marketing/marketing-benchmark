@@ -2017,8 +2017,13 @@ def cmd_report(args: argparse.Namespace) -> int:
         "## Model efficiency and criterion resolution",
         "",
         "Overall ranges below pool every selected task and configured run for a model.",
-        "The per-task table that follows isolates the repeated calls for the same",
-        "prompt, which is the cleaner view of trial-to-trial variation. OpenAI",
+        (
+            "The per-task table that follows isolates repeated calls to show "
+            "run-to-run variation."
+            if repetitions > 1
+            else "The per-task table that follows shows each individual candidate response."
+        ),
+        "OpenAI",
         "output-token usage includes hidden reasoning tokens.",
         "",
         "| Model | Responses | Output tokens / response | Latency / response | Est. cost / response | Est. total candidate cost | Criteria passed | Criterion macro | Criterion pooled |",
