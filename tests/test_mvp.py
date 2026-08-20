@@ -595,11 +595,21 @@ def test_model_efficiency_pools_criteria_on_normal_finishes_only():
     stats = bench.model_efficiency(["m"], attempts, judgments, models_meta, section_of)["m"]
     assert stats["completed_attempts"] == 2
     assert stats["mean_latency_seconds"] == 20.0
+    assert (stats["min_latency_seconds"], stats["max_latency_seconds"]) == (10.0, 30.0)
+    assert stats["latency_observations"] == 2
+    assert stats["mean_output_tokens"] == 500.0
+    assert (stats["min_output_tokens"], stats["max_output_tokens"]) == (100, 900)
+    assert stats["output_token_observations"] == 2
     assert stats["total_output_tokens"] == 1000
     assert (stats["criteria_passed"], stats["criteria_judged"]) == (1, 2)
     assert stats["criterion_pass_rate"] == 0.5
+    assert stats["criterion_pass_rate_pooled"] == 0.5
+    assert stats["criterion_pass_rate_macro"] == 0.5
     # 2 attempts x (1000 in x $1/M + (100|900) out x $5/M)
     assert stats["cost_usd"] == round((1000 * 1 + 100 * 5 + 1000 * 1 + 900 * 5) / 1e6, 4)
+    assert stats["mean_cost_usd"] == 0.0035
+    assert (stats["min_cost_usd"], stats["max_cost_usd"]) == (0.0015, 0.0055)
+    assert stats["cost_observations"] == 2
     assert stats["section_pass_rates"] == {
         "completion": 1.0, "skill_adherence": None, "best_practices": 0.0}
 
@@ -610,6 +620,25 @@ def test_attempt_cost_requires_pricing():
     spec = {"pricing": {"input_per_mtok": 3.0, "output_per_mtok": 15.0}}
     assert bench.attempt_cost_usd(attempt, spec) == 0.018
     assert bench.attempt_cost_usd({"error": "boom"}, spec) is None
+    assert bench.attempt_cost_usd({"input_tokens": 1000}, spec) is None
+
+
+def test_attempt_efficiency_keeps_zero_metrics_and_flags_missing_usage():
+    spec = {"pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}
+    stats = bench.attempt_efficiency([
+        {"latency_seconds": 0.0, "input_tokens": 0, "output_tokens": 0},
+        {"latency_seconds": None, "input_tokens": 10, "output_tokens": None},
+        {"error": "provider failed"},
+    ], spec)
+    assert stats["completed_attempts"] == 2
+    assert stats["latency_observations"] == 1
+    assert stats["mean_latency_seconds"] == 0.0
+    assert stats["min_latency_seconds"] == 0.0
+    assert stats["max_latency_seconds"] == 0.0
+    assert stats["output_token_observations"] == 1
+    assert stats["mean_output_tokens"] == 0.0
+    assert stats["cost_observations"] == 1
+    assert stats["cost_usd"] == 0.0
 
 
 def test_criterion_tally_excludes_truncated_attempts():
@@ -668,15 +697,34 @@ def test_report_scoreboard_and_json(tmp_path, capsys):
     report = (run_dir / "report.md").read_text()
     assert "## Scoreboard" in report
     assert "**1/1 (100%)**" in report
+    assert "2/2 (100%)" in report
+    assert "Criterion score (macro)" in report
     assert "[prompt](prompts/headline.md)" in report
     assert "[r1 P](responses/headline--claude-haiku-4-5--r1.md)" in report
     assert "r2 P" in report  # response file absent -> plain mark, no dead link
-    assert "$0.01" in report  # 2 x (1000x$1 + 1000x$5)/1M = $0.012
+    assert "μ 1,000 [1,000–1,000]" in report
+    assert "μ 5.0s [5.0s–5.0s]" in report
+    assert "μ $0.0060 [$0.0060–$0.0060]" in report
+    assert "$0.0120" in report  # 2 x (1000x$1 + 1000x$5)/1M
+    assert "### Per-task repetition ranges" in report
     summary = json.loads((run_dir / "report.json").read_text())
     model = summary["models"]["claude-haiku-4-5"]
     assert model["tasks_passed"] == 1
     assert model["task_passes"] == {"headline": True}
+    assert model["repetitions_passed"] == 2
+    assert model["repetitions_total"] == 2
+    assert model["single_run_pass_rate"] == 1.0
     assert model["cost_usd"] == 0.012
+    assert model["mean_output_tokens"] == 1000.0
+    assert model["min_output_tokens"] == 1000
+    assert model["max_output_tokens"] == 1000
+    assert model["mean_latency_seconds"] == 5.0
+    assert model["min_latency_seconds"] == 5.0
+    assert model["max_latency_seconds"] == 5.0
+    assert model["mean_cost_usd"] == 0.006
+    assert model["min_cost_usd"] == 0.006
+    assert model["max_cost_usd"] == 0.006
+    assert model["task_efficiency"]["headline"]["completed_attempts"] == 2
     assert model["split_scores"] == {
         "development": {"tasks_passed": 1, "tasks_total": 1},
         "holdout": {"tasks_passed": 0, "tasks_total": 0},

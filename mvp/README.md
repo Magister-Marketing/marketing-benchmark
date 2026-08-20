@@ -17,19 +17,34 @@ quality.
 - A repetition passes only if every programmatic check and judge criterion
   passes and the judge marks the task completed (or a human overrides it).
 - A task passes for a model only if **all repetitions pass** (pass^3).
+- The headline model score is the share of selected tasks that pass that strict
+  all-repetitions gate. The average of binary repetition outcomes is reported
+  separately as single-run pass rate. Criterion score macro-averages each
+  task's criterion rate; a pooled all-criteria rate remains a diagnostic.
 - Provider errors and judge failures count as failed repetitions.
 - Temperature is never sent. Anthropic gets its required output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
-    prompt by default; `--no-skills` is the baseline arm, so skill
-    uplift is measurable with the same tasks and rubric.
+    prompt by default. Each task explicitly lists its skill files, whose full
+    raw text is appended to the user prompt; there is no native skill loader or
+    model-side discovery. `--no-skills` is the baseline arm, so skill uplift is
+    measurable with the same tasks and rubric.
   - **Tools**: off by default; `--tools` enables provider-hosted web
     search on the same API call (Anthropic server web-search tool,
     OpenAI Responses `web_search`). Tasks and rubrics do not change, so
     on fixture-grounded tasks the tools arm also measures tool
-    discipline — staying inside supplied sources when search is
-    available. The judge is always tool-less and blind to the arm.
+    discipline — staying inside supplied sources when search is available. The
+    judge is always tool-less and receives no explicit arm flag or candidate
+    identity. It grades the exact recorded prompt, so it sees skill text when
+    that text was part of the candidate prompt but does not see tools metadata.
+
+Reports keep quality and efficiency separate. Candidate output tokens,
+request latency, and estimated candidate-generation cost are shown as
+arithmetic mean [minimum–maximum] overall and for each task's repeated calls;
+the range is descriptive, not an error bar or confidence interval. Total
+candidate cost remains visible. Costs use recorded input/output usage and the
+current price catalog and do not include LLM-judge spend.
 
 ## Rubric shape
 

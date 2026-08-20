@@ -82,9 +82,18 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
     pricing = spec.get("pricing")
     if not pricing or "error" in attempt:
         return None
+    input_tokens = attempt.get("input_tokens")
+    output_tokens = attempt.get("output_tokens")
+    if (
+        not isinstance(input_tokens, (int, float))
+        or isinstance(input_tokens, bool)
+        or not isinstance(output_tokens, (int, float))
+        or isinstance(output_tokens, bool)
+    ):
+        return None
     return (
-        (attempt.get("input_tokens") or 0) * pricing["input_per_mtok"]
-        + (attempt.get("output_tokens") or 0) * pricing["output_per_mtok"]
+        input_tokens * pricing["input_per_mtok"]
+        + output_tokens * pricing["output_per_mtok"]
     ) / 1_000_000
 
 
@@ -1092,6 +1101,60 @@ def attempt_mark(attempt: dict | None, verdict: dict | None) -> str:
     return "P" if (verdict or {}).get("pass") else "F"
 
 
+def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
+    """Operational distributions for candidate calls that returned a response.
+
+    Missing usage is excluded rather than silently treated as zero. Observation
+    counts make partial historical evidence visible in report.json and let the
+    Markdown formatter flag it when necessary.
+    """
+    rows = [attempt for attempt in attempts if "error" not in attempt]
+    latencies = [
+        attempt["latency_seconds"]
+        for attempt in rows
+        if isinstance(attempt.get("latency_seconds"), (int, float))
+        and not isinstance(attempt["latency_seconds"], bool)
+    ]
+    output_tokens = [
+        attempt["output_tokens"]
+        for attempt in rows
+        if isinstance(attempt.get("output_tokens"), (int, float))
+        and not isinstance(attempt["output_tokens"], bool)
+    ]
+    costs = [attempt_cost_usd(attempt, spec or {}) for attempt in rows]
+    known_costs = [cost for cost in costs if cost is not None]
+
+    return {
+        # Kept for report.json compatibility. This means provider-successful
+        # candidate responses, not judge-completed or rubric-passing attempts.
+        "completed_attempts": len(rows),
+        "latency_observations": len(latencies),
+        "mean_latency_seconds": (
+            round(sum(latencies) / len(latencies), 1) if latencies else None
+        ),
+        "min_latency_seconds": round(min(latencies), 1) if latencies else None,
+        "max_latency_seconds": round(max(latencies), 1) if latencies else None,
+        "output_token_observations": len(output_tokens),
+        "mean_output_tokens": (
+            round(sum(output_tokens) / len(output_tokens), 1)
+            if output_tokens
+            else None
+        ),
+        "min_output_tokens": min(output_tokens) if output_tokens else None,
+        "max_output_tokens": max(output_tokens) if output_tokens else None,
+        "total_output_tokens": sum(output_tokens),
+        "cost_observations": len(known_costs),
+        "mean_cost_usd": (
+            round(sum(known_costs) / len(known_costs), 6)
+            if known_costs
+            else None
+        ),
+        "min_cost_usd": round(min(known_costs), 6) if known_costs else None,
+        "max_cost_usd": round(max(known_costs), 6) if known_costs else None,
+        "cost_usd": round(sum(known_costs), 4) if known_costs else None,
+    }
+
+
 def model_efficiency(
     model_ids: list,
     attempts: list,
@@ -1115,33 +1178,42 @@ def model_efficiency(
     }
     for model_id in model_ids:
         rows = [a for a in attempts if a["model_id"] == model_id and "error" not in a]
-        latencies = [a["latency_seconds"] for a in rows if a.get("latency_seconds")]
         passed = judged = 0
         sections: dict[str, list[int]] = {s: [0, 0] for s in RUBRIC_SECTIONS}
+        tasks: dict[str, list[int]] = {}
         for judgment in judgments:
             key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
             if judgment["model_id"] != model_id or key not in normal_keys:
                 continue
+            task_counts = tasks.setdefault(judgment["task_id"], [0, 0])
             for criterion in judgment.get("criteria", []):
                 judged += 1
                 passed += bool(criterion["pass"])
+                task_counts[1] += 1
+                task_counts[0] += bool(criterion["pass"])
                 section = criterion.get("section") or (section_of or {}).get(
                     (judgment["task_id"], criterion["id"])
                 )
                 if section in sections:
                     sections[section][1] += 1
                     sections[section][0] += bool(criterion["pass"])
-        spec = (models_meta or {}).get(model_id, {})
-        costs = [attempt_cost_usd(a, spec) for a in rows]
-        known_costs = [c for c in costs if c is not None]
         stats[model_id] = {
-            "completed_attempts": len(rows),
-            "mean_latency_seconds": round(sum(latencies) / len(latencies), 1) if latencies else None,
-            "total_output_tokens": sum(a.get("output_tokens") or 0 for a in rows),
-            "cost_usd": round(sum(known_costs), 4) if known_costs else None,
+            **attempt_efficiency(rows, (models_meta or {}).get(model_id, {})),
             "criteria_passed": passed,
             "criteria_judged": judged,
             "criterion_pass_rate": round(passed / judged, 3) if judged else None,
+            "criterion_pass_rate_pooled": (
+                round(passed / judged, 3) if judged else None
+            ),
+            "criterion_pass_rate_macro": (
+                round(
+                    sum(hit / total for hit, total in tasks.values() if total)
+                    / sum(bool(total) for _hit, total in tasks.values()),
+                    3,
+                )
+                if any(total for _hit, total in tasks.values())
+                else None
+            ),
             "section_pass_rates": {
                 section: (round(hit / total, 3) if total else None)
                 for section, (hit, total) in sections.items()
@@ -1170,6 +1242,50 @@ def criterion_failure_counts(judgments: list, verdicts: dict, attempts_by_key: d
                 counter_key = (judgment["task_id"], criterion["id"])
                 counts[counter_key] = counts.get(counter_key, 0) + 1
     return counts
+
+
+def _format_range(
+    mean: float | int | None,
+    minimum: float | int | None,
+    maximum: float | int | None,
+    formatter,
+) -> str:
+    if mean is None or minimum is None or maximum is None:
+        return "n/a"
+    return f"μ {formatter(mean)} [{formatter(minimum)}–{formatter(maximum)}]"
+
+
+def _format_token_range(stats: dict) -> str:
+    return _format_range(
+        stats["mean_output_tokens"],
+        stats["min_output_tokens"],
+        stats["max_output_tokens"],
+        lambda value: f"{value:,.0f}",
+    )
+
+
+def _format_latency_range(stats: dict) -> str:
+    return _format_range(
+        stats["mean_latency_seconds"],
+        stats["min_latency_seconds"],
+        stats["max_latency_seconds"],
+        lambda value: f"{value:.1f}s",
+    )
+
+
+def _format_cost_range(stats: dict) -> str:
+    return _format_range(
+        stats["mean_cost_usd"],
+        stats["min_cost_usd"],
+        stats["max_cost_usd"],
+        lambda value: f"${value:.4f}",
+    )
+
+
+def _flag_partial_observations(cell: str, observed: int, expected: int) -> str:
+    if observed == expected:
+        return cell
+    return f"{cell} (n={observed}/{expected})"
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -1219,6 +1335,19 @@ def cmd_report(args: argparse.Namespace) -> int:
     efficiency = model_efficiency(
         model_ids, attempts, judgments, models_meta, section_of
     )
+    task_efficiency = {
+        (task_id, model_id): attempt_efficiency(
+            [
+                attempt
+                for attempt in attempts
+                if attempt["task_id"] == task_id
+                and attempt["model_id"] == model_id
+            ],
+            models_meta[model_id],
+        )
+        for task_id in task_ids
+        for model_id in model_ids
+    }
     passes = {
         (task_id, model_id): all_pass(task_id, model_id, repetitions, verdicts)
         for task_id in task_ids
@@ -1228,6 +1357,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         model_id: sum(passes[(task_id, model_id)] for task_id in task_ids)
         for model_id in model_ids
     }
+    repetition_pass_counts = {
+        model_id: sum(
+            verdicts.get((task_id, model_id, repetition), {}).get("pass", False)
+            for task_id in task_ids
+            for repetition in range(1, repetitions + 1)
+        )
+        for model_id in model_ids
+    }
+    repetitions_per_model = repetitions * len(task_ids)
     task_splits = {
         task_id: (
             run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
@@ -1264,19 +1402,61 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Scoreboard",
         "",
-        "The score is the task pass rate under the all-repetitions-pass",
-        "protocol. Cost and latency sit beside it and are never blended in.",
+        "Reliable tasks is the headline: a task passes only when every repetition",
+        "passes. Single-run passes is the average-of-tries view, shown separately",
+        f"rather than weakening the pass^{repetitions} reliability gate. Criterion score gives",
+        "each task equal weight so larger rubrics do not dominate.",
         "",
-        "| Model | Score | Criterion pass rate | Cost (USD) | Mean latency |",
-        "|---|---|---|---|---|",
+        "### Quality",
+        "",
+        f"| Model | Reliable tasks (pass^{repetitions}) | Single-run passes | Criterion score (macro) |",
+        "|---|---|---|---|",
     ]
     for model_id in model_ids:
         stats = efficiency[model_id]
         score_pct = round(100 * task_pass_counts[model_id] / len(task_ids))
-        cost = f"${stats['cost_usd']:.2f}" if stats["cost_usd"] is not None else "n/a"
+        repetition_pct = round(
+            100 * repetition_pass_counts[model_id] / repetitions_per_model
+        )
+        criterion_score = (
+            f"{100 * stats['criterion_pass_rate_macro']:.1f}%"
+            if stats["criterion_pass_rate_macro"] is not None
+            else "n/a"
+        )
         lines.append(
-            f"| {model_id} | **{task_pass_counts[model_id]}/{len(task_ids)} ({score_pct}%)** "
-            f"| {stats['criterion_pass_rate']} | {cost} | {stats['mean_latency_seconds']}s |"
+            f"| {model_id} | **{task_pass_counts[model_id]}/{len(task_ids)} "
+            f"({score_pct}%)** | {repetition_pass_counts[model_id]}/"
+            f"{repetitions_per_model} ({repetition_pct}%) | {criterion_score} |"
+        )
+    lines += [
+        "",
+        "### Efficiency",
+        "",
+        "Cells are arithmetic mean [minimum–maximum] across candidate calls that",
+        "returned a response. Ranges are descriptive, not uncertainty intervals.",
+        "Estimated cost covers candidate generation only (input + output tokens),",
+        "excludes judge calls, and is never blended into quality scores.",
+        "",
+        "| Model | Output tokens / response | Latency / response | Est. candidate cost / response | Est. total candidate cost |",
+        "|---|---|---|---|---|",
+    ]
+    for model_id in model_ids:
+        stats = efficiency[model_id]
+        responses = stats["completed_attempts"]
+        tokens = _flag_partial_observations(
+            _format_token_range(stats), stats["output_token_observations"], responses
+        )
+        latency = _flag_partial_observations(
+            _format_latency_range(stats), stats["latency_observations"], responses
+        )
+        cost = _flag_partial_observations(
+            _format_cost_range(stats), stats["cost_observations"], responses
+        )
+        total_cost = (
+            f"${stats['cost_usd']:.4f}" if stats["cost_usd"] is not None else "n/a"
+        )
+        lines.append(
+            f"| {model_id} | {tokens} | {latency} | {cost} | {total_cost} |"
         )
     if all(split_task_ids.values()):
         lines += [
@@ -1372,19 +1552,69 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Model efficiency and criterion resolution",
         "",
-        "| Model | Completed | Mean latency | Output tokens | Cost (USD) | Criteria passed | Criterion pass rate |",
-        "|---|---|---|---|---|---|---|",
+        "Overall ranges below pool every selected task and repetition for a model.",
+        "The per-task table that follows isolates the repeated calls for the same",
+        "prompt, which is the cleaner view of trial-to-trial variation. OpenAI",
+        "output-token usage includes hidden reasoning tokens.",
+        "",
+        "| Model | Responses | Output tokens / response | Latency / response | Est. cost / response | Est. total candidate cost | Criteria passed | Criterion macro | Criterion pooled |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for model_id in model_ids:
         stats = efficiency[model_id]
-        cost = f"${stats['cost_usd']:.2f}" if stats["cost_usd"] is not None else "n/a (no pricing)"
+        responses = stats["completed_attempts"]
+        tokens = _flag_partial_observations(
+            _format_token_range(stats), stats["output_token_observations"], responses
+        )
+        latency = _flag_partial_observations(
+            _format_latency_range(stats), stats["latency_observations"], responses
+        )
+        cost = _flag_partial_observations(
+            _format_cost_range(stats), stats["cost_observations"], responses
+        )
+        total_cost = (
+            f"${stats['cost_usd']:.4f}"
+            if stats["cost_usd"] is not None
+            else "n/a (no complete pricing/usage)"
+        )
         lines.append(
             f"| {model_id} | {stats['completed_attempts']}/{repetitions * len(task_ids)} "
-            f"| {stats['mean_latency_seconds']}s | {stats['total_output_tokens']} "
-            f"| {cost} "
+            f"| {tokens} | {latency} | {cost} | {total_cost} "
             f"| {stats['criteria_passed']}/{stats['criteria_judged']} "
-            f"| {stats['criterion_pass_rate']} |"
+            f"| {stats['criterion_pass_rate_macro']} "
+            f"| {stats['criterion_pass_rate_pooled']} |"
         )
+    lines += [
+        "",
+        "### Per-task repetition ranges",
+        "",
+        f"Each row summarizes up to {repetitions} repetitions of one identical",
+        "task prompt for one model as mean [minimum–maximum].",
+        "",
+        "| Task | Model | Responses | Output tokens / response | Latency / response | Est. cost / response |",
+        "|---|---|---|---|---|---|",
+    ]
+    for task_id in task_ids:
+        for model_id in model_ids:
+            stats = task_efficiency[(task_id, model_id)]
+            responses = stats["completed_attempts"]
+            tokens = _flag_partial_observations(
+                _format_token_range(stats),
+                stats["output_token_observations"],
+                responses,
+            )
+            latency = _flag_partial_observations(
+                _format_latency_range(stats),
+                stats["latency_observations"],
+                responses,
+            )
+            cost = _flag_partial_observations(
+                _format_cost_range(stats), stats["cost_observations"], responses
+            )
+            lines.append(
+                f"| {task_id} | {model_id} | {responses}/{repetitions} "
+                f"| {tokens} | {latency} | {cost} |"
+            )
     lines += [
         "",
         "Pass rate by rubric section (normally-finished attempts only):",
@@ -1445,6 +1675,12 @@ def cmd_report(args: argparse.Namespace) -> int:
                 "tasks_passed": task_pass_counts[model_id],
                 "tasks_total": len(task_ids),
                 "task_passes": {t: passes[(t, model_id)] for t in task_ids},
+                "repetitions_passed": repetition_pass_counts[model_id],
+                "repetitions_total": repetitions_per_model,
+                "single_run_pass_rate": round(
+                    repetition_pass_counts[model_id] / repetitions_per_model,
+                    3,
+                ),
                 "split_scores": {
                     split: {
                         "tasks_passed": sum(
@@ -1454,6 +1690,10 @@ def cmd_report(args: argparse.Namespace) -> int:
                         "tasks_total": len(split_task_ids[split]),
                     }
                     for split in TASK_SPLITS
+                },
+                "task_efficiency": {
+                    task_id: task_efficiency[(task_id, model_id)]
+                    for task_id in task_ids
                 },
                 **efficiency[model_id],
             }
