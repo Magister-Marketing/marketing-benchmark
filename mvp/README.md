@@ -3,8 +3,8 @@
 The smallest useful version of this benchmark: call models directly over
 HTTP with default API settings, grade each response with deterministic hard
 checks plus an LLM judge against a binary rubric, let a human verify or
-override every judgment, and only count a task as passed when **all
-repetitions pass**.
+override every judgment, and only count a task as passed when every configured
+run passes. The default is one run per task: **pass@1**.
 
 No agents, no tools, no sandboxes, no pairwise judging. The heavyweight
 runner in `evals/` remains the path for tool-using agent comparisons;
@@ -13,15 +13,16 @@ quality.
 
 ## Protocol
 
-- Every (model, task) pair runs **3 repetitions** by default.
-- A repetition passes only if every programmatic check and judge criterion
+- Every (model, task) pair runs **once** by default. `--repetitions N` opts into
+  any larger run count without changing tasks, rubrics, or report structure.
+- A run passes only if every programmatic check and judge criterion
   passes and the judge marks the task completed (or a human overrides it).
-- A task passes for a model only if **all repetitions pass** (pass^3).
-- The headline model score is the share of selected tasks that pass that strict
-  all-repetitions gate. The average of binary repetition outcomes is reported
-  separately as single-run pass rate. Criterion score macro-averages each
-  task's criterion rate; a pooled all-criteria rate remains a diagnostic.
-- Provider errors and judge failures count as failed repetitions.
+- A task passes for a model only if **every configured run passes**. At the
+  default this is pass@1; if `--repetitions 3` is requested, all three must pass.
+- The headline model score is the share of selected tasks that pass. Criterion
+  score macro-averages each task's criterion rate; a pooled all-criteria rate
+  remains a diagnostic.
+- Provider errors and judge failures count as failed runs.
 - Temperature is never sent. Anthropic gets its required output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
 - Two independent arm toggles, both recorded in evidence:
@@ -39,12 +40,14 @@ quality.
     identity. It grades the exact recorded prompt, so it sees skill text when
     that text was part of the candidate prompt but does not see tools metadata.
 
-Reports keep quality and efficiency separate. Candidate output tokens,
-request latency, and estimated candidate-generation cost are shown as
-arithmetic mean [minimum–maximum] overall and for each task's repeated calls;
-the range is descriptive, not an error bar or confidence interval. Total
-candidate cost remains visible. Costs use recorded input/output usage and the
-current price catalog and do not include LLM-judge spend.
+Reports open with one compact leaderboard containing task score, criterion
+score, candidate output tokens, request latency, per-response cost, and total
+candidate cost. Values use arithmetic mean [minimum–maximum] across candidate
+calls; the range is descriptive, not an error bar or confidence interval. A
+standalone `report.html` renders the same results as a polished screenshot and
+print artifact, while `report.md` retains detailed evidence. Costs use recorded
+input/output usage and the current price catalog and do not include LLM-judge
+spend.
 
 ## Rubric shape
 
@@ -118,6 +121,7 @@ repo root:
 ./eval.py claude-sonnet-5 --tools          # web-search arm
 ./eval.py claude-haiku-4-5 --no-skills -y  # baseline arm, no prompt
 ./eval.py claude-sonnet-5 --split holdout  # untouched-task check
+./eval.py claude-sonnet-5 --repetitions 3  # explicitly request three runs/task
 ```
 
 The individual stages, when you need them separately:
@@ -162,9 +166,10 @@ python3 -m mvp.bench grade --run mvp/results/<run-id> \
 Each run writes immutable evidence under `mvp/results/<run-id>/`:
 `run.json` (config), `tasks/*.json` (exact task snapshots), `prompts/*.md`,
 `attempts.jsonl`, `responses/*.md`, `judgments.jsonl`,
-`human_verdicts.jsonl`, `grading.json`, `report.md`, and `report.json`.
+`human_verdicts.jsonl`, `grading.json`, `report.md`, `report.html`, and
+`report.json`.
 Labeled regrades add the label before each grading/report extension. Results
-are gitignored; commit a reviewed `report.md` into `docs/results/` when
+are gitignored; commit reviewed report artifacts into `docs/results/` when
 publishing.
 
 ## The ladder: same tasks, rising tiers
@@ -183,7 +188,7 @@ Rules that keep the ladder honest:
 - Task prompts, fixtures, and rubrics are never forked per tier. A tier that
   needs a different prompt gets a new task id instead. Each run snapshots its
   task definitions and exact assembled prompts.
-- The judge, rubric, and pass^3 protocol are identical at every tier.
+- The judge, rubric, and configured run count are identical at every tier.
 - Every run records its tier and arms (`run.json`), so any two runs can
   be compared attempt-for-attempt.
 

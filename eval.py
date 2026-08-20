@@ -6,9 +6,11 @@
     ./eval.py claude-haiku-4-5 --no-skills -y        # baseline arm, no prompt
     ./eval.py gpt-5.6-sol --tasks headline,blog-post # a task subset
     ./eval.py claude-sonnet-5 --split holdout         # untouched-task check
+    ./eval.py claude-sonnet-5 --repetitions 3         # explicitly run each task 3x
 
 Model ids come from mvp/models.json; tasks from mvp/tasks/. The run
-directory (prompts, raw submissions, judgments, report.md, report.json)
+directory (prompts, raw submissions, judgments, report.md, report.html,
+report.json)
 lands under mvp/results/ and its path is printed at the end.
 
 Keys: ANTHROPIC_API_KEY / OPENAI_API_KEY must be in the environment, or
@@ -47,7 +49,10 @@ def main() -> int:
         "--split", choices=("all",) + bench.TASK_SPLITS, default="all",
         help="run all tasks or one task split (ignored when --tasks is set)",
     )
-    parser.add_argument("--repetitions", type=int, default=bench.REPETITIONS_DEFAULT)
+    parser.add_argument(
+        "--repetitions", type=int, default=bench.REPETITIONS_DEFAULT,
+        help=f"runs per model/task (default {bench.REPETITIONS_DEFAULT})",
+    )
     parser.add_argument("--no-skills", action="store_true",
                         help="omit skill guidance from prompts (baseline arm)")
     parser.add_argument("--tools", action="store_true",

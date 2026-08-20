@@ -22,6 +22,12 @@ def test_judge_default_exists_in_models():
     assert bench.JUDGE_DEFAULT in bench.load_models()
 
 
+def test_default_protocol_is_pass_at_one():
+    assert bench.REPETITIONS_DEFAULT == 1
+    assert bench._score_column_label(bench.REPETITIONS_DEFAULT) == "Pass@1"
+    assert bench._score_column_label(3) == "Tasks passed (all 3 runs)"
+
+
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
     assert len(tasks) == 11
@@ -656,8 +662,8 @@ def test_criterion_tally_excludes_truncated_attempts():
     assert counts == {("t", "c1"): 1}
 
 
-def test_report_scoreboard_and_json(tmp_path, capsys):
-    """End-to-end cmd_report on a synthetic 1-task, 1-model, 2-rep run."""
+def test_report_scoreboard_html_and_json(tmp_path, capsys):
+    """End-to-end cmd_report on a synthetic pass@1 run."""
     run_dir = tmp_path / "run1"
     (run_dir / "responses").mkdir(parents=True)
     (run_dir / "run.json").write_text(json.dumps({
@@ -665,7 +671,7 @@ def test_report_scoreboard_and_json(tmp_path, capsys):
         "models": {"claude-haiku-4-5": {
             "model": "anthropic/claude-haiku-4-5",
             "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}},
-        "tasks": ["headline"], "repetitions": 2, "skills_included": True,
+        "tasks": ["headline"], "repetitions": 1, "skills_included": True,
         "tools_enabled": False, "max_output_tokens": 16000,
         "temperature": "omitted", "protocol": "all-pass",
     }))
@@ -675,13 +681,13 @@ def test_report_scoreboard_and_json(tmp_path, capsys):
          "prompt_sha256": "h", "finish_reason": "end_turn",
          "latency_seconds": 5.0, "input_tokens": 1000, "output_tokens": 1000,
          "web_search_calls": 0, "response_path": "responses/x.md"}
-        for r in (1, 2)
+        for r in (1,)
     ]
     judgments = [
         {"task_id": "headline", "model_id": "claude-haiku-4-5", "repetition": r,
          "judge_model": "claude-sonnet-5", "completed": True,
          "criteria": [{"id": "five_options", "pass": True, "evidence": ""}]}
-        for r in (1, 2)
+        for r in (1,)
     ]
     (run_dir / "attempts.jsonl").write_text(
         "".join(json.dumps(a) + "\n" for a in attempts))
@@ -695,26 +701,40 @@ def test_report_scoreboard_and_json(tmp_path, capsys):
     import argparse
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
     report = (run_dir / "report.md").read_text()
-    assert "## Scoreboard" in report
+    assert "## Results at a glance" in report
+    assert "| Model | Pass@1 |" in report
     assert "**1/1 (100%)**" in report
-    assert "2/2 (100%)" in report
-    assert "Criterion score (macro)" in report
+    assert "Criterion score" in report
+    assert "Output tokens / response" in report
+    assert "Latency / response" in report
+    assert "Est. cost / response" in report
     assert "[prompt](prompts/headline.md)" in report
     assert "[r1 P](responses/headline--claude-haiku-4-5--r1.md)" in report
-    assert "r2 P" in report  # response file absent -> plain mark, no dead link
     assert "μ 1,000 [1,000–1,000]" in report
     assert "μ 5.0s [5.0s–5.0s]" in report
     assert "μ $0.0060 [$0.0060–$0.0060]" in report
-    assert "$0.0120" in report  # 2 x (1000x$1 + 1000x$5)/1M
-    assert "### Per-task repetition ranges" in report
+    assert "$0.0060" in report
+    assert "### Per-task efficiency" in report
+    assert "| headline | claude-haiku-4-5 | 1/1 | 1,000 | 5.0s | $0.0060 |" in report
+    html = (run_dir / "report.html").read_text()
+    assert html.startswith("<!doctype html>")
+    assert "<style>" in html
+    assert "Results at a glance" in html
+    assert "Leaderboard" in html
+    assert "Pass@1" in html
+    assert "claude-haiku-4-5" in html
+    assert "1/1" in html
+    assert "$0.0060" in html
+    assert "<script" not in html
+    assert "https://" not in html  # self-contained; no remote fonts or assets
     summary = json.loads((run_dir / "report.json").read_text())
     model = summary["models"]["claude-haiku-4-5"]
     assert model["tasks_passed"] == 1
     assert model["task_passes"] == {"headline": True}
-    assert model["repetitions_passed"] == 2
-    assert model["repetitions_total"] == 2
-    assert model["single_run_pass_rate"] == 1.0
-    assert model["cost_usd"] == 0.012
+    assert model["runs_passed"] == 1
+    assert model["runs_total"] == 1
+    assert model["run_pass_rate"] == 1.0
+    assert model["cost_usd"] == 0.006
     assert model["mean_output_tokens"] == 1000.0
     assert model["min_output_tokens"] == 1000
     assert model["max_output_tokens"] == 1000
@@ -724,7 +744,7 @@ def test_report_scoreboard_and_json(tmp_path, capsys):
     assert model["mean_cost_usd"] == 0.006
     assert model["min_cost_usd"] == 0.006
     assert model["max_cost_usd"] == 0.006
-    assert model["task_efficiency"]["headline"]["completed_attempts"] == 2
+    assert model["task_efficiency"]["headline"]["completed_attempts"] == 1
     assert model["split_scores"] == {
         "development": {"tasks_passed": 1, "tasks_total": 1},
         "holdout": {"tasks_passed": 0, "tasks_total": 0},
@@ -771,6 +791,21 @@ def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):
         assert path.read_text() == "the submission"
     attempts = [json.loads(l) for l in (run_dir / "attempts.jsonl").read_text().splitlines()]
     assert len(attempts) == 2 and all("error" not in a for a in attempts)
+
+
+def test_run_rejects_non_positive_repetition_count():
+    import argparse
+    args = argparse.Namespace(
+        models="claude-haiku-4-5",
+        tasks="headline",
+        split="all",
+        repetitions=0,
+        no_skills=False,
+        tools=False,
+        yes=True,
+    )
+    with pytest.raises(SystemExit, match="positive integer"):
+        bench.cmd_run(args)
 
 
 def test_snapshot_loading_does_not_require_current_fixture_paths(tmp_path):

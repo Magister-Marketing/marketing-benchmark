@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Marketing Benchmark MVP — direct-API model eval with 3x all-pass grading.
+"""Marketing Benchmark MVP — direct-API model eval with configurable repeats.
 
 Deliberately small: models are called directly over HTTP with default API
 settings, responses are graded by an LLM judge against a per-task binary
-rubric, a human can verify or override every judgment, and a task only
-passes when all repetitions pass.
+rubric, a human can verify or override every judgment, and a task passes
+when every configured run passes. The default is one run per task (pass@1).
 
 Subcommands:
     validate  offline check of tasks, models, and fixtures (CI-safe)
     run       call models (paid); writes attempts + responses
     grade     LLM-judge every attempt (paid); writes judgments
     verify    interactive human review of judgments; writes overrides
-    report    aggregate to report.md (offline)
+    report    aggregate to report.html, report.md, and report.json (offline)
 
 Usage:
     python3 -m mvp.bench validate
@@ -27,6 +27,7 @@ import argparse
 import concurrent.futures
 import datetime as _dt
 import hashlib
+from html import escape
 from html.parser import HTMLParser
 import json
 import re
@@ -46,7 +47,7 @@ TASKS_DIR = MVP_DIR / "tasks"
 MODELS_FILE = MVP_DIR / "models.json"
 RESULTS_DIR = MVP_DIR / "results"
 
-REPETITIONS_DEFAULT = 3
+REPETITIONS_DEFAULT = 1
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -213,6 +214,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     include_skills = not args.no_skills
     tools_enabled = args.tools
     repetitions = args.repetitions
+    if not isinstance(repetitions, int) or isinstance(repetitions, bool) or repetitions < 1:
+        raise SystemExit("--repetitions must be a positive integer")
 
     jobs = [
         (model_id, task_id, rep)
@@ -222,7 +225,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     ]
     print(
         f"About to make {len(jobs)} paid model calls "
-        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} reps, "
+        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs, "
         f"skills {'ON' if include_skills else 'OFF'}, "
         f"tools {'ON (web search)' if tools_enabled else 'OFF'})."
     )
@@ -262,7 +265,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "tools_enabled": tools_enabled,
         "max_output_tokens": MAX_OUTPUT_TOKENS,
         "temperature": "omitted (provider default)",
-        "protocol": "task passes for a model only if every repetition passes all rubric criteria",
+        "protocol": "task passes for a model only if every configured run passes all rubric criteria",
     }, indent=2))
 
     def one(job: tuple[str, str, int]) -> dict:
@@ -1288,6 +1291,476 @@ def _flag_partial_observations(cell: str, observed: int, expected: int) -> str:
     return f"{cell} (n={observed}/{expected})"
 
 
+def _score_column_label(repetitions: int) -> str:
+    return "Pass@1" if repetitions == 1 else f"Tasks passed (all {repetitions} runs)"
+
+
+def _report_summary_rows(
+    model_ids: list[str],
+    task_count: int,
+    repetitions: int,
+    task_pass_counts: dict[str, int],
+    repetition_pass_counts: dict[str, int],
+    efficiency: dict[str, dict],
+) -> list[dict]:
+    attempts_per_model = repetitions * task_count
+    rows = []
+    for model_id in model_ids:
+        stats = efficiency[model_id]
+        responses = stats["completed_attempts"]
+        rows.append(
+            {
+                "model_id": model_id,
+                "tasks_passed": task_pass_counts[model_id],
+                "tasks_total": task_count,
+                "task_score_pct": round(100 * task_pass_counts[model_id] / task_count),
+                "runs_passed": repetition_pass_counts[model_id],
+                "runs_total": attempts_per_model,
+                "criterion_score": (
+                    f"{100 * stats['criterion_pass_rate_macro']:.1f}%"
+                    if stats["criterion_pass_rate_macro"] is not None
+                    else "n/a"
+                ),
+                "tokens": _flag_partial_observations(
+                    _format_token_range(stats),
+                    stats["output_token_observations"],
+                    responses,
+                ),
+                "latency": _flag_partial_observations(
+                    _format_latency_range(stats),
+                    stats["latency_observations"],
+                    responses,
+                ),
+                "cost": _flag_partial_observations(
+                    _format_cost_range(stats),
+                    stats["cost_observations"],
+                    responses,
+                ),
+                "total_cost": (
+                    f"${stats['cost_usd']:.4f}"
+                    if stats["cost_usd"] is not None
+                    else "n/a"
+                ),
+            }
+        )
+    return rows
+
+
+REPORT_CSS = """
+:root {
+  color-scheme: light;
+  --ink: #17231d;
+  --muted: #68736d;
+  --paper: #fffdf8;
+  --canvas: #f1eee5;
+  --line: #dcd8cd;
+  --forest: #153f31;
+  --forest-2: #205b46;
+  --mint: #dff0e7;
+  --red: #9c3b32;
+  --red-soft: #f6e6e2;
+  --gold: #c99a43;
+  --shadow: 0 18px 60px rgba(24, 39, 31, 0.10);
+}
+* { box-sizing: border-box; }
+html { background: var(--canvas); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(201, 154, 67, .16), transparent 24rem),
+    var(--canvas);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+a { color: var(--forest-2); text-underline-offset: 3px; }
+.page { max-width: 1480px; margin: 0 auto; padding: 28px; }
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 34px 38px 30px;
+  color: #f8f6ef;
+  border-radius: 24px 24px 0 0;
+  background: linear-gradient(118deg, #102f25 0%, #1c5842 72%, #266a4f 100%);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  right: -70px;
+  top: -105px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 50%;
+  box-shadow: 0 0 0 35px rgba(255,255,255,.035), 0 0 0 70px rgba(255,255,255,.025);
+}
+.eyebrow {
+  margin: 0 0 10px;
+  color: #bee1d0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+h1 { margin: 0; font-size: clamp(32px, 5vw, 58px); line-height: .98; letter-spacing: -.045em; }
+.hero-copy { max-width: 720px; margin: 14px 0 0; color: #d9e8df; font-size: 15px; line-height: 1.55; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.chip {
+  padding: 7px 10px;
+  color: #edf6f1;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  font-size: 12px;
+  font-weight: 650;
+}
+.sheet {
+  padding: 34px 38px 44px;
+  background: var(--paper);
+  border-radius: 0 0 24px 24px;
+  box-shadow: var(--shadow);
+}
+.section { margin-top: 40px; }
+.section:first-child { margin-top: 0; }
+.section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
+.section h2 { margin: 0; font-size: 21px; letter-spacing: -.025em; }
+.section-note { max-width: 660px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.table-shell { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+table { width: 100%; border-collapse: collapse; }
+.leaderboard { min-width: 1120px; }
+th {
+  padding: 11px 13px;
+  color: #617068;
+  background: #f5f3ed;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-align: right;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+th:first-child, td:first-child { text-align: left; }
+td {
+  padding: 15px 13px;
+  border-bottom: 1px solid #ebe8df;
+  font-size: 13px;
+  text-align: right;
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: #fbfaf6; }
+.model {
+  min-width: 205px;
+  font-weight: 750;
+  letter-spacing: -.012em;
+  overflow-wrap: anywhere;
+}
+.score-main { display: block; color: var(--forest); font-size: 20px; font-weight: 850; letter-spacing: -.025em; }
+.score-sub, .metric-sub { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.metric-main { display: block; font-weight: 760; white-space: nowrap; }
+.callout {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  color: #56635c;
+  border-left: 3px solid var(--gold);
+  background: #faf6ea;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.panel { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.panel h3 { margin: 0 0 12px; font-size: 15px; }
+.compact { min-width: 640px; }
+.compact th, .compact td { padding: 10px 11px; font-size: 11px; }
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+.status.pass { color: var(--forest); background: var(--mint); }
+.status.fail { color: var(--red); background: var(--red-soft); }
+.status.warn { color: #7b5718; background: #f7edcf; }
+.marks { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.health { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.health-card { padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.health-value { display: block; font-size: 22px; font-weight: 850; letter-spacing: -.03em; }
+.health-label { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.empty { margin: 0; color: var(--muted); font-size: 13px; }
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 38px;
+  padding-top: 18px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  line-height: 1.5;
+}
+@media (max-width: 900px) {
+  .page { padding: 0; }
+  .hero, .sheet { border-radius: 0; padding-left: 20px; padding-right: 20px; }
+  .detail-grid { grid-template-columns: 1fr; }
+  .health { grid-template-columns: repeat(2, 1fr); }
+  .section-head { align-items: start; flex-direction: column; gap: 6px; }
+}
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  body { background: #fff; }
+  .page { max-width: none; padding: 0; }
+  .hero, .sheet { border-radius: 0; box-shadow: none; }
+  .section { break-inside: avoid; }
+  .table-shell { overflow: visible; }
+  .leaderboard { min-width: 0; }
+}
+"""
+
+
+def _html_metric(value: str) -> str:
+    match = re.fullmatch(r"μ (.+) \[(.+)–(.+)\](.*)", value)
+    if not match:
+        return f'<span class="metric-main">{escape(value)}</span>'
+    mean, minimum, maximum, suffix = match.groups()
+    return (
+        f'<span class="metric-main">{escape(mean)}</span>'
+        f'<span class="metric-sub">{escape(minimum)}–{escape(maximum)}'
+        f'{escape(suffix)}</span>'
+    )
+
+
+def _task_metric_strings(stats: dict, repetitions: int) -> tuple[str, str, str]:
+    if repetitions > 1:
+        return (
+            _format_token_range(stats),
+            _format_latency_range(stats),
+            _format_cost_range(stats),
+        )
+    tokens = (
+        f"{stats['mean_output_tokens']:,.0f}"
+        if stats["mean_output_tokens"] is not None
+        else "n/a"
+    )
+    latency = (
+        f"{stats['mean_latency_seconds']:.1f}s"
+        if stats["mean_latency_seconds"] is not None
+        else "n/a"
+    )
+    cost = (
+        f"${stats['mean_cost_usd']:.4f}"
+        if stats["mean_cost_usd"] is not None
+        else "n/a"
+    )
+    return tokens, latency, cost
+
+
+def _render_report_html(
+    *,
+    run_meta: dict,
+    label: str | None,
+    model_ids: list[str],
+    task_ids: list[str],
+    repetitions: int,
+    summary_rows: list[dict],
+    passes: dict,
+    task_pass_counts: dict,
+    attempts_by_key: dict,
+    verdicts: dict,
+    failure_counts: dict,
+    task_efficiency: dict,
+    run_health: dict,
+    human_count: int,
+) -> str:
+    h = escape
+    run_id = h(str(run_meta["run_id"]))
+    score_label = h(_score_column_label(repetitions))
+    run_word = "run" if repetitions == 1 else "runs"
+    skills = "Skills on" if run_meta["skills_included"] else "Skills off"
+    tools = "Web tools on" if run_meta.get("tools_enabled") else "Web tools off"
+    verified = f"{human_count}/{len(verdicts)} human verified"
+    grade_label = f"Grade {label or 'default'}"
+    artifact_infix = f".{label}" if label else ""
+    markdown_name = f"report{artifact_infix}.md"
+    json_name = f"report{artifact_infix}.json"
+
+    html = [
+        "<!doctype html>",
+        '<html lang="en"><head>',
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f"<title>Marketing benchmark results · {run_id}</title>",
+        '<meta name="description" content="Marketing model benchmark results">',
+        f"<style>{REPORT_CSS}</style>",
+        "</head><body><main class=\"page\">",
+        '<header class="hero">',
+        '<p class="eyebrow">Direct API · Marketing benchmark</p>',
+        "<h1>Results at a glance</h1>",
+        '<p class="hero-copy">A task passes only when every rubric criterion and '
+        "every configured run passes. Quality and efficiency stay visible side by side.</p>",
+        '<div class="chips">',
+        f'<span class="chip">Run {run_id}</span>',
+        f'<span class="chip">{len(task_ids)} tasks</span>',
+        f'<span class="chip">{repetitions} {run_word} / task</span>',
+        f'<span class="chip">{h(skills)}</span>',
+        f'<span class="chip">{h(tools)}</span>',
+        f'<span class="chip">{h(verified)}</span>',
+        f'<span class="chip">{h(grade_label)}</span>',
+        "</div></header>",
+        '<div class="sheet">',
+        '<section class="section">',
+        '<div class="section-head"><h2>Leaderboard</h2>',
+        '<p class="section-note">Candidate-generation efficiency only. Judge calls '
+        "are excluded from tokens, latency, and cost.</p></div>",
+        '<div class="table-shell"><table class="leaderboard"><thead><tr>',
+        "<th>Model</th>",
+        f"<th>{score_label}</th>",
+        "<th>Criterion score</th>",
+        "<th>Output tokens</th>",
+        "<th>Latency</th>",
+        "<th>Cost / response</th>",
+        "<th>Total cost</th>",
+        "</tr></thead><tbody>",
+    ]
+    for row in summary_rows:
+        run_detail = (
+            f"{row['runs_passed']}/{row['runs_total']} individual runs"
+            if repetitions > 1
+            else "all criteria required"
+        )
+        criterion_class = "pass" if row["criterion_score"] == "100.0%" else "warn"
+        html += [
+            "<tr>",
+            f'<td class="model">{h(row["model_id"])}</td>',
+            '<td><span class="score-main">'
+            f'{row["tasks_passed"]}/{row["tasks_total"]}</span>'
+            f'<span class="score-sub">{row["task_score_pct"]}% · '
+            f'{h(run_detail)}</span></td>',
+            f'<td><span class="status {criterion_class}">{h(row["criterion_score"])}</span></td>',
+            f"<td>{_html_metric(row['tokens'])}</td>",
+            f"<td>{_html_metric(row['latency'])}</td>",
+            f"<td>{_html_metric(row['cost'])}</td>",
+            f'<td><span class="metric-main">{h(row["total_cost"])}</span></td>',
+            "</tr>",
+        ]
+    html += [
+        "</tbody></table></div>",
+        '<div class="callout"><strong>How to read the ranges</strong><span>Values are '
+        "arithmetic mean with minimum–maximum underneath, across all selected "
+        "candidate responses. They are descriptive ranges, not confidence intervals."
+        "</span></div>",
+        "</section>",
+        '<section class="section">',
+        '<div class="section-head"><h2>Task outcomes</h2>',
+        '<p class="section-note">Every task has equal weight in the headline score.</p></div>',
+        '<div class="table-shell"><table class="compact"><thead><tr><th>Task</th>',
+    ]
+    html.extend(f"<th>{h(model_id)}</th>" for model_id in model_ids)
+    html.append("</tr></thead><tbody>")
+    for task_id in task_ids:
+        html += ["<tr>", f'<td class="model">{h(task_id)}</td>']
+        for model_id in model_ids:
+            did_pass = passes[(task_id, model_id)]
+            marks = "".join(
+                attempt_mark(
+                    attempts_by_key.get((task_id, model_id, rep)),
+                    verdicts.get((task_id, model_id, rep)),
+                )
+                for rep in range(1, repetitions + 1)
+            )
+            status = "PASS" if did_pass else "FAIL"
+            css_class = "pass" if did_pass else "fail"
+            html.append(
+                f'<td><span class="status {css_class}">{status}</span>'
+                f'<span class="marks">{h(marks)}</span></td>'
+            )
+        html.append("</tr>")
+    html += [
+        "<tr>",
+        '<td class="model">Tasks passed</td>',
+    ]
+    html.extend(
+        f'<td><span class="metric-main">{task_pass_counts[model_id]}/'
+        f"{len(task_ids)}</span></td>"
+        for model_id in model_ids
+    )
+    html += [
+        "</tr></tbody></table></div></section>",
+        '<section class="section"><div class="detail-grid">',
+        '<div class="panel"><h3>Criterion failures</h3>',
+    ]
+    if failure_counts:
+        html += [
+            '<div class="table-shell"><table class="compact"><thead><tr>',
+            "<th>Task</th><th>Criterion</th><th>Failures</th>",
+            "</tr></thead><tbody>",
+        ]
+        for (task_id, criterion_id), count in sorted(
+            failure_counts.items(), key=lambda item: -item[1]
+        ):
+            html.append(
+                f"<tr><td>{h(task_id)}</td><td>{h(criterion_id)}</td>"
+                f"<td>{count}</td></tr>"
+            )
+        html.append("</tbody></table></div>")
+    else:
+        html.append('<p class="empty">No criterion failures recorded.</p>')
+    html += [
+        "</div>",
+        '<div class="panel"><h3>Run health</h3><div class="health">',
+    ]
+    health_cards = (
+        ("provider_errors", "Provider errors"),
+        ("judge_failures", "Judge failures"),
+        ("truncated_attempts", "Abnormal finishes"),
+        ("ceiling_retries", "Ceiling retries"),
+        ("human_verdicts", "Human verified"),
+    )
+    for key, title in health_cards:
+        html.append(
+            '<div class="health-card">'
+            f'<span class="health-value">{h(str(run_health[key]))}</span>'
+            f'<span class="health-label">{h(title)}</span></div>'
+        )
+    html += [
+        "</div></div></div></section>",
+        '<section class="section">',
+        '<div class="section-head"><h2>Per-task efficiency</h2>',
+        f'<p class="section-note">{"Mean and range across configured runs." if repetitions > 1 else "One observed candidate response per task and model."}</p></div>',
+        '<div class="table-shell"><table class="compact"><thead><tr>',
+        "<th>Task</th><th>Model</th><th>Responses</th><th>Output tokens</th>"
+        "<th>Latency</th><th>Cost / response</th>",
+        "</tr></thead><tbody>",
+    ]
+    for task_id in task_ids:
+        for model_id in model_ids:
+            stats = task_efficiency[(task_id, model_id)]
+            tokens, latency, cost = _task_metric_strings(stats, repetitions)
+            html.append(
+                f"<tr><td>{h(task_id)}</td><td>{h(model_id)}</td>"
+                f'<td>{stats["completed_attempts"]}/{repetitions}</td>'
+                f"<td>{_html_metric(tokens)}</td><td>{_html_metric(latency)}</td>"
+                f"<td>{_html_metric(cost)}</td></tr>"
+            )
+    html += [
+        "</tbody></table></div></section>",
+        '<footer class="footer"><span>Generated from immutable prompts, candidate '
+        "responses, deterministic checks, and judge verdicts. Judge verdicts remain "
+        "advisory until human verified.</span>"
+        f'<span><a href="{h(markdown_name)}">Detailed Markdown</a> · '
+        f'<a href="{h(json_name)}">Raw JSON</a></span></footer>',
+        "</div></main></body></html>",
+    ]
+    return "\n".join(html)
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
     label = getattr(args, "label", None)
@@ -1378,13 +1851,59 @@ def cmd_report(args: argparse.Namespace) -> int:
         split: [task_id for task_id in task_ids if task_splits[task_id] == split]
         for split in TASK_SPLITS
     }
+    summary_rows = _report_summary_rows(
+        model_ids,
+        len(task_ids),
+        repetitions,
+        task_pass_counts,
+        repetition_pass_counts,
+        efficiency,
+    )
 
     lines = [
-        f"# MVP eval report — {run_meta['run_id']}",
+        "# Marketing benchmark results",
+        "",
+        f"Run `{run_meta['run_id']}` · {len(task_ids)} tasks · "
+        f"{repetitions} {'run' if repetitions == 1 else 'runs'} per task · "
+        f"skills {'on' if run_meta['skills_included'] else 'off'} · "
+        f"tools {'on' if run_meta.get('tools_enabled') else 'off'}",
+        "",
+        "## Results at a glance",
+        "",
+        f"| Model | {_score_column_label(repetitions)} | Criterion score | "
+        "Output tokens / response | Latency / response | Est. cost / response | "
+        "Est. total cost |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in summary_rows:
+        score = (
+            f"**{row['tasks_passed']}/{row['tasks_total']} "
+            f"({row['task_score_pct']}%)**"
+        )
+        if repetitions > 1:
+            score += (
+                f"<br><sub>{row['runs_passed']}/{row['runs_total']} individual "
+                "runs passed</sub>"
+            )
+        lines.append(
+            f"| {row['model_id']} | {score} | {row['criterion_score']} | "
+            f"{row['tokens']} | {row['latency']} | {row['cost']} | "
+            f"{row['total_cost']} |"
+        )
+    lines += [
+        "",
+        "> Efficiency cells are arithmetic mean [minimum–maximum] across candidate "
+        "responses. Cost covers candidate generation only and excludes judge calls.",
+        "",
+        "---",
+        "",
+        "## Detailed analysis",
+        "",
+        "### Run configuration",
         "",
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
-        f"- Repetitions per task: {repetitions} (all must pass)",
+        f"- Runs per task: {repetitions} (all configured runs must pass)",
         f"- Max output tokens: {run_meta['max_output_tokens']} Anthropic ceiling"
         " (required by the API); OpenAI uncapped unless a candidate sets one"
         + (
@@ -1400,64 +1919,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         f"- Grade label: {label or 'default'}",
         "",
-        "## Scoreboard",
-        "",
-        "Reliable tasks is the headline: a task passes only when every repetition",
-        "passes. Single-run passes is the average-of-tries view, shown separately",
-        f"rather than weakening the pass^{repetitions} reliability gate. Criterion score gives",
-        "each task equal weight so larger rubrics do not dominate.",
-        "",
-        "### Quality",
-        "",
-        f"| Model | Reliable tasks (pass^{repetitions}) | Single-run passes | Criterion score (macro) |",
-        "|---|---|---|---|",
+        "The headline gives each task equal weight. Criterion score also gives each",
+        "task equal weight so tasks with larger rubrics do not dominate.",
     ]
-    for model_id in model_ids:
-        stats = efficiency[model_id]
-        score_pct = round(100 * task_pass_counts[model_id] / len(task_ids))
-        repetition_pct = round(
-            100 * repetition_pass_counts[model_id] / repetitions_per_model
-        )
-        criterion_score = (
-            f"{100 * stats['criterion_pass_rate_macro']:.1f}%"
-            if stats["criterion_pass_rate_macro"] is not None
-            else "n/a"
-        )
-        lines.append(
-            f"| {model_id} | **{task_pass_counts[model_id]}/{len(task_ids)} "
-            f"({score_pct}%)** | {repetition_pass_counts[model_id]}/"
-            f"{repetitions_per_model} ({repetition_pct}%) | {criterion_score} |"
-        )
-    lines += [
-        "",
-        "### Efficiency",
-        "",
-        "Cells are arithmetic mean [minimum–maximum] across candidate calls that",
-        "returned a response. Ranges are descriptive, not uncertainty intervals.",
-        "Estimated cost covers candidate generation only (input + output tokens),",
-        "excludes judge calls, and is never blended into quality scores.",
-        "",
-        "| Model | Output tokens / response | Latency / response | Est. candidate cost / response | Est. total candidate cost |",
-        "|---|---|---|---|---|",
-    ]
-    for model_id in model_ids:
-        stats = efficiency[model_id]
-        responses = stats["completed_attempts"]
-        tokens = _flag_partial_observations(
-            _format_token_range(stats), stats["output_token_observations"], responses
-        )
-        latency = _flag_partial_observations(
-            _format_latency_range(stats), stats["latency_observations"], responses
-        )
-        cost = _flag_partial_observations(
-            _format_cost_range(stats), stats["cost_observations"], responses
-        )
-        total_cost = (
-            f"${stats['cost_usd']:.4f}" if stats["cost_usd"] is not None else "n/a"
-        )
-        lines.append(
-            f"| {model_id} | {tokens} | {latency} | {cost} | {total_cost} |"
-        )
     if all(split_task_ids.values()):
         lines += [
             "",
@@ -1478,7 +1942,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             lines.append(f"| {model_id} | " + " | ".join(cells) + " |")
     lines += [
         "",
-        "## Task grid (pass = all repetitions passed every rubric criterion)",
+        "## Task grid (pass = every criterion and configured run passed)",
         "",
         "| Task | " + " | ".join(model_ids) + " |",
         "|---|" + "---|" * len(model_ids),
@@ -1500,7 +1964,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         + " | ".join(f"**{task_pass_counts[m]}/{len(task_ids)}**" for m in model_ids)
         + " |",
         "",
-        "Per-repetition marks: P pass, F fail, T truncated/abnormal finish",
+        "Per-run marks: P pass, F fail, T truncated/abnormal finish",
         "(counts as a failure; not quality evidence), E provider error.",
         "",
         "## Criterion failures (quality evidence only: judge verdicts on",
@@ -1524,7 +1988,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         "## Task prompts and model submissions",
         "",
         "Every cell links to the exact text: the full prompt sent (fixtures",
-        "and skills included) and each repetition's raw submission.",
+        "and skills included) and each run's raw submission.",
         "",
         "| Task | Prompt | " + " | ".join(model_ids) + " |",
         "|---|---|" + "---|" * len(model_ids),
@@ -1552,7 +2016,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Model efficiency and criterion resolution",
         "",
-        "Overall ranges below pool every selected task and repetition for a model.",
+        "Overall ranges below pool every selected task and configured run for a model.",
         "The per-task table that follows isolates the repeated calls for the same",
         "prompt, which is the cleaner view of trial-to-trial variation. OpenAI",
         "output-token usage includes hidden reasoning tokens.",
@@ -1586,10 +2050,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
     lines += [
         "",
-        "### Per-task repetition ranges",
+        (
+            "### Per-task run ranges"
+            if repetitions > 1
+            else "### Per-task efficiency"
+        ),
         "",
-        f"Each row summarizes up to {repetitions} repetitions of one identical",
-        "task prompt for one model as mean [minimum–maximum].",
+        (
+            f"Each row summarizes up to {repetitions} runs of one identical task "
+            "prompt as mean [minimum–maximum]."
+            if repetitions > 1
+            else "Each row shows the single candidate response for one task and model."
+        ),
         "",
         "| Task | Model | Responses | Output tokens / response | Latency / response | Est. cost / response |",
         "|---|---|---|---|---|---|",
@@ -1598,18 +2070,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         for model_id in model_ids:
             stats = task_efficiency[(task_id, model_id)]
             responses = stats["completed_attempts"]
+            tokens, latency, cost = _task_metric_strings(stats, repetitions)
             tokens = _flag_partial_observations(
-                _format_token_range(stats),
-                stats["output_token_observations"],
-                responses,
+                tokens, stats["output_token_observations"], responses
             )
             latency = _flag_partial_observations(
-                _format_latency_range(stats),
-                stats["latency_observations"],
-                responses,
+                latency, stats["latency_observations"], responses
             )
             cost = _flag_partial_observations(
-                _format_cost_range(stats), stats["cost_observations"], responses
+                cost, stats["cost_observations"], responses
             )
             lines.append(
                 f"| {task_id} | {model_id} | {responses}/{repetitions} "
@@ -1664,6 +2133,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         "human-verified; the grid above already applies any human overrides.",
     ]
 
+    run_health = {
+        "provider_errors": run_errors,
+        "judge_failures": ungraded,
+        "truncated_attempts": truncated,
+        "ceiling_retries": ceiling_retries,
+        "human_verdicts": len(human),
+        "total_output_tokens": total_output_tokens,
+        "tool_calls": tool_totals,
+    }
     summary = {
         "run_id": run_meta["run_id"],
         "skills_included": run_meta["skills_included"],
@@ -1675,9 +2153,9 @@ def cmd_report(args: argparse.Namespace) -> int:
                 "tasks_passed": task_pass_counts[model_id],
                 "tasks_total": len(task_ids),
                 "task_passes": {t: passes[(t, model_id)] for t in task_ids},
-                "repetitions_passed": repetition_pass_counts[model_id],
-                "repetitions_total": repetitions_per_model,
-                "single_run_pass_rate": round(
+                "runs_passed": repetition_pass_counts[model_id],
+                "runs_total": repetitions_per_model,
+                "run_pass_rate": round(
                     repetition_pass_counts[model_id] / repetitions_per_model,
                     3,
                 ),
@@ -1699,23 +2177,38 @@ def cmd_report(args: argparse.Namespace) -> int:
             }
             for model_id in model_ids
         },
-        "run_health": {
-            "provider_errors": run_errors,
-            "judge_failures": ungraded,
-            "truncated_attempts": truncated,
-            "ceiling_retries": ceiling_retries,
-            "human_verdicts": len(human),
-            "total_output_tokens": total_output_tokens,
-            "tool_calls": tool_totals,
-        },
+        "run_health": run_health,
     }
     report_json_path = _artifact_path(run_dir, "report", "json", label)
     report_json_path.write_text(json.dumps(summary, indent=2) + "\n")
 
     report_path = _artifact_path(run_dir, "report", "md", label)
     report_path.write_text("\n".join(lines) + "\n")
-    print("\n".join(lines))
-    print(f"\nWrote {report_path} and {report_json_path}")
+    report_html_path = _artifact_path(run_dir, "report", "html", label)
+    report_html_path.write_text(
+        _render_report_html(
+            run_meta=run_meta,
+            label=label,
+            model_ids=model_ids,
+            task_ids=task_ids,
+            repetitions=repetitions,
+            summary_rows=summary_rows,
+            passes=passes,
+            task_pass_counts=task_pass_counts,
+            attempts_by_key=attempts_by_key,
+            verdicts=verdicts,
+            failure_counts=failure_counts,
+            task_efficiency=task_efficiency,
+            run_health=run_health,
+            human_count=len(human),
+        )
+        + "\n"
+    )
+    summary_end = lines.index("---")
+    print("\n".join(lines[:summary_end]))
+    print(
+        f"\nWrote {report_html_path}, {report_path}, and {report_json_path}"
+    )
     return 0
 
 
@@ -1758,7 +2251,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
     )
     grade_exit = cmd_grade(grade_args)
     report_exit = cmd_report(argparse.Namespace(run=str(run_dir), label=None))
-    print(f"\nEval finished: {run_dir}/report.md")
+    print(
+        f"\nEval finished: {run_dir}/report.html (shareable) · "
+        f"{run_dir}/report.md (details)"
+    )
     return max(run_exit, grade_exit, report_exit)
 
 
@@ -1793,7 +2289,10 @@ def main(argv: list[str] | None = None) -> int:
         "--split", choices=("all",) + TASK_SPLITS, default="all",
         help="run all tasks or one task split (ignored when --tasks is set)",
     )
-    run_parser.add_argument("--repetitions", type=int, default=REPETITIONS_DEFAULT)
+    run_parser.add_argument(
+        "--repetitions", type=int, default=REPETITIONS_DEFAULT,
+        help=f"runs per model/task (default {REPETITIONS_DEFAULT})",
+    )
     run_parser.add_argument("--no-skills", action="store_true",
                             help="omit skill guidance from prompts (baseline arm)")
     run_parser.add_argument("--tools", action="store_true",
@@ -1824,7 +2323,7 @@ def main(argv: list[str] | None = None) -> int:
     verify_parser.add_argument("--label", help="labeled grading artifacts to verify")
     verify_parser.set_defaults(func=cmd_verify)
 
-    report_parser = sub.add_parser("report", help="write report.md")
+    report_parser = sub.add_parser("report", help="write report.html, report.md, and report.json")
     report_parser.add_argument("--run", required=True)
     report_parser.add_argument("--label", help="labeled grading artifacts to report")
     report_parser.set_defaults(func=cmd_report)
@@ -1836,7 +2335,10 @@ def main(argv: list[str] | None = None) -> int:
         "--split", choices=("all",) + TASK_SPLITS, default="all",
         help="run all tasks or one task split (ignored when --tasks is set)",
     )
-    eval_parser.add_argument("--repetitions", type=int, default=REPETITIONS_DEFAULT)
+    eval_parser.add_argument(
+        "--repetitions", type=int, default=REPETITIONS_DEFAULT,
+        help=f"runs per model/task (default {REPETITIONS_DEFAULT})",
+    )
     eval_parser.add_argument("--no-skills", action="store_true",
                              help="omit skill guidance from prompts (baseline arm)")
     eval_parser.add_argument("--tools", action="store_true",
