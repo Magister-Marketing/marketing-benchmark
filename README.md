@@ -13,9 +13,11 @@ returned data, and creates strong marketing work across repeated trials.
 
 For model-level marketing quality without agents, tools, or sandboxes, use
 the small direct-API runner in [`mvp/`](mvp/README.md). It calls models with
-default API settings, judges each response against a binary rubric
-(completion, skill adherence, best practices), supports human verification of
-every judgment, and passes a task only when all three repetitions pass.
+default API settings, applies deterministic hard checks plus a binary judge
+rubric (completion, skill adherence, best practices), supports human
+verification, and passes a task only when all three repetitions pass. Seven
+development tasks support rubric calibration; four untouched holdout tasks
+test whether that calibration generalizes.
 
 ```bash
 python3 -m mvp.bench validate

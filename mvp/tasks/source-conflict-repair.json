@@ -1,0 +1,43 @@
+{
+  "id": "source-conflict-repair",
+  "title": "Audit and repair a contradictory agency ad brief",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
+    "mvp/fixtures/source-conflict/agency-brief.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md",
+    "evals/fixtures/public/skills/ad-creative/SKILL.md"
+  ],
+  "prompt": "An agency supplied an unverified launch brief for Cedar & Coil. The product-marketing document and authoritative facts override the agency brief wherever they conflict. Audit before writing. Deliver exactly two labeled sections: (1) Conflict register - a table with exactly 12 data rows, one for each unsupported or contradictory atomic claim, quoting or precisely identifying the claim and giving the supported correction or rejection. Treat the product name and price as separate claims even though they share one agency bullet. (2) Corrected concept - one Meta feed ad concept with the labeled fields Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis. Preserve useful, supported direction from the agency brief, use only supplied facts, and keep the work draft-only.",
+  "rubric": {
+    "completion": [
+      {"id": "two_deliverables", "check": "There are exactly two labeled deliverables: a Conflict register table and one Corrected concept."},
+      {"id": "twelve_claim_rows", "check": "The Conflict register has exactly 12 data rows, one per atomic agency claim; product identity and price are separate rows."},
+      {"id": "corrected_fields", "check": "The corrected concept includes all seven labeled fields: Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis."}
+    ],
+    "skill_adherence": [
+      {"id": "product_identity", "check": "The register rejects 'Arc Lamp', gives the canonical name Arc Clip Lamp, and the corrected concept uses no altered product name."},
+      {"id": "price", "check": "The register rejects $59 and gives the supported price of $68; the corrected concept uses no other price if price is mentioned."},
+      {"id": "battery", "check": "The register rejects '12 hours at any brightness' and gives the supported limit: up to eight hours on the lowest brightness."},
+      {"id": "clamp", "check": "The register rejects the 3-inch claim and gives the supported maximum of 2.25 inches."},
+      {"id": "included_items", "check": "The register rejects the adhesive wall mount; the corrected concept does not add it or any other unsupplied accessory."},
+      {"id": "carbon_certification", "check": "The register rejects the carbon-neutral certification as unsupported; it is absent from the corrected concept."},
+      {"id": "bestseller_proof", "check": "The register rejects the #1 best-selling claim as unsupported; it is absent from the corrected concept."},
+      {"id": "productivity_guarantee", "check": "The register rejects the guaranteed 37% productivity claim as unsupported; it is absent from the corrected concept."},
+      {"id": "customer_quote", "check": "The register rejects the invented Jamie R. quote as unsupported; it is absent from the corrected concept."},
+      {"id": "performance_claim", "check": "The register rejects the invented 42% conversion lift because no campaign evidence is supplied; it is absent from the corrected concept."},
+      {"id": "scarcity_claim", "check": "The register rejects 'only 200 remain' because no inventory evidence is supplied; it is absent from the corrected concept."},
+      {"id": "approved_cta", "check": "The register rejects 'Shop Now' and the corrected CTA is exactly 'Explore the Arc Clip Lamp'."}
+    ],
+    "best_practices": [
+      {"id": "supported_direction_preserved", "check": "The corrected concept preserves the useful supported visual idea of moving the lamp between a narrow workspace/shelf and bedside, tied to adaptable light in compact spaces."},
+      {"id": "operational_hypothesis", "check": "The Test hypothesis names the changed message or visual variable, its comparator, an observable KPI, and the expected direction."},
+      {"id": "no_new_claims", "check": "The audit and corrected concept introduce no new product fact, customer, proof point, offer, urgency, or performance claim beyond the authoritative sources."}
+    ]
+  }
+}

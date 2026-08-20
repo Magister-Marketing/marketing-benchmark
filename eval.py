@@ -5,6 +5,7 @@
     ./eval.py claude-sonnet-5 --tools                # with web search
     ./eval.py claude-haiku-4-5 --no-skills -y        # baseline arm, no prompt
     ./eval.py gpt-5.6-sol --tasks headline,blog-post # a task subset
+    ./eval.py claude-sonnet-5 --split holdout         # untouched-task check
 
 Model ids come from mvp/models.json; tasks from mvp/tasks/. The run
 directory (prompts, raw submissions, judgments, report.md, report.json)
@@ -42,6 +43,10 @@ def main() -> int:
     )
     parser.add_argument("models", nargs="+", help="model ids from mvp/models.json")
     parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
+    parser.add_argument(
+        "--split", choices=("all",) + bench.TASK_SPLITS, default="all",
+        help="run all tasks or one task split (ignored when --tasks is set)",
+    )
     parser.add_argument("--repetitions", type=int, default=bench.REPETITIONS_DEFAULT)
     parser.add_argument("--no-skills", action="store_true",
                         help="omit skill guidance from prompts (baseline arm)")
@@ -58,6 +63,7 @@ def main() -> int:
     return bench.cmd_eval(argparse.Namespace(
         models=",".join(args.models),
         tasks=args.tasks,
+        split=args.split,
         repetitions=args.repetitions,
         no_skills=args.no_skills,
         tools=args.tools,

@@ -1,6 +1,9 @@
 {
   "id": "marketing-plan",
   "title": "90-day marketing plan for a fictional B2B SaaS",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "evals/fixtures/public/brands/northstar-ops/product-marketing.md"
   ],
@@ -21,7 +24,8 @@
     ],
     "best_practices": [
       {"id": "focused_strategy", "check": "The plan concentrates on the three chosen channels with reasoning that references the ICP, rather than spreading across every possible tactic."},
-      {"id": "sequenced_90_days", "check": "The 90 days are phased (e.g. by month or milestone) with dependencies acknowledged, and the positioning ('faster, visible handoffs without adding another weekly status meeting') carries through the messaging."}
+      {"id": "sequenced_90_days", "check": "The 90 days are phased (e.g. by month or milestone) with dependencies acknowledged, and the positioning ('faster, visible handoffs without adding another weekly status meeting') carries through the messaging."},
+      {"id": "mature_activation_denominator", "check": "Activation rate is defined using only trial starts whose full 14-day activation window has closed; newer trials are explicitly pending rather than counted as non-activated."}
     ]
   }
 }

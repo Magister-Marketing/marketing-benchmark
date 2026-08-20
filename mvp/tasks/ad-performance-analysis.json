@@ -1,6 +1,9 @@
 {
   "id": "ad-performance-analysis",
   "title": "Paid ad campaign performance analysis",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
@@ -16,12 +19,14 @@
     ],
     "skill_adherence": [
       {"id": "missing_preserved", "check": "The empty conversions/revenue cells for Launch Teaser in the week of 2026-07-20 are flagged as missing data (e.g. a tracking gap), not treated as zero or silently summed over."},
+      {"id": "partial_metric_denominators", "check": "Any Launch Teaser CPA or ROAS uses spend and outcomes from exactly the same complete rows, or is reported as unavailable. Dividing all four weeks of spend by only three known weeks of conversions/revenue fails."},
       {"id": "evidence_shown", "check": "The arithmetic behind key claims is shown (at least CPA calculations), and metric definitions/sources are used as supplied rather than invented."},
       {"id": "cautious_conclusions", "check": "A limitation that would most change the conclusion is stated (e.g. attribution window, missing week, four-week sample), and correlation is not presented as proven causation."}
     ],
     "best_practices": [
       {"id": "trend_over_snapshot", "check": "The diagnosis is driven by week-over-week movement (Broad's CTR/CPA deterioration, Retargeting frequency climbing 6.1 to 11.4 with falling conversions), not four-week averages alone."},
-      {"id": "prioritized_action", "check": "Recommendations are prioritized (one clear primary move) rather than an unranked laundry list."}
+      {"id": "prioritized_action", "check": "Recommendations are prioritized (one clear primary move) rather than an unranked laundry list."},
+      {"id": "bounded_test_decision", "check": "The proposed test has one control and one changed variable, a duration or spend cap, one primary KPI, a numeric win rule, and either a numeric minimum sample or an explicit rule for declaring the result inconclusive."}
     ]
   }
 }

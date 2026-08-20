@@ -1,5 +1,9 @@
 # MVP eval report — 20260819-233057-6e21f87b
 
+> Historical rubric-v1 report. See the
+> [rubric-v2 calibration](20260820-rubric-v2-calibration.md) for the
+> non-destructive regrade of these same submissions.
+
 - Skills in prompt: yes
 - Tools: none
 - Repetitions per task: 3 (all must pass)

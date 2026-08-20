@@ -1,6 +1,9 @@
 {
   "id": "shopify-meta-capi",
   "title": "Shopify to Meta ads conversion tracking implementation",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
@@ -20,6 +23,8 @@
     ],
     "best_practices": [
       {"id": "dedup_correct", "check": "Deduplication is technically correct: the same event_id and event_name sent on both the Pixel and CAPI event so Meta drops the duplicate; not a vague mention."},
+      {"id": "event_id_retry_stability", "check": "The event_id is generated or derived once per commerce event, shared by browser and server, and reused unchanged on webhook retries or order updates; a new random suffix per send or retry fails."},
+      {"id": "event_time_stable", "check": "The server Purchase event uses the purchase/order occurrence timestamp in Unix seconds and preserves it across retries; using the current send or retry time fails."},
       {"id": "pii_hashing", "check": "Customer data handling is correct: personally identifiable fields (e.g. email) are normalized (trimmed, lowercased) and SHA-256 hashed before sending in user_data."},
       {"id": "actionable_path", "check": "The recommended Shopify path is decisive and executable for a small DTC store (a clear recommendation with concrete setup steps, not an undifferentiated list of options)."}
     ]

@@ -1,0 +1,37 @@
+{
+  "id": "factorial-ad-test",
+  "title": "Constraint-dense 2x2 Meta creative experiment",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ad-creative/SKILL.md",
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Design a draft-only 2x2 Meta feed creative experiment for the Arc Clip Lamp. Cross exactly two audiences (Renters, Makers) with exactly two appeals (Surface-space saving, Lighting control), producing exactly four cells A-D and every audience/appeal combination once. For each cell label Audience, Appeal, Headline, Primary text, Visual direction, CTA, and Creative rationale. Use exactly the CTA 'Explore the Arc Clip Lamp'. Vary only the assigned audience language and the assigned appeal's supported message and visual; hold the product identity, offer, copy/visual format, placement, run dates, and measurement rules constant. Reserve a maximum budget of $4,800 equally as a $1,200 cap per cell over 14 days. Primary KPI: landing-page-view rate, defined as landing-page views divided by link clicks. Guardrail: cost per AddToCart. Stop any cell after $300 spend with zero AddToCart; unused budget remains unspent and is not reallocated. If any cell stops, the final result is inconclusive. Otherwise, declare a winner only when it has at least a 15% relative landing-page-view-rate lift versus the click-weighted pooled rate of the other three cells (their total landing-page views divided by their total link clicks), after every cell has at least 200 link clicks; if that full rule is not met, declare the test inconclusive. Include a labeled Execution rules section that makes the constants, budget caps, stop consequence, KPI, guardrail, win rule, and inconclusive rule explicit. Include a separate labeled Preregistered hypotheses section with exactly three directional hypotheses on landing-page-view rate: the audience main effect, the appeal main effect, and the audience-by-appeal interaction. Do not invent prior performance or product proof.",
+  "rubric": {
+    "completion": [
+      {"id": "full_factorial", "check": "Exactly four cells A-D are present and cover Renters x Surface-space saving, Renters x Lighting control, Makers x Surface-space saving, and Makers x Lighting control exactly once."},
+      {"id": "cell_fields", "check": "Every cell labels Audience, Appeal, Headline, Primary text, Visual direction, CTA, and Creative rationale."},
+      {"id": "budget_and_duration", "check": "The plan reserves a maximum of $4,800 as a $1,200 cap per cell over 14 days; it does not promise that a stopped cell will spend its full cap."},
+      {"id": "execution_rules_section", "check": "A labeled Execution rules section is present."},
+      {"id": "hypotheses_section", "check": "A separate labeled Preregistered hypotheses section is present."}
+    ],
+    "skill_adherence": [
+      {"id": "approved_cta", "check": "All four CTA fields are exactly 'Explore the Arc Clip Lamp'."},
+      {"id": "grounded_copy", "check": "All copy and visuals use only supplied Arc Clip Lamp facts and avoid invented customers, results, proof, scarcity, offers, or capabilities."},
+      {"id": "cells_isolate_factors", "check": "Product identity, offer, copy/visual format, placement, run dates, and measurement rules stay constant; cells vary only the assigned audience language and the assigned appeal's supported message and visual."}
+    ],
+    "best_practices": [
+      {"id": "factorial_hypotheses", "check": "Exactly three directional landing-page-view-rate hypotheses are preregistered: one audience main effect, one appeal main effect, and one audience-by-appeal interaction; each names its comparison without changing an extra factor."},
+      {"id": "kpi_and_guardrail", "check": "Landing-page-view rate is correctly defined as landing-page views / link clicks and cost per AddToCart is the guardrail."},
+      {"id": "stop_rule_exact", "check": "The stop rule is exactly $300 spend with zero AddToCart for an individual cell; unused budget is not reallocated and any triggered stop makes the final result inconclusive."},
+      {"id": "win_rule_exact", "check": "A winner requires at least 15% relative landing-page-view-rate lift versus the click-weighted pooled rate of the other three cells (their total landing-page views / total link clicks) and at least 200 link clicks in every cell."},
+      {"id": "inconclusive_rule", "check": "The plan explicitly declares the result inconclusive when the full win rule is not met and does not pick a winner from directional data alone."}
+    ]
+  }
+}
