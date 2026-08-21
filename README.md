@@ -81,7 +81,7 @@ To reproduce the latest run shown above:
   --env-file .env.local
 ```
 
-## Options in plain English
+## Eval options
 
 | Option | Meaning |
 |---|---|
