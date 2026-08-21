@@ -1,18 +1,57 @@
-# Magister Marketing Evals
+<p align="center">
+  <a href="https://magistermarketing.com">
+    <img src="docs/assets/magister-mark.svg" width="64" alt="Magister logo">
+  </a>
+</p>
 
-An evidence-first eval runner for marketing models and agents. It runs real
-marketing tasks, checks objective requirements locally, uses an LLM judge for
-semantic quality, and produces shareable HTML, Markdown, and JSON reports.
+<h1 align="center">Magister Marketing Evals</h1>
 
-> **Private staging project.** This repository is not currently open source
-> and does not grant a redistribution license.
+<p align="center">
+  A clear, inspectable way to compare how well AI models handle real marketing work.
+</p>
 
-## Run your first eval
+## Latest results
 
-You need Python 3.11 or newer and an Anthropic API key. Add an OpenAI key when
-evaluating GPT models.
+This small development run gave each model one chance at the same three tasks.
+It was run on August 20, 2026, with Magister's marketing skills included and
+web search turned off.
 
-### 1. Install
+| Model | Overall score | Marketing plan | Shopify tracking | Ad analysis | Output tokens | Answer cost | Avg. task time |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GPT-5.6 Luna medium | **1/3 (33%)** | FAIL · 7/8 checks | PASS · 11/11 checks | FAIL · 8/10 checks | 12,102 | $0.0150 | 38.6s |
+| GPT-5.6 Luna x-high | **2/3 (67%)** | PASS · 8/8 checks | PASS · 11/11 checks | FAIL · 9/10 checks | 57,900 | $0.0699 | 163.4s |
+
+Each task is worth one point. An answer that passes 7 of 8 checks still fails
+that task; the fraction simply shows how close it came. Tokens and cost cover
+the model answering the tasks, not the judge. These judge verdicts have not
+been human-verified, so this is a development check rather than a public model
+ranking.
+
+## Start here
+
+| Guide | What it explains |
+|---|---|
+| **1. [Tasks](docs/TASKS.md)** | What the models are asked to do and the difference between development and holdout tasks. |
+| **2. [How it is scored](docs/SCORING.md)** | How an answer becomes a pass or fail, how repeats work, and what the efficiency numbers mean. |
+| **3. [Scored examples](docs/SCORED_EXAMPLES.md)** | Real answers from the run above, what the judge noticed, and why each example passed or failed. |
+
+## What this benchmark does
+
+For every task, the runner:
+
+1. gives each model the same assignment, source material, and optional
+   marketing guidance;
+2. checks exact requirements locally and uses an independent AI judge for
+   requirements that need interpretation; and
+3. creates an HTML report where every score can be traced back to the task,
+   answer, and judge explanation.
+
+The main score is intentionally simple: **tasks passed ÷ tasks attempted**.
+
+## Run it yourself
+
+You need Python 3.11 or newer and an API key for the models you want to run.
+The default judge also needs an Anthropic API key.
 
 ```bash
 git clone https://github.com/Magister-Marketing/marketing-benchmark.git
@@ -23,170 +62,53 @@ python -m pip install -e .
 cp .env.example .env.local
 ```
 
-Add your keys to `.env.local`. The file is gitignored. Keys are read only for
-provider calls and are never written to run evidence.
-
-### 2. Validate the catalog
-
-This is offline and makes no provider calls:
-
-```bash
-python -m eval_runner.bench validate
-```
-
-### 3. Run one model on one task
+Add your API keys to `.env.local`, then run one model on one task:
 
 ```bash
 ./eval.py claude-haiku-4-5 --tasks headline --env-file .env.local
 ```
 
-The command shows the number of candidate calls and asks for confirmation.
-Grading adds one judge call for each completed candidate response. It then:
+The runner shows the number of paid API calls before it starts. When it
+finishes, it prints the location of the results. Open `report.html` for the
+shareable report.
 
-1. generates one candidate response;
-2. grades it with the default judge; and
-3. writes `report.html`, `report.md`, and `report.json`.
-
-The result directory is printed when the run finishes. Open the HTML report:
-
-```bash
-open eval_runner/results/<run-id>/report.html
-```
-
-Skills are included, web tools are off, and each task runs once by default.
-That default protocol is **Pass@1**.
-
-## Compare two models
-
-This is the three-task command used for the example below. It requires both
-`OPENAI_API_KEY` for the candidates and `ANTHROPIC_API_KEY` for the default
-judge.
+To reproduce the latest run shown above:
 
 ```bash
 ./eval.py gpt-5.6-luna-medium gpt-5.6-luna-xhigh \
   --tasks marketing-plan,shopify-meta-capi,ad-performance-analysis \
+  --repetitions 1 --judge claude-sonnet-5 \
   --env-file .env.local
 ```
 
-### Example result
+## Options in plain English
 
-This development smoke run made six candidate calls: one response from each
-model on each of three tasks.
+| Option | Meaning |
+|---|---|
+| `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
+| `--split development` | Run tasks used for improving and checking the benchmark. |
+| `--split holdout` | Run the untouched final-test tasks. |
+| `--repetitions 3` | Ask for three answers per model and task. All three must pass. The default is one. |
+| `--no-skills` | Leave Magister's marketing guidance out of the prompt. |
+| `--tools` | Allow the answering model to use provider-hosted web search. |
+| `--judge MODEL` | Choose the model that grades requirements needing interpretation. |
+| `--env-file PATH` | Load API keys from a local file. |
+| `-y` or `--yes` | Skip the paid-call confirmation. |
 
-| Model | Pass@1 | Output tokens | Candidate cost | Avg task time |
-|---|---:|---:|---:|---:|
-| Luna medium | **1/3 (33%)** | 12,102 | $0.0150 | 38.6s |
-| Luna xhigh | **2/3 (67%)** | 57,900 | $0.0699 | 163.4s |
+Every run stores its exact prompts, answers, judgments, configuration, and
+HTML, Markdown, and JSON reports under `eval_runner/results/<run-id>/`. This
+folder is ignored by Git unless a reviewed result is deliberately published.
 
-| Task | Luna medium | Luna xhigh |
-|---|---:|---:|
-| Marketing plan | FAIL · 7/8 | PASS · 8/8 |
-| Shopify CAPI | PASS · 11/11 | PASS · 11/11 |
-| Ad analysis | FAIL · 8/10 | FAIL · 9/10 |
+## More detail
 
-The binary task result drives the score. Fractions such as `7/8` explain how
-many rubric requirements passed; they are not partial credit. Token and cost
-figures cover candidate generation only, while task time is the average
-candidate-call latency. Judge usage is excluded. These verdicts have not been
-human-verified, so this is implementation evidence rather than a published
-model ranking.
-
-More recorded examples:
-
-- [Rubric-v2 calibration across 105 submissions](docs/results/20260820-rubric-v2-calibration.md)
-- [GPT-5.6 marketing quick screen](docs/results/2026-07-31-openai-marketing-quick.md)
-- [Repeated agent baselines](docs/results/2026-08-01-repeated-agent-baselines.md)
-
-## How scoring works
-
-- Every selected model receives the same task prompt, fixtures, and skill
-  guidance.
-- Objective requirements—counts, exact values, document structure, and other
-  mechanically knowable facts—are checked locally.
-- The tool-less LLM judge evaluates the remaining semantic criteria against
-  the exact recorded prompt and response.
-- A task passes only when every local check and judge criterion passes.
-- The overall score is passed tasks divided by selected tasks.
-- With `--repetitions N`, every configured response must pass for the task to
-  pass. The default is one.
-
-See the [direct-model runner reference](eval_runner/README.md) for task design,
-skill injection, judging, human verification, and rubric-version rules.
-
-## Useful commands
-
-These examples assume keys are already exported. Append
-`--env-file .env.local` to an `eval.py` command when using the template.
-
-```bash
-# Compare models across every task
-./eval.py gpt-5.6-luna-medium gpt-5.6-luna-xhigh
-
-# Run only development tasks or untouched holdouts
-./eval.py claude-sonnet-5 --split development
-./eval.py claude-sonnet-5 --split holdout
-
-# Explicitly require three successful responses per model/task
-./eval.py claude-sonnet-5 --tasks headline --repetitions 3
-
-# Remove skill guidance for a baseline arm
-./eval.py claude-haiku-4-5 --tasks headline --no-skills
-
-# Enable provider-hosted web search
-./eval.py claude-sonnet-5 --tasks blog-post --tools
-```
-
-Run stages separately when you want to regrade saved responses without paying
-for generation again:
-
-```bash
-python -m eval_runner.bench run --models claude-haiku-4-5 --tasks headline
-python -m eval_runner.bench grade --run eval_runner/results/<run-id>
-python -m eval_runner.bench verify --run eval_runner/results/<run-id>
-python -m eval_runner.bench report --run eval_runner/results/<run-id>
-```
-
-Each run keeps the exact prompts, task snapshots, raw responses, judgments,
-configuration, and reports under `eval_runner/results/<run-id>/`. Results are
-gitignored by default.
-
-## Agent and tool-use evals
-
-The `direct-api` harness above is the simplest path for comparing raw models.
-The portable `marketing-benchmark` engine also supports Claude Code, Codex,
-OpenAI Responses, replay MCP environments, blinded pairwise judging, and
-third-party adapters.
-
-Start with its offline plan:
-
-```bash
-.venv/bin/marketing-benchmark validate
-.venv/bin/marketing-benchmark conformance
-.venv/bin/marketing-benchmark plan \
-  --experiment evals/experiments/ga4-replay.json
-```
-
-Paid agent runs require an adapter-specific confirmation and an explicit cost
-ceiling. See the [agent-runner guide](evals/open_source/README.md),
-[architecture](docs/ARCHITECTURE.md), and
-[plugin SDK](evals/open_source/PLUGIN_SDK.md).
-
-## Development
-
-```bash
-python -m pip install -e '.[dev]'
-make validate     # catalog validation; offline
-make conformance  # adapter and environment contracts
-make test         # unit and contract tests
-make build        # wheel and source distribution
-make check        # all of the above
-```
-
-Additional references:
-
+- [Direct-model runner reference](eval_runner/README.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Agent and tool-use runner](evals/open_source/README.md)
 - [Security model](evals/open_source/SECURITY.md)
-- [Using the runner from Magister](docs/MAGISTER_INTEGRATION.md)
-- [Public-release checklist](evals/open_source/OPEN_SOURCE_CHECKLIST.md)
 
-Publication remains gated on an approved license, security contact,
-provenance review, package review, governance documents, and release approval.
+---
+
+Built by [Magister Marketing](https://magistermarketing.com).
+
+> **Private staging project.** This repository is not currently open source
+> and does not grant a redistribution license.
