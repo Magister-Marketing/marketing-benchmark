@@ -21,9 +21,10 @@ calibration; four untouched holdout tasks test whether that calibration
 generalizes. Each run produces structured JSON, detailed Markdown, and a
 Magister-branded self-contained HTML report. Its task matrix links directly to
 a task-grouped inline view containing the exact assignment once, a compact
-model comparison, and each candidate response with criterion-level judge
-evidence. The header includes repository and reproducibility links, and the
-page is designed for viewing, printing, and screenshot-ready sharing.
+model comparison, and collapsed model-submission panels with each candidate
+response and criterion-level judge evidence. The header includes a GitHub
+button and a click-to-copy reproducibility command, and the page is designed
+for viewing, printing, and screenshot-ready sharing.
 
 ```bash
 python3 -m mvp.bench validate

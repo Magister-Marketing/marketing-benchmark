@@ -1385,6 +1385,7 @@ button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-underline-offset: 3px; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .page { max-width: 1500px; margin: 0 auto; padding: 0 32px 54px; }
 .site-header {
   display: flex;
@@ -1403,16 +1404,24 @@ a { color: inherit; text-underline-offset: 3px; }
 }
 .brand-rule { width: 1px; height: 24px; margin: 0 2px; background: var(--border); }
 .brand-product { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
-.header-meta { color: var(--muted-foreground); font-size: 11px; }
 .header-actions { display: flex; align-items: center; gap: 14px; }
-.github-link { font-size: 11px; font-weight: 600; text-decoration: none; }
-.github-link:hover { text-decoration: underline; }
-.reproduce-bar { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 9px 0; border-bottom: 1px solid rgba(9, 9, 11, .07); }
-.reproduce-label { flex: 0 0 auto; color: var(--muted-foreground); font-size: 8px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-.reproduce-command { min-width: 0; flex: 1; overflow-x: auto; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: #27272a; font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; scrollbar-width: thin; }
-.copy-command { flex: 0 0 auto; padding: 6px 9px; color: var(--foreground); border: 1px solid var(--border); border-radius: 8px; background: var(--card); cursor: pointer; font-size: 9px; font-weight: 600; }
-.copy-command:hover { border-color: #b5b5bd; }
-.reproduce-note { flex: 0 0 auto; color: var(--muted-foreground); font-size: 8px; white-space: nowrap; }
+.github-link { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.82); font-size: 12px; font-weight: 600; text-decoration: none; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.github-link:hover { transform: translateY(-1px); border-color: #a1a1aa; background: var(--card); }
+.github-mark { width: 17px; height: 17px; flex: 0 0 auto; }
+.github-arrow { color: var(--muted-foreground); font-size: 10px; }
+.reproduce-bar { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 0; border-bottom: 1px solid rgba(9, 9, 11, .07); }
+.reproduce-label { flex: 0 0 auto; color: var(--muted-foreground); font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.reproduce-command { appearance: none; min-width: 0; flex: 1; display: flex; align-items: center; overflow: hidden; padding: 0; color: #27272a; border: 1px solid var(--border); border-radius: 10px; background: var(--muted); cursor: pointer; text-align: left; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+.reproduce-command:hover { border-color: #a1a1aa; background: #f0f0f2; }
+.reproduce-command:focus-visible { outline: 2px solid var(--agent); outline-offset: 2px; }
+.reproduce-command.is-copied { border-color: #6ee7b7; background: var(--agent-soft); }
+.reproduce-code { min-width: 0; flex: 1; overflow-x: auto; padding: 11px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; scrollbar-width: thin; }
+.copy-icon { position: relative; width: 18px; height: 18px; margin: 0 12px; flex: 0 0 auto; color: #52525b; }
+.copy-icon::before, .copy-icon::after { content: ""; position: absolute; width: 9px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; }
+.copy-icon::before { top: 2px; left: 6px; }
+.copy-icon::after { top: 6px; left: 2px; background: inherit; }
+.reproduce-command.is-copied .copy-icon { color: #047857; }
+.reproduce-note { flex: 0 0 auto; color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
 h2, h3, p { text-wrap: pretty; }
 .section { margin-top: 54px; }
 .section-head {
@@ -1473,7 +1482,7 @@ tbody tr:last-child td { border-bottom: 0; }
 thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .matrix-model { left: 0; width: 210px; min-width: 210px; }
 .matrix-score { left: 210px; width: 100px; min-width: 100px; box-shadow: 10px 0 15px -16px rgba(9,9,11,.8); }
-.matrix-task { width: 152px; min-width: 152px; text-align: center; }
+.matrix-task { width: 184px; min-width: 184px; text-align: center; }
 .matrix-metric { min-width: 112px; }
 .model-filter { max-width: 195px; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
 .model-filter:hover { transform: none; text-decoration: underline; }
@@ -1490,8 +1499,8 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
   cursor: pointer;
   text-align: center;
 }
-.task-head-id { display: block; color: #27272a; font-size: 10px; font-weight: 600; line-height: 1.3; text-transform: none; white-space: normal; }
-.task-head-title { display: block; margin-top: 4px; color: #71717a; font-size: 8px; font-weight: 400; letter-spacing: 0; line-height: 1.25; text-transform: none; white-space: normal; }
+.task-head-id { display: block; color: #27272a; font-size: 13px; font-weight: 600; line-height: 1.3; text-transform: none; white-space: normal; }
+.task-head-title { display: block; max-width: 160px; margin: 5px auto 0; color: #71717a; font-size: 11px; font-weight: 400; letter-spacing: 0; line-height: 1.3; text-transform: none; white-space: normal; }
 .matrix-cell { padding: 8px; text-align: center; }
 .result-cell {
   display: block;
@@ -1538,12 +1547,16 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .submission-result-model { color: var(--foreground); font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
 .submission-result-model:hover { text-decoration: underline; }
 .submission-result-criteria { font-family: "Instrument Serif", Georgia, serif; font-size: 22px; line-height: 1; }
-.model-submission-list { display: grid; gap: 16px; margin-top: 16px; }
+.model-submissions { padding: 22px 26px 26px; border-top: 1px solid var(--border); background: #fafafa; }
+.model-submissions-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 2px 12px; }
+.model-submissions-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 23px; font-weight: 400; }
+.model-submissions-note { margin: 0; color: var(--muted-foreground); font-size: 10px; }
+.model-submission-list { display: grid; gap: 12px; }
 .submission-card {
   scroll-margin-top: 18px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 15px;
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
@@ -1551,11 +1564,15 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .submission-header {
   display: grid;
   grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
   gap: 24px;
-  padding: 24px 26px;
-  border-bottom: 1px solid var(--border);
+  padding: 20px 22px;
   background: linear-gradient(120deg, #fff, #fafafa);
 }
+.submission-card > .submission-header { cursor: pointer; list-style: none; }
+.submission-card > .submission-header::-webkit-details-marker { display: none; }
+.submission-card:not([open]) > .submission-header:hover { background: #f7f7f8; }
+.submission-card[open] > .submission-header { border-bottom: 1px solid var(--border); }
 .submission-kicker { margin: 0 0 8px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 .submission-model {
   display: inline-flex;
@@ -1571,6 +1588,7 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 }
 .submission-model-label { padding-right: 10px; color: #a1a1aa; border-right: 1px solid #3f3f46; font-size: 8px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 .submission-model strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.submission-summary { display: flex; align-items: center; gap: 18px; }
 .outcome { display: flex; align-items: center; gap: 10px; }
 .status {
   display: inline-flex;
@@ -1589,6 +1607,12 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .criteria-score { text-align: right; }
 .criteria-score strong { display: block; font-family: "Instrument Serif", Georgia, serif; font-size: 30px; font-weight: 400; line-height: 1; }
 .criteria-score span { color: var(--muted-foreground); font-size: 9px; }
+.submission-toggle { display: inline-flex; align-items: center; gap: 7px; min-width: 106px; color: #047857; font-size: 10px; font-weight: 600; }
+.toggle-open { display: none; }
+.toggle-chevron { display: inline-block; font-size: 15px; line-height: 1; transition: transform .16s ease; }
+.submission-card[open] .toggle-closed { display: none; }
+.submission-card[open] .toggle-open { display: inline; }
+.submission-card[open] .toggle-chevron { transform: rotate(180deg); }
 .submission-body { padding: 0 26px 26px; }
 .block-label { margin: 0 0 9px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .expandable-section { margin-top: 16px; overflow: hidden; border: 1px solid #d4d4d8; border-radius: 14px; background: var(--card); }
@@ -1654,7 +1678,7 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
 @media (max-width: 900px) {
   .page { padding: 0 17px 38px; }
   .site-header { min-height: 64px; }
-  .brand-product, .header-meta, .reproduce-note { display: none; }
+  .brand-product, .reproduce-note { display: none; }
   .reproduce-bar { flex-wrap: wrap; }
   .reproduce-label { width: 100%; }
   .section { margin-top: 40px; }
@@ -1663,9 +1687,10 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
   .matrix-score { left: 164px; }
   .filter-row { grid-template-columns: 1fr; gap: 7px; }
   .submission-header { grid-template-columns: 1fr; padding: 20px; }
+  .submission-summary { justify-content: space-between; }
   .outcome { justify-content: space-between; }
   .submission-body { padding: 0 18px 20px; }
-  .task-brief-header, .task-prompt, .submission-results { padding: 18px; }
+  .task-brief-header, .task-prompt, .submission-results, .model-submissions { padding: 18px; }
   .footer { flex-direction: column; }
 }
 @media (max-width: 520px) {
@@ -1683,6 +1708,7 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
   .results-matrix { min-width: 0; }
   .matrix-model, .matrix-score { position: static; box-shadow: none; }
   .submission-card { break-inside: avoid; box-shadow: none; }
+  details.submission-card > .submission-body { display: block !important; }
   details.response, details.evidence-details { display: none; }
 }
 """
@@ -1954,12 +1980,31 @@ def _render_report_html(
         '<span class="brand-product">Marketing Evals</span></a>',
         '<div class="header-actions">',
         '<a class="github-link" href="https://github.com/Magister-Marketing/'
-        'marketing-benchmark" target="_blank" rel="noreferrer">GitHub ↗</a>',
-        f'<span class="header-meta">Run {run_id}</span></div></div>',
+        'marketing-benchmark" target="_blank" rel="noreferrer" '
+        'aria-label="View the Marketing Benchmark repository on GitHub">',
+        '<svg class="github-mark" viewBox="0 0 24 24" aria-hidden="true">'
+        '<path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 '
+        '2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.009-.866-'
+        '.014-1.7-2.782.605-3.369-1.343-3.369-1.343-.455-1.158-1.11-'
+        '1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.071 1.531 '
+        '1.032 1.531 1.032.892 1.529 2.341 1.087 2.91.831.092-.647.349-'
+        '1.087.635-1.337-2.221-.253-4.555-1.113-4.555-4.951 0-1.093.39-'
+        '1.988 1.029-2.688-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 '
+        '2.75 1.026A9.564 9.564 0 0112 6.844a9.59 9.59 0 012.504.337c1.909-'
+        '1.295 2.747-1.026 2.747-1.026.546 1.377.202 2.394.1 2.647.64.7 '
+        '1.028 1.595 1.028 2.688 0 3.847-2.338 4.695-4.566 4.942.359.31 '
+        '.678.921.678 1.856 0 1.34-.012 2.421-.012 2.75 0 .268.18.58.688 '
+        '.482A10.02 10.02 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>',
+        '<span>GitHub</span><span class="github-arrow" aria-hidden="true">↗</span>'
+        '</a></div></div>',
         '<div class="reproduce-bar">',
         '<span class="reproduce-label">Rerun this configuration</span>',
-        f'<code class="reproduce-command" data-reproduce-command>{h(reproduce_command)}</code>',
-        '<button class="copy-command" type="button" data-copy-command>Copy</button>',
+        '<button class="reproduce-command" type="button" data-copy-command '
+        'aria-label="Copy the exact eval command">',
+        f'<code class="reproduce-code" data-reproduce-command>{h(reproduce_command)}</code>',
+        '<span class="copy-icon" aria-hidden="true"></span>',
+        '<span class="sr-only" data-copy-status aria-live="polite">Copy command</span>'
+        '</button>',
         f'<span class="reproduce-note">{h(arm_note)}</span></div></header>',
         '<section class="section" aria-labelledby="results-title">',
         '<div class="section-head"><div>',
@@ -2159,6 +2204,8 @@ def _render_report_html(
                     f'<tr data-summary-row data-task="{h(task_id)}" '
                     f'data-model="{h(result_model_id)}">',
                     '<td><a class="submission-result-model" '
+                    'data-focus-submission '
+                    f'data-task="{h(task_id)}" data-model="{h(result_model_id)}" '
                     f'href="#{submission_ids[(task_id, result_model_id)]}">'
                     f'{h(result_model_id)}</a></td>',
                     f'<td><span class="status {result_class}">{result_status}</span></td>',
@@ -2169,21 +2216,30 @@ def _render_report_html(
                     f'<td><span class="metric-main">{h(result_latency)}</span></td></tr>',
                 ]
             html += [
-                '</tbody></table></div></section></section>',
+                '</tbody></table></div></section>',
+                '<section class="model-submissions">',
+                '<div class="model-submissions-head">',
+                '<h4 class="model-submissions-title">Model submissions</h4>',
+                '<p class="model-submissions-note">Open a model to inspect its '
+                'response and judge evidence.</p></div>',
                 '<div class="model-submission-list">',
             ]
         html += [
-            f'<article class="submission-card" id="{submission_ids[(task_id, model_id)]}" '
+            f'<details class="submission-card" id="{submission_ids[(task_id, model_id)]}" '
             f'data-submission data-task="{h(task_id)}" data-model="{h(model_id)}">',
-            '<header class="submission-header"><div>',
+            '<summary class="submission-header"><div>',
             '<p class="submission-kicker">Model submission</p>',
             '<div class="submission-model"><span class="submission-model-label">Model</span>',
             f'<strong>{h(model_id)}</strong></div></div>',
-            '<div class="outcome">',
+            '<div class="submission-summary"><div class="outcome">',
             f'<span class="status {css_class}">{status}</span>',
             '<div class="criteria-score">',
             f'<strong>{tally["passed"]}/{tally["judged"]}</strong>',
-            '<span>judge criteria passed</span></div></div></header>',
+            '<span>judge criteria passed</span></div></div>',
+            '<span class="submission-toggle"><span class="toggle-closed">Open submission</span>',
+            '<span class="toggle-open">Close submission</span>',
+            '<span class="toggle-chevron" aria-hidden="true">⌄</span></span>',
+            '</div></summary>',
             '<div class="submission-body">',
         ]
         for run in submission["runs"]:
@@ -2305,9 +2361,9 @@ def _render_report_html(
                     ]
                 html.append("</div></details>")
             html.append("</section>")
-        html.append("</div></article>")
+        html.append("</div></details>")
         if model_id == model_ids[-1]:
-            html.append("</div></article>")
+            html.append("</div></section></section></article>")
     html += [
         '</div></section><footer class="footer">',
         '<a class="footer-brand" href="https://magistermarketing.com" '
@@ -2361,13 +2417,25 @@ def _render_report_html(
         '      document.getElementById("submissions").scrollIntoView({ behavior: "smooth" }); }',
         '    const focus = event.target.closest("[data-focus-submission]");',
         '    if (focus) { state.task = focus.dataset.task; state.model = focus.dataset.model;',
-        '      applyFilters(); }',
+        '      applyFilters();',
+        '      const target = document.getElementById(focus.getAttribute("href").slice(1));',
+        '      if (target && target.matches("details[data-submission]")) target.open = true; }',
         '    if (event.target.closest("[data-print]")) window.print();',
         '  });',
+        '  async function copyText(value) {',
+        '    if (navigator.clipboard && window.isSecureContext) {',
+        '      await navigator.clipboard.writeText(value); return;',
+        '    }',
+        '    const field = document.createElement("textarea"); field.value = value;',
+        '    field.setAttribute("readonly", ""); field.style.position = "fixed";',
+        '    field.style.opacity = "0"; document.body.appendChild(field); field.select();',
+        '    const copied = document.execCommand("copy"); field.remove();',
+        '    if (!copied) throw new Error("Copy unavailable");',
+        '  }',
         '  const share = document.querySelector("[data-share]");',
         '  if (share) share.addEventListener("click", async () => {',
         '    const original = share.textContent;',
-        '    try { await navigator.clipboard.writeText(window.location.href);',
+        '    try { await copyText(window.location.href);',
         '      share.textContent = "Link copied"; }',
         '    catch (_error) { share.textContent = "Copy the address bar"; }',
         '    window.setTimeout(() => { share.textContent = original; }, 1800);',
@@ -2375,15 +2443,20 @@ def _render_report_html(
         '  const copyCommand = document.querySelector("[data-copy-command]");',
         '  if (copyCommand) copyCommand.addEventListener("click", async () => {',
         '    const command = document.querySelector("[data-reproduce-command]");',
-        '    const original = copyCommand.textContent;',
-        '    try { await navigator.clipboard.writeText(command.textContent);',
-        '      copyCommand.textContent = "Copied"; }',
-        '    catch (_error) { copyCommand.textContent = "Select command"; }',
-        '    window.setTimeout(() => { copyCommand.textContent = original; }, 1800);',
+        '    const copyStatus = document.querySelector("[data-copy-status]");',
+        '    try { await copyText(command.textContent);',
+        '      copyCommand.classList.add("is-copied");',
+        '      copyCommand.setAttribute("aria-label", "Eval command copied");',
+        '      copyStatus.textContent = "Command copied"; }',
+        '    catch (_error) { copyStatus.textContent = "Copy unavailable"; }',
+        '    window.setTimeout(() => { copyCommand.classList.remove("is-copied");',
+        '      copyCommand.setAttribute("aria-label", "Copy the exact eval command");',
+        '      copyStatus.textContent = "Copy command"; }, 1800);',
         '  });',
         '  const initial = document.getElementById(decodeURIComponent(location.hash.slice(1)));',
         '  if (initial && initial.matches("[data-submission]")) {',
         '    state.task = initial.dataset.task; state.model = initial.dataset.model;',
+        '    if (initial.matches("details")) initial.open = true;',
         '  }',
         '  applyFilters();',
         '})();',

@@ -47,12 +47,14 @@ criterion counts only explain near misses. The Magister-branded `report.html`
 embeds the real logo and typography and keeps every task/model submission on
 the main page. Its header links to the repository and includes a copyable
 command reconstructed from the recorded models, tasks, repetition count,
-skills arm, tools arm, and judge. Selecting a matrix cell jumps into a
+skills arm, tools arm, and judge; clicking anywhere on the command copies it.
+Selecting a matrix cell jumps into a
 filterable Tasks & Submissions view grouped by task: the exact assignment and
 complete assembled prompt appear once, followed by a task-level model results
-table and a distinct response-and-score component for every model. Candidate
-responses and complete prompts are prominent expandable panels; raw Markdown
-links are secondary actions inside them. It has no remote runtime dependencies
+table and a collapsed response-and-score panel for every model. Opening a
+model reveals its candidate response and judge evidence; complete prompts and
+raw responses remain expandable, with raw Markdown links as secondary actions.
+It has no remote runtime dependencies
 and is formatted for screenshots and printing. `report.md` keeps the same
 all-in-one table at the top followed by a text-first audit trail. `report.json`
 contains the compact leaderboard plus the self-contained submission records.

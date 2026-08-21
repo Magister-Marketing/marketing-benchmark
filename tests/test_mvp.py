@@ -779,7 +779,19 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert html.count("Complete task prompt") == 1
     assert '<pre class="prompt-copy">the prompt</pre>' in html
     assert html.count('class="submission-model"') == 2
-    assert html.count("Model submission") == 2
+    assert html.count('<p class="submission-kicker">Model submission</p>') == 2
+    submission_tags = re.findall(r'<details class="submission-card"[^>]*>', html)
+    assert len(submission_tags) == 2
+    assert all(" open" not in tag for tag in submission_tags)
+    task_group = html[
+        html.index('<article class="task-group"'):
+        html.index("</article>", html.index('<article class="task-group"'))
+    ]
+    assert task_group.count('<details class="submission-card"') == 2
+    assert html.count("Open submission") == 2
+    assert html.count("data-focus-submission") == 5  # four links plus JS selector
+    assert "target.open = true" in html
+    assert "initial.open = true" in html
     assert "What the judge said" in html
     assert "Copy view link" in html
     assert html.count("Candidate submission") == 2
@@ -789,7 +801,13 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
         "--repetitions 1" in html
     )
     assert 'data-copy-command' in html
+    assert '<button class="reproduce-command"' in html
+    assert 'class="copy-icon"' in html
+    assert 'class="copy-command"' not in html
+    assert 'document.execCommand("copy")' in html
+    assert 'class="header-meta"' not in html
     assert 'href="https://github.com/Magister-Marketing/marketing-benchmark"' in html
+    assert 'class="github-mark"' in html
     assert html.count('href="https://magistermarketing.com"') == 2
     assert 'src="data:image/svg+xml;base64,' in html
     assert 'url("data:font/woff2;base64,' in html
