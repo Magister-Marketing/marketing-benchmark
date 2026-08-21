@@ -683,30 +683,35 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     """End-to-end cmd_report on a synthetic pass@1 run."""
     run_dir = tmp_path / "run1"
     (run_dir / "responses").mkdir(parents=True)
+    model_ids = ("claude-haiku-4-5", "claude-sonnet-5")
     (run_dir / "run.json").write_text(json.dumps({
         "run_id": "run1", "created_at": "x",
-        "models": {"claude-haiku-4-5": {
-            "model": "anthropic/claude-haiku-4-5",
-            "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}},
+        "models": {
+            model_id: {
+                "model": f"anthropic/{model_id}",
+                "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 5.0},
+            }
+            for model_id in model_ids
+        },
         "tasks": ["headline"], "repetitions": 1, "skills_included": True,
         "tools_enabled": False, "max_output_tokens": 16000,
         "temperature": "omitted", "protocol": "all-pass",
     }))
     attempts = [
-        {"run_id": "run1", "task_id": "headline", "model_id": "claude-haiku-4-5",
+        {"run_id": "run1", "task_id": "headline", "model_id": model_id,
          "repetition": r, "skills_included": True, "tools_enabled": False,
          "prompt_sha256": "h", "finish_reason": "end_turn",
          "latency_seconds": 5.0, "input_tokens": 1000, "output_tokens": 1000,
          "web_search_calls": 0,
-         "response_path": "responses/headline--claude-haiku-4-5--r1.md"}
-        for r in (1,)
+         "response_path": f"responses/headline--{model_id}--r1.md"}
+        for model_id in model_ids for r in (1,)
     ]
     judgments = [
-        {"task_id": "headline", "model_id": "claude-haiku-4-5", "repetition": r,
+        {"task_id": "headline", "model_id": model_id, "repetition": r,
          "judge_model": "claude-sonnet-5", "completed": True,
          "criteria": [{"id": "five_options", "pass": True,
                        "evidence": "Present </script> in the response."}]}
-        for r in (1,)
+        for model_id in model_ids for r in (1,)
     ]
     (run_dir / "attempts.jsonl").write_text(
         "".join(json.dumps(a) + "\n" for a in attempts))
@@ -715,9 +720,10 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
 
     (run_dir / "prompts").mkdir()
     (run_dir / "prompts" / "headline.md").write_text("the prompt")
-    (run_dir / "responses" / "headline--claude-haiku-4-5--r1.md").write_text(
-        "answer </pre><script>alert('unsafe')</script>"
-    )
+    for model_id in model_ids:
+        (run_dir / "responses" / f"headline--{model_id}--r1.md").write_text(
+            "answer </pre><script>alert('unsafe')</script>"
+        )
 
     import argparse
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
@@ -756,21 +762,35 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert html.startswith("<!doctype html>")
     assert "<style>" in html
     assert "Magister Marketing Evals" in html
-    assert "Marketing model benchmark" in html
-    assert "Results matrix" in html
-    assert "Submission explorer" in html
+    assert "Marketing Evaluation Benchmarks" in html
+    assert "Tasks &amp; Submissions" in html
+    assert "Submission results" in html
+    assert "Every answer. Every criterion." not in html
+    assert 'class="hero"' not in html
     assert "Pass@1" in html
     assert "claude-haiku-4-5" in html
     assert "1/1" in html
     assert "$0.0060" in html
-    assert 'data-submission data-task="headline"' in html
+    assert html.count('data-task-group data-task="headline"') == 1
+    assert html.count('data-submission data-task="headline"') == 2
+    assert html.count('data-summary-row data-task="headline"') == 2
     assert 'data-filter-kind="task"' in html
-    assert "Exact task asked" in html
-    assert "View complete assembled prompt with fixtures and skills" in html
+    assert html.count("Exact task asked") == 1
+    assert html.count("Complete task prompt") == 1
     assert '<pre class="prompt-copy">the prompt</pre>' in html
+    assert html.count('class="submission-model"') == 2
+    assert html.count("Model submission") == 2
     assert "What the judge said" in html
     assert "Copy view link" in html
-    assert "View exact candidate submission" in html
+    assert html.count("Candidate submission") == 2
+    assert "Rerun this configuration" in html
+    assert (
+        "./eval.py claude-haiku-4-5 claude-sonnet-5 --tasks headline "
+        "--repetitions 1" in html
+    )
+    assert 'data-copy-command' in html
+    assert 'href="https://github.com/Magister-Marketing/marketing-benchmark"' in html
+    assert html.count('href="https://magistermarketing.com"') == 2
     assert 'src="data:image/svg+xml;base64,' in html
     assert 'url("data:font/woff2;base64,' in html
     assert "answer &lt;/pre&gt;&lt;script&gt;alert(&#x27;unsafe&#x27;)" in html
@@ -781,7 +801,11 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
         assert removed not in html
     assert html.count("<script>") == 1  # self-contained interaction only
     assert '<script src=' not in html
-    assert 'href="http' not in html
+    external_links = set(re.findall(r'href="(https://[^"]+)"', html))
+    assert external_links == {
+        "https://github.com/Magister-Marketing/marketing-benchmark",
+        "https://magistermarketing.com",
+    }
     assert 'src="http' not in html
     summary = json.loads((run_dir / "report.json").read_text())
     model = summary["models"]["claude-haiku-4-5"]
@@ -803,14 +827,26 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
         "holdout": {"tasks_passed": 0, "tasks_total": 0},
     }
     assert "run_health" not in summary
-    assert len(summary["submissions"]) == 1
-    submission = summary["submissions"][0]
+    assert len(summary["submissions"]) == 2
+    submission = next(
+        item for item in summary["submissions"]
+        if item["model_id"] == "claude-haiku-4-5"
+    )
     assert submission["task_id"] == "headline"
     assert submission["task_prompt"] == bench.load_tasks()["headline"]["prompt"]
     assert submission["assembled_prompt"] == "the prompt"
     assert submission["assembled_prompt_path"] == "prompts/headline.md"
     assert submission["pass"] is True
     assert submission["criteria"] == {"passed": 1, "judged": 1}
+    assert submission["metrics"] == {
+        "planned_runs": 1,
+        "output_token_observations": 1,
+        "total_output_tokens": 1000,
+        "cost_observations": 1,
+        "candidate_cost_usd": 0.006,
+        "latency_observations": 1,
+        "average_latency_seconds": 5.0,
+    }
     assert submission["runs"][0]["response"] == (
         "answer </pre><script>alert('unsafe')</script>"
     )

@@ -20,9 +20,10 @@ an explicit `--repetitions N` choice. Seven development tasks support rubric
 calibration; four untouched holdout tasks test whether that calibration
 generalizes. Each run produces structured JSON, detailed Markdown, and a
 Magister-branded self-contained HTML report. Its task matrix links directly to
-an inline explorer containing the exact assignment, candidate response, and
-criterion-level judge evidence for every result; the page is designed for
-viewing, printing, and screenshot-ready sharing.
+a task-grouped inline view containing the exact assignment once, a compact
+model comparison, and each candidate response with criterion-level judge
+evidence. The header includes repository and reproducibility links, and the
+page is designed for viewing, printing, and screenshot-ready sharing.
 
 ```bash
 python3 -m mvp.bench validate

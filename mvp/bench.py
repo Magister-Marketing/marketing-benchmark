@@ -31,6 +31,7 @@ from html import escape
 from html.parser import HTMLParser
 import json
 import re
+import shlex
 import sys
 import uuid
 from pathlib import Path
@@ -1403,64 +1404,16 @@ a { color: inherit; text-underline-offset: 3px; }
 .brand-rule { width: 1px; height: 24px; margin: 0 2px; background: var(--border); }
 .brand-product { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
 .header-meta { color: var(--muted-foreground); font-size: 11px; }
-.hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 42px;
-  padding: 70px 0 44px;
-}
-.eyebrow {
-  margin: 0 0 13px;
-  color: var(--agent);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-h1, h2, h3, p { text-wrap: pretty; }
-h1 {
-  max-width: 850px;
-  margin: 0;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: clamp(48px, 6.5vw, 86px);
-  font-weight: 400;
-  letter-spacing: -.035em;
-  line-height: .94;
-}
-h1 em { color: var(--agent); font-style: italic; }
-.hero-copy {
-  max-width: 720px;
-  margin: 23px 0 0;
-  color: var(--muted-foreground);
-  font-size: 16px;
-  line-height: 1.65;
-}
-.hero-score {
-  min-width: 210px;
-  padding: 22px 24px;
-  border: 1px solid color-mix(in srgb, var(--agent) 26%, var(--border));
-  border-radius: 24px;
-  background: rgba(255,255,255,.76);
-  box-shadow: var(--shadow-float);
-  backdrop-filter: blur(14px);
-}
-.hero-score-label { display: block; color: var(--muted-foreground); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-.hero-score-value { display: block; margin-top: 4px; font-family: "Instrument Serif", Georgia, serif; font-size: 44px; line-height: 1; }
-.hero-score-note { display: block; margin-top: 8px; color: var(--muted-foreground); font-size: 10px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 6px 11px;
-  color: #3f3f46;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255,255,255,.76);
-  font-size: 10px;
-  font-weight: 600;
-}
+.header-actions { display: flex; align-items: center; gap: 14px; }
+.github-link { font-size: 11px; font-weight: 600; text-decoration: none; }
+.github-link:hover { text-decoration: underline; }
+.reproduce-bar { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 9px 0; border-bottom: 1px solid rgba(9, 9, 11, .07); }
+.reproduce-label { flex: 0 0 auto; color: var(--muted-foreground); font-size: 8px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.reproduce-command { min-width: 0; flex: 1; overflow-x: auto; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: #27272a; font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; scrollbar-width: thin; }
+.copy-command { flex: 0 0 auto; padding: 6px 9px; color: var(--foreground); border: 1px solid var(--border); border-radius: 8px; background: var(--card); cursor: pointer; font-size: 9px; font-weight: 600; }
+.copy-command:hover { border-color: #b5b5bd; }
+.reproduce-note { flex: 0 0 auto; color: var(--muted-foreground); font-size: 8px; white-space: nowrap; }
+h2, h3, p { text-wrap: pretty; }
 .section { margin-top: 54px; }
 .section-head {
   display: flex;
@@ -1568,7 +1521,24 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .filter-row { display: grid; grid-template-columns: 72px minmax(0,1fr); align-items: center; gap: 12px; }
 .filter-label { color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .filter-status { margin: 0; color: var(--muted-foreground); font-size: 10px; }
-.submission-list { display: grid; gap: 22px; }
+.task-list { display: grid; gap: 46px; }
+.task-group { scroll-margin-top: 18px; }
+.task-brief { overflow: hidden; border: 1px solid var(--border); border-radius: 22px; background: var(--card); box-shadow: var(--shadow-card); }
+.task-brief-header { padding: 24px 26px 20px; background: linear-gradient(120deg, #fff, #fafafa); }
+.task-kicker { margin: 0 0 7px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.task-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.018em; line-height: 1.05; }
+.task-prompt { padding: 22px 26px 24px; border-top: 1px solid var(--border); background: #fafafa; }
+.task-prompt-title { margin: 0 0 8px; font-family: "Instrument Serif", Georgia, serif; font-size: 23px; font-weight: 400; }
+.task-prompt > p:last-of-type { margin: 0; font-size: 12px; line-height: 1.65; }
+.submission-results { padding: 22px 26px 26px; border-top: 1px solid var(--border); }
+.submission-results-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 2px 10px; }
+.submission-results-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 23px; font-weight: 400; }
+.submission-results-note { margin: 0; color: var(--muted-foreground); font-size: 10px; }
+.submission-results-table { min-width: 780px; }
+.submission-result-model { color: var(--foreground); font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+.submission-result-model:hover { text-decoration: underline; }
+.submission-result-criteria { font-family: "Instrument Serif", Georgia, serif; font-size: 22px; line-height: 1; }
+.model-submission-list { display: grid; gap: 16px; margin-top: 16px; }
 .submission-card {
   scroll-margin-top: 18px;
   overflow: hidden;
@@ -1586,9 +1556,21 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
   border-bottom: 1px solid var(--border);
   background: linear-gradient(120deg, #fff, #fafafa);
 }
-.submission-kicker { margin: 0 0 6px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
-.submission-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 29px; font-weight: 400; letter-spacing: -.018em; line-height: 1.05; }
-.submission-model { margin: 8px 0 0; color: var(--muted-foreground); font-size: 11px; overflow-wrap: anywhere; }
+.submission-kicker { margin: 0 0 8px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.submission-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  margin: 0;
+  padding: 9px 12px;
+  color: var(--primary-foreground);
+  border-radius: 10px;
+  background: var(--primary);
+  box-shadow: 0 4px 12px -8px rgba(9, 9, 11, .8);
+}
+.submission-model-label { padding-right: 10px; color: #a1a1aa; border-right: 1px solid #3f3f46; font-size: 8px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.submission-model strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .outcome { display: flex; align-items: center; gap: 10px; }
 .status {
   display: inline-flex;
@@ -1608,12 +1590,16 @@ thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
 .criteria-score strong { display: block; font-family: "Instrument Serif", Georgia, serif; font-size: 30px; font-weight: 400; line-height: 1; }
 .criteria-score span { color: var(--muted-foreground); font-size: 9px; }
 .submission-body { padding: 0 26px 26px; }
-.task-prompt { margin: 0 -26px; padding: 22px 26px; border-bottom: 1px solid var(--border); background: #fafafa; }
 .block-label { margin: 0 0 9px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-.task-prompt p { margin: 0; font-size: 12px; line-height: 1.65; }
-.text-link { display: inline-flex; margin-top: 10px; color: #047857; font-size: 10px; font-weight: 600; }
-details.prompt-details { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
-.prompt-copy { max-height: 520px; overflow: auto; margin: 0; padding: 17px; border-top: 1px solid var(--border); color: #27272a; font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.expandable-section { margin-top: 16px; overflow: hidden; border: 1px solid #d4d4d8; border-radius: 14px; background: var(--card); }
+.expandable-section[open] { border-color: #a1a1aa; box-shadow: 0 5px 18px -14px rgba(9,9,11,.5); }
+.expandable-section > summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 17px; cursor: pointer; list-style-position: inside; }
+.expandable-heading { display: block; font-family: "Instrument Serif", Georgia, serif; font-size: 20px; font-weight: 400; line-height: 1.1; }
+.expandable-description { display: block; margin-top: 3px; color: var(--muted-foreground); font-family: "DM Sans", system-ui, sans-serif; font-size: 9px; font-weight: 400; }
+.artifact-link { flex: 0 0 auto; color: #047857; font-size: 9px; font-weight: 600; }
+.artifact-content { border-top: 1px solid var(--border); }
+.artifact-actions { padding: 0 17px 15px; }
+.prompt-copy { max-height: 520px; overflow: auto; margin: 0; padding: 17px; color: #27272a; font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .run-evidence { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--border); }
 .run-evidence:first-of-type { border-top: 0; }
 .run-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -1648,9 +1634,9 @@ details.prompt-details { margin-top: 12px; border: 1px solid var(--border); bord
   background: var(--agent-soft);
   font-size: 11px;
 }
-details.evidence-details, details.response { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fafafa; }
+details.evidence-details { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fafafa; }
 details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-weight: 600; }
-.response-copy { max-height: 620px; overflow: auto; margin: 0; padding: 17px; border-top: 1px solid var(--border); background: #111113; color: #f4f4f5; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.response-copy { max-height: 620px; overflow: auto; margin: 0; padding: 17px; background: #111113; color: #f4f4f5; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .footer {
   display: flex;
   justify-content: space-between;
@@ -1662,15 +1648,15 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
   font-size: 9px;
   line-height: 1.5;
 }
-.footer-brand { display: inline-flex; align-items: center; gap: 7px; color: var(--foreground); }
+.footer-brand { display: inline-flex; align-items: center; gap: 7px; color: var(--foreground); text-decoration: none; }
 .footer-brand img { width: 15px; height: auto; }
 .footer-brand strong { font-family: "Instrument Serif", Georgia, serif; font-size: 17px; font-weight: 400; }
 @media (max-width: 900px) {
   .page { padding: 0 17px 38px; }
   .site-header { min-height: 64px; }
-  .brand-product, .header-meta { display: none; }
-  .hero { grid-template-columns: 1fr; gap: 22px; padding: 48px 0 28px; }
-  .hero-score { min-width: 0; }
+  .brand-product, .header-meta, .reproduce-note { display: none; }
+  .reproduce-bar { flex-wrap: wrap; }
+  .reproduce-label { width: 100%; }
   .section { margin-top: 40px; }
   .section-head { align-items: start; flex-direction: column; gap: 12px; }
   .matrix-model { width: 164px; min-width: 164px; }
@@ -1679,21 +1665,19 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
   .submission-header { grid-template-columns: 1fr; padding: 20px; }
   .outcome { justify-content: space-between; }
   .submission-body { padding: 0 18px 20px; }
-  .task-prompt { margin: 0 -18px; padding: 18px; }
+  .task-brief-header, .task-prompt, .submission-results { padding: 18px; }
   .footer { flex-direction: column; }
 }
 @media (max-width: 520px) {
-  h1 { font-size: 48px; }
   .brand-name { font-size: 27px; }
   .metric-strip { grid-template-columns: 1fr; }
+  .expandable-section > summary { align-items: flex-start; flex-direction: column; }
 }
 @media print {
   @page { size: landscape; margin: 10mm; }
   body { background: #fff; }
   .page { max-width: none; padding: 0; }
-  .site-header, .report-actions, .explorer-toolbar, .footer { display: none; }
-  .hero { padding: 0 0 18px; }
-  .hero-score { box-shadow: none; }
+  .site-header, .reproduce-bar, .report-actions, .explorer-toolbar, .footer { display: none; }
   .section { margin-top: 26px; break-inside: avoid; }
   .table-shell { overflow: visible; box-shadow: none; }
   .results-matrix { min-width: 0; }
@@ -1755,6 +1739,33 @@ def _criterion_fraction(tally: dict) -> str:
 def _markdown_table_cell(value: object) -> str:
     """Keep recorded judge text from breaking compact Markdown tables."""
     return escape(str(value)).replace("|", "\\|").replace("\n", "<br>")
+
+
+def _submission_metrics(runs: list[dict]) -> dict:
+    """Task/model totals used by the inline submission-results table."""
+
+    def observations(key: str) -> list[float | int]:
+        return [
+            run[key]
+            for run in runs
+            if isinstance(run.get(key), (int, float))
+            and not isinstance(run[key], bool)
+        ]
+
+    output_tokens = observations("output_tokens")
+    costs = observations("cost_usd")
+    latencies = observations("latency_seconds")
+    return {
+        "planned_runs": len(runs),
+        "output_token_observations": len(output_tokens),
+        "total_output_tokens": sum(output_tokens) if output_tokens else None,
+        "cost_observations": len(costs),
+        "candidate_cost_usd": round(sum(costs), 6) if costs else None,
+        "latency_observations": len(latencies),
+        "average_latency_seconds": (
+            round(sum(latencies) / len(latencies), 1) if latencies else None
+        ),
+    }
 
 
 def submission_records(
@@ -1861,6 +1872,7 @@ def submission_records(
                     "model_id": model_id,
                     "pass": passes[(task_id, model_id)],
                     "criteria": task_criteria[(task_id, model_id)],
+                    "metrics": _submission_metrics(runs),
                     "runs": runs,
                 }
             )
@@ -1879,26 +1891,43 @@ def _render_report_html(
     passes: dict,
     task_criteria: dict,
     submissions: list[dict],
-    verdict_count: int,
-    human_count: int,
+    judge_model: str | None,
 ) -> str:
     h = escape
     run_id = h(str(run_meta["run_id"]))
     score_label = h(_score_column_label(repetitions))
-    run_word = "run" if repetitions == 1 else "runs"
-    skills = "Skills on" if run_meta["skills_included"] else "Skills off"
-    tools = "Web tools on" if run_meta.get("tools_enabled") else "Web tools off"
-    verified = f"{human_count}/{verdict_count} human verified"
-    grade_label = f"Grade {label or 'default'}"
     artifact_infix = f".{label}" if label else ""
     markdown_name = f"report{artifact_infix}.md"
     json_name = f"report{artifact_infix}.json"
-    top_row = max(summary_rows, key=lambda row: row["task_score_pct"])
-    top_models = [
-        row["model_id"]
-        for row in summary_rows
-        if row["task_score_pct"] == top_row["task_score_pct"]
+    reproduce_parts = [
+        "./eval.py",
+        *model_ids,
+        "--tasks",
+        ",".join(task_ids),
+        "--repetitions",
+        str(repetitions),
     ]
+    if not run_meta["skills_included"]:
+        reproduce_parts.append("--no-skills")
+    if run_meta.get("tools_enabled"):
+        reproduce_parts.append("--tools")
+    if judge_model:
+        reproduce_parts.extend(("--judge", judge_model))
+    reproduce_command = shlex.join(reproduce_parts)
+    arm_note = (
+        f"Skills {'on' if run_meta['skills_included'] else 'off'} · "
+        f"tools {'on' if run_meta.get('tools_enabled') else 'off'} · outputs may vary"
+    )
+
+    def observed_metric(
+        value: float | int | None,
+        observations: int,
+        planned: int,
+        formatter,
+    ) -> str:
+        rendered = formatter(value) if value is not None else "n/a"
+        return _flag_partial_observations(rendered, observations, planned)
+
     submission_ids = {
         (task_id, model_id): f"submission-{task_index + 1}-{model_index + 1}"
         for task_index, task_id in enumerate(task_ids)
@@ -1917,34 +1946,24 @@ def _render_report_html(
         '<meta name="description" content="Magister Marketing model benchmark results">',
         f"<style>{_report_css()}</style>",
         '</head><body><main class="page" id="top">',
-        '<header class="site-header">',
-        '<a class="brand-lockup" href="#top" aria-label="Magister Marketing Evals">',
+        '<header class="report-header"><div class="site-header">',
+        '<a class="brand-lockup" href="https://magistermarketing.com" '
+        'target="_blank" rel="noreferrer" aria-label="Visit Magister Marketing">',
         f'<img class="brand-mark" src="{brand_assets.MAGISTER_LOGO}" alt="">',
         '<span class="brand-name">Magister</span><span class="brand-rule"></span>',
         '<span class="brand-product">Marketing Evals</span></a>',
-        f'<span class="header-meta">Run {run_id}</span></header>',
-        '<section class="hero">',
-        '<div><p class="eyebrow">Marketing model benchmark</p>',
-        '<h1>Every answer. Every criterion. <em>One clear score.</em></h1>',
-        '<p class="hero-copy">Compare model performance task by task, then inspect '
-        "the exact assignment, candidate submission, and judge evidence behind "
-        "every result.</p>",
-        '<div class="chips">',
-        f'<span class="chip">{len(task_ids)} tasks</span>',
-        f'<span class="chip">{len(model_ids)} models</span>',
-        f'<span class="chip">{repetitions} {run_word} / task</span>',
-        f'<span class="chip">{h(skills)}</span>',
-        f'<span class="chip">{h(tools)}</span>',
-        f'<span class="chip">{h(verified)}</span>',
-        f'<span class="chip">{h(grade_label)}</span></div></div>',
-        '<aside class="hero-score" aria-label="Top benchmark score">',
-        f'<span class="hero-score-label">Top {score_label}</span>',
-        f'<span class="hero-score-value">{top_row["task_score_pct"]}%</span>',
-        f'<span class="hero-score-note">{h(", ".join(top_models))}</span>',
-        '</aside></section>',
+        '<div class="header-actions">',
+        '<a class="github-link" href="https://github.com/Magister-Marketing/'
+        'marketing-benchmark" target="_blank" rel="noreferrer">GitHub ↗</a>',
+        f'<span class="header-meta">Run {run_id}</span></div></div>',
+        '<div class="reproduce-bar">',
+        '<span class="reproduce-label">Rerun this configuration</span>',
+        f'<code class="reproduce-command" data-reproduce-command>{h(reproduce_command)}</code>',
+        '<button class="copy-command" type="button" data-copy-command>Copy</button>',
+        f'<span class="reproduce-note">{h(arm_note)}</span></div></header>',
         '<section class="section" aria-labelledby="results-title">',
         '<div class="section-head"><div>',
-        '<h2 class="section-title" id="results-title">Results matrix</h2>',
+        '<h2 class="section-title" id="results-title">Marketing Evaluation Benchmarks</h2>',
         '<p class="section-note">A task passes only when every configured run and '
         "every rubric criterion passes. Select any result to jump to its full evidence.</p>"
         '</div><div class="report-actions">',
@@ -2024,9 +2043,10 @@ def _render_report_html(
         "</tbody></table></div></section>",
         '<section class="section" id="submissions" aria-labelledby="submissions-title">',
         '<div class="section-head"><div>',
-        '<h2 class="section-title" id="submissions-title">Submission explorer</h2>',
-        '<p class="section-note">The task, binary outcome, criterion score, judge '
-        "reasoning, and exact candidate response are together in each record.</p>"
+        '<h2 class="section-title" id="submissions-title">Tasks &amp; Submissions</h2>',
+        '<p class="section-note">Each task appears once with its model comparison, '
+        "followed by every "
+        "candidate response, score, and judge decision.</p>"
         '</div></div>',
         '<div class="explorer-toolbar">',
         '<div class="filter-row"><span class="filter-label">Task</span>',
@@ -2054,7 +2074,7 @@ def _render_report_html(
         )
     html += [
         '</div></div><p class="filter-status" data-filter-status aria-live="polite"></p>',
-        '</div><div class="submission-list">',
+        '</div><div class="task-list">',
     ]
 
     for submission in submissions:
@@ -2063,35 +2083,109 @@ def _render_report_html(
         tally = submission["criteria"]
         status = "PASS" if submission["pass"] else "FAIL"
         css_class = "pass" if submission["pass"] else "fail"
+        task_submissions = [
+            item for item in submissions if item["task_id"] == task_id
+        ]
+        if model_id == model_ids[0]:
+            task = report_tasks[task_id]
+            task_number = task_ids.index(task_id) + 1
+            html += [
+                f'<article class="task-group" data-task-group data-task="{h(task_id)}">',
+                '<section class="task-brief">',
+                '<header class="task-brief-header">',
+                f'<p class="task-kicker">Task {task_number} · {h(task_id)}</p>',
+                f'<h3 class="task-title">{h(task["title"])}</h3></header>',
+                '<section class="task-prompt">',
+                '<p class="block-label">Task</p>',
+                '<h4 class="task-prompt-title">Exact task asked</h4>',
+                f'<p>{h(task["prompt"])}</p>',
+            ]
+            if submission["assembled_prompt"] is not None:
+                html += [
+                    '<details class="expandable-section prompt-details"><summary>',
+                    '<span><span class="expandable-heading">Complete task prompt</span>',
+                    '<span class="expandable-description">Exact assignment, supplied '
+                    'sources, and skill guidance sent to every model</span></span>',
+                    '<span class="artifact-link">Expand</span></summary>',
+                    '<div class="artifact-content">',
+                    f'<pre class="prompt-copy">{h(submission["assembled_prompt"])}</pre>',
+                ]
+                if submission["assembled_prompt_path"]:
+                    html += [
+                        '<div class="artifact-actions">',
+                        f'<a class="artifact-link" href="./{h(submission["assembled_prompt_path"])}">'
+                        'Open raw Markdown</a></div>',
+                    ]
+                html.append("</div></details>")
+            html += [
+                '</section><section class="submission-results" '
+                f'aria-labelledby="submission-results-{task_number}">',
+                '<div class="submission-results-head">',
+                f'<h4 class="submission-results-title" id="submission-results-{task_number}">'
+                'Submission results</h4>',
+                '<p class="submission-results-note">Compare every model on this task.</p>',
+                '</div><div class="table-shell"><table class="submission-results-table">',
+                '<thead><tr><th>Model</th><th>Result</th><th>Criteria</th>',
+                '<th>Output tokens<small class="metric-sub">total</small></th>',
+                '<th>Candidate cost<small class="metric-sub">total</small></th>',
+                '<th>Avg latency</th></tr></thead><tbody>',
+            ]
+            for task_submission in task_submissions:
+                result_model_id = task_submission["model_id"]
+                result_metrics = task_submission["metrics"]
+                planned = result_metrics["planned_runs"]
+                result_status = "PASS" if task_submission["pass"] else "FAIL"
+                result_class = "pass" if task_submission["pass"] else "fail"
+                result_tokens = observed_metric(
+                    result_metrics["total_output_tokens"],
+                    result_metrics["output_token_observations"],
+                    planned,
+                    lambda value: f"{value:,.0f}",
+                )
+                result_cost = observed_metric(
+                    result_metrics["candidate_cost_usd"],
+                    result_metrics["cost_observations"],
+                    planned,
+                    lambda value: f"${value:.4f}",
+                )
+                result_latency = observed_metric(
+                    result_metrics["average_latency_seconds"],
+                    result_metrics["latency_observations"],
+                    planned,
+                    lambda value: f"{value:.1f}s",
+                )
+                result_tally = task_submission["criteria"]
+                html += [
+                    f'<tr data-summary-row data-task="{h(task_id)}" '
+                    f'data-model="{h(result_model_id)}">',
+                    '<td><a class="submission-result-model" '
+                    f'href="#{submission_ids[(task_id, result_model_id)]}">'
+                    f'{h(result_model_id)}</a></td>',
+                    f'<td><span class="status {result_class}">{result_status}</span></td>',
+                    f'<td><span class="submission-result-criteria">'
+                    f'{result_tally["passed"]}/{result_tally["judged"]}</span></td>',
+                    f'<td><span class="metric-main">{h(result_tokens)}</span></td>',
+                    f'<td><span class="metric-main">{h(result_cost)}</span></td>',
+                    f'<td><span class="metric-main">{h(result_latency)}</span></td></tr>',
+                ]
+            html += [
+                '</tbody></table></div></section></section>',
+                '<div class="model-submission-list">',
+            ]
         html += [
             f'<article class="submission-card" id="{submission_ids[(task_id, model_id)]}" '
             f'data-submission data-task="{h(task_id)}" data-model="{h(model_id)}">',
             '<header class="submission-header"><div>',
-            f'<p class="submission-kicker">{h(task_id)}</p>',
-            f'<h3 class="submission-title">{h(submission["task_title"])}</h3>',
-            f'<p class="submission-model">{h(model_id)}</p></div>',
+            '<p class="submission-kicker">Model submission</p>',
+            '<div class="submission-model"><span class="submission-model-label">Model</span>',
+            f'<strong>{h(model_id)}</strong></div></div>',
             '<div class="outcome">',
             f'<span class="status {css_class}">{status}</span>',
             '<div class="criteria-score">',
             f'<strong>{tally["passed"]}/{tally["judged"]}</strong>',
             '<span>judge criteria passed</span></div></div></header>',
-            '<div class="submission-body"><section class="task-prompt">',
-            '<p class="block-label">Exact task asked</p>',
-            f'<p>{h(submission["task_prompt"])}</p>',
+            '<div class="submission-body">',
         ]
-        if submission["assembled_prompt"] is not None:
-            html += [
-                '<details class="prompt-details"><summary>View complete assembled '
-                'prompt with fixtures and skills</summary>',
-                f'<pre class="prompt-copy">{h(submission["assembled_prompt"])}</pre>'
-                '</details>',
-            ]
-            if submission["assembled_prompt_path"]:
-                html.append(
-                    f'<a class="text-link" href="./{h(submission["assembled_prompt_path"])}">'
-                    "Open assembled prompt as Markdown</a>"
-                )
-        html.append("</section>")
         for run in submission["runs"]:
             run_status = "PASS" if run["pass"] else "FAIL"
             run_class = "pass" if run["pass"] else "fail"
@@ -2134,6 +2228,25 @@ def _render_report_html(
                 f'<div class="metric-tile"><strong>{h(latency)}</strong>'
                 '<span>Latency</span></div></div>',
                 f'<p class="verification">{verification}</p>',
+            ]
+            if run["response"] is not None:
+                html += [
+                    '<details class="expandable-section response"><summary>',
+                    '<span><span class="expandable-heading">Candidate submission</span>',
+                    f'<span class="expandable-description">Exact response from '
+                    f'{h(model_id)} for this run</span></span>',
+                    '<span class="artifact-link">Expand</span></summary>',
+                    '<div class="artifact-content">',
+                    f'<pre class="response-copy">{h(run["response"])}</pre>',
+                ]
+                if run["response_path"]:
+                    html += [
+                        '<div class="artifact-actions">',
+                        f'<a class="artifact-link" href="./{h(run["response_path"])}">'
+                        'Open raw Markdown</a></div>',
+                    ]
+                html.append("</div></details>")
+            html += [
                 '<div class="judge-heading"><h4>What the judge said</h4>',
                 f'<span>{sum(bool(item["pass"]) for item in run["criteria"])}/'
                 f'{len(run["criteria"])} criteria</span></div>',
@@ -2191,29 +2304,23 @@ def _render_report_html(
                         f'{h(criterion["evidence"])}</p></div>',
                     ]
                 html.append("</div></details>")
-            if run["response"] is not None:
-                html += [
-                    '<details class="response"><summary>View exact candidate '
-                    "submission</summary>",
-                    f'<pre class="response-copy">{h(run["response"])}</pre></details>',
-                ]
-                if run["response_path"]:
-                    html.append(
-                        f'<a class="text-link" href="./{h(run["response_path"])}">'
-                        "Open candidate submission as Markdown</a>"
-                    )
             html.append("</section>")
         html.append("</div></article>")
+        if model_id == model_ids[-1]:
+            html.append("</div></article>")
     html += [
         '</div></section><footer class="footer">',
-        '<span class="footer-brand">',
+        '<a class="footer-brand" href="https://magistermarketing.com" '
+        'target="_blank" rel="noreferrer">',
         f'<img src="{brand_assets.MAGISTER_LOGO}" alt="">',
-        '<strong>Magister</strong><span>Marketing Evals</span></span>',
+        '<strong>Magister</strong><span>Marketing Evals</span></a>',
         f'<span><a href="{h(markdown_name)}">Markdown report</a> · '
         f'<a href="{h(json_name)}">Structured JSON</a></span></footer>',
         '</main><script>',
         '(() => {',
         '  const cards = [...document.querySelectorAll("[data-submission]")];',
+        '  const summaryRows = [...document.querySelectorAll("[data-summary-row]")];',
+        '  const taskGroups = [...document.querySelectorAll("[data-task-group]")];',
         '  const state = { task: "all", model: "all" };',
         '  const status = document.querySelector("[data-filter-status]");',
         '  function setPressed(kind) {',
@@ -2229,6 +2336,14 @@ def _render_report_html(
         '      card.hidden = !visible;',
         '      if (visible) shown += 1;',
         '    });',
+        '    summaryRows.forEach(row => {',
+        '      row.hidden = !((state.task === "all" || row.dataset.task === state.task)',
+        '        && (state.model === "all" || row.dataset.model === state.model));',
+        '    });',
+        '    taskGroups.forEach(group => {',
+        '      group.hidden = ![...group.querySelectorAll("[data-submission]")]',
+        '        .some(card => !card.hidden);',
+        '    });',
         '    setPressed("task"); setPressed("model");',
         '    status.textContent = `${shown} submission${shown === 1 ? "" : "s"} shown`;',
         '  }',
@@ -2237,10 +2352,12 @@ def _render_report_html(
         '    const filter = event.target.closest("[data-filter-kind]");',
         '    if (filter) setFilter(filter.dataset.filterKind, filter.dataset.filterValue);',
         '    const taskJump = event.target.closest("[data-jump-task]");',
-        '    if (taskJump) { setFilter("task", taskJump.dataset.jumpTask);',
+        '    if (taskJump) { state.model = "all";',
+        '      setFilter("task", taskJump.dataset.jumpTask);',
         '      document.getElementById("submissions").scrollIntoView({ behavior: "smooth" }); }',
         '    const modelJump = event.target.closest("[data-jump-model]");',
-        '    if (modelJump) { setFilter("model", modelJump.dataset.jumpModel);',
+        '    if (modelJump) { state.task = "all";',
+        '      setFilter("model", modelJump.dataset.jumpModel);',
         '      document.getElementById("submissions").scrollIntoView({ behavior: "smooth" }); }',
         '    const focus = event.target.closest("[data-focus-submission]");',
         '    if (focus) { state.task = focus.dataset.task; state.model = focus.dataset.model;',
@@ -2254,6 +2371,15 @@ def _render_report_html(
         '      share.textContent = "Link copied"; }',
         '    catch (_error) { share.textContent = "Copy the address bar"; }',
         '    window.setTimeout(() => { share.textContent = original; }, 1800);',
+        '  });',
+        '  const copyCommand = document.querySelector("[data-copy-command]");',
+        '  if (copyCommand) copyCommand.addEventListener("click", async () => {',
+        '    const command = document.querySelector("[data-reproduce-command]");',
+        '    const original = copyCommand.textContent;',
+        '    try { await navigator.clipboard.writeText(command.textContent);',
+        '      copyCommand.textContent = "Copied"; }',
+        '    catch (_error) { copyCommand.textContent = "Select command"; }',
+        '    window.setTimeout(() => { copyCommand.textContent = original; }, 1800);',
         '  });',
         '  const initial = document.getElementById(decodeURIComponent(location.hash.slice(1)));',
         '  if (initial && initial.matches("[data-submission]")) {',
@@ -2606,8 +2732,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             passes=passes,
             task_criteria=task_criteria,
             submissions=submissions,
-            verdict_count=len(verdicts),
-            human_count=len(human),
+            judge_model=grading_meta.get("judge_model"),
         )
         + "\n"
     )
