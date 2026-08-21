@@ -1,15 +1,15 @@
-# Magister Marketing Evals — direct-API MVP
+# Magister Marketing Evals — direct-model runner
 
-The smallest useful version of this benchmark: call models directly over
-HTTP with default API settings, grade each response with deterministic hard
-checks plus an LLM judge against a binary rubric, let a human verify or
-override every judgment, and only count a task as passed when every configured
-run passes. The default is one run per task: **pass@1**.
+The current `direct-api` harness calls models over HTTP with default API
+settings, grades each response with deterministic hard checks plus an LLM
+judge against a binary rubric, lets a human verify or override every judgment,
+and only counts a task as passed when every configured run passes. The default
+is one run per task: **pass@1**.
 
-No agents, no tools, no sandboxes, no pairwise judging. The heavyweight
-runner in `evals/` remains the path for tool-using agent comparisons;
-this directory is the current entry point for model-level marketing
-quality.
+No coding-agent runtime, sandbox, or pairwise judge is involved. Provider web
+search is an optional arm and remains off by default. The engine in `evals/`
+supports tool-using agent comparisons; this directory is the current entry
+point for direct-model marketing quality.
 
 ## Protocol
 
@@ -142,42 +142,42 @@ The individual stages, when you need them separately:
 
 ```bash
 # offline sanity check (also run in CI)
-python3 -m mvp.bench validate
+python3 -m eval_runner.bench validate
 
 # 1) generate (paid) — asks for confirmation unless --yes
-python3 -m mvp.bench run --models claude-haiku-4-5,claude-sonnet-5
+python3 -m eval_runner.bench run --models claude-haiku-4-5,claude-sonnet-5
 
 # run just one split; explicit --tasks takes precedence
-python3 -m mvp.bench run --models claude-sonnet-5 --split holdout
+python3 -m eval_runner.bench run --models claude-sonnet-5 --split holdout
 
 # optional baseline arm without skill guidance in the prompt
-python3 -m mvp.bench run --models claude-haiku-4-5 --no-skills
+python3 -m eval_runner.bench run --models claude-haiku-4-5 --no-skills
 
 # optional tools arm: same tasks, provider-hosted web search enabled
-python3 -m mvp.bench run --models claude-haiku-4-5 --tools
+python3 -m eval_runner.bench run --models claude-haiku-4-5 --tools
 
 # 2) judge every attempt (paid; default judge claude-sonnet-5)
-python3 -m mvp.bench grade --run mvp/results/<run-id>
+python3 -m eval_runner.bench grade --run eval_runner/results/<run-id>
 
 # 3) human verification — agree/override each judgment
-python3 -m mvp.bench verify --run mvp/results/<run-id> --failures-only
+python3 -m eval_runner.bench verify --run eval_runner/results/<run-id> --failures-only
 
 # 4) report (offline; applies human overrides)
-python3 -m mvp.bench report --run mvp/results/<run-id>
+python3 -m eval_runner.bench report --run eval_runner/results/<run-id>
 
 # Calibrate a new rubric against old prompts without overwriting v1 evidence.
 # --current-rubric accepts only the current prompt or an explicitly archived,
 # rubric-compatible historical prompt.
-python3 -m mvp.bench grade --run mvp/results/<run-id> \
+python3 -m eval_runner.bench grade --run eval_runner/results/<run-id> \
   --current-rubric --label candidate-rubric
-python3 -m mvp.bench report --run mvp/results/<run-id> --label candidate-rubric
+python3 -m eval_runner.bench report --run eval_runner/results/<run-id> --label candidate-rubric
 
 # Regrade selected tasks into an existing label without touching its other rows.
-python3 -m mvp.bench grade --run mvp/results/<run-id> \
+python3 -m eval_runner.bench grade --run eval_runner/results/<run-id> \
   --current-rubric --label candidate-rubric --tasks landing-page,blog-post
 ```
 
-Each run writes immutable evidence under `mvp/results/<run-id>/`:
+Each run writes immutable evidence under `eval_runner/results/<run-id>/`:
 `run.json` (config), `tasks/*.json` (exact task snapshots), `prompts/*.md`,
 `attempts.jsonl`, `responses/*.md`, `judgments.jsonl`,
 `human_verdicts.jsonl`, `grading.json`, `report.md`, `report.html`, and
@@ -186,24 +186,24 @@ Labeled regrades add the label before each grading/report extension. Results
 are gitignored; commit reviewed report artifacts into `docs/results/` when
 publishing.
 
-## The ladder: same tasks, rising tiers
+## Harness roadmap: same tasks, different execution paths
 
-The tasks in `tasks/*.json` are the constant. Each tier changes only
-what generates the response, so results stay comparable up the stack:
+The tasks in `tasks/*.json` are the constant. A harness changes only what
+generates the response, so results remain comparable:
 
-| Tier | Generator | Status |
+| Harness | Generator | Status |
 |---|---|---|
-| 0 | Raw model, direct API call (`skills` x `tools` arms) | **this directory** |
-| 1 | Coding-agent harnesses: Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
-| 2 | The Magister harness (real product path) | planned |
+| `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
+| Coding agents | Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
+| Magister | Real product path | planned |
 
 Rules that keep the ladder honest:
 
-- Task prompts, fixtures, and rubrics are never forked per tier. A tier that
+- Task prompts, fixtures, and rubrics are never forked per harness. A harness that
   needs a different prompt gets a new task id instead. Each run snapshots its
   task definitions and exact assembled prompts.
-- The judge, rubric, and configured run count are identical at every tier.
-- Every run records its tier and arms (`run.json`), so any two runs can
+- The judge, rubric, and configured run count are identical for every harness.
+- Every run records its harness and arms (`run.json`), so any two runs can
   be compared attempt-for-attempt.
 
 ## Deliberately deferred

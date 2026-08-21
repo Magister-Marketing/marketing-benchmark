@@ -7,7 +7,7 @@
   "fixtures": [
     "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
     "evals/fixtures/public/brands/harborline-sleep/sources/facts.md",
-    "mvp/fixtures/landing-page-repair/flawed.html"
+    "eval_runner/fixtures/landing-page-repair/flawed.html"
   ],
   "skills": [
     "evals/fixtures/public/skills/cro/SKILL.md",

@@ -8,7 +8,7 @@ build/
 dist/
 *.egg-info/
 artifacts/
-mvp/results/
+eval_runner/results/
 playwright-report/
 test-results/
 .DS_Store

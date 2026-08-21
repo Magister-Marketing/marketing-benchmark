@@ -1,4 +1,4 @@
-"""Direct provider API calls for the MVP eval.
+"""Direct provider API calls for the eval runner's direct-API harness.
 
 Stdlib only. Credentials come exclusively from the operator environment
 (ANTHROPIC_API_KEY, OPENAI_API_KEY); they are never read from manifests,

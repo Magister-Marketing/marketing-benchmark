@@ -5,7 +5,7 @@
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [
-    "mvp/fixtures/attribution/order-journeys.csv"
+    "eval_runner/fixtures/attribution/order-journeys.csv"
   ],
   "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
   "prompt": "Analyze the supplied order journeys for a marketing lead. Meta, Paid Search, and Email each had $600 of spend. Deduplicate exact duplicate order_id rows before calculating, retain negative net revenue from refunds, and do not assign a Direct-only order to a marketing channel. Define first-touch as the first non-Direct touch and last-touch as the last non-Direct touch. Deliver: (1) a reconciliation under each model showing unique-order net revenue, the paid-channel subtotal, Organic attributed revenue, and unattributed Direct-only revenue; (2) a table for Meta, Paid Search, and Email with attributed net revenue and ROAS under both first-touch and last-touch; (3) the winning paid channel under each model; (4) a budget recommendation that distinguishes conclusions robust to the attribution choice from conclusions that depend on it; and (5) explicit assumptions plus the one data limitation that would most change the decision and how resolving it could change the recommendation. Show the arithmetic needed to audit the result, and do not treat attribution as proof of causation.",

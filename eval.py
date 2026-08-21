@@ -8,10 +8,11 @@
     ./eval.py claude-sonnet-5 --split holdout         # untouched-task check
     ./eval.py claude-sonnet-5 --repetitions 3         # explicitly run each task 3x
 
-Model ids come from mvp/models.json; tasks from mvp/tasks/. The run
-directory (prompts, raw submissions, judgments, report.md, report.html,
-report.json)
-lands under mvp/results/ and its path is printed at the end.
+The current execution harness is `direct-api`, and every new run records that
+identifier. Model ids come from eval_runner/models.json; tasks from
+eval_runner/tasks/. The run directory (prompts, raw submissions, judgments,
+report.md, report.html, report.json) lands under eval_runner/results/ and its
+path is printed at the end.
 
 Keys: ANTHROPIC_API_KEY / OPENAI_API_KEY must be in the environment, or
 pass --env-file pointing at a KEY=value file. Only those two keys are
@@ -23,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mvp import bench  # noqa: E402
+from eval_runner import bench  # noqa: E402
 
 API_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 
@@ -43,7 +44,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("models", nargs="+", help="model ids from mvp/models.json")
+    parser.add_argument(
+        "models", nargs="+", help="model ids from eval_runner/models.json"
+    )
     parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     parser.add_argument(
         "--split", choices=("all",) + bench.TASK_SPLITS, default="all",

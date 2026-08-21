@@ -7,7 +7,7 @@
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
-    "mvp/fixtures/source-conflict/agency-brief.md"
+    "eval_runner/fixtures/source-conflict/agency-brief.md"
   ],
   "skills": [
     "evals/fixtures/public/skills/copywriting/SKILL.md",

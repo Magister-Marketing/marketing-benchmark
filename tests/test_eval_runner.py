@@ -1,4 +1,4 @@
-"""Offline tests for the MVP eval runner. No provider calls."""
+"""Offline tests for the direct-model eval runner. No provider calls."""
 
 import base64
 import hashlib
@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from mvp import bench, brand_assets, providers
+from eval_runner import bench, brand_assets, providers
 
 
 def test_models_load_and_specs_are_supported():
@@ -26,6 +26,7 @@ def test_judge_default_exists_in_models():
 
 def test_default_protocol_is_pass_at_one():
     assert bench.REPETITIONS_DEFAULT == 1
+    assert bench.HARNESS_ID == "direct-api"
     assert bench._score_column_label(bench.REPETITIONS_DEFAULT) == "Pass@1"
     assert bench._score_column_label(3) == "Tasks passed (all 3 runs)"
 
@@ -312,7 +313,7 @@ def test_labeled_artifact_paths_preserve_default(tmp_path):
 def test_ad_performance_csv_oracle_totals():
     """The planted findings in the CSV must match the rubric's oracle numbers."""
     import csv as _csv
-    path = bench.REPO_ROOT / "mvp/fixtures/ad-performance/campaigns.csv"
+    path = bench.REPO_ROOT / "eval_runner/fixtures/ad-performance/campaigns.csv"
     rows = list(_csv.DictReader(path.read_text().splitlines()))
     assert len(rows) == 16
     totals: dict[str, dict[str, float]] = {}
@@ -340,7 +341,7 @@ def test_ad_performance_csv_oracle_totals():
 
 def test_attribution_fixture_oracle():
     import csv as _csv
-    path = bench.REPO_ROOT / "mvp/fixtures/attribution/order-journeys.csv"
+    path = bench.REPO_ROOT / "eval_runner/fixtures/attribution/order-journeys.csv"
     rows = list(_csv.DictReader(path.read_text().splitlines()))
     unique = {row["order_id"]: row for row in rows}
     assert len(rows) == 14 and len(unique) == 13
@@ -730,6 +731,8 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
     report = (run_dir / "report.md").read_text()
     assert report.startswith("# Magister Marketing Evals")
+    assert "direct-api harness" in report
+    assert "- Harness: direct-api" in report
     assert "## Results at a glance" in report
     assert "| Model | Pass@1 |" in report
     assert "**1/1 (100%)**" in report
@@ -805,6 +808,7 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "Copy view link" in html
     assert page_html.count("Candidate submission") == 2
     assert "Rerun this configuration" in html
+    assert "Direct API harness" in html
     assert (
         "./eval.py claude-haiku-4-5 claude-sonnet-5 --tasks headline "
         "--repetitions 1" in html
@@ -838,6 +842,7 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     }
     assert 'src="http' not in html
     summary = json.loads((run_dir / "report.json").read_text())
+    assert summary["harness"] == "direct-api"
     model = summary["models"]["claude-haiku-4-5"]
     assert model["tasks_passed"] == 1
     assert model["task_passes"] == {"headline": True}
@@ -918,6 +923,7 @@ def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):
     task_snapshot = json.loads((run_dir / "tasks" / "headline.json").read_text())
     assert task_snapshot["rubric_version"] == 2
     run_meta = json.loads((run_dir / "run.json").read_text())
+    assert run_meta["harness"] == "direct-api"
     assert run_meta["task_manifest"]["headline"]["split"] == "development"
     assert len(run_meta["task_manifest"]["headline"]["rubric_sha256"]) == 64
     for rep in (1, 2):
@@ -925,6 +931,7 @@ def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):
         assert path.read_text() == "the submission"
     attempts = [json.loads(l) for l in (run_dir / "attempts.jsonl").read_text().splitlines()]
     assert len(attempts) == 2 and all("error" not in a for a in attempts)
+    assert all(attempt["harness"] == "direct-api" for attempt in attempts)
 
 
 def test_run_rejects_non_positive_repetition_count():
@@ -944,7 +951,7 @@ def test_run_rejects_non_positive_repetition_count():
 
 def test_snapshot_loading_does_not_require_current_fixture_paths(tmp_path):
     task = dict(bench.load_tasks()["headline"])
-    task["fixtures"] = ["mvp/fixtures/removed-after-the-run.md"]
+    task["fixtures"] = ["eval_runner/fixtures/removed-after-the-run.md"]
     task["skills"] = ["evals/fixtures/public/skills/removed-after-the-run.md"]
     task_dir = tmp_path / "tasks"
     task_dir.mkdir()

@@ -7,7 +7,7 @@
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
-    "mvp/fixtures/ad-performance/campaigns.csv"
+    "eval_runner/fixtures/ad-performance/campaigns.csv"
   ],
   "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
   "prompt": "You are analyzing four weeks of Meta campaign data for Cedar & Coil (CSV supplied below; conversions are purchases, revenue is purchase value, frequency is average weekly impressions per person). Produce a performance analysis for the founder: (1) a per-campaign four-week summary with total spend, total conversions, CPA, and ROAS where revenue is available, showing your arithmetic for at least CPA; (2) name the best and worst performing campaign with evidence; (3) diagnose the most important week-over-week trend problem; (4) recommend one specific budget change and one bounded test to run next; (5) state the data limitation that would most change your conclusions. Note anything unusual in the data quality.",

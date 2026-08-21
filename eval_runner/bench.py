@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Marketing Benchmark MVP — direct-API model eval with configurable repeats.
+"""Magister Marketing eval runner — direct-API harness.
 
-Deliberately small: models are called directly over HTTP with default API
-settings, responses are graded by an LLM judge against a per-task binary
-rubric, a human can verify or override every judgment, and a task passes
-when every configured run passes. The default is one run per task (pass@1).
+The current harness calls models directly over HTTP with default API settings.
+Responses are graded by an LLM judge against a per-task binary rubric, a human
+can verify or override every judgment, and a task passes when every configured
+run passes. The default is one run per task (pass@1).
 
 Subcommands:
     validate  offline check of tasks, models, and fixtures (CI-safe)
@@ -14,11 +14,11 @@ Subcommands:
     report    aggregate to report.html, report.md, and report.json (offline)
 
 Usage:
-    python3 -m mvp.bench validate
-    python3 -m mvp.bench run --models claude-haiku-4-5 --yes
-    python3 -m mvp.bench grade --run mvp/results/<run-id>
-    python3 -m mvp.bench verify --run mvp/results/<run-id>
-    python3 -m mvp.bench report --run mvp/results/<run-id>
+    python3 -m eval_runner.bench validate
+    python3 -m eval_runner.bench run --models claude-haiku-4-5 --yes
+    python3 -m eval_runner.bench grade --run eval_runner/results/<run-id>
+    python3 -m eval_runner.bench verify --run eval_runner/results/<run-id>
+    python3 -m eval_runner.bench report --run eval_runner/results/<run-id>
 """
 
 from __future__ import annotations
@@ -36,19 +36,20 @@ import sys
 import uuid
 from pathlib import Path
 
-if __package__ in (None, ""):  # allow `python3 mvp/bench.py` as well as -m
+if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from mvp import brand_assets, providers  # type: ignore
+    from eval_runner import brand_assets, providers  # type: ignore
 else:
     from . import brand_assets, providers
 
-MVP_DIR = Path(__file__).resolve().parent
-REPO_ROOT = MVP_DIR.parent
-TASKS_DIR = MVP_DIR / "tasks"
-MODELS_FILE = MVP_DIR / "models.json"
-RESULTS_DIR = MVP_DIR / "results"
+EVAL_RUNNER_DIR = Path(__file__).resolve().parent
+REPO_ROOT = EVAL_RUNNER_DIR.parent
+TASKS_DIR = EVAL_RUNNER_DIR / "tasks"
+MODELS_FILE = EVAL_RUNNER_DIR / "models.json"
+RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
 REPETITIONS_DEFAULT = 1
+HARNESS_ID = "direct-api"
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -56,7 +57,7 @@ RUN_CONCURRENCY = 4
 RUBRIC_SECTIONS = ("completion", "skill_adherence", "best_practices")
 TASK_SPLITS = ("development", "holdout")
 NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed")
-FIXTURE_ROOTS = (MVP_DIR / "fixtures", REPO_ROOT / "evals/fixtures/public")
+FIXTURE_ROOTS = (EVAL_RUNNER_DIR / "fixtures", REPO_ROOT / "evals/fixtures/public")
 SKILL_ROOTS = (REPO_ROOT / "evals/fixtures/public/skills",)
 
 
@@ -227,6 +228,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(
         f"About to make {len(jobs)} paid model calls "
         f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs, "
+        f"harness {HARNESS_ID}, "
         f"skills {'ON' if include_skills else 'OFF'}, "
         f"tools {'ON (web search)' if tools_enabled else 'OFF'})."
     )
@@ -250,6 +252,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     (run_dir / "run.json").write_text(json.dumps({
         "run_id": run_id,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "harness": HARNESS_ID,
         "models": {m: models[m] for m in selected_models},
         "tasks": selected_tasks,
         "task_manifest": {
@@ -275,6 +278,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         prompt = assemble_prompt(task, include_skills)
         record = {
             "run_id": run_id,
+            "harness": HARNESS_ID,
             "task_id": task_id,
             "model_id": model_id,
             "repetition": rep,
@@ -306,14 +310,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     _write_jsonl(run_dir / "attempts.jsonl", records)
     errors = sum(1 for r in records if "error" in r)
     print(f"Completed {len(records) - errors}/{len(records)} attempts "
-          f"({errors} errors). Next: python3 -m mvp.bench grade --run {run_dir}")
+          f"({errors} errors). Next: python3 -m eval_runner.bench grade --run {run_dir}")
     return 0 if errors == 0 else 1
 
 
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
     if not raw:
         if kind == "model":
-            raise SystemExit("--models is required (comma-separated ids from mvp/models.json)")
+            raise SystemExit("--models is required (comma-separated ids from eval_runner/models.json)")
         return list(catalog)
     selected = [item.strip() for item in raw.split(",") if item.strip()]
     unknown = [item for item in selected if item not in catalog]
@@ -850,7 +854,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
     )
     judge_id = args.judge
     if judge_id not in models:
-        raise SystemExit(f"judge {judge_id!r} is not in mvp/models.json")
+        raise SystemExit(f"judge {judge_id!r} is not in eval_runner/models.json")
     if previous_grading and previous_grading.get("judge_model") != judge_id:
         raise SystemExit("partial regrade cannot mix judge models in one label")
     if previous_grading and previous_grading.get("task_source") != task_source:
@@ -1009,7 +1013,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
     failures = sum(1 for j in judgments if "error" in j)
     print(f"Wrote {len(judgments)} total judgments ({failures} judge failures) -> "
           f"{judgments_path}. "
-          f"Next: python3 -m mvp.bench verify --run {run_dir}")
+          f"Next: python3 -m eval_runner.bench verify --run {run_dir}")
     return 0 if failures == 0 else 1
 
 
@@ -1948,8 +1952,11 @@ def _render_report_html(
     if judge_model:
         reproduce_parts.extend(("--judge", judge_model))
     reproduce_command = shlex.join(reproduce_parts)
+    harness_id = str(run_meta.get("harness", HARNESS_ID))
+    harness_label = "Direct API" if harness_id == HARNESS_ID else harness_id
     arm_note = (
-        f"Skills {'on' if run_meta['skills_included'] else 'off'} · "
+        f"{harness_label} harness · "
+        f"skills {'on' if run_meta['skills_included'] else 'off'} · "
         f"tools {'on' if run_meta.get('tools_enabled') else 'off'} · outputs may vary"
     )
 
@@ -2595,7 +2602,8 @@ def cmd_report(args: argparse.Namespace) -> int:
     lines = [
         "# Magister Marketing Evals",
         "",
-        f"Run `{run_meta['run_id']}` · {len(task_ids)} tasks · "
+        f"Run `{run_meta['run_id']}` · "
+        f"{run_meta.get('harness', HARNESS_ID)} harness · {len(task_ids)} tasks · "
         f"{repetitions} {'run' if repetitions == 1 else 'runs'} per task · "
         f"skills {'on' if run_meta['skills_included'] else 'off'} · "
         f"tools {'on' if run_meta.get('tools_enabled') else 'off'}",
@@ -2636,6 +2644,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Run configuration",
         "",
+        f"- Harness: {run_meta.get('harness', HARNESS_ID)}",
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
         f"- Runs per task: {repetitions} (all configured runs must pass)",
@@ -2756,13 +2765,14 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "---",
         "",
-        "Powered by **Magister Marketing**. Generated by `mvp/bench.py report`. "
+        "Powered by **Magister Marketing**. Generated by `eval_runner/bench.py report`. "
         "Judge verdicts remain advisory until human-verified; any human override "
         "is already reflected in the binary result.",
     ]
 
     summary = {
         "run_id": run_meta["run_id"],
+        "harness": run_meta.get("harness", HARNESS_ID),
         "skills_included": run_meta["skills_included"],
         "tools_enabled": run_meta.get("tools_enabled", False),
         "repetitions": repetitions,
@@ -2908,13 +2918,13 @@ def _read_jsonl(path: Path) -> list:
 # ---------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mvp-bench", description=__doc__)
+    parser = argparse.ArgumentParser(prog="marketing-eval-runner", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("validate", help="offline manifest check").set_defaults(func=cmd_validate)
 
     run_parser = sub.add_parser("run", help="call models (paid)")
-    run_parser.add_argument("--models", help="comma-separated ids from mvp/models.json")
+    run_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     run_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     run_parser.add_argument(
         "--split", choices=("all",) + TASK_SPLITS, default="all",
@@ -2960,7 +2970,7 @@ def main(argv: list[str] | None = None) -> int:
     report_parser.set_defaults(func=cmd_report)
 
     eval_parser = sub.add_parser("eval", help="run + grade + report in one go (paid)")
-    eval_parser.add_argument("--models", help="comma-separated ids from mvp/models.json")
+    eval_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     eval_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     eval_parser.add_argument(
         "--split", choices=("all",) + TASK_SPLITS, default="all",
