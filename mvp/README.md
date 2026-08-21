@@ -48,7 +48,9 @@ embeds the real logo and typography and keeps every task/model submission on
 the main page. Its header links to the repository and includes a copyable
 command reconstructed from the recorded models, tasks, repetition count,
 skills arm, tools arm, and judge; clicking anywhere on the command copies it.
-Selecting a matrix cell jumps into a
+The adjacent **Copy results for LLM** action copies the exact generated
+`report.md`, embedded into the HTML so it works locally and when hosted without
+a network fetch. Selecting a matrix cell jumps into a
 filterable Tasks & Submissions view grouped by task: the exact assignment and
 complete assembled prompt appear once, followed by a task-level model results
 table and a collapsed response-and-score panel for every model. Opening a

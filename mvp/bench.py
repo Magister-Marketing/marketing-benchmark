@@ -1405,6 +1405,10 @@ a { color: inherit; text-underline-offset: 3px; }
 .brand-rule { width: 1px; height: 24px; margin: 0 2px; background: var(--border); }
 .brand-product { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
 .header-actions { display: flex; align-items: center; gap: 14px; }
+.llm-copy { appearance: none; padding: 9px 12px; color: var(--primary-foreground); border: 1px solid var(--primary); border-radius: 10px; background: var(--primary); cursor: pointer; font-size: 12px; font-weight: 600; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.llm-copy:hover { transform: translateY(-1px); background: #27272a; }
+.llm-copy:focus-visible { outline: 2px solid var(--agent); outline-offset: 2px; }
+.llm-copy.is-copied { color: #047857; border-color: #6ee7b7; background: var(--agent-soft); }
 .github-link { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.82); font-size: 12px; font-weight: 600; text-decoration: none; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
 .github-link:hover { transform: translateY(-1px); border-color: #a1a1aa; background: var(--card); }
 .github-mark { width: 17px; height: 17px; flex: 0 0 auto; }
@@ -1694,6 +1698,9 @@ details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-wei
   .footer { flex-direction: column; }
 }
 @media (max-width: 520px) {
+  .site-header { flex-wrap: wrap; gap: 10px; padding: 10px 0; }
+  .header-actions { width: 100%; gap: 8px; }
+  .llm-copy { flex: 1; }
   .brand-name { font-size: 27px; }
   .metric-strip { grid-template-columns: 1fr; }
   .expandable-section > summary { align-items: flex-start; flex-direction: column; }
@@ -1918,6 +1925,7 @@ def _render_report_html(
     task_criteria: dict,
     submissions: list[dict],
     judge_model: str | None,
+    markdown_report: str,
 ) -> str:
     h = escape
     run_id = h(str(run_meta["run_id"]))
@@ -1979,6 +1987,8 @@ def _render_report_html(
         '<span class="brand-name">Magister</span><span class="brand-rule"></span>',
         '<span class="brand-product">Marketing Evals</span></a>',
         '<div class="header-actions">',
+        '<button class="llm-copy" type="button" data-copy-results>'
+        'Copy results for LLM</button>',
         '<a class="github-link" href="https://github.com/Magister-Marketing/'
         'marketing-benchmark" target="_blank" rel="noreferrer" '
         'aria-label="View the Marketing Benchmark repository on GitHub">',
@@ -2006,6 +2016,9 @@ def _render_report_html(
         '<span class="sr-only" data-copy-status aria-live="polite">Copy command</span>'
         '</button>',
         f'<span class="reproduce-note">{h(arm_note)}</span></div></header>',
+        '<textarea class="sr-only" data-markdown-results readonly tabindex="-1" '
+        'aria-hidden="true">'
+        f'{h(markdown_report)}</textarea>',
         '<section class="section" aria-labelledby="results-title">',
         '<div class="section-head"><div>',
         '<h2 class="section-title" id="results-title">Marketing Evaluation Benchmarks</h2>',
@@ -2453,6 +2466,17 @@ def _render_report_html(
         '      copyCommand.setAttribute("aria-label", "Copy the exact eval command");',
         '      copyStatus.textContent = "Copy command"; }, 1800);',
         '  });',
+        '  const copyResults = document.querySelector("[data-copy-results]");',
+        '  if (copyResults) copyResults.addEventListener("click", async () => {',
+        '    const markdownResults = document.querySelector("[data-markdown-results]");',
+        '    const original = copyResults.textContent;',
+        '    try { await copyText(markdownResults.value);',
+        '      copyResults.classList.add("is-copied");',
+        '      copyResults.textContent = "Results copied"; }',
+        '    catch (_error) { copyResults.textContent = "Copy unavailable"; }',
+        '    window.setTimeout(() => { copyResults.classList.remove("is-copied");',
+        '      copyResults.textContent = original; }, 1800);',
+        '  });',
         '  const initial = document.getElementById(decodeURIComponent(location.hash.slice(1)));',
         '  if (initial && initial.matches("[data-submission]")) {',
         '    state.task = initial.dataset.task; state.model = initial.dataset.model;',
@@ -2790,8 +2814,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     report_json_path = _artifact_path(run_dir, "report", "json", label)
     report_json_path.write_text(json.dumps(summary, indent=2) + "\n")
 
+    markdown_report = "\n".join(lines) + "\n"
     report_path = _artifact_path(run_dir, "report", "md", label)
-    report_path.write_text("\n".join(lines) + "\n")
+    report_path.write_text(markdown_report)
     report_html_path = _artifact_path(run_dir, "report", "html", label)
     report_html_path.write_text(
         _render_report_html(
@@ -2806,6 +2831,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             task_criteria=task_criteria,
             submissions=submissions,
             judge_model=grading_meta.get("judge_model"),
+            markdown_report=markdown_report,
         )
         + "\n"
     )

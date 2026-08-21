@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+from html import unescape
 import json
 import re
 
@@ -759,6 +760,14 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     ):
         assert removed not in report
     html = (run_dir / "report.html").read_text()
+    embedded_markdown = re.search(
+        r'<textarea class="sr-only" data-markdown-results[^>]*>(.*?)</textarea>',
+        html,
+        re.DOTALL,
+    )
+    assert embedded_markdown
+    assert unescape(embedded_markdown.group(1)) == report
+    page_html = html[:embedded_markdown.start()] + html[embedded_markdown.end():]
     assert html.startswith("<!doctype html>")
     assert "<style>" in html
     assert "Magister Marketing Evals" in html
@@ -771,12 +780,12 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "claude-haiku-4-5" in html
     assert "1/1" in html
     assert "$0.0060" in html
-    assert html.count('data-task-group data-task="headline"') == 1
-    assert html.count('data-submission data-task="headline"') == 2
-    assert html.count('data-summary-row data-task="headline"') == 2
+    assert page_html.count('data-task-group data-task="headline"') == 1
+    assert page_html.count('data-submission data-task="headline"') == 2
+    assert page_html.count('data-summary-row data-task="headline"') == 2
     assert 'data-filter-kind="task"' in html
-    assert html.count("Exact task asked") == 1
-    assert html.count("Complete task prompt") == 1
+    assert page_html.count("Exact task asked") == 1
+    assert page_html.count("Complete task prompt") == 1
     assert '<pre class="prompt-copy">the prompt</pre>' in html
     assert html.count('class="submission-model"') == 2
     assert html.count('<p class="submission-kicker">Model submission</p>') == 2
@@ -794,7 +803,7 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "initial.open = true" in html
     assert "What the judge said" in html
     assert "Copy view link" in html
-    assert html.count("Candidate submission") == 2
+    assert page_html.count("Candidate submission") == 2
     assert "Rerun this configuration" in html
     assert (
         "./eval.py claude-haiku-4-5 claude-sonnet-5 --tasks headline "
@@ -808,6 +817,9 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert 'class="header-meta"' not in html
     assert 'href="https://github.com/Magister-Marketing/marketing-benchmark"' in html
     assert 'class="github-mark"' in html
+    assert 'data-copy-results' in html
+    assert "Copy results for LLM" in html
+    assert "copyText(markdownResults.value)" in html
     assert html.count('href="https://magistermarketing.com"') == 2
     assert 'src="data:image/svg+xml;base64,' in html
     assert 'url("data:font/woff2;base64,' in html

@@ -23,8 +23,9 @@ Magister-branded self-contained HTML report. Its task matrix links directly to
 a task-grouped inline view containing the exact assignment once, a compact
 model comparison, and collapsed model-submission panels with each candidate
 response and criterion-level judge evidence. The header includes a GitHub
-button and a click-to-copy reproducibility command, and the page is designed
-for viewing, printing, and screenshot-ready sharing.
+button, a click-to-copy reproducibility command, and a Copy results for LLM
+button that copies the complete Markdown report. The page is designed for
+viewing, printing, and screenshot-ready sharing.
 
 ```bash
 python3 -m mvp.bench validate
