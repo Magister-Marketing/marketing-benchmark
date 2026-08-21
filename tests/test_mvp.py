@@ -1,12 +1,13 @@
 """Offline tests for the MVP eval runner. No provider calls."""
 
+import base64
 import hashlib
 import json
 import re
 
 import pytest
 
-from mvp import bench, providers
+from mvp import bench, brand_assets, providers
 
 
 def test_models_load_and_specs_are_supported():
@@ -26,6 +27,18 @@ def test_default_protocol_is_pass_at_one():
     assert bench.REPETITIONS_DEFAULT == 1
     assert bench._score_column_label(bench.REPETITIONS_DEFAULT) == "Pass@1"
     assert bench._score_column_label(3) == "Tasks passed (all 3 runs)"
+
+
+def test_report_brand_assets_are_embedded_and_valid():
+    logo = base64.b64decode(brand_assets.MAGISTER_LOGO.split(",", 1)[1])
+    assert b"<svg" in logo
+    for font in (
+        brand_assets.DM_SANS_400,
+        brand_assets.DM_SANS_600,
+        brand_assets.INSTRUMENT_SERIF_400,
+    ):
+        assert font.startswith("data:font/woff2;base64,")
+        assert base64.b64decode(font.split(",", 1)[1]).startswith(b"wOF2")
 
 
 def test_tasks_load_and_validate():
@@ -709,6 +722,7 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     import argparse
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
     report = (run_dir / "report.md").read_text()
+    assert report.startswith("# Magister Marketing Evals")
     assert "## Results at a glance" in report
     assert "| Model | Pass@1 |" in report
     assert "**1/1 (100%)**" in report
@@ -719,32 +733,52 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     headline = report.split("---", 1)[0]
     assert "Criterion score" not in headline
     assert "μ " not in headline
-    assert "Output tokens / response" in report
-    assert "Latency / response" in report
-    assert "Est. cost / response" in report
-    assert "[prompt](prompts/headline.md)" in report
-    assert "[r1 P](responses/headline--claude-haiku-4-5--r1.md)" in report
-    assert "μ 1,000 [1,000–1,000]" in report
-    assert "μ 5.0s [5.0s–5.0s]" in report
-    assert "μ $0.0060 [$0.0060–$0.0060]" in report
+    assert "## Candidate submissions and judge verdicts" in report
+    assert "**Exact task asked**" in report
+    assert "[Open the assembled prompt with fixtures and skills](prompts/headline.md)" in report
+    assert "`claude-haiku-4-5` — **PASS** — 1/1 criteria" in report
+    assert "**Run 1: PASS** · 1,000 output tokens · $0.0060 candidate cost · 5.0s latency" in report
+    assert (
+        "| `five_options` | **PASS** | Present &lt;/script&gt; in the response. |"
+        in report
+    )
+    assert "[Open the exact candidate submission](responses/headline--claude-haiku-4-5--r1.md)" in report
     assert "$0.0060" in report
-    assert "### Per-task efficiency" in report
-    assert "| headline | claude-haiku-4-5 | 1/1 | 1,000 | 5.0s | $0.0060 |" in report
+    for removed in (
+        "How to read",
+        "Criterion failures",
+        "Run health",
+        "Per-task efficiency",
+        "Model efficiency and criterion resolution",
+    ):
+        assert removed not in report
     html = (run_dir / "report.html").read_text()
     assert html.startswith("<!doctype html>")
     assert "<style>" in html
-    assert "Results at a glance" in html
+    assert "Magister Marketing Evals" in html
+    assert "Marketing model benchmark" in html
     assert "Results matrix" in html
+    assert "Submission explorer" in html
     assert "Pass@1" in html
     assert "claude-haiku-4-5" in html
     assert "1/1" in html
     assert "$0.0060" in html
-    assert 'data-panel="result-1-1"' in html
-    assert 'role="dialog"' in html
+    assert 'data-submission data-task="headline"' in html
+    assert 'data-filter-kind="task"' in html
+    assert "Exact task asked" in html
+    assert "View complete assembled prompt with fixtures and skills" in html
+    assert '<pre class="prompt-copy">the prompt</pre>' in html
+    assert "What the judge said" in html
     assert "Copy view link" in html
-    assert "View exact candidate response" in html
+    assert "View exact candidate submission" in html
+    assert 'src="data:image/svg+xml;base64,' in html
+    assert 'url("data:font/woff2;base64,' in html
     assert "answer &lt;/pre&gt;&lt;script&gt;alert(&#x27;unsafe&#x27;)" in html
     assert "answer </pre><script>alert('unsafe')</script>" not in html
+    assert 'role="dialog"' not in html
+    assert "drawer" not in html
+    for removed in ("How to read", "Criterion failures", "Run health", "Per-task efficiency"):
+        assert removed not in html
     assert html.count("<script>") == 1  # self-contained interaction only
     assert '<script src=' not in html
     assert 'href="http' not in html
@@ -757,22 +791,33 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert model["runs_passed"] == 1
     assert model["runs_total"] == 1
     assert model["run_pass_rate"] == 1.0
-    assert model["cost_usd"] == 0.006
-    assert model["mean_output_tokens"] == 1000.0
-    assert model["min_output_tokens"] == 1000
-    assert model["max_output_tokens"] == 1000
-    assert model["mean_latency_seconds"] == 5.0
-    assert model["min_latency_seconds"] == 5.0
-    assert model["max_latency_seconds"] == 5.0
-    assert model["mean_cost_usd"] == 0.006
-    assert model["min_cost_usd"] == 0.006
-    assert model["max_cost_usd"] == 0.006
-    assert model["task_efficiency"]["headline"]["completed_attempts"] == 1
+    assert model["completed_responses"] == 1
+    assert model["total_output_tokens"] == 1000
+    assert model["candidate_cost_usd"] == 0.006
+    assert model["average_task_time_seconds"] == 5.0
+    assert model["criteria_passed"] == 1
+    assert model["criteria_judged"] == 1
+    assert "task_efficiency" not in model
     assert model["split_scores"] == {
         "development": {"tasks_passed": 1, "tasks_total": 1},
         "holdout": {"tasks_passed": 0, "tasks_total": 0},
     }
-    assert summary["run_health"]["provider_errors"] == 0
+    assert "run_health" not in summary
+    assert len(summary["submissions"]) == 1
+    submission = summary["submissions"][0]
+    assert submission["task_id"] == "headline"
+    assert submission["task_prompt"] == bench.load_tasks()["headline"]["prompt"]
+    assert submission["assembled_prompt"] == "the prompt"
+    assert submission["assembled_prompt_path"] == "prompts/headline.md"
+    assert submission["pass"] is True
+    assert submission["criteria"] == {"passed": 1, "judged": 1}
+    assert submission["runs"][0]["response"] == (
+        "answer </pre><script>alert('unsafe')</script>"
+    )
+    assert submission["runs"][0]["criteria"][0]["evidence"] == (
+        "Present </script> in the response."
+    )
+    assert submission["runs"][0]["criteria"][0]["check"]
 
 
 def test_provider_refuses_without_env_key(monkeypatch):

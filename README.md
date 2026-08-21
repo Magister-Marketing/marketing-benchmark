@@ -1,6 +1,6 @@
-# Marketing Benchmark
+# Magister Marketing Evals
 
-Marketing Benchmark is an evidence-first evaluation runner for marketing models
+Magister Marketing Evals is an evidence-first evaluation runner for marketing models
 and tool-using agents. It measures whether an agent follows required skills,
 uses tools correctly, produces valid UI and artifacts, grounds conclusions in
 returned data, and creates strong marketing work across repeated trials.
@@ -18,9 +18,11 @@ rubric (completion, skill adherence, best practices), supports human
 verification, and defaults to one run per task (pass@1). A larger run count is
 an explicit `--repetitions N` choice. Seven development tasks support rubric
 calibration; four untouched holdout tasks test whether that calibration
-generalizes. Each run produces a detailed Markdown report plus a polished,
-self-contained interactive HTML task matrix for drilling into model responses,
-viewing, printing, or capturing.
+generalizes. Each run produces structured JSON, detailed Markdown, and a
+Magister-branded self-contained HTML report. Its task matrix links directly to
+an inline explorer containing the exact assignment, candidate response, and
+criterion-level judge evidence for every result; the page is designed for
+viewing, printing, and screenshot-ready sharing.
 
 ```bash
 python3 -m mvp.bench validate

@@ -1,4 +1,4 @@
-# MVP eval — direct-API marketing benchmark
+# Magister Marketing Evals — direct-API MVP
 
 The smallest useful version of this benchmark: call models directly over
 HTTP with default API settings, grade each response with deterministic hard
@@ -19,9 +19,9 @@ quality.
   passes and the judge marks the task completed (or a human overrides it).
 - A task passes for a model only if **every configured run passes**. At the
   default this is pass@1; if `--repetitions 3` is requested, all three must pass.
-- The headline model score is the share of selected tasks that pass. Criterion
-  score macro-averages each task's criterion rate; a pooled all-criteria rate
-  remains a diagnostic.
+- The headline model score is the share of selected tasks that pass. Per-task
+  passed/total criterion counts explain near misses without becoming partial
+  credit; macro and pooled criterion rates remain structured diagnostics.
 - Provider errors and judge failures count as failed runs.
 - Temperature is never sent. Anthropic gets its required output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
@@ -43,13 +43,16 @@ quality.
 Reports open with one compact task matrix: overall task score, a binary result
 and passed/total criterion count for every task, total candidate output tokens,
 total candidate cost, and average task time. The binary result is the score;
-criterion counts only explain near misses. The standalone `report.html` makes
-every task/model cell clickable, with deep-linkable judge evidence, exact
-responses, per-call efficiency, model summaries, and task comparisons. It is
-self-contained and formatted for screenshots and printing. `report.md` keeps
-the same all-in-one table at the top and retains full advanced analysis below,
-including mean [minimum–maximum] distributions. Costs use recorded input/output
-usage and the current price catalog and do not include LLM-judge spend.
+criterion counts only explain near misses. The Magister-branded `report.html`
+embeds the real logo and typography and keeps every task/model submission on
+the main page. Selecting a matrix cell jumps to a filterable record with the
+exact task, binary and criterion scores, per-run totals, complete judge
+evidence, and the escaped raw response. It has no remote runtime dependencies
+and is formatted for screenshots and printing. `report.md` keeps the same
+all-in-one table at the top followed by a text-first audit trail. `report.json`
+contains the compact leaderboard plus the self-contained submission records.
+Costs use recorded input/output usage and the current price catalog and do not
+include LLM-judge spend.
 
 ## Rubric shape
 

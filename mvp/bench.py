@@ -37,9 +37,9 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 mvp/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from mvp import providers  # type: ignore
+    from mvp import brand_assets, providers  # type: ignore
 else:
-    from . import providers
+    from . import brand_assets, providers
 
 MVP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = MVP_DIR.parent
@@ -1278,44 +1278,6 @@ def task_criterion_counts(
     return counts
 
 
-def _format_range(
-    mean: float | int | None,
-    minimum: float | int | None,
-    maximum: float | int | None,
-    formatter,
-) -> str:
-    if mean is None or minimum is None or maximum is None:
-        return "n/a"
-    return f"μ {formatter(mean)} [{formatter(minimum)}–{formatter(maximum)}]"
-
-
-def _format_token_range(stats: dict) -> str:
-    return _format_range(
-        stats["mean_output_tokens"],
-        stats["min_output_tokens"],
-        stats["max_output_tokens"],
-        lambda value: f"{value:,.0f}",
-    )
-
-
-def _format_latency_range(stats: dict) -> str:
-    return _format_range(
-        stats["mean_latency_seconds"],
-        stats["min_latency_seconds"],
-        stats["max_latency_seconds"],
-        lambda value: f"{value:.1f}s",
-    )
-
-
-def _format_cost_range(stats: dict) -> str:
-    return _format_range(
-        stats["mean_cost_usd"],
-        stats["min_cost_usd"],
-        stats["max_cost_usd"],
-        lambda value: f"${value:.4f}",
-    )
-
-
 def _flag_partial_observations(cell: str, observed: int, expected: int) -> str:
     if observed == expected:
         return cell
@@ -1338,7 +1300,6 @@ def _report_summary_rows(
     rows = []
     for model_id in model_ids:
         stats = efficiency[model_id]
-        responses = stats["completed_attempts"]
         rows.append(
             {
                 "model_id": model_id,
@@ -1350,7 +1311,7 @@ def _report_summary_rows(
                 "total_tokens": _flag_partial_observations(
                     f"{stats['total_output_tokens']:,}",
                     stats["output_token_observations"],
-                    responses,
+                    attempts_per_model,
                 ),
                 "average_latency": _flag_partial_observations(
                     (
@@ -1359,13 +1320,13 @@ def _report_summary_rows(
                         else "n/a"
                     ),
                     stats["latency_observations"],
-                    responses,
+                    attempts_per_model,
                 ),
                 "total_cost": (
                     _flag_partial_observations(
                         f"${stats['cost_usd']:.4f}",
                         stats["cost_observations"],
-                        responses,
+                        attempts_per_model,
                     )
                     if stats["cost_usd"] is not None
                     else "n/a"
@@ -1378,347 +1339,395 @@ def _report_summary_rows(
 REPORT_CSS = """
 :root {
   color-scheme: light;
-  --ink: #17231d;
-  --muted: #68736d;
-  --paper: #fffdf8;
-  --canvas: #f1eee5;
-  --line: #dcd8cd;
-  --forest: #153f31;
-  --forest-2: #205b46;
-  --mint: #dff0e7;
-  --red: #9c3b32;
-  --red-soft: #f6e6e2;
-  --gold: #c99a43;
-  --shadow: 0 18px 60px rgba(24, 39, 31, 0.10);
+  --background: #fcfcfd;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --muted: #f4f4f6;
+  --muted-foreground: #64646e;
+  --border: #e4e4e8;
+  --primary: #09090b;
+  --primary-foreground: #fcfcfd;
+  --agent: #059669;
+  --agent-soft: #d1fae5;
+  --destructive: #dc2626;
+  --destructive-soft: #fee2e2;
+  --analytics: #7c3aed;
+  --analytics-soft: #ede9fe;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --radius: 16px;
+  --shadow-card:
+    0 1px 2px rgba(15, 23, 42, .06),
+    0 2px 6px -1px rgba(15, 23, 42, .08),
+    0 8px 20px -6px rgba(15, 23, 42, .07);
+  --shadow-float:
+    0 2px 4px rgba(15, 23, 42, .06),
+    0 8px 16px -4px rgba(15, 23, 42, .10),
+    0 20px 40px -12px rgba(15, 23, 42, .12);
 }
 * { box-sizing: border-box; }
-html { background: var(--canvas); }
+html { scroll-behavior: smooth; background: var(--background); }
 body {
   margin: 0;
-  color: var(--ink);
+  color: var(--foreground);
   background:
-    radial-gradient(circle at 92% 0%, rgba(201, 154, 67, .16), transparent 24rem),
-    var(--canvas);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    radial-gradient(circle at 16% -8%, rgba(5, 150, 105, .10), transparent 25rem),
+    radial-gradient(circle at 88% 2%, rgba(124, 58, 237, .07), transparent 27rem),
+    var(--background);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  font-feature-settings: "ss01", "cv11";
   font-variant-numeric: tabular-nums;
 }
-a { color: var(--forest-2); text-underline-offset: 3px; }
-.page { max-width: 1480px; margin: 0 auto; padding: 28px; }
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: 34px 38px 30px;
-  color: #f8f6ef;
-  border-radius: 24px 24px 0 0;
-  background: linear-gradient(118deg, #102f25 0%, #1c5842 72%, #266a4f 100%);
+button, input { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; text-underline-offset: 3px; }
+[hidden] { display: none !important; }
+.page { max-width: 1500px; margin: 0 auto; padding: 0 32px 54px; }
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 74px;
+  border-bottom: 1px solid rgba(9, 9, 11, .07);
 }
-.hero::after {
-  content: "";
-  position: absolute;
-  width: 230px;
-  height: 230px;
-  right: -70px;
-  top: -105px;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 50%;
-  box-shadow: 0 0 0 35px rgba(255,255,255,.035), 0 0 0 70px rgba(255,255,255,.025);
+.brand-lockup { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-mark { width: 25px; height: auto; flex: 0 0 auto; }
+.brand-name {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -.025em;
+}
+.brand-rule { width: 1px; height: 24px; margin: 0 2px; background: var(--border); }
+.brand-product { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
+.header-meta { color: var(--muted-foreground); font-size: 11px; }
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 42px;
+  padding: 70px 0 44px;
 }
 .eyebrow {
-  margin: 0 0 10px;
-  color: #bee1d0;
+  margin: 0 0 13px;
+  color: var(--agent);
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .16em;
+  font-weight: 600;
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
-h1 { margin: 0; font-size: clamp(32px, 5vw, 58px); line-height: .98; letter-spacing: -.045em; }
-.hero-copy { max-width: 720px; margin: 14px 0 0; color: #d9e8df; font-size: 15px; line-height: 1.55; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+h1, h2, h3, p { text-wrap: pretty; }
+h1 {
+  max-width: 850px;
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(48px, 6.5vw, 86px);
+  font-weight: 400;
+  letter-spacing: -.035em;
+  line-height: .94;
+}
+h1 em { color: var(--agent); font-style: italic; }
+.hero-copy {
+  max-width: 720px;
+  margin: 23px 0 0;
+  color: var(--muted-foreground);
+  font-size: 16px;
+  line-height: 1.65;
+}
+.hero-score {
+  min-width: 210px;
+  padding: 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--agent) 26%, var(--border));
+  border-radius: 24px;
+  background: rgba(255,255,255,.76);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(14px);
+}
+.hero-score-label { display: block; color: var(--muted-foreground); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.hero-score-value { display: block; margin-top: 4px; font-family: "Instrument Serif", Georgia, serif; font-size: 44px; line-height: 1; }
+.hero-score-note { display: block; margin-top: 8px; color: var(--muted-foreground); font-size: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
 .chip {
-  padding: 7px 10px;
-  color: #edf6f1;
-  border: 1px solid rgba(255,255,255,.18);
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 11px;
+  color: #3f3f46;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(255,255,255,.08);
-  font-size: 12px;
-  font-weight: 650;
+  background: rgba(255,255,255,.76);
+  font-size: 10px;
+  font-weight: 600;
 }
-.sheet {
-  padding: 34px 38px 44px;
-  background: var(--paper);
-  border-radius: 0 0 24px 24px;
-  box-shadow: var(--shadow);
+.section { margin-top: 54px; }
+.section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 16px;
 }
-.section { margin-top: 40px; }
-.section:first-child { margin-top: 0; }
-.section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
-.section h2 { margin: 0; font-size: 21px; letter-spacing: -.025em; }
-.section-note { max-width: 660px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
-.table-shell { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.section-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 36px; font-weight: 400; letter-spacing: -.02em; line-height: 1; }
+.section-note { max-width: 700px; margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.report-actions, .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-button, .filter-button, .model-filter {
+  appearance: none;
+  padding: 8px 12px;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.78);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.action-button:hover, .filter-button:hover, .model-filter:hover { transform: translateY(-1px); border-color: #b5b5bd; }
+.filter-button[aria-pressed="true"], .model-filter[aria-pressed="true"] { color: var(--primary-foreground); border-color: var(--primary); background: var(--primary); }
+.table-shell {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,.86);
+  box-shadow: var(--shadow-card);
+}
 table { width: 100%; border-collapse: collapse; }
 .results-matrix { min-width: 1040px; }
 th {
-  padding: 11px 13px;
-  color: #617068;
-  background: #f5f3ed;
-  border-bottom: 1px solid var(--line);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .07em;
+  padding: 12px 14px;
+  color: var(--muted-foreground);
+  background: #f7f7f9;
+  border-bottom: 1px solid var(--border);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .075em;
   text-align: right;
   text-transform: uppercase;
   white-space: nowrap;
 }
 th:first-child, td:first-child { text-align: left; }
 td {
-  padding: 15px 13px;
-  border-bottom: 1px solid #ebe8df;
-  font-size: 13px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
   text-align: right;
   vertical-align: middle;
 }
-tr:last-child td { border-bottom: 0; }
-tbody tr:hover { background: #fbfaf6; }
-.model {
-  min-width: 205px;
-  font-weight: 750;
-  letter-spacing: -.012em;
-  overflow-wrap: anywhere;
-}
-.score-main { display: block; color: var(--forest); font-size: 20px; font-weight: 850; letter-spacing: -.025em; }
-.score-sub, .metric-sub { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; white-space: nowrap; }
-.metric-main { display: block; font-weight: 760; white-space: nowrap; }
-.report-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.action-button, .link-button, .result-cell, .task-head, .drawer-nav-button {
+tbody tr:last-child td { border-bottom: 0; }
+.matrix-model, .matrix-score { position: sticky; z-index: 2; background: var(--card); }
+thead .matrix-model, thead .matrix-score { z-index: 4; background: #f7f7f9; }
+.matrix-model { left: 0; width: 210px; min-width: 210px; }
+.matrix-score { left: 210px; width: 100px; min-width: 100px; box-shadow: 10px 0 15px -16px rgba(9,9,11,.8); }
+.matrix-task { width: 152px; min-width: 152px; text-align: center; }
+.matrix-metric { min-width: 112px; }
+.model-filter { max-width: 195px; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
+.model-filter:hover { transform: none; text-decoration: underline; }
+.score-main { display: block; font-family: "Instrument Serif", Georgia, serif; font-size: 26px; line-height: 1; }
+.score-sub, .metric-sub { display: block; margin-top: 4px; color: var(--muted-foreground); font-size: 9px; font-weight: 400; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.metric-main { display: block; font-weight: 600; white-space: nowrap; }
+.task-head {
   appearance: none;
+  width: 100%;
+  padding: 0;
   color: inherit;
   border: 0;
   background: none;
-  font: inherit;
-}
-.action-button {
-  padding: 8px 11px;
-  color: var(--forest);
-  border: 1px solid #c9d7d0;
-  border-radius: 9px;
-  background: #f7fbf8;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 750;
-}
-.action-button:hover { background: #edf6f1; }
-.link-button { cursor: pointer; text-align: left; }
-.link-button:hover { color: var(--forest-2); text-decoration: underline; text-underline-offset: 3px; }
-.matrix-model, .matrix-score { position: sticky; z-index: 2; background: #fff; }
-thead .matrix-model, thead .matrix-score { z-index: 4; background: #f5f3ed; }
-.matrix-model { left: 0; width: 210px; min-width: 210px; }
-.matrix-score { left: 210px; width: 104px; min-width: 104px; box-shadow: 10px 0 15px -15px rgba(23,35,29,.7); }
-.matrix-task { width: 160px; min-width: 160px; text-align: center; }
-.matrix-metric { min-width: 118px; }
-.task-head { width: 100%; cursor: pointer; text-align: center; }
-.task-head-id { display: block; color: #34433b; font-size: 10px; font-weight: 850; line-height: 1.3; text-transform: none; white-space: normal; }
-.task-head-title { display: block; margin-top: 4px; color: #7a847e; font-size: 9px; font-weight: 600; letter-spacing: 0; line-height: 1.25; text-transform: none; white-space: normal; }
-.matrix-cell { padding: 8px; text-align: center; }
-.result-cell {
-  width: 100%;
-  min-height: 66px;
-  padding: 10px 9px;
-  border: 1px solid transparent;
-  border-radius: 11px;
   cursor: pointer;
   text-align: center;
-  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.result-cell:hover { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(23,35,29,.09); }
-.result-cell.pass { color: var(--forest); border-color: #c4dfd1; background: var(--mint); }
-.result-cell.fail { color: var(--red); border-color: #e8c9c3; background: var(--red-soft); }
-.cell-status { display: block; font-size: 11px; font-weight: 900; letter-spacing: .05em; }
-.cell-criteria { display: block; margin-top: 5px; color: currentColor; font-size: 10px; font-weight: 700; opacity: .82; }
-.cell-marks { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; letter-spacing: .08em; }
-.callout {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 11px 13px;
-  color: #56635c;
-  border-left: 3px solid var(--gold);
-  background: #faf6ea;
-  font-size: 11px;
-  line-height: 1.5;
+.task-head-id { display: block; color: #27272a; font-size: 10px; font-weight: 600; line-height: 1.3; text-transform: none; white-space: normal; }
+.task-head-title { display: block; margin-top: 4px; color: #71717a; font-size: 8px; font-weight: 400; letter-spacing: 0; line-height: 1.25; text-transform: none; white-space: normal; }
+.matrix-cell { padding: 8px; text-align: center; }
+.result-cell {
+  display: block;
+  min-height: 62px;
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  text-align: center;
+  text-decoration: none;
+  transition: transform .16s ease, box-shadow .16s ease;
 }
-.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.panel { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
-.panel h3 { margin: 0 0 12px; font-size: 15px; }
-.compact { min-width: 640px; }
-.compact th, .compact td { padding: 10px 11px; font-size: 11px; }
+.result-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-card); }
+.result-cell.pass { color: #047857; border-color: #a7f3d0; background: var(--agent-soft); }
+.result-cell.fail { color: #b91c1c; border-color: #fecaca; background: var(--destructive-soft); }
+.cell-status { display: block; font-size: 10px; font-weight: 600; letter-spacing: .055em; }
+.cell-criteria { display: block; margin-top: 4px; font-size: 9px; opacity: .84; }
+.cell-marks { display: block; margin-top: 3px; color: var(--muted-foreground); font-size: 8px; letter-spacing: .08em; }
+.explorer-toolbar {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 22px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,.78);
+}
+.filter-row { display: grid; grid-template-columns: 72px minmax(0,1fr); align-items: center; gap: 12px; }
+.filter-label { color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.filter-status { margin: 0; color: var(--muted-foreground); font-size: 10px; }
+.submission-list { display: grid; gap: 22px; }
+.submission-card {
+  scroll-margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+.submission-card:target { border-color: color-mix(in srgb, var(--agent) 48%, var(--border)); box-shadow: 0 0 0 4px rgba(5,150,105,.08), var(--shadow-float); }
+.submission-header {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 24px;
+  padding: 24px 26px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(120deg, #fff, #fafafa);
+}
+.submission-kicker { margin: 0 0 6px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.submission-title { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 29px; font-weight: 400; letter-spacing: -.018em; line-height: 1.05; }
+.submission-model { margin: 8px 0 0; color: var(--muted-foreground); font-size: 11px; overflow-wrap: anywhere; }
+.outcome { display: flex; align-items: center; gap: 10px; }
 .status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 54px;
-  padding: 4px 8px;
+  padding: 5px 9px;
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: .04em;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .045em;
 }
-.status.pass { color: var(--forest); background: var(--mint); }
-.status.fail { color: var(--red); background: var(--red-soft); }
-.status.warn { color: #7b5718; background: #f7edcf; }
-.marks { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
-.health { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-.health-card { padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.health-value { display: block; font-size: 22px; font-weight: 850; letter-spacing: -.03em; }
-.health-label { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
-.empty { margin: 0; color: var(--muted); font-size: 13px; }
-.drawer-root[hidden], .drawer-panel[hidden] { display: none; }
-.drawer-root { position: fixed; inset: 0; z-index: 50; }
-.drawer-backdrop { position: absolute; inset: 0; border: 0; background: rgba(9, 20, 15, .48); cursor: pointer; }
-.drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: min(760px, 94vw);
-  height: 100%;
-  overflow-y: auto;
-  padding: 30px 32px 44px;
-  background: var(--paper);
-  box-shadow: -24px 0 70px rgba(9,20,15,.24);
-}
-body.drawer-open { overflow: hidden; }
-.drawer-close {
-  position: sticky;
-  z-index: 3;
-  top: 0;
-  float: right;
-  width: 34px;
-  height: 34px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--paper);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-}
-.drawer-kicker { margin: 4px 42px 7px 0; color: var(--forest-2); font-size: 10px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
-.drawer h2 { margin: 0 42px 5px 0; font-size: 28px; line-height: 1.08; letter-spacing: -.035em; }
-.drawer-subtitle { margin: 0 42px 22px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.drawer-instructions { margin: 18px 0; padding: 14px 16px; border-left: 3px solid var(--gold); background: #faf6ea; font-size: 12px; line-height: 1.65; }
-.drawer-summary { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin: 18px 0; }
-.summary-tile { padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
-.summary-tile strong { display: block; font-size: 17px; letter-spacing: -.02em; }
-.summary-tile span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.35; text-transform: uppercase; }
-.drawer-list { display: grid; gap: 9px; margin-top: 18px; }
-.drawer-list-button {
-  display: grid;
-  grid-template-columns: minmax(0,1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
+.status.pass { color: #047857; background: var(--agent-soft); }
+.status.fail { color: #b91c1c; background: var(--destructive-soft); }
+.status.warn { color: #92400e; background: var(--warning-soft); }
+.criteria-score { text-align: right; }
+.criteria-score strong { display: block; font-family: "Instrument Serif", Georgia, serif; font-size: 30px; font-weight: 400; line-height: 1; }
+.criteria-score span { color: var(--muted-foreground); font-size: 9px; }
+.submission-body { padding: 0 26px 26px; }
+.task-prompt { margin: 0 -26px; padding: 22px 26px; border-bottom: 1px solid var(--border); background: #fafafa; }
+.block-label { margin: 0 0 9px; color: var(--muted-foreground); font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.task-prompt p { margin: 0; font-size: 12px; line-height: 1.65; }
+.text-link { display: inline-flex; margin-top: 10px; color: #047857; font-size: 10px; font-weight: 600; }
+details.prompt-details { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.prompt-copy { max-height: 520px; overflow: auto; margin: 0; padding: 17px; border-top: 1px solid var(--border); color: #27272a; font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-evidence { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--border); }
+.run-evidence:first-of-type { border-top: 0; }
+.run-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.run-head h4 { margin: 0; font-size: 13px; }
+.metric-strip { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin: 14px 0 18px; }
+.metric-tile { padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fafafa; }
+.metric-tile strong { display: block; font-size: 14px; }
+.metric-tile span { display: block; margin-top: 2px; color: var(--muted-foreground); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.verification { margin: 12px 0; color: var(--muted-foreground); font-size: 10px; }
+.judge-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 20px 0 10px; }
+.judge-heading h4 { margin: 0; font-family: "Instrument Serif", Georgia, serif; font-size: 23px; font-weight: 400; }
+.judge-heading span { color: var(--muted-foreground); font-size: 9px; }
+.criterion-list { display: grid; gap: 9px; }
+.criterion {
   padding: 13px 14px;
-  color: inherit;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #fff;
-  cursor: pointer;
-  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fafafa;
 }
-.drawer-list-button:hover { border-color: #a9c5b7; background: #fafcfb; }
-.drawer-list-title { font-size: 12px; font-weight: 780; overflow-wrap: anywhere; }
-.drawer-list-meta { color: var(--muted); font-size: 10px; white-space: nowrap; }
-.run-card { margin-top: 18px; padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
-.run-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 13px; }
-.run-card h3 { margin: 0; font-size: 15px; }
-.verification { margin: 12px 0; padding: 10px 12px; color: #5d6862; border-radius: 9px; background: #f3f2ed; font-size: 10px; line-height: 1.5; }
-.criteria-list { display: grid; gap: 8px; margin: 14px 0 0; }
-.criterion { padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
-.criterion.fail { border-color: #e6c4bd; background: #fff8f6; }
+.criterion.fail { border-color: #fecaca; background: #fff7f7; }
 .criterion.pass { background: #fbfdfc; }
 .criterion-head { display: flex; align-items: center; gap: 8px; }
-.criterion-id { font-size: 11px; font-weight: 800; overflow-wrap: anywhere; }
-.criterion-section { margin-left: auto; color: var(--muted); font-size: 9px; text-transform: uppercase; }
-.criterion-check, .criterion-evidence { margin: 8px 0 0; font-size: 11px; line-height: 1.55; }
-.criterion-evidence { color: var(--muted); }
-details.response { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fcfbf7; }
-details.response summary { padding: 11px 13px; cursor: pointer; font-size: 11px; font-weight: 780; }
-.response-copy { max-height: 480px; overflow: auto; margin: 0; padding: 15px; border-top: 1px solid var(--line); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-.drawer-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
-.drawer-nav-button { padding: 8px 11px; color: var(--forest); border: 1px solid #c9d7d0; border-radius: 9px; background: #f7fbf8; cursor: pointer; font-size: 10px; font-weight: 750; }
-.text-link { font-size: 10px; font-weight: 700; }
+.criterion-id { font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
+.criterion-section { margin-left: auto; color: var(--muted-foreground); font-size: 8px; text-transform: uppercase; }
+.criterion-check, .criterion-evidence { margin: 7px 0 0; font-size: 10px; line-height: 1.55; }
+.criterion-evidence { color: var(--muted-foreground); }
+.all-pass {
+  padding: 14px 16px;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  background: var(--agent-soft);
+  font-size: 11px;
+}
+details.evidence-details, details.response { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fafafa; }
+details summary { padding: 12px 14px; cursor: pointer; font-size: 10px; font-weight: 600; }
+.response-copy { max-height: 620px; overflow: auto; margin: 0; padding: 17px; border-top: 1px solid var(--border); background: #111113; color: #f4f4f5; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .footer {
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  margin-top: 38px;
-  padding-top: 18px;
-  color: var(--muted);
-  border-top: 1px solid var(--line);
-  font-size: 10px;
+  margin-top: 54px;
+  padding: 24px 0 0;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+  font-size: 9px;
   line-height: 1.5;
 }
+.footer-brand { display: inline-flex; align-items: center; gap: 7px; color: var(--foreground); }
+.footer-brand img { width: 15px; height: auto; }
+.footer-brand strong { font-family: "Instrument Serif", Georgia, serif; font-size: 17px; font-weight: 400; }
 @media (max-width: 900px) {
-  .page { padding: 0; }
-  .hero, .sheet { border-radius: 0; padding-left: 20px; padding-right: 20px; }
-  .detail-grid { grid-template-columns: 1fr; }
-  .health { grid-template-columns: repeat(2, 1fr); }
-  .section-head { align-items: start; flex-direction: column; gap: 6px; }
-  .report-actions { justify-content: flex-start; }
-  .matrix-model { width: 170px; min-width: 170px; }
-  .matrix-score { left: 170px; }
-  .drawer { width: 100%; padding: 22px 18px 36px; }
-  .drawer-summary { grid-template-columns: 1fr 1fr; }
+  .page { padding: 0 17px 38px; }
+  .site-header { min-height: 64px; }
+  .brand-product, .header-meta { display: none; }
+  .hero { grid-template-columns: 1fr; gap: 22px; padding: 48px 0 28px; }
+  .hero-score { min-width: 0; }
+  .section { margin-top: 40px; }
+  .section-head { align-items: start; flex-direction: column; gap: 12px; }
+  .matrix-model { width: 164px; min-width: 164px; }
+  .matrix-score { left: 164px; }
+  .filter-row { grid-template-columns: 1fr; gap: 7px; }
+  .submission-header { grid-template-columns: 1fr; padding: 20px; }
+  .outcome { justify-content: space-between; }
+  .submission-body { padding: 0 18px 20px; }
+  .task-prompt { margin: 0 -18px; padding: 18px; }
+  .footer { flex-direction: column; }
+}
+@media (max-width: 520px) {
+  h1 { font-size: 48px; }
+  .brand-name { font-size: 27px; }
+  .metric-strip { grid-template-columns: 1fr; }
 }
 @media print {
   @page { size: landscape; margin: 10mm; }
   body { background: #fff; }
   .page { max-width: none; padding: 0; }
-  .hero, .sheet { border-radius: 0; box-shadow: none; }
-  .section { break-inside: avoid; }
-  .table-shell { overflow: visible; }
+  .site-header, .report-actions, .explorer-toolbar, .footer { display: none; }
+  .hero { padding: 0 0 18px; }
+  .hero-score { box-shadow: none; }
+  .section { margin-top: 26px; break-inside: avoid; }
+  .table-shell { overflow: visible; box-shadow: none; }
   .results-matrix { min-width: 0; }
   .matrix-model, .matrix-score { position: static; box-shadow: none; }
-  .report-actions, .drawer-root { display: none !important; }
-  .result-cell { min-height: 0; padding: 6px; box-shadow: none; }
+  .submission-card { break-inside: avoid; box-shadow: none; }
+  details.response, details.evidence-details { display: none; }
 }
 """
 
 
-def _html_metric(value: str) -> str:
-    match = re.fullmatch(r"μ (.+) \[(.+)–(.+)\](.*)", value)
-    if not match:
-        return f'<span class="metric-main">{escape(value)}</span>'
-    mean, minimum, maximum, suffix = match.groups()
-    return (
-        f'<span class="metric-main">{escape(mean)}</span>'
-        f'<span class="metric-sub">{escape(minimum)}–{escape(maximum)}'
-        f'{escape(suffix)}</span>'
-    )
-
-
-def _task_metric_strings(stats: dict, repetitions: int) -> tuple[str, str, str]:
-    if repetitions > 1:
-        return (
-            _format_token_range(stats),
-            _format_latency_range(stats),
-            _format_cost_range(stats),
-        )
-    tokens = (
-        f"{stats['mean_output_tokens']:,.0f}"
-        if stats["mean_output_tokens"] is not None
-        else "n/a"
-    )
-    latency = (
-        f"{stats['mean_latency_seconds']:.1f}s"
-        if stats["mean_latency_seconds"] is not None
-        else "n/a"
-    )
-    cost = (
-        f"${stats['mean_cost_usd']:.4f}"
-        if stats["mean_cost_usd"] is not None
-        else "n/a"
-    )
-    return tokens, latency, cost
+def _report_css() -> str:
+    return f"""
+@font-face {{
+  font-family: "DM Sans";
+  src: url("{brand_assets.DM_SANS_400}") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}}
+@font-face {{
+  font-family: "DM Sans";
+  src: url("{brand_assets.DM_SANS_600}") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}}
+@font-face {{
+  font-family: "Instrument Serif";
+  src: url("{brand_assets.INSTRUMENT_SERIF_400}") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}}
+""" + REPORT_CSS
 
 
 def _safe_run_artifact_text(run_dir: Path, relative: str | None) -> str | None:
@@ -1743,9 +1752,123 @@ def _criterion_fraction(tally: dict) -> str:
     return f"{tally['passed']}/{tally['judged']} criteria"
 
 
-def _render_report_html(
+def _markdown_table_cell(value: object) -> str:
+    """Keep recorded judge text from breaking compact Markdown tables."""
+    return escape(str(value)).replace("|", "\\|").replace("\n", "<br>")
+
+
+def submission_records(
     *,
     run_dir: Path,
+    task_ids: list[str],
+    model_ids: list[str],
+    report_tasks: dict,
+    repetitions: int,
+    passes: dict,
+    task_criteria: dict,
+    attempts_by_key: dict,
+    verdicts: dict,
+    judgments: list,
+    human: list,
+    models_meta: dict,
+) -> list[dict]:
+    """One self-contained record per task/model for HTML, Markdown, and JSON."""
+    judgment_by_key = {
+        (item["task_id"], item["model_id"], item["repetition"]): item
+        for item in judgments
+    }
+    human_by_key = {
+        (item["task_id"], item["model_id"], item["repetition"]): item
+        for item in human
+    }
+    criterion_definitions = {
+        (task_id, criterion["id"]): criterion["check"]
+        for task_id, task in report_tasks.items()
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+    }
+    records = []
+    for task_id in task_ids:
+        task = report_tasks[task_id]
+        assembled_prompt_path = f"prompts/{task_id}.md"
+        assembled_prompt = _safe_run_artifact_text(run_dir, assembled_prompt_path)
+        for model_id in model_ids:
+            runs = []
+            for repetition in range(1, repetitions + 1):
+                key = (task_id, model_id, repetition)
+                attempt = attempts_by_key.get(key)
+                verdict = verdicts.get(key)
+                judgment = judgment_by_key.get(key)
+                human_verdict = human_by_key.get(key)
+                response_path = attempt.get("response_path") if attempt else None
+                response = _safe_run_artifact_text(run_dir, response_path)
+                safe_response_path = response_path if response is not None else None
+                criteria = []
+                if judgment and "error" not in judgment:
+                    criteria = [
+                        {
+                            **criterion,
+                            "check": criterion_definitions.get(
+                                (task_id, criterion["id"]),
+                                "Rubric definition unavailable.",
+                            ),
+                        }
+                        for criterion in judgment.get("criteria", [])
+                    ]
+                cost = attempt_cost_usd(attempt or {}, models_meta[model_id])
+                runs.append(
+                    {
+                        "repetition": repetition,
+                        "mark": attempt_mark(attempt, verdict),
+                        "pass": bool((verdict or {}).get("pass")),
+                        "verdict_source": (verdict or {}).get("source", "missing"),
+                        "finish_reason": (attempt or {}).get("finish_reason"),
+                        "provider_error": bool(attempt and "error" in attempt),
+                        "output_tokens": (attempt or {}).get("output_tokens"),
+                        "latency_seconds": (attempt or {}).get("latency_seconds"),
+                        "cost_usd": round(cost, 6) if cost is not None else None,
+                        "response_path": safe_response_path,
+                        "response": response,
+                        "judge_completed": (
+                            judgment.get("completed")
+                            if judgment and "error" not in judgment
+                            else None
+                        ),
+                        "judge_error": bool(judgment and "error" in judgment),
+                        "criteria": criteria,
+                        "human_verdict": (
+                            {
+                                "pass": human_verdict["human_pass"],
+                                "agreed_with_judge": human_verdict[
+                                    "agreed_with_judge"
+                                ],
+                                "note": human_verdict.get("note", ""),
+                            }
+                            if human_verdict
+                            else None
+                        ),
+                    }
+                )
+            records.append(
+                {
+                    "task_id": task_id,
+                    "task_title": task["title"],
+                    "task_prompt": task["prompt"],
+                    "assembled_prompt_path": (
+                        assembled_prompt_path if assembled_prompt is not None else None
+                    ),
+                    "assembled_prompt": assembled_prompt,
+                    "model_id": model_id,
+                    "pass": passes[(task_id, model_id)],
+                    "criteria": task_criteria[(task_id, model_id)],
+                    "runs": runs,
+                }
+            )
+    return records
+
+
+def _render_report_html(
+    *,
     run_meta: dict,
     label: str | None,
     model_ids: list[str],
@@ -1755,14 +1878,8 @@ def _render_report_html(
     summary_rows: list[dict],
     passes: dict,
     task_criteria: dict,
-    judgments: list,
-    human: list,
-    attempts_by_key: dict,
-    verdicts: dict,
-    failure_counts: dict,
-    task_efficiency: dict,
-    models_meta: dict,
-    run_health: dict,
+    submissions: list[dict],
+    verdict_count: int,
     human_count: int,
 ) -> str:
     h = escape
@@ -1771,31 +1888,19 @@ def _render_report_html(
     run_word = "run" if repetitions == 1 else "runs"
     skills = "Skills on" if run_meta["skills_included"] else "Skills off"
     tools = "Web tools on" if run_meta.get("tools_enabled") else "Web tools off"
-    verified = f"{human_count}/{len(verdicts)} human verified"
+    verified = f"{human_count}/{verdict_count} human verified"
     grade_label = f"Grade {label or 'default'}"
     artifact_infix = f".{label}" if label else ""
     markdown_name = f"report{artifact_infix}.md"
     json_name = f"report{artifact_infix}.json"
-    judgment_by_key = {
-        (j["task_id"], j["model_id"], j["repetition"]): j for j in judgments
-    }
-    human_by_key = {
-        (v["task_id"], v["model_id"], v["repetition"]): v for v in human
-    }
-    criterion_definitions = {
-        (task_id, criterion["id"]): criterion["check"]
-        for task_id, task in report_tasks.items()
-        for section in RUBRIC_SECTIONS
-        for criterion in task["rubric"][section]
-    }
-    model_panel_ids = {
-        model_id: f"model-{index + 1}" for index, model_id in enumerate(model_ids)
-    }
-    task_panel_ids = {
-        task_id: f"task-{index + 1}" for index, task_id in enumerate(task_ids)
-    }
-    cell_panel_ids = {
-        (task_id, model_id): f"result-{task_index + 1}-{model_index + 1}"
+    top_row = max(summary_rows, key=lambda row: row["task_score_pct"])
+    top_models = [
+        row["model_id"]
+        for row in summary_rows
+        if row["task_score_pct"] == top_row["task_score_pct"]
+    ]
+    submission_ids = {
+        (task_id, model_id): f"submission-{task_index + 1}-{model_index + 1}"
         for task_index, task_id in enumerate(task_ids)
         for model_index, model_id in enumerate(model_ids)
     }
@@ -1806,34 +1911,46 @@ def _render_report_html(
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
-        "style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; "
-        'object-src \'none\'">',
-        f"<title>Marketing benchmark results · {run_id}</title>",
-        '<meta name="description" content="Marketing model benchmark results">',
-        f"<style>{REPORT_CSS}</style>",
-        "</head><body><main class=\"page\">",
-        '<header class="hero">',
-        '<p class="eyebrow">Direct API · Marketing benchmark</p>',
-        "<h1>Results at a glance</h1>",
-        '<p class="hero-copy">A task passes only when every rubric criterion and '
-        "every configured run passes. Quality and efficiency stay visible side by side.</p>",
+        "style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; "
+        "img-src data:; base-uri 'none'; object-src 'none'\">",
+        f"<title>Magister Marketing Evals · {run_id}</title>",
+        '<meta name="description" content="Magister Marketing model benchmark results">',
+        f"<style>{_report_css()}</style>",
+        '</head><body><main class="page" id="top">',
+        '<header class="site-header">',
+        '<a class="brand-lockup" href="#top" aria-label="Magister Marketing Evals">',
+        f'<img class="brand-mark" src="{brand_assets.MAGISTER_LOGO}" alt="">',
+        '<span class="brand-name">Magister</span><span class="brand-rule"></span>',
+        '<span class="brand-product">Marketing Evals</span></a>',
+        f'<span class="header-meta">Run {run_id}</span></header>',
+        '<section class="hero">',
+        '<div><p class="eyebrow">Marketing model benchmark</p>',
+        '<h1>Every answer. Every criterion. <em>One clear score.</em></h1>',
+        '<p class="hero-copy">Compare model performance task by task, then inspect '
+        "the exact assignment, candidate submission, and judge evidence behind "
+        "every result.</p>",
         '<div class="chips">',
-        f'<span class="chip">Run {run_id}</span>',
         f'<span class="chip">{len(task_ids)} tasks</span>',
+        f'<span class="chip">{len(model_ids)} models</span>',
         f'<span class="chip">{repetitions} {run_word} / task</span>',
         f'<span class="chip">{h(skills)}</span>',
         f'<span class="chip">{h(tools)}</span>',
         f'<span class="chip">{h(verified)}</span>',
-        f'<span class="chip">{h(grade_label)}</span>',
-        "</div></header>",
-        '<div class="sheet">',
-        '<section class="section">',
-        '<div class="section-head"><div><h2>Results matrix</h2>',
-        '<p class="section-note">Click a task, model, or result to inspect the '
-        "underlying criteria and exact submission.</p></div>",
-        '<div class="report-actions"><button class="action-button" type="button" '
-        'data-share>Copy view link</button><button class="action-button" type="button" '
-        'data-print>Print / save PDF</button></div></div>',
+        f'<span class="chip">{h(grade_label)}</span></div></div>',
+        '<aside class="hero-score" aria-label="Top benchmark score">',
+        f'<span class="hero-score-label">Top {score_label}</span>',
+        f'<span class="hero-score-value">{top_row["task_score_pct"]}%</span>',
+        f'<span class="hero-score-note">{h(", ".join(top_models))}</span>',
+        '</aside></section>',
+        '<section class="section" aria-labelledby="results-title">',
+        '<div class="section-head"><div>',
+        '<h2 class="section-title" id="results-title">Results matrix</h2>',
+        '<p class="section-note">A task passes only when every configured run and '
+        "every rubric criterion passes. Select any result to jump to its full evidence.</p>"
+        '</div><div class="report-actions">',
+        '<button class="action-button" type="button" data-share>Copy view link</button>',
+        '<button class="action-button" type="button" data-print>Print / save PDF</button>',
+        '</div></div>',
         '<div class="table-shell"><table class="results-matrix"><thead><tr>',
         '<th class="matrix-model">Model</th>',
         f'<th class="matrix-score">{score_label}</th>',
@@ -1842,7 +1959,7 @@ def _render_report_html(
         task = report_tasks[task_id]
         html.append(
             '<th class="matrix-task"><button class="task-head" type="button" '
-            f'data-panel="{task_panel_ids[task_id]}">'
+            f'data-jump-task="{h(task_id)}">'
             f'<span class="task-head-id">{h(task_id)}</span>'
             f'<span class="task-head-title">{h(task["title"])}</span>'
             "</button></th>"
@@ -1859,27 +1976,25 @@ def _render_report_html(
             if repetitions > 1
             else "all criteria required"
         )
+        model_id = row["model_id"]
         html += [
             "<tr>",
-            '<td class="model matrix-model"><button class="link-button" type="button" '
-            f'data-panel="{model_panel_ids[row["model_id"]]}">'
-            f'{h(row["model_id"])}</button></td>',
+            '<td class="matrix-model"><button class="model-filter" type="button" '
+            f'data-jump-model="{h(model_id)}">{h(model_id)}</button></td>',
             '<td class="matrix-score"><span class="score-main">'
             f'{row["tasks_passed"]}/{row["tasks_total"]}</span>'
             f'<span class="score-sub">{row["task_score_pct"]}% · '
             f'{h(run_detail)}</span></td>',
         ]
-        model_id = row["model_id"]
         for task_id in task_ids:
             did_pass = passes[(task_id, model_id)]
             tally = task_criteria[(task_id, model_id)]
-            marks = "".join(
-                attempt_mark(
-                    attempts_by_key.get((task_id, model_id, rep)),
-                    verdicts.get((task_id, model_id, rep)),
-                )
-                for rep in range(1, repetitions + 1)
+            submission = next(
+                item
+                for item in submissions
+                if item["task_id"] == task_id and item["model_id"] == model_id
             )
+            marks = "".join(run["mark"] for run in submission["runs"])
             status = "PASS" if did_pass else "FAIL"
             css_class = "pass" if did_pass else "fail"
             marks_html = (
@@ -1888,14 +2003,16 @@ def _render_report_html(
                 else ""
             )
             html.append(
-                '<td class="matrix-cell"><button type="button" '
+                '<td class="matrix-cell"><a '
                 f'class="result-cell {css_class}" '
-                f'data-panel="{cell_panel_ids[(task_id, model_id)]}" '
+                f'href="#{submission_ids[(task_id, model_id)]}" '
+                f'data-focus-submission data-task="{h(task_id)}" '
+                f'data-model="{h(model_id)}" '
                 f'aria-label="{h(task_id)} for {h(model_id)}: {status}, '
                 f'{h(_criterion_fraction(tally))}">'
                 f'<span class="cell-status">{status}</span>'
                 f'<span class="cell-criteria">{h(_criterion_fraction(tally))}</span>'
-                f"{marks_html}</button></td>"
+                f"{marks_html}</a></td>"
             )
         html += [
             f'<td><span class="metric-main">{h(row["total_tokens"])}</span></td>',
@@ -1904,244 +2021,164 @@ def _render_report_html(
             "</tr>",
         ]
     html += [
-        "</tbody></table></div>",
-        '<div class="callout"><strong>How to read this</strong><span>Binary task '
-        "status drives the leaderboard; the fraction underneath only explains which "
-        "rubric requirements passed. Output tokens and candidate cost are totals across "
-        "the selected tasks. Average task time is shown because candidate calls ran in "
-        "parallel. Judge usage is excluded.</span></div>",
-        "</section>",
+        "</tbody></table></div></section>",
+        '<section class="section" id="submissions" aria-labelledby="submissions-title">',
+        '<div class="section-head"><div>',
+        '<h2 class="section-title" id="submissions-title">Submission explorer</h2>',
+        '<p class="section-note">The task, binary outcome, criterion score, judge '
+        "reasoning, and exact candidate response are together in each record.</p>"
+        '</div></div>',
+        '<div class="explorer-toolbar">',
+        '<div class="filter-row"><span class="filter-label">Task</span>',
+        '<div class="filters">',
+        '<button class="filter-button" type="button" data-filter-kind="task" '
+        'data-filter-value="all" aria-pressed="true">All tasks</button>',
     ]
-    html += [
-        '<section class="section"><div class="detail-grid">',
-        '<div class="panel"><h3>Criterion failures</h3>',
-    ]
-    if failure_counts:
-        html += [
-            '<div class="table-shell"><table class="compact"><thead><tr>',
-            "<th>Task</th><th>Criterion</th><th>Failures</th>",
-            "</tr></thead><tbody>",
-        ]
-        for (task_id, criterion_id), count in sorted(
-            failure_counts.items(), key=lambda item: -item[1]
-        ):
-            html.append(
-                f"<tr><td>{h(task_id)}</td><td>{h(criterion_id)}</td>"
-                f"<td>{count}</td></tr>"
-            )
-        html.append("</tbody></table></div>")
-    else:
-        html.append('<p class="empty">No criterion failures recorded.</p>')
-    html += [
-        "</div>",
-        '<div class="panel"><h3>Run health</h3><div class="health">',
-    ]
-    health_cards = (
-        ("provider_errors", "Provider errors"),
-        ("judge_failures", "Judge failures"),
-        ("truncated_attempts", "Abnormal finishes"),
-        ("ceiling_retries", "Ceiling retries"),
-        ("human_verdicts", "Human verified"),
-    )
-    for key, title in health_cards:
+    for task_id in task_ids:
         html.append(
-            '<div class="health-card">'
-            f'<span class="health-value">{h(str(run_health[key]))}</span>'
-            f'<span class="health-label">{h(title)}</span></div>'
+            '<button class="filter-button" type="button" data-filter-kind="task" '
+            f'data-filter-value="{h(task_id)}" aria-pressed="false">'
+            f"{h(task_id)}</button>"
         )
     html += [
-        "</div></div></div></section>",
-        '<section class="section">',
-        '<div class="section-head"><h2>Per-task efficiency</h2>',
-        f'<p class="section-note">{"Mean and range across configured runs." if repetitions > 1 else "One observed candidate response per task and model."}</p></div>',
-        '<div class="table-shell"><table class="compact"><thead><tr>',
-        "<th>Task</th><th>Model</th><th>Responses</th><th>Output tokens</th>"
-        "<th>Latency</th><th>Cost / response</th>",
-        "</tr></thead><tbody>",
+        '</div></div><div class="filter-row"><span class="filter-label">Model</span>',
+        '<div class="filters">',
+        '<button class="filter-button" type="button" data-filter-kind="model" '
+        'data-filter-value="all" aria-pressed="true">All models</button>',
     ]
-    for task_id in task_ids:
-        for model_id in model_ids:
-            stats = task_efficiency[(task_id, model_id)]
-            tokens, latency, cost = _task_metric_strings(stats, repetitions)
-            html.append(
-                f"<tr><td>{h(task_id)}</td><td>{h(model_id)}</td>"
-                f'<td>{stats["completed_attempts"]}/{repetitions}</td>'
-                f"<td>{_html_metric(tokens)}</td><td>{_html_metric(latency)}</td>"
-                f"<td>{_html_metric(cost)}</td></tr>"
-            )
-    html += [
-        "</tbody></table></div></section>",
-        '<footer class="footer"><span>Generated from immutable prompts, candidate '
-        "responses, deterministic checks, and judge verdicts. Judge verdicts remain "
-        "advisory until human verified.</span>"
-        f'<span><a href="{h(markdown_name)}">Detailed Markdown</a> · '
-        f'<a href="{h(json_name)}">Raw JSON</a></span></footer>',
-        "</div></main>",
-        '<div class="drawer-root" id="drawer-root" hidden>',
-        '<button class="drawer-backdrop" type="button" data-close '
-        'aria-label="Close result details"></button>',
-        '<aside class="drawer" role="dialog" aria-modal="true" '
-        'aria-label="Benchmark result details">',
-        '<button class="drawer-close" type="button" data-close '
-        'aria-label="Close result details">×</button>',
-    ]
-
-    # Task-level comparison panels.
-    for task_id in task_ids:
-        task = report_tasks[task_id]
-        html += [
-            f'<article class="drawer-panel" id="{task_panel_ids[task_id]}" hidden '
-            'tabindex="-1">',
-            '<p class="drawer-kicker">Task comparison</p>',
-            f'<h2>{h(task["title"])}</h2>',
-            f'<p class="drawer-subtitle">{h(task_id)} · every criterion must pass</p>',
-            f'<div class="drawer-instructions">{h(task["prompt"])}</div>',
-            f'<a class="text-link" href="./prompts/{h(task_id)}.md">Open the exact '
-            "assembled prompt</a>",
-            '<div class="drawer-list">',
-        ]
-        for model_id in model_ids:
-            did_pass = passes[(task_id, model_id)]
-            status = "PASS" if did_pass else "FAIL"
-            css_class = "pass" if did_pass else "fail"
-            tally = task_criteria[(task_id, model_id)]
-            html.append(
-                '<button class="drawer-list-button" type="button" '
-                f'data-panel="{cell_panel_ids[(task_id, model_id)]}">'
-                f'<span class="drawer-list-title">{h(model_id)}</span>'
-                f'<span class="status {css_class}">{status}</span>'
-                f'<span class="drawer-list-meta">{h(_criterion_fraction(tally))}</span>'
-                "</button>"
-            )
-        html.append("</div></article>")
-
-    # Model-level drilldowns.
     for model_id in model_ids:
-        summary_row = next(row for row in summary_rows if row["model_id"] == model_id)
-        html += [
-            f'<article class="drawer-panel" id="{model_panel_ids[model_id]}" hidden '
-            'tabindex="-1">',
-            '<p class="drawer-kicker">Model summary</p>',
-            f'<h2>{h(model_id)}</h2>',
-            f'<p class="drawer-subtitle">{score_label}: '
-            f'{summary_row["tasks_passed"]}/{summary_row["tasks_total"]} tasks</p>',
-            '<div class="drawer-summary">',
-            f'<div class="summary-tile"><strong>{h(summary_row["total_tokens"])}</strong>'
-            "<span>Output tokens · total</span></div>",
-            f'<div class="summary-tile"><strong>{h(summary_row["total_cost"])}</strong>'
-            "<span>Candidate cost · total</span></div>",
-            f'<div class="summary-tile"><strong>{h(summary_row["average_latency"])}</strong>'
-            "<span>Average task time</span></div>",
-            "</div><div class=\"drawer-list\">",
-        ]
-        for task_id in task_ids:
-            did_pass = passes[(task_id, model_id)]
-            status = "PASS" if did_pass else "FAIL"
-            css_class = "pass" if did_pass else "fail"
-            tally = task_criteria[(task_id, model_id)]
-            html.append(
-                '<button class="drawer-list-button" type="button" '
-                f'data-panel="{cell_panel_ids[(task_id, model_id)]}">'
-                f'<span class="drawer-list-title">{h(report_tasks[task_id]["title"])}</span>'
-                f'<span class="status {css_class}">{status}</span>'
-                f'<span class="drawer-list-meta">{h(_criterion_fraction(tally))}</span>'
-                "</button>"
-            )
-        html.append("</div></article>")
-
-    # Exact per-task/model evidence panels.
-    ordered_cells = [
-        (task_id, model_id) for task_id in task_ids for model_id in model_ids
+        html.append(
+            '<button class="filter-button" type="button" data-filter-kind="model" '
+            f'data-filter-value="{h(model_id)}" aria-pressed="false">'
+            f"{h(model_id)}</button>"
+        )
+    html += [
+        '</div></div><p class="filter-status" data-filter-status aria-live="polite"></p>',
+        '</div><div class="submission-list">',
     ]
-    for cell_index, (task_id, model_id) in enumerate(ordered_cells):
-        task = report_tasks[task_id]
-        did_pass = passes[(task_id, model_id)]
-        status = "PASS" if did_pass else "FAIL"
-        css_class = "pass" if did_pass else "fail"
-        tally = task_criteria[(task_id, model_id)]
+
+    for submission in submissions:
+        task_id = submission["task_id"]
+        model_id = submission["model_id"]
+        tally = submission["criteria"]
+        status = "PASS" if submission["pass"] else "FAIL"
+        css_class = "pass" if submission["pass"] else "fail"
         html += [
-            f'<article class="drawer-panel" id="{cell_panel_ids[(task_id, model_id)]}" '
-            'hidden tabindex="-1">',
-            '<p class="drawer-kicker">Task result</p>',
-            f'<h2>{h(task["title"])}</h2>',
-            f'<p class="drawer-subtitle">{h(model_id)} · {h(task_id)}</p>',
-            '<div class="drawer-summary">',
-            f'<div class="summary-tile"><strong><span class="status {css_class}">'
-            f'{status}</span></strong><span>Task outcome</span></div>',
-            f'<div class="summary-tile"><strong>{h(_criterion_fraction(tally))}</strong>'
-            "<span>Judge criteria</span></div>",
-            f'<div class="summary-tile"><strong>{repetitions}</strong>'
-            f'<span>Configured {run_word}</span></div>',
-            "</div>",
-            f'<div class="drawer-instructions">{h(task["prompt"])}</div>',
-            f'<a class="text-link" href="./prompts/{h(task_id)}.md">Open the exact '
-            "assembled prompt</a>",
+            f'<article class="submission-card" id="{submission_ids[(task_id, model_id)]}" '
+            f'data-submission data-task="{h(task_id)}" data-model="{h(model_id)}">',
+            '<header class="submission-header"><div>',
+            f'<p class="submission-kicker">{h(task_id)}</p>',
+            f'<h3 class="submission-title">{h(submission["task_title"])}</h3>',
+            f'<p class="submission-model">{h(model_id)}</p></div>',
+            '<div class="outcome">',
+            f'<span class="status {css_class}">{status}</span>',
+            '<div class="criteria-score">',
+            f'<strong>{tally["passed"]}/{tally["judged"]}</strong>',
+            '<span>judge criteria passed</span></div></div></header>',
+            '<div class="submission-body"><section class="task-prompt">',
+            '<p class="block-label">Exact task asked</p>',
+            f'<p>{h(submission["task_prompt"])}</p>',
         ]
-        for repetition in range(1, repetitions + 1):
-            key = (task_id, model_id, repetition)
-            attempt = attempts_by_key.get(key)
-            judgment = judgment_by_key.get(key)
-            human_verdict = human_by_key.get(key)
-            verdict = verdicts.get(key)
-            mark = attempt_mark(attempt, verdict)
-            run_status = "PASS" if mark == "P" else "FAIL"
-            run_class = "pass" if mark == "P" else "fail"
+        if submission["assembled_prompt"] is not None:
+            html += [
+                '<details class="prompt-details"><summary>View complete assembled '
+                'prompt with fixtures and skills</summary>',
+                f'<pre class="prompt-copy">{h(submission["assembled_prompt"])}</pre>'
+                '</details>',
+            ]
+            if submission["assembled_prompt_path"]:
+                html.append(
+                    f'<a class="text-link" href="./{h(submission["assembled_prompt_path"])}">'
+                    "Open assembled prompt as Markdown</a>"
+                )
+        html.append("</section>")
+        for run in submission["runs"]:
+            run_status = "PASS" if run["pass"] else "FAIL"
+            run_class = "pass" if run["pass"] else "fail"
             output_tokens = (
-                f"{attempt['output_tokens']:,}"
-                if attempt and isinstance(attempt.get("output_tokens"), (int, float))
-                and not isinstance(attempt["output_tokens"], bool)
+                f'{run["output_tokens"]:,}'
+                if isinstance(run["output_tokens"], (int, float))
+                and not isinstance(run["output_tokens"], bool)
                 else "n/a"
             )
             latency = (
-                f"{attempt['latency_seconds']:.1f}s"
-                if attempt and isinstance(attempt.get("latency_seconds"), (int, float))
-                and not isinstance(attempt["latency_seconds"], bool)
+                f'{run["latency_seconds"]:.1f}s'
+                if isinstance(run["latency_seconds"], (int, float))
+                and not isinstance(run["latency_seconds"], bool)
                 else "n/a"
             )
-            attempt_cost = attempt_cost_usd(attempt or {}, models_meta[model_id])
-            cost = f"${attempt_cost:.4f}" if attempt_cost is not None else "n/a"
-            source = (verdict or {}).get("source", "missing")
+            cost = (
+                f'${run["cost_usd"]:.4f}'
+                if run["cost_usd"] is not None
+                else "n/a"
+            )
+            human_verdict = run["human_verdict"]
             if human_verdict:
-                human_note = human_verdict.get("note") or "No note recorded."
-                verification = (
-                    f"Human-verified {run_status.lower()}: {h(human_note)}"
-                )
+                note = human_verdict["note"] or "No note recorded."
+                verification = f"Human-verified {run_status.lower()}: {h(note)}"
             else:
                 verification = (
-                    f"Verdict source: {h(source)}. Not yet human verified."
+                    f'Verdict source: {h(run["verdict_source"])} · '
+                    "not yet human verified"
                 )
             html += [
-                '<section class="run-card">',
-                '<div class="run-card-head">',
-                f'<h3>Run {repetition}</h3><span class="status {run_class}">'
-                f'{run_status}</span></div>',
-                '<div class="drawer-summary">',
-                f'<div class="summary-tile"><strong>{h(output_tokens)}</strong>'
-                "<span>Output tokens</span></div>",
-                f'<div class="summary-tile"><strong>{h(cost)}</strong>'
-                "<span>Candidate cost</span></div>",
-                f'<div class="summary-tile"><strong>{h(latency)}</strong>'
-                "<span>Latency</span></div>",
-                "</div>",
-                f'<div class="verification">{verification}</div>',
+                '<section class="run-evidence">',
+                '<div class="run-head">',
+                f'<h4>Run {run["repetition"]}</h4>',
+                f'<span class="status {run_class}">{run_status}</span></div>',
+                '<div class="metric-strip">',
+                f'<div class="metric-tile"><strong>{h(output_tokens)}</strong>'
+                '<span>Output tokens</span></div>',
+                f'<div class="metric-tile"><strong>{h(cost)}</strong>'
+                '<span>Candidate cost</span></div>',
+                f'<div class="metric-tile"><strong>{h(latency)}</strong>'
+                '<span>Latency</span></div></div>',
+                f'<p class="verification">{verification}</p>',
+                '<div class="judge-heading"><h4>What the judge said</h4>',
+                f'<span>{sum(bool(item["pass"]) for item in run["criteria"])}/'
+                f'{len(run["criteria"])} criteria</span></div>',
             ]
-            if judgment and "error" not in judgment:
-                if not judgment.get("completed", False):
-                    html.append(
-                        '<div class="verification">The judge marked the overall '
-                        "task incomplete even if individual criteria passed.</div>"
-                    )
-                criteria = sorted(
-                    judgment.get("criteria", []),
-                    key=lambda criterion: criterion["pass"],
+            failed = [criterion for criterion in run["criteria"] if not criterion["pass"]]
+            if run["provider_error"]:
+                html.append(
+                    '<p class="criterion fail">The provider call failed; no '
+                    "candidate submission was recorded.</p>"
                 )
-                html.append('<div class="criteria-list">')
-                for criterion in criteria:
+            elif run["judge_error"]:
+                html.append(
+                    '<p class="criterion fail">The judge did not return a usable verdict.</p>'
+                )
+            elif failed:
+                html.append('<div class="criterion-list">')
+                for criterion in failed:
+                    html += [
+                        '<div class="criterion fail"><div class="criterion-head">',
+                        '<span class="status fail">FAIL</span>',
+                        f'<span class="criterion-id">{h(criterion["id"])}</span>',
+                        f'<span class="criterion-section">{h(criterion.get("section", ""))}'
+                        f' · {h(criterion.get("source", "judge"))}</span></div>',
+                        f'<p class="criterion-check">{h(criterion["check"])}</p>',
+                        '<p class="criterion-evidence"><strong>Judge evidence:</strong> '
+                        f'{h(criterion["evidence"])}</p></div>',
+                    ]
+                html.append("</div>")
+            elif run["criteria"]:
+                html.append(
+                    f'<div class="all-pass">All {len(run["criteria"])} rubric '
+                    "criteria passed.</div>"
+                )
+            else:
+                html.append('<p class="verification">No judge evidence is recorded.</p>')
+            if run["criteria"]:
+                html += [
+                    '<details class="evidence-details"><summary>View all criterion '
+                    'evidence</summary><div class="criterion-list">'
+                ]
+                for criterion in sorted(
+                    run["criteria"], key=lambda item: (item["pass"], item["id"])
+                ):
                     criterion_class = "pass" if criterion["pass"] else "fail"
                     criterion_status = "PASS" if criterion["pass"] else "FAIL"
-                    definition = criterion_definitions.get(
-                        (task_id, criterion["id"]), "Rubric definition unavailable."
-                    )
                     html += [
                         f'<div class="criterion {criterion_class}">',
                         '<div class="criterion-head">',
@@ -2149,101 +2186,82 @@ def _render_report_html(
                         f'<span class="criterion-id">{h(criterion["id"])}</span>',
                         f'<span class="criterion-section">{h(criterion.get("section", ""))}'
                         f' · {h(criterion.get("source", "judge"))}</span></div>',
-                        f'<p class="criterion-check">{h(definition)}</p>',
-                        f'<p class="criterion-evidence"><strong>Evidence:</strong> '
+                        f'<p class="criterion-check">{h(criterion["check"])}</p>',
+                        '<p class="criterion-evidence"><strong>Judge evidence:</strong> '
                         f'{h(criterion["evidence"])}</p></div>',
                     ]
-                html.append("</div>")
-            elif judgment and "error" in judgment:
-                html.append(
-                    '<p class="empty">The judge did not return a usable verdict.</p>'
-                )
-            else:
-                html.append('<p class="empty">No judge evidence is recorded.</p>')
-
-            response_text = _safe_run_artifact_text(
-                run_dir, attempt.get("response_path") if attempt else None
-            )
-            if response_text is not None:
-                response_href = "./" + h(attempt["response_path"])
+                html.append("</div></details>")
+            if run["response"] is not None:
                 html += [
                     '<details class="response"><summary>View exact candidate '
-                    "response</summary>",
-                    f'<pre class="response-copy">{h(response_text)}</pre></details>',
-                    f'<a class="text-link" href="{response_href}">Open response '
-                    "as Markdown</a>",
+                    "submission</summary>",
+                    f'<pre class="response-copy">{h(run["response"])}</pre></details>',
                 ]
-            elif attempt and "error" in attempt:
-                html.append('<p class="empty">The provider call failed; no response was recorded.</p>')
+                if run["response_path"]:
+                    html.append(
+                        f'<a class="text-link" href="./{h(run["response_path"])}">'
+                        "Open candidate submission as Markdown</a>"
+                    )
             html.append("</section>")
-
-        previous_cell = ordered_cells[(cell_index - 1) % len(ordered_cells)]
-        next_cell = ordered_cells[(cell_index + 1) % len(ordered_cells)]
-        html += [
-            '<nav class="drawer-nav" aria-label="Result navigation">',
-            '<button class="drawer-nav-button" type="button" '
-            f'data-panel="{cell_panel_ids[previous_cell]}">Previous result</button>',
-            '<button class="drawer-nav-button" type="button" '
-            f'data-panel="{task_panel_ids[task_id]}">Compare task</button>',
-            '<button class="drawer-nav-button" type="button" '
-            f'data-panel="{model_panel_ids[model_id]}">Model summary</button>',
-            '<button class="drawer-nav-button" type="button" '
-            f'data-panel="{cell_panel_ids[next_cell]}">Next result</button>',
-            "</nav></article>",
-        ]
-
+        html.append("</div></article>")
     html += [
-        "</aside></div>",
-        "<script>",
-        "(() => {",
-        "  const root = document.getElementById('drawer-root');",
-        "  const panels = [...document.querySelectorAll('.drawer-panel')];",
-        "  const share = document.querySelector('[data-share]');",
-        "  let returnFocus = null;",
-        "  function openPanel(id, updateHash = true) {",
-        "    const panel = document.getElementById(id);",
-        "    if (!panel || !panel.classList.contains('drawer-panel')) return;",
-        "    returnFocus = document.activeElement;",
-        "    panels.forEach(item => { item.hidden = item !== panel; });",
-        "    root.hidden = false;",
-        "    document.body.classList.add('drawer-open');",
-        "    panel.focus();",
-        "    if (updateHash && window.location.hash !== '#' + id) {",
-        "      history.pushState(null, '', '#' + id);",
-        "    }",
-        "  }",
-        "  function closePanel(updateHash = true) {",
-        "    root.hidden = true;",
-        "    document.body.classList.remove('drawer-open');",
-        "    panels.forEach(item => { item.hidden = true; });",
-        "    if (updateHash && window.location.hash) {",
-        "      history.pushState(null, '', window.location.href.split('#')[0]);",
-        "    }",
-        "    if (returnFocus && returnFocus.focus) returnFocus.focus();",
-        "  }",
-        "  document.addEventListener('click', event => {",
-        "    const trigger = event.target.closest('[data-panel]');",
-        "    if (trigger) openPanel(trigger.dataset.panel);",
-        "    if (event.target.closest('[data-close]')) closePanel();",
-        "    if (event.target.closest('[data-print]')) window.print();",
-        "  });",
-        "  document.addEventListener('keydown', event => {",
-        "    if (event.key === 'Escape' && !root.hidden) closePanel();",
-        "  });",
-        "  window.addEventListener('hashchange', () => {",
-        "    const id = decodeURIComponent(window.location.hash.slice(1));",
-        "    if (id) openPanel(id, false); else closePanel(false);",
-        "  });",
-        "  if (share) share.addEventListener('click', async () => {",
-        "    const original = share.textContent;",
-        "    try { await navigator.clipboard.writeText(window.location.href); share.textContent = 'Link copied'; }",
-        "    catch (_error) { share.textContent = 'Copy the address bar'; }",
-        "    window.setTimeout(() => { share.textContent = original; }, 1800);",
-        "  });",
-        "  const initial = decodeURIComponent(window.location.hash.slice(1));",
-        "  if (initial) openPanel(initial, false);",
-        "})();",
-        "</script></body></html>",
+        '</div></section><footer class="footer">',
+        '<span class="footer-brand">',
+        f'<img src="{brand_assets.MAGISTER_LOGO}" alt="">',
+        '<strong>Magister</strong><span>Marketing Evals</span></span>',
+        f'<span><a href="{h(markdown_name)}">Markdown report</a> · '
+        f'<a href="{h(json_name)}">Structured JSON</a></span></footer>',
+        '</main><script>',
+        '(() => {',
+        '  const cards = [...document.querySelectorAll("[data-submission]")];',
+        '  const state = { task: "all", model: "all" };',
+        '  const status = document.querySelector("[data-filter-status]");',
+        '  function setPressed(kind) {',
+        '    document.querySelectorAll(`[data-filter-kind="${kind}"]`).forEach(button => {',
+        '      button.setAttribute("aria-pressed", String(button.dataset.filterValue === state[kind]));',
+        '    });',
+        '  }',
+        '  function applyFilters() {',
+        '    let shown = 0;',
+        '    cards.forEach(card => {',
+        '      const visible = (state.task === "all" || card.dataset.task === state.task)',
+        '        && (state.model === "all" || card.dataset.model === state.model);',
+        '      card.hidden = !visible;',
+        '      if (visible) shown += 1;',
+        '    });',
+        '    setPressed("task"); setPressed("model");',
+        '    status.textContent = `${shown} submission${shown === 1 ? "" : "s"} shown`;',
+        '  }',
+        '  function setFilter(kind, value) { state[kind] = value; applyFilters(); }',
+        '  document.addEventListener("click", event => {',
+        '    const filter = event.target.closest("[data-filter-kind]");',
+        '    if (filter) setFilter(filter.dataset.filterKind, filter.dataset.filterValue);',
+        '    const taskJump = event.target.closest("[data-jump-task]");',
+        '    if (taskJump) { setFilter("task", taskJump.dataset.jumpTask);',
+        '      document.getElementById("submissions").scrollIntoView({ behavior: "smooth" }); }',
+        '    const modelJump = event.target.closest("[data-jump-model]");',
+        '    if (modelJump) { setFilter("model", modelJump.dataset.jumpModel);',
+        '      document.getElementById("submissions").scrollIntoView({ behavior: "smooth" }); }',
+        '    const focus = event.target.closest("[data-focus-submission]");',
+        '    if (focus) { state.task = focus.dataset.task; state.model = focus.dataset.model;',
+        '      applyFilters(); }',
+        '    if (event.target.closest("[data-print]")) window.print();',
+        '  });',
+        '  const share = document.querySelector("[data-share]");',
+        '  if (share) share.addEventListener("click", async () => {',
+        '    const original = share.textContent;',
+        '    try { await navigator.clipboard.writeText(window.location.href);',
+        '      share.textContent = "Link copied"; }',
+        '    catch (_error) { share.textContent = "Copy the address bar"; }',
+        '    window.setTimeout(() => { share.textContent = original; }, 1800);',
+        '  });',
+        '  const initial = document.getElementById(decodeURIComponent(location.hash.slice(1)));',
+        '  if (initial && initial.matches("[data-submission]")) {',
+        '    state.task = initial.dataset.task; state.model = initial.dataset.model;',
+        '  }',
+        '  applyFilters();',
+        '})();',
+        '</script></body></html>',
     ]
     return "\n".join(html)
 
@@ -2295,19 +2313,6 @@ def cmd_report(args: argparse.Namespace) -> int:
     efficiency = model_efficiency(
         model_ids, attempts, judgments, models_meta, section_of
     )
-    task_efficiency = {
-        (task_id, model_id): attempt_efficiency(
-            [
-                attempt
-                for attempt in attempts
-                if attempt["task_id"] == task_id
-                and attempt["model_id"] == model_id
-            ],
-            models_meta[model_id],
-        )
-        for task_id in task_ids
-        for model_id in model_ids
-    }
     passes = {
         (task_id, model_id): all_pass(task_id, model_id, repetitions, verdicts)
         for task_id in task_ids
@@ -2349,9 +2354,23 @@ def cmd_report(args: argparse.Namespace) -> int:
         repetition_pass_counts,
         efficiency,
     )
+    submissions = submission_records(
+        run_dir=run_dir,
+        task_ids=task_ids,
+        model_ids=model_ids,
+        report_tasks=report_tasks,
+        repetitions=repetitions,
+        passes=passes,
+        task_criteria=task_criteria,
+        attempts_by_key=attempts_by_key,
+        verdicts=verdicts,
+        judgments=judgments,
+        human=human,
+        models_meta=models_meta,
+    )
 
     lines = [
-        "# Marketing benchmark results",
+        "# Magister Marketing Evals",
         "",
         f"Run `{run_meta['run_id']}` · {len(task_ids)} tasks · "
         f"{repetitions} {'run' if repetitions == 1 else 'runs'} per task · "
@@ -2390,36 +2409,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
     lines += [
         "",
-        "> Binary task status determines the score; criterion fractions are diagnostic "
-        "only. Output tokens and candidate cost are totals across selected tasks. "
-        "Average task time is used because calls run in parallel. Judge usage is excluded.",
-        "",
         "---",
         "",
-        "## Detailed analysis",
-        "",
-        "### Run configuration",
+        "## Run configuration",
         "",
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
         f"- Runs per task: {repetitions} (all configured runs must pass)",
-        f"- Max output tokens: {run_meta['max_output_tokens']} Anthropic ceiling"
-        " (required by the API); OpenAI uncapped unless a candidate sets one"
-        + (
-            "; per-candidate overrides: " + ", ".join(
-                f"{m}={spec['max_output_tokens']}"
-                for m, spec in run_meta["models"].items()
-                if spec.get("max_output_tokens")
-            )
-            if any(spec.get("max_output_tokens") for spec in run_meta["models"].values())
-            else ""
-        )
-        + "; temperature omitted",
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         f"- Grade label: {label or 'default'}",
+        "- Score: one point per task only when every criterion and configured run passes",
+        "- Efficiency: output tokens and candidate cost are totals; task time is the mean "
+        "because candidate calls run in parallel; judge usage is excluded",
         "",
-        "The headline gives each task equal weight. A task gets no partial credit:",
-        "every rubric criterion and every configured run must pass.",
     ]
     if all(split_task_ids.values()):
         lines += [
@@ -2441,211 +2443,101 @@ def cmd_report(args: argparse.Namespace) -> int:
             lines.append(f"| {model_id} | " + " | ".join(cells) + " |")
     lines += [
         "",
-        "## Task grid (pass = every criterion and configured run passed)",
+        "## Candidate submissions and judge verdicts",
         "",
-        "| Task | " + " | ".join(model_ids) + " |",
-        "|---|" + "---|" * len(model_ids),
+        "The HTML report keeps these records on the main page with task and model filters. "
+        "This section is the complete text-first audit trail.",
     ]
     for task_id in task_ids:
-        row = [task_id]
-        for model_id in model_ids:
-            marks = "".join(
-                attempt_mark(
-                    attempts_by_key.get((task_id, model_id, rep)),
-                    verdicts.get((task_id, model_id, rep)),
-                )
-                for rep in range(1, repetitions + 1)
-            )
-            row.append(f"{'PASS' if passes[(task_id, model_id)] else 'FAIL'} ({marks})")
-        lines.append("| " + " | ".join(row) + " |")
-    lines += [
-        "| **Tasks passed** | "
-        + " | ".join(f"**{task_pass_counts[m]}/{len(task_ids)}**" for m in model_ids)
-        + " |",
-        "",
-        "Per-run marks: P pass, F fail, T truncated/abnormal finish",
-        "(counts as a failure; not quality evidence), E provider error.",
-        "",
-        "## Criterion failures (quality evidence only: judge verdicts on",
-        "normally-finished attempts, human overrides applied)",
-        "",
-    ]
-
-    failure_counts = criterion_failure_counts(judgments, verdicts, attempts_by_key)
-    if failure_counts:
-        lines.append("| Task | Criterion | Failures |")
-        lines.append("|---|---|---|")
-        for (task_id, criterion_id), count in sorted(
-            failure_counts.items(), key=lambda item: -item[1]
+        task = report_tasks[task_id]
+        lines += [
+            "",
+            f"### {task['title']} (`{task_id}`)",
+            "",
+            "**Exact task asked**",
+            "",
+        ]
+        lines.extend(f"> {line}" if line else ">" for line in task["prompt"].splitlines())
+        lines += [
+            "",
+            f"[Open the assembled prompt with fixtures and skills](prompts/{task_id}.md)",
+        ]
+        for submission in (
+            item for item in submissions if item["task_id"] == task_id
         ):
-            lines.append(f"| {task_id} | {criterion_id} | {count} |")
-    else:
-        lines.append("None.")
-
-    lines += [
-        "",
-        "## Task prompts and model submissions",
-        "",
-        "Every cell links to the exact text: the full prompt sent (fixtures",
-        "and skills included) and each run's raw submission.",
-        "",
-        "| Task | Prompt | " + " | ".join(model_ids) + " |",
-        "|---|---|" + "---|" * len(model_ids),
-    ]
-    for task_id in task_ids:
-        prompt_file = run_dir / "prompts" / f"{task_id}.md"
-        prompt_cell = f"[prompt](prompts/{task_id}.md)" if prompt_file.exists() else "—"
-        row = [task_id, prompt_cell]
-        for model_id in model_ids:
-            cells = []
-            for rep in range(1, repetitions + 1):
-                mark = attempt_mark(
-                    attempts_by_key.get((task_id, model_id, rep)),
-                    verdicts.get((task_id, model_id, rep)),
+            tally = submission["criteria"]
+            status = "PASS" if submission["pass"] else "FAIL"
+            lines += [
+                "",
+                f"#### `{submission['model_id']}` — **{status}** — "
+                f"{_criterion_fraction(tally)}",
+            ]
+            for run in submission["runs"]:
+                run_status = "PASS" if run["pass"] else "FAIL"
+                tokens = (
+                    f"{run['output_tokens']:,} output tokens"
+                    if isinstance(run["output_tokens"], (int, float))
+                    and not isinstance(run["output_tokens"], bool)
+                    else "output tokens n/a"
                 )
-                response_rel = f"responses/{task_id}--{model_id}--r{rep}.md"
-                if (run_dir / response_rel).exists():
-                    cells.append(f"[r{rep} {mark}]({response_rel})")
+                latency = (
+                    f"{run['latency_seconds']:.1f}s latency"
+                    if isinstance(run["latency_seconds"], (int, float))
+                    and not isinstance(run["latency_seconds"], bool)
+                    else "latency n/a"
+                )
+                cost = (
+                    f"${run['cost_usd']:.4f} candidate cost"
+                    if run["cost_usd"] is not None
+                    else "candidate cost n/a"
+                )
+                lines += [
+                    "",
+                    f"**Run {run['repetition']}: {run_status}** · {tokens} · {cost} · {latency}",
+                    "",
+                ]
+                if run["human_verdict"]:
+                    note = run["human_verdict"]["note"] or "No note recorded."
+                    lines.append(
+                        f"Human-verified {run_status.lower()}: {note}"
+                    )
                 else:
-                    cells.append(f"r{rep} {mark}")
-            row.append(" · ".join(cells))
-        lines.append("| " + " | ".join(row) + " |")
-
+                    lines.append(
+                        f"Verdict source: {run['verdict_source']}; not yet human verified."
+                    )
+                if run["provider_error"]:
+                    lines += ["", "Provider call failed; no candidate response was recorded."]
+                elif run["judge_error"]:
+                    lines += ["", "Judge failed to return a usable verdict."]
+                elif run["criteria"]:
+                    lines += [
+                        "",
+                        "| Judge criterion | Result | Judge evidence |",
+                        "|---|---:|---|",
+                    ]
+                    for criterion in run["criteria"]:
+                        criterion_status = "PASS" if criterion["pass"] else "FAIL"
+                        lines.append(
+                            f"| `{_markdown_table_cell(criterion['id'])}` "
+                            f"| **{criterion_status}** "
+                            f"| {_markdown_table_cell(criterion['evidence'])} |"
+                        )
+                else:
+                    lines += ["", "No judge evidence is recorded."]
+                if run["response_path"]:
+                    lines += [
+                        "",
+                        f"[Open the exact candidate submission]({run['response_path']})",
+                    ]
     lines += [
         "",
-        "## Model efficiency and criterion resolution",
+        "---",
         "",
-        "Overall ranges below pool every selected task and configured run for a model.",
-        (
-            "The per-task table that follows isolates repeated calls to show "
-            "run-to-run variation."
-            if repetitions > 1
-            else "The per-task table that follows shows each individual candidate response."
-        ),
-        "OpenAI",
-        "output-token usage includes hidden reasoning tokens.",
-        "",
-        "| Model | Responses | Output tokens / response | Latency / response | Est. cost / response | Est. total candidate cost | Criteria passed | Criterion macro | Criterion pooled |",
-        "|---|---|---|---|---|---|---|---|---|",
-    ]
-    for model_id in model_ids:
-        stats = efficiency[model_id]
-        responses = stats["completed_attempts"]
-        tokens = _flag_partial_observations(
-            _format_token_range(stats), stats["output_token_observations"], responses
-        )
-        latency = _flag_partial_observations(
-            _format_latency_range(stats), stats["latency_observations"], responses
-        )
-        cost = _flag_partial_observations(
-            _format_cost_range(stats), stats["cost_observations"], responses
-        )
-        total_cost = (
-            f"${stats['cost_usd']:.4f}"
-            if stats["cost_usd"] is not None
-            else "n/a (no complete pricing/usage)"
-        )
-        lines.append(
-            f"| {model_id} | {stats['completed_attempts']}/{repetitions * len(task_ids)} "
-            f"| {tokens} | {latency} | {cost} | {total_cost} "
-            f"| {stats['criteria_passed']}/{stats['criteria_judged']} "
-            f"| {stats['criterion_pass_rate_macro']} "
-            f"| {stats['criterion_pass_rate_pooled']} |"
-        )
-    lines += [
-        "",
-        (
-            "### Per-task run ranges"
-            if repetitions > 1
-            else "### Per-task efficiency"
-        ),
-        "",
-        (
-            f"Each row summarizes up to {repetitions} runs of one identical task "
-            "prompt as mean [minimum–maximum]."
-            if repetitions > 1
-            else "Each row shows the single candidate response for one task and model."
-        ),
-        "",
-        "| Task | Model | Responses | Output tokens / response | Latency / response | Est. cost / response |",
-        "|---|---|---|---|---|---|",
-    ]
-    for task_id in task_ids:
-        for model_id in model_ids:
-            stats = task_efficiency[(task_id, model_id)]
-            responses = stats["completed_attempts"]
-            tokens, latency, cost = _task_metric_strings(stats, repetitions)
-            tokens = _flag_partial_observations(
-                tokens, stats["output_token_observations"], responses
-            )
-            latency = _flag_partial_observations(
-                latency, stats["latency_observations"], responses
-            )
-            cost = _flag_partial_observations(
-                cost, stats["cost_observations"], responses
-            )
-            lines.append(
-                f"| {task_id} | {model_id} | {responses}/{repetitions} "
-                f"| {tokens} | {latency} | {cost} |"
-            )
-    lines += [
-        "",
-        "Pass rate by rubric section (normally-finished attempts only):",
-        "",
-        "| Model | " + " | ".join(RUBRIC_SECTIONS) + " |",
-        "|---|" + "---|" * len(RUBRIC_SECTIONS),
-    ]
-    for model_id in model_ids:
-        rates = efficiency[model_id]["section_pass_rates"]
-        lines.append(
-            "| " + model_id + " | "
-            + " | ".join(str(rates[section]) for section in RUBRIC_SECTIONS) + " |"
-        )
-
-    total_output_tokens = sum(a.get("output_tokens") or 0 for a in attempts)
-    tool_totals: dict[str, int] = {}
-    for a in attempts:
-        calls = a.get("tool_calls")
-        if calls is None and a.get("web_search_calls"):
-            # Attempts recorded before per-tool breakdowns existed.
-            calls = {"web_search": a["web_search_calls"]}
-        for name, count in (calls or {}).items():
-            tool_totals[name] = tool_totals.get(name, 0) + count
-    tool_summary = (
-        ", ".join(f"{name}={count}" for name, count in sorted(tool_totals.items()))
-        or "none"
-    )
-    truncated = sum(
-        1 for a in attempts
-        if "error" not in a and a.get("finish_reason") not in NORMAL_FINISH_REASONS
-    )
-    ceiling_retries = sum(1 for a in attempts if a.get("ceiling_retried"))
-    run_errors = sum(1 for a in attempts if "error" in a)
-    ungraded = sum(1 for j in judgments if "error" in j)
-    lines += [
-        "",
-        "## Run health",
-        "",
-        f"- Attempts: {len(attempts)} planned, {run_errors} provider errors (count as failures)",
-        f"- Judge failures (ungraded, count as failures): {ungraded}",
-        f"- Total output tokens: {total_output_tokens}",
-        f"- Tool calls (all tools, by name): {tool_summary}",
-        f"- Attempts with abnormal finish (truncation/refusal; check finish_reason): {truncated}",
-        f"- Attempts that needed a doubled output ceiling (reasoning overflow): {ceiling_retries}",
-        "",
-        "Generated by `mvp/bench.py report`. Judge verdicts are advisory until",
-        "human-verified; the grid above already applies any human overrides.",
+        "Powered by **Magister Marketing**. Generated by `mvp/bench.py report`. "
+        "Judge verdicts remain advisory until human-verified; any human override "
+        "is already reflected in the binary result.",
     ]
 
-    run_health = {
-        "provider_errors": run_errors,
-        "judge_failures": ungraded,
-        "truncated_attempts": truncated,
-        "ceiling_retries": ceiling_retries,
-        "human_verdicts": len(human),
-        "total_output_tokens": total_output_tokens,
-        "tool_calls": tool_totals,
-    }
     summary = {
         "run_id": run_meta["run_id"],
         "skills_included": run_meta["skills_included"],
@@ -2677,15 +2569,24 @@ def cmd_report(args: argparse.Namespace) -> int:
                     }
                     for split in TASK_SPLITS
                 },
-                "task_efficiency": {
-                    task_id: task_efficiency[(task_id, model_id)]
-                    for task_id in task_ids
-                },
-                **efficiency[model_id],
+                "completed_responses": efficiency[model_id]["completed_attempts"],
+                "total_output_tokens": efficiency[model_id]["total_output_tokens"],
+                "candidate_cost_usd": efficiency[model_id]["cost_usd"],
+                "average_task_time_seconds": efficiency[model_id][
+                    "mean_latency_seconds"
+                ],
+                "criteria_passed": efficiency[model_id]["criteria_passed"],
+                "criteria_judged": efficiency[model_id]["criteria_judged"],
+                "criterion_pass_rate_macro": efficiency[model_id][
+                    "criterion_pass_rate_macro"
+                ],
+                "criterion_pass_rate_pooled": efficiency[model_id][
+                    "criterion_pass_rate_pooled"
+                ],
             }
             for model_id in model_ids
         },
-        "run_health": run_health,
+        "submissions": submissions,
     }
     report_json_path = _artifact_path(run_dir, "report", "json", label)
     report_json_path.write_text(json.dumps(summary, indent=2) + "\n")
@@ -2695,7 +2596,6 @@ def cmd_report(args: argparse.Namespace) -> int:
     report_html_path = _artifact_path(run_dir, "report", "html", label)
     report_html_path.write_text(
         _render_report_html(
-            run_dir=run_dir,
             run_meta=run_meta,
             label=label,
             model_ids=model_ids,
@@ -2705,14 +2605,8 @@ def cmd_report(args: argparse.Namespace) -> int:
             summary_rows=summary_rows,
             passes=passes,
             task_criteria=task_criteria,
-            judgments=judgments,
-            human=human,
-            attempts_by_key=attempts_by_key,
-            verdicts=verdicts,
-            failure_counts=failure_counts,
-            task_efficiency=task_efficiency,
-            models_meta=models_meta,
-            run_health=run_health,
+            submissions=submissions,
+            verdict_count=len(verdicts),
             human_count=len(human),
         )
         + "\n"
