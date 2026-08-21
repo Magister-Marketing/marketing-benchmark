@@ -1,0 +1,41 @@
+{
+  "id": "landing-page",
+  "title": "Single-file HTML landing page",
+  "split": "development",
+  "prompt_version": 2,
+  "rubric_version": 3,
+  "rubric_compatible_prompts": [
+    {
+      "version": 1,
+      "reason": "Historical prompt required the same Book a consultation CTA but did not explicitly state that this task-specific instruction superseded the fixture's default CTA.",
+      "prompt": "Build a complete, production-quality landing page for Harborline Sleep Education's 45-minute virtual routine-planning consultation ($160) as a single HTML file with inline CSS and no external assets, scripts, fonts, or images. Order the sections the way a cautious first-time visitor decides: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is NOT for (it is educational coaching, not a medical clinic, does not diagnose or treat sleep disorders, is not emergency care, outcomes are not guaranteed, insurance is not represented); common objections; then the next step. Use one primary call to action ('Book a consultation'), appearing at most twice. Use semantic HTML with descriptive headings. Output only the HTML file contents."
+    }
+  ],
+  "fixtures": [
+    "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
+    "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/cro/SKILL.md",
+    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+  ],
+  "prompt": "Build a complete, production-quality landing page for Harborline Sleep Education's 45-minute virtual routine-planning consultation ($160) as a single HTML file with inline CSS and no external assets, scripts, fonts, or images. Order the sections the way a cautious first-time visitor decides: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is NOT for (it is educational coaching, not a medical clinic, does not diagnose or treat sleep disorders, is not emergency care, outcomes are not guaranteed, insurance is not represented); common objections; then the next step. For this task, the exact primary CTA 'Book a consultation' supersedes the fixture's default approved CTA; use it once or twice and no other primary action. Use semantic HTML with descriptive headings. Output only the HTML file contents.",
+  "rubric": {
+    "completion": [
+      {"id": "complete_html", "check": "The response is one complete, parseable HTML document from an HTML5 doctype through the closing html tag, with no Markdown fence.", "programmatic": [{"fact": "html_complete", "equals": true}, {"fact": "html_parse_error_count", "equals": 0}]},
+      {"id": "no_external_assets", "check": "The HTML uses inline CSS and has no CSS asset references, active content, scripts, images, stylesheets, fonts, media, iframes, embeds, objects, SVG, or canvas assets.", "programmatic": [{"fact": "inline_css_count", "gte": 1}, {"fact": "resource_request_count", "equals": 0}, {"fact": "forbidden_asset_tag_count", "equals": 0}, {"fact": "active_content_count", "equals": 0}]},
+      {"id": "sections_complete", "check": "All required sections exist: relevance/who it is for, how it works, what is included, price ($160 for 45 minutes), limitations/not-for, objections, next step."},
+      {"id": "cta_count", "check": "The exact primary CTA 'Book a consultation' appears once or twice.", "programmatic": [{"fact": "book_cta_count", "gte": 1}, {"fact": "book_cta_count", "lte": 2}]},
+      {"id": "no_competing_action", "check": "No competing primary action is added."}
+    ],
+    "skill_adherence": [
+      {"id": "decision_order", "check": "Sections appear in the cautious-visitor order (relevance, mechanism, included value, risk/limitations, objections, next step) with one job and a descriptive heading per section."},
+      {"id": "no_dark_patterns", "check": "No fake urgency, countdown, invented testimonials or reviews, guaranteed outcomes, or hidden terms; disclosures (not medical care, no diagnosis/treatment, not emergency care, outcomes not guaranteed, no insurance representation) are preserved and readable."}
+    ],
+    "best_practices": [
+      {"id": "heading_hierarchy", "check": "The document has exactly one h1 and ordered heading levels with no skipped levels.", "programmatic": [{"fact": "h1_count", "equals": 1}, {"fact": "heading_order_valid", "equals": true}]},
+      {"id": "semantic_landmarks", "check": "Semantic HTML landmarks (header/main/section/footer or equivalent) organize the page; it is not a div-only document."},
+      {"id": "conversion_clarity", "check": "The primary action is visually and structurally unmistakable, and copy answers visitor questions concretely instead of vague wellness language."}
+    ]
+  }
+}

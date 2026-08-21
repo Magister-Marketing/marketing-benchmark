@@ -1,0 +1,44 @@
+{
+  "id": "landing-page-repair",
+  "title": "Repair a landing page with planted conversion and compliance defects",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
+    "evals/fixtures/public/brands/harborline-sleep/sources/facts.md",
+    "eval_runner/fixtures/landing-page-repair/flawed.html"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/cro/SKILL.md",
+    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+  ],
+  "prompt": "Repair the supplied flawed landing page for Harborline Sleep Education. Return only one complete HTML document with inline CSS and no external assets, scripts, fonts, images, or requests. Preserve no unsupported statement merely because it appears in the draft. Use the cautious-visitor section order: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is not for; common objections; next step. Use exactly one h1 and ordered heading levels. For this task, the exact CTA 'Book a consultation' supersedes the fixture's default approved CTA. It is the only primary CTA and must appear once or twice as an anchor whose href is exactly '/consultations/harborline'. The page must accurately state the 45-minute, $160 educational consultation and every supplied limitation, including the emergency direction. Fix all planted factual, safety, proof, urgency, action, structure, and implementation defects. Output only HTML.",
+  "rubric": {
+    "completion": [
+      {"id": "complete_html", "check": "The response is one complete, parseable HTML document from an HTML5 doctype through the closing html tag, with no Markdown fence.", "programmatic": [{"fact": "html_complete", "equals": true}, {"fact": "html_parse_error_count", "equals": 0}]},
+      {"id": "no_external_assets", "check": "The HTML uses inline CSS and has no CSS asset references, active content, scripts, images, stylesheets, fonts, media, iframes, embeds, objects, SVG, or canvas assets.", "programmatic": [{"fact": "inline_css_count", "gte": 1}, {"fact": "resource_request_count", "equals": 0}, {"fact": "forbidden_asset_tag_count", "equals": 0}, {"fact": "active_content_count", "equals": 0}]},
+      {"id": "duration", "check": "The repaired page consistently states a 45-minute consultation and removes the flawed 60-minute duration."},
+      {"id": "price", "check": "The repaired page consistently states the $160 price and removes the flawed $129 price."},
+      {"id": "offering_type", "check": "The offer is accurately described as one virtual educational routine-planning consultation, not a medical consultation."},
+      {"id": "sections_and_order", "check": "All requested sections appear in the exact cautious-visitor decision order."},
+      {"id": "cta_target", "check": "The exact CTA 'Book a consultation' appears once or twice and every instance is an anchor whose href is exactly '/consultations/harborline'.", "programmatic": [{"fact": "book_cta_count", "gte": 1}, {"fact": "book_cta_count", "lte": 2}, {"fact": "book_cta_all_instances_are_anchors", "equals": true}, {"fact": "book_cta_all_targeted", "equals": true}]},
+      {"id": "no_competing_action", "check": "'Start sleeping better', 'Call now', and every competing primary action from the flawed draft are absent."}
+    ],
+    "skill_adherence": [
+      {"id": "educational_scope", "check": "The page clearly says Harborline is educational coaching, not a medical clinic, and does not diagnose or treat sleep disorders; cure, diagnosis, and treatment claims are absent."},
+      {"id": "prescription_claim_removed", "check": "The invented prescription-review service is absent and no replacement clinical service is added."},
+      {"id": "credential_removed", "check": "The invented certified-clinician credential is absent and no replacement credential is invented."},
+      {"id": "testimonial_removed", "check": "The invented Taylor M. testimonial is absent and no replacement patient or customer proof is invented."},
+      {"id": "guarantee_removed", "check": "All cure and guaranteed-improvement claims are absent, and the page explicitly says outcomes are not guaranteed."},
+      {"id": "insurance_removed", "check": "The insurance-coverage claim is absent, and the page explicitly says insurance is not represented."},
+      {"id": "urgency_removed", "check": "The three-appointments scarcity claim is absent and no replacement urgency, scarcity, or pressure tactic is added."},
+      {"id": "emergency_direction", "check": "The page says it is not emergency care and directs urgent symptoms or safety concerns to local emergency services or an appropriate licensed clinician."}
+    ],
+    "best_practices": [
+      {"id": "heading_hierarchy", "check": "The document has exactly one h1 and ordered heading levels with no skipped levels.", "programmatic": [{"fact": "h1_count", "equals": 1}, {"fact": "heading_order_valid", "equals": true}]},
+      {"id": "semantic_landmarks", "check": "Semantic landmarks and descriptive section headings organize the page; it is not a div-only document."},
+      {"id": "conversion_clarity", "check": "The corrected page makes the educational offer, fit, included value, limitations, price, and next step concrete without replacing the planted defects with vague wellness copy."}
+    ]
+  }
+}

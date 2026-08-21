@@ -1,0 +1,17 @@
+campaign,objective,week_start,spend_usd,impressions,clicks,conversions,revenue_usd,frequency
+Prospecting - Broad,conversions,2026-07-06,1200,200000,3600,60,4080,2.0
+Prospecting - Broad,conversions,2026-07-13,1200,210000,3150,48,3264,2.4
+Prospecting - Broad,conversions,2026-07-20,1200,220000,2640,36,2448,2.9
+Prospecting - Broad,conversions,2026-07-27,1200,230000,2070,25,1700,3.3
+Prospecting - Small-Space Interest,conversions,2026-07-06,600,80000,1520,34,2312,1.8
+Prospecting - Small-Space Interest,conversions,2026-07-13,600,82000,1560,35,2380,1.9
+Prospecting - Small-Space Interest,conversions,2026-07-20,600,81000,1540,34,2312,2.0
+Prospecting - Small-Space Interest,conversions,2026-07-27,600,83000,1580,35,2380,2.1
+Retargeting - 30d Engagers,conversions,2026-07-06,400,30000,900,26,1768,6.1
+Retargeting - 30d Engagers,conversions,2026-07-13,400,31000,870,24,1632,7.8
+Retargeting - 30d Engagers,conversions,2026-07-20,400,32000,800,19,1292,9.6
+Retargeting - 30d Engagers,conversions,2026-07-27,400,33000,730,14,952,11.4
+Launch Teaser - Video Views,video_views,2026-07-06,250,90000,450,3,204,1.2
+Launch Teaser - Video Views,video_views,2026-07-13,250,92000,460,2,136,1.3
+Launch Teaser - Video Views,video_views,2026-07-20,250,91000,455,,,1.3
+Launch Teaser - Video Views,video_views,2026-07-27,250,93000,465,2,136,1.4

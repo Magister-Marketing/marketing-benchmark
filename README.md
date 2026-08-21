@@ -1,6 +1,6 @@
-# Marketing Benchmark
+# Magister Marketing Evals
 
-Marketing Benchmark is an evidence-first evaluation runner for marketing models
+Magister Marketing Evals is an evidence-first evaluation runner for marketing models
 and tool-using agents. It measures whether an agent follows required skills,
 uses tools correctly, produces valid UI and artifacts, grounds conclusions in
 returned data, and creates strong marketing work across repeated trials.
@@ -8,6 +8,37 @@ returned data, and creates strong marketing work across repeated trials.
 > **Private staging project.** This repository is not currently open source and
 > does not grant a redistribution license. It is being prepared for a reviewed
 > public release.
+
+## Start here: the direct-model eval runner
+
+For model-level marketing quality without a coding-agent runtime or sandbox,
+use the `direct-api` harness in [`eval_runner/`](eval_runner/README.md). It
+calls models with default API settings, applies deterministic hard checks plus
+a binary judge rubric (completion, skill adherence, best practices), supports
+human verification, and defaults to one run per task (pass@1). A larger run
+count is an explicit `--repetitions N` choice. Seven development tasks support
+rubric calibration; four untouched holdout tasks test whether that calibration
+generalizes. Each run records its harness and produces structured JSON,
+detailed Markdown, and a Magister-branded self-contained HTML report. Its task
+matrix links directly to
+a task-grouped inline view containing the exact assignment once, a compact
+model comparison, and collapsed model-submission panels with each candidate
+response and criterion-level judge evidence. The header includes a GitHub
+button, a click-to-copy reproducibility command, and a Copy results for LLM
+button that copies the complete Markdown report. The page is designed for
+viewing, printing, and screenshot-ready sharing.
+
+```bash
+python3 -m eval_runner.bench validate
+python3 -m eval_runner.bench run --models claude-haiku-4-5,claude-sonnet-5
+python3 -m eval_runner.bench grade  --run eval_runner/results/<run-id>
+python3 -m eval_runner.bench verify --run eval_runner/results/<run-id>
+python3 -m eval_runner.bench report --run eval_runner/results/<run-id>
+```
+
+The agent-oriented engine below remains the path for tool-using harness
+comparisons. As additional harnesses graduate, they can join the same
+`eval.py` entry point behind an explicit harness selection.
 
 ## What is included
 

@@ -1,0 +1,15 @@
+order_id,net_revenue_usd,touch_1,touch_2,touch_3
+O-001,120,Meta,Email,Direct
+O-002,80,Meta,Paid Search,
+O-003,150,Paid Search,Email,
+O-004,100,Organic,Meta,
+O-005,200,Meta,Email,
+O-006,90,Paid Search,Direct,
+O-007,130,Email,Paid Search,
+O-008,110,Organic,Email,
+O-009,170,Meta,Paid Search,Email
+O-009,170,Meta,Paid Search,Email
+O-010,140,Paid Search,Meta,
+O-011,160,Email,Meta,
+O-012,100,Direct,,
+O-013,-120,Meta,Email,

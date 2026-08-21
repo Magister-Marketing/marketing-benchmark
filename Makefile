@@ -4,6 +4,7 @@ PYTHON ?= python3
 
 validate:
 	$(PYTHON) -m evals.cli validate
+	$(PYTHON) -m eval_runner.bench validate
 
 conformance:
 	$(PYTHON) -m evals.cli conformance
@@ -18,7 +19,7 @@ build:
 	$(PYTHON) -m build
 
 check:
-	$(PYTHON) -m compileall -q evals tests
+	$(PYTHON) -m compileall -q evals eval_runner tests
 	$(MAKE) validate
 	$(MAKE) conformance
 	$(MAKE) boundary

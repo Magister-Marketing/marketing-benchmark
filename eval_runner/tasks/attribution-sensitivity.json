@@ -1,0 +1,30 @@
+{
+  "id": "attribution-sensitivity",
+  "title": "Attribution-model sensitivity analysis with duplicate and refund",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/attribution/order-journeys.csv"
+  ],
+  "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
+  "prompt": "Analyze the supplied order journeys for a marketing lead. Meta, Paid Search, and Email each had $600 of spend. Deduplicate exact duplicate order_id rows before calculating, retain negative net revenue from refunds, and do not assign a Direct-only order to a marketing channel. Define first-touch as the first non-Direct touch and last-touch as the last non-Direct touch. Deliver: (1) a reconciliation under each model showing unique-order net revenue, the paid-channel subtotal, Organic attributed revenue, and unattributed Direct-only revenue; (2) a table for Meta, Paid Search, and Email with attributed net revenue and ROAS under both first-touch and last-touch; (3) the winning paid channel under each model; (4) a budget recommendation that distinguishes conclusions robust to the attribution choice from conclusions that depend on it; and (5) explicit assumptions plus the one data limitation that would most change the decision and how resolving it could change the recommendation. Show the arithmetic needed to audit the result, and do not treat attribution as proof of causation.",
+  "rubric": {
+    "completion": [
+      {"id": "deduped_total", "check": "The exact duplicate O-009 row is counted once: 13 unique orders have total net revenue of $1,430."},
+      {"id": "reconciliation", "check": "Both models reconcile to $1,330 assigned non-Direct net revenue plus $100 unattributed Direct-only revenue. First-touch splits the $1,330 into $1,120 paid and $210 Organic; last-touch splits it into $1,330 paid and $0 Organic."},
+      {"id": "first_touch_oracle", "check": "First-touch paid results are correct: Meta $450 / 0.75 ROAS, Paid Search $380 / about 0.63 ROAS, Email $290 / about 0.48 ROAS."},
+      {"id": "last_touch_oracle", "check": "Last-touch paid results are correct: Meta $400 / about 0.67 ROAS, Paid Search $300 / 0.50 ROAS, Email $630 / 1.05 ROAS."},
+      {"id": "winners_flip", "check": "Meta is named the first-touch winner and Email the last-touch winner; no single paid winner is claimed across both models."}
+    ],
+    "skill_adherence": [
+      {"id": "refund_preserved", "check": "O-013 remains -$120 and is attributed to Meta under first-touch and Email under last-touch; it is not dropped, zeroed, or converted to positive revenue."},
+      {"id": "model_definitions", "check": "The analysis applies the supplied first/last non-Direct definitions consistently and does not invent fractional or platform-reported attribution."},
+      {"id": "assumptions_and_limit", "check": "Assumptions are explicit; one consequential data limitation is named with how resolving it could change the recommendation; and attribution is not presented as proof of causation. Valid limitations are not restricted to one prescribed answer."}
+    ],
+    "best_practices": [
+      {"id": "conditional_recommendation", "check": "The recommendation correctly distinguishes model-robust from model-dependent conclusions, does not declare a universal Meta-versus-Email winner, and does not treat either attribution rule as causal grounds for a decisive reallocation. It may either note that Paid Search is not the descriptive winner under these rules or defer all reallocation pending stronger evidence."},
+      {"id": "auditable_math", "check": "The response shows enough order grouping, sums, and revenue/spend arithmetic for a reviewer to reproduce both tables."}
+    ]
+  }
+}
