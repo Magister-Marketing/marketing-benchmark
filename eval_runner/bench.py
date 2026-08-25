@@ -705,7 +705,10 @@ _GAUNTLET_OPTOUT = "Reply STOP to opt out"
 
 def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, list[str]]:
     # The prompt demands each value on the label's own line; values on a later
-    # line are deliberately not credited.
+    # line are deliberately not credited. The FIRST line bearing a label is
+    # the graded field — models legitimately restate labels afterwards in
+    # self-audits or commentary, and a restatement is not a second field
+    # (observed: claude-opus-5 appended a per-field character-count audit).
     values: dict[str, list[str]] = {label: [] for label in labels}
     pattern = re.compile(
         r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?("
@@ -713,8 +716,10 @@ def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, li
         + r")(?:\*\*)?\s*:(?:\*\*)?[^\S\r\n]*([^\r\n]*)"
     )
     for match in pattern.finditer(response_text):
-        value = match.group(2).strip().strip("*_`\"'“”‘’").strip()
-        values[match.group(1).upper()].append(value)
+        label = match.group(1).upper()
+        if values[label]:
+            continue
+        values[label].append(match.group(2).strip().strip("*_`\"'“”‘’").strip())
     return values
 
 

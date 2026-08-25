@@ -288,6 +288,13 @@ def test_platform_gauntlet_facts_measure_labels_limits_and_exact_strings():
     dotted = response.replace("LI-CTA: Review consultation availability",
                               "LI-CTA: Review consultation availability.")
     assert bench.measured_facts(task, dotted)["approved_cta_count"] == 2
+    # A self-audit that restates labels after the fields is commentary, not a
+    # duplicate field: the first line bearing each label is graded (observed:
+    # claude-opus-5 appended '- RSA-H1: 28/30 · ...' in run 20260825-205808).
+    audited = response + "\n\nCharacter audit:\n- RSA-H1: 28/30 · RSA-H2: 27/30\n- META-PRIMARY: 106/125"
+    audited_facts = bench.measured_facts(task, audited)
+    assert audited_facts["missing_or_duplicate_label_count"] == 0
+    assert audited_facts["over_limit_field_count"] == 0
     assert facts["disclaimer_field_count"] == 3
     assert facts["sms_optout_present"] is True
     assert facts["price_160_count"] == 2

@@ -3,7 +3,7 @@
   "title": "Cross-platform promo copy under hard character limits",
   "split": "holdout",
   "prompt_version": 1,
-  "rubric_version": 2,
+  "rubric_version": 3,
   "fixtures": [
     "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
     "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
@@ -15,7 +15,7 @@
   "prompt": "Draft one coordinated promotion for the Harborline Sleep consultation across four placements. Output every field as its own single line starting with the exact label shown, followed by a colon and the field value on that same line. Character counts include spaces and punctuation; the limits are hard maximums for the field value.\n\nGoogle responsive search ad:\nRSA-H1: (headline, 30 characters max)\nRSA-H2: (headline, 30 characters max)\nRSA-H3: (headline, 30 characters max)\nRSA-D1: (description, 90 characters max)\nRSA-D2: (description, 90 characters max)\n\nMeta ad:\nMETA-PRIMARY: (primary text, 125 characters max)\nMETA-HEADLINE: (headline, 40 characters max)\nMETA-CTA: (call to action)\n\nLinkedIn ad:\nLI-INTRO: (intro text, 150 characters max)\nLI-CTA: (call to action)\n\nSMS to opted-in subscribers:\nSMS-BODY: (message, 160 characters max)\n\nRules: META-CTA and LI-CTA must each be exactly the approved CTA from the brand facts. The exact sentence \"Educational only; not medical care.\" must appear inside META-PRIMARY, LI-INTRO, and SMS-BODY. SMS-BODY must also contain \"Reply STOP to opt out\". The three RSA headlines must take meaningfully different angles, and every claim in every placement must come only from the supplied facts.",
   "rubric": {
     "completion": [
-      {"id": "all_fields_present", "check": "All eleven labeled fields (RSA-H1, RSA-H2, RSA-H3, RSA-D1, RSA-D2, META-PRIMARY, META-HEADLINE, META-CTA, LI-INTRO, LI-CTA, SMS-BODY) appear exactly once each.", "programmatic": {"fact": "missing_or_duplicate_label_count", "equals": 0}},
+      {"id": "all_fields_present", "check": "All eleven labeled fields (RSA-H1, RSA-H2, RSA-H3, RSA-D1, RSA-D2, META-PRIMARY, META-HEADLINE, META-CTA, LI-INTRO, LI-CTA, SMS-BODY) are present; the first line bearing each label is the graded field.", "programmatic": {"fact": "missing_or_duplicate_label_count", "equals": 0}},
       {"id": "within_char_limits", "check": "Every limited field value is at or under its hard character maximum (RSA-H 30, RSA-D 90, META-PRIMARY 125, META-HEADLINE 40, LI-INTRO 150, SMS-BODY 160).", "programmatic": {"fact": "over_limit_field_count", "equals": 0}},
       {"id": "approved_cta_exact", "check": "META-CTA and LI-CTA are each exactly 'Review consultation availability' (a single terminal period is accepted, matching the brand facts' own punctuation).", "programmatic": {"fact": "approved_cta_count", "equals": 2}},
       {"id": "disclaimer_everywhere", "check": "The exact sentence 'Educational only; not medical care.' appears inside META-PRIMARY, LI-INTRO, and SMS-BODY.", "programmatic": {"fact": "disclaimer_field_count", "equals": 3}},
