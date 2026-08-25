@@ -1,0 +1,33 @@
+{
+  "id": "analytics-source-conflict",
+  "title": "Reconcile conflicting Meta and GA4 performance numbers",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/source-metrics/meta-platform-report.csv",
+    "eval_runner/fixtures/source-metrics/ga4-report.csv",
+    "eval_runner/fixtures/source-metrics/tracking-notes.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "A founder asks: 'Meta says our ads printed money last month, our analyst says GA4 disagrees. What is actually true, and what should we do?' Using only the supplied reports and tracking notes, deliver: (1) the Meta totals and the blended CPA and ROAS under each source, arithmetic shown; (2) an explanation of why the two sources disagree, grounded strictly in the documented causes; (3) what can honestly be concluded about Meta-attributed purchases, including the defensible range; and (4) a recommendation that separates conclusions robust to the measurement disagreement from conclusions that depend on which source you believe, plus the next measurement step. Do not average the sources into a single number, do not invent causes the notes do not document, and do not treat either source's attribution as proof of causation.",
+  "rubric": {
+    "completion": [
+      {"id": "platform_oracle", "check": "Meta platform totals are correct: $2,400 spend, 60 reported conversions, $5,400 reported revenue, blended CPA of $40.00, and ROAS of 2.25."},
+      {"id": "ga4_oracle", "check": "GA4 figures for Meta are correct: 36 purchases, $3,240 revenue, CPA of about $66.67, and ROAS of 1.35 against the same $2,400 spend."},
+      {"id": "no_single_truth", "check": "The response never declares one reconciled 'true' Meta conversion count and never averages or splits the difference between 36 and 60 to produce one."},
+      {"id": "defensible_range", "check": "Meta-attributed purchases are bounded between 36 and 60 (optionally noting the 8 lost-UTM sessions push GA4's floor upward), presented as a range rather than a point estimate."}
+    ],
+    "skill_adherence": [
+      {"id": "documented_causes_only", "check": "The disagreement is explained using only the documented causes — view-through counting, the differing attribution windows/models, the Oct 12-13 lost-UTM sessions classified as Direct, and cross-platform over-claiming (149 claimed versus 118 store orders) — with no invented causes such as privacy signal loss, bot traffic, or tracking-pixel bugs."},
+      {"id": "store_anchor", "check": "The store platform's 118 completed purchases is treated as the order-count source of truth, and the 149 summed platform claims are identified as over-claiming against it."},
+      {"id": "no_causal_overclaim", "check": "Neither source's attribution is presented as proof that Meta ads caused the purchases; incrementality is acknowledged as unmeasured."}
+    ],
+    "best_practices": [
+      {"id": "robust_vs_dependent", "check": "The recommendation explicitly separates at least one conclusion that holds under both sources from at least one that depends on the source chosen, and any spend decision is framed conditionally rather than as settled."},
+      {"id": "grounded_next_step", "check": "At least one concrete next measurement step comes from the notes (repairing auto-tagging/UTMs, reconciling platform claims against store orders, or aligning attribution settings) rather than from invented tooling."}
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "id": "landing-page-repair",
   "title": "Repair a landing page with planted conversion and compliance defects",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

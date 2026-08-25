@@ -1,0 +1,4 @@
+channel,window,sessions,purchases,revenue_usd,attribution_model
+Paid Social (Meta),Oct 1-28,1840,36,3240.00,"last non-direct click, 30-day"
+Organic Search,Oct 1-28,2210,41,3690.00,"last non-direct click, 30-day"
+Direct,Oct 1-28,960,35,3150.00,"last non-direct click, 30-day"

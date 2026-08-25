@@ -372,9 +372,12 @@ def build_judge_prompt(
             for criterion in task["rubric"][section]
         ]
     criteria_lines = [
-        f"- [{section}] {criterion['id']}: {criterion['check']}"
+        f"- id: {criterion['id']} · section: {section} · check: {criterion['check']}"
         for section, criterion in criteria
     ]
+    required_ids = json.dumps(
+        [criterion["id"] for _section, criterion in criteria]
+    )
     if exact_prompt is None:
         exact_prompt = assemble_prompt(task, include_skills=True)
     measured_block = "\n".join(f"- {key}: {value}" for key, value in measured.items())
@@ -385,6 +388,9 @@ def build_judge_prompt(
         f"## Measured facts (computed programmatically; trust these over your own counting)\n\n"
         f"{measured_block or '(none)'}\n\n"
         f"## Rubric criteria\n\n" + "\n".join(criteria_lines) + "\n\n"
+        f"## Required criterion ids\n\n"
+        f"Your criteria array must contain exactly one entry for each of these "
+        f"ids, verbatim, and no others:\n{required_ids}\n\n"
         f"## Model response to grade (JSON string)\n\n"
         f"{json.dumps(response_text, ensure_ascii=False)}\n"
     )
@@ -919,9 +925,34 @@ def cmd_grade(args: argparse.Namespace) -> int:
             for criterion in task["rubric"][section]
         }
         expected_ids = {criterion["id"] for _section, criterion in judge_criteria}
+        usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+
+        def finalize() -> dict:
+            # Judge spend is recorded per judgment (retries included) so the
+            # report can state grading cost; it never joins candidate
+            # efficiency numbers.
+            record["judge_calls"] = usage["calls"]
+            record["judge_input_tokens"] = usage["input_tokens"]
+            record["judge_output_tokens"] = usage["output_tokens"]
+            record["judge_cost_usd"] = (
+                attempt_cost_usd(
+                    {
+                        "input_tokens": usage["input_tokens"],
+                        "output_tokens": usage["output_tokens"],
+                    },
+                    models[judge_id],
+                )
+                if usage["calls"]
+                else None
+            )
+            return record
+
         for judge_try in range(2):
             try:
                 result = providers.generate(judge_spec, prompt, MAX_OUTPUT_TOKENS)
+                usage["calls"] += 1
+                usage["input_tokens"] += result.get("input_tokens") or 0
+                usage["output_tokens"] += result.get("output_tokens") or 0
                 verdict = parse_judge_json(result["text"])
                 got_ids = {c.get("id") for c in verdict["criteria"]}
                 if got_ids != expected_ids:
@@ -944,13 +975,13 @@ def cmd_grade(args: argparse.Namespace) -> int:
                     for criterion in task["rubric"][section]
                 ]
                 print(f"  judged {record['task_id']} / {record['model_id']} r{record['repetition']}")
-                return record
+                return finalize()
             except (providers.ProviderError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 if judge_try == 1:
                     record["error"] = f"judge failed: {exc}"
                     print(f"  JUDGE FAIL {record['task_id']} / {record['model_id']} "
                           f"r{record['repetition']}: {exc}")
-        return record
+        return finalize()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=RUN_CONCURRENCY) as pool:
         judgments = list(pool.map(one, gradeable))
@@ -1001,16 +1032,29 @@ def cmd_grade(args: argparse.Namespace) -> int:
             "sha256": _rubric_sha256(tasks[task_id]),
         }
     now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    judge_usage = judge_usage_totals(judgments)
     grading_path.write_text(json.dumps({
         "created_at": previous_grading.get("created_at", now),
         "updated_at": now,
         "judge_model": judge_id,
         "label": label,
         "task_source": task_source,
+        "judge_usage": judge_usage,
         "prompts": prompts_meta,
         "rubrics": rubrics_meta,
     }, indent=2) + "\n")
     failures = sum(1 for j in judgments if "error" in j)
+    if judge_usage:
+        cost = (
+            f"${judge_usage['cost_usd']:.4f}"
+            if judge_usage["cost_usd"] is not None
+            else "cost n/a"
+        )
+        print(
+            f"Judge usage: {judge_usage['calls']} calls, "
+            f"{judge_usage['input_tokens']:,} in / "
+            f"{judge_usage['output_tokens']:,} out tokens, {cost}."
+        )
     print(f"Wrote {len(judgments)} total judgments ({failures} judge failures) -> "
           f"{judgments_path}. "
           f"Next: python3 -m eval_runner.bench verify --run {run_dir}")
@@ -1072,6 +1116,24 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------- report
+
+def judge_usage_totals(judgments: list) -> dict | None:
+    """Aggregate recorded judge spend across judgments; None for old gradings
+    that predate judge accounting."""
+    calls = sum(j.get("judge_calls") or 0 for j in judgments)
+    if not calls:
+        return None
+    costs = [
+        j["judge_cost_usd"] for j in judgments
+        if j.get("judge_cost_usd") is not None
+    ]
+    return {
+        "calls": calls,
+        "input_tokens": sum(j.get("judge_input_tokens") or 0 for j in judgments),
+        "output_tokens": sum(j.get("judge_output_tokens") or 0 for j in judgments),
+        "cost_usd": round(sum(costs), 4) if costs else None,
+    }
+
 
 def _judgment_passes(judgment: dict) -> bool:
     if "error" in judgment:
@@ -2653,8 +2715,21 @@ def cmd_report(args: argparse.Namespace) -> int:
         "- Score: one point per task only when every criterion and configured run passes",
         "- Efficiency: output tokens and candidate cost are totals; task time is the mean "
         "because candidate calls run in parallel; judge usage is excluded",
-        "",
     ]
+    judge_usage = judge_usage_totals(judgments)
+    if judge_usage:
+        judge_cost = (
+            f"${judge_usage['cost_usd']:.4f}"
+            if judge_usage["cost_usd"] is not None
+            else "cost n/a"
+        )
+        lines.append(
+            f"- Judge usage (separate from candidate efficiency): "
+            f"{judge_usage['calls']} calls, "
+            f"{judge_usage['input_tokens']:,} input / "
+            f"{judge_usage['output_tokens']:,} output tokens, {judge_cost}"
+        )
+    lines.append("")
     if all(split_task_ids.values()):
         lines += [
             "",
@@ -2777,6 +2852,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         "tools_enabled": run_meta.get("tools_enabled", False),
         "repetitions": repetitions,
         "tasks": task_ids,
+        "task_splits": task_splits,
+        "judge_usage": judge_usage,
         "models": {
             model_id: {
                 "tasks_passed": task_pass_counts[model_id],
@@ -2853,6 +2930,122 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------ agreement
+
+def cmd_agreement(args: argparse.Namespace) -> int:
+    """Compare two labeled gradings of one run, criterion by criterion.
+
+    Programmatic verdicts are identical by construction, so only criteria
+    judged by an LLM in BOTH gradings are compared. Agreement is diagnostic
+    evidence about the judge, not about the candidates: the default-label
+    grading remains the scored one.
+    """
+    run_dir = Path(args.run)
+    label_a = getattr(args, "label", None)
+    label_b = args.label_b
+    path_a = _artifact_path(run_dir, "judgments", "jsonl", label_a)
+    path_b = _artifact_path(run_dir, "judgments", "jsonl", label_b)
+    for judgments_path in (path_a, path_b):
+        if not judgments_path.exists():
+            raise SystemExit(f"missing judgments file: {judgments_path}")
+
+    def judge_of(label: str | None) -> str | None:
+        grading_path = _artifact_path(run_dir, "grading", "json", label)
+        if grading_path.exists():
+            return json.loads(grading_path.read_text()).get("judge_model")
+        return None
+
+    primary = {
+        (j["task_id"], j["model_id"], j["repetition"]): j
+        for j in _read_jsonl(path_a)
+    }
+    secondary = {
+        (j["task_id"], j["model_id"], j["repetition"]): j
+        for j in _read_jsonl(path_b)
+    }
+    compared = agreed = 0
+    completed_compared = completed_agreed = 0
+    by_criterion: dict[tuple[str, str], dict] = {}
+    disagreements = []
+    for key, record_a in primary.items():
+        record_b = secondary.get(key)
+        if record_b is None or "error" in record_a or "error" in record_b:
+            continue
+        completed_compared += 1
+        completed_agreed += record_a["completed"] == record_b["completed"]
+        verdicts_b = {
+            c["id"]: c for c in record_b["criteria"] if c.get("source") == "judge"
+        }
+        for criterion_a in record_a["criteria"]:
+            if criterion_a.get("source") != "judge":
+                continue
+            criterion_b = verdicts_b.get(criterion_a["id"])
+            if criterion_b is None:
+                continue
+            compared += 1
+            same = criterion_a["pass"] == criterion_b["pass"]
+            agreed += same
+            tally = by_criterion.setdefault(
+                (key[0], criterion_a["id"]), {"compared": 0, "disagreed": 0}
+            )
+            tally["compared"] += 1
+            if not same:
+                tally["disagreed"] += 1
+                disagreements.append({
+                    "task_id": key[0],
+                    "model_id": key[1],
+                    "repetition": key[2],
+                    "criterion_id": criterion_a["id"],
+                    "primary_pass": criterion_a["pass"],
+                    "secondary_pass": criterion_b["pass"],
+                    "primary_evidence": criterion_a["evidence"],
+                    "secondary_evidence": criterion_b["evidence"],
+                })
+    if not compared:
+        raise SystemExit("no overlapping judge-scored criteria to compare")
+    payload = {
+        "run_id": run_dir.name,
+        "primary_label": label_a,
+        "secondary_label": label_b,
+        "primary_judge": judge_of(label_a),
+        "secondary_judge": judge_of(label_b),
+        "attempts_compared": completed_compared,
+        "completed_agreement_rate": round(completed_agreed / completed_compared, 3),
+        "criteria_compared": compared,
+        "criteria_agreed": agreed,
+        "criterion_agreement_rate": round(agreed / compared, 3),
+        "by_criterion": [
+            {
+                "task_id": task_id,
+                "criterion_id": criterion_id,
+                "compared": tally["compared"],
+                "disagreed": tally["disagreed"],
+            }
+            for (task_id, criterion_id), tally in sorted(
+                by_criterion.items(),
+                key=lambda item: -item[1]["disagreed"],
+            )
+            if tally["disagreed"]
+        ],
+        "disagreements": disagreements,
+    }
+    out_path = _artifact_path(run_dir, "agreement", "json", label_b)
+    out_path.write_text(json.dumps(payload, indent=2) + "\n")
+    print(
+        f"Judge agreement ({payload['primary_judge'] or label_a or 'default'} vs "
+        f"{payload['secondary_judge'] or label_b}): "
+        f"{payload['criterion_agreement_rate']:.1%} on {compared} judge-scored "
+        f"criteria across {completed_compared} attempts."
+    )
+    for row in payload["by_criterion"][:8]:
+        print(
+            f"  disagreed {row['disagreed']}/{row['compared']}: "
+            f"{row['task_id']} :: {row['criterion_id']}"
+        )
+    print(f"Wrote {out_path}")
+    return 0
+
+
 # ------------------------------------------------------------- validate
 
 def cmd_validate(_args: argparse.Namespace) -> int:
@@ -2892,11 +3085,28 @@ def cmd_eval(args: argparse.Namespace) -> int:
     )
     grade_exit = cmd_grade(grade_args)
     report_exit = cmd_report(argparse.Namespace(run=str(run_dir), label=None))
+    judge_b = getattr(args, "judge_b", None)
+    judge_b_exit = 0
+    if judge_b:
+        # Second, cross-family grading under its own label; the default-label
+        # grading stays the scored one. Agreement is a judge diagnostic.
+        judge_b_exit = cmd_grade(argparse.Namespace(
+            run=str(run_dir), judge=judge_b, current_rubric=False,
+            label="judge-b",
+        ))
+        try:
+            agreement_exit = cmd_agreement(argparse.Namespace(
+                run=str(run_dir), label=None, label_b="judge-b",
+            ))
+        except SystemExit as exc:
+            print(f"judge-b agreement unavailable: {exc}")
+            agreement_exit = 1
+        judge_b_exit = max(judge_b_exit, agreement_exit)
     print(
         f"\nEval finished: {run_dir}/report.html (shareable) · "
         f"{run_dir}/report.md (details)"
     )
-    return max(run_exit, grade_exit, report_exit)
+    return max(run_exit, grade_exit, report_exit, judge_b_exit)
 
 
 # ------------------------------------------------------------------ io
@@ -2986,8 +3196,25 @@ def main(argv: list[str] | None = None) -> int:
                              help="enable provider-hosted web search (tools arm)")
     eval_parser.add_argument("--judge", default=JUDGE_DEFAULT,
                              help=f"judge model id (default {JUDGE_DEFAULT})")
+    eval_parser.add_argument(
+        "--judge-b",
+        help="optionally grade again with a second judge model (label "
+             "'judge-b') and report criterion agreement (paid)",
+    )
     eval_parser.add_argument("--yes", action="store_true", help="skip confirmation prompt")
     eval_parser.set_defaults(func=cmd_eval)
+
+    agreement_parser = sub.add_parser(
+        "agreement", help="compare two labeled gradings of one run"
+    )
+    agreement_parser.add_argument("--run", required=True)
+    agreement_parser.add_argument(
+        "--label", help="primary grading label (default: the default grading)"
+    )
+    agreement_parser.add_argument(
+        "--label-b", required=True, help="second grading label to compare against"
+    )
+    agreement_parser.set_defaults(func=cmd_agreement)
 
     args = parser.parse_args(argv)
     return args.func(args)

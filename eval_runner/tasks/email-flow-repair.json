@@ -1,0 +1,39 @@
+{
+  "id": "email-flow-repair",
+  "title": "Repair an email onboarding sequence against the supplied facts",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
+    "eval_runner/fixtures/email-flow-repair/draft-sequence.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "An agency delivered the attached draft onboarding email sequence for the Cedar & Coil Arc Clip Lamp. Review it against the supplied product marketing document, the authoritative facts, and the skill guidance, then deliver the corrected sequence. Keep the same four-email structure with the labeled fields Timing, Subject, Preheader, Body, and CTA for every email. Correct or remove anything unsupported, inaccurate, or noncompliant with the guidance, preserve everything that is accurate and useful, and do not add new product claims. Output only the corrected sequence.",
+  "rubric": {
+    "completion": [
+      {"id": "four_emails_labeled", "check": "The corrected sequence has exactly four emails, each with all five labeled fields: Timing, Subject, Preheader, Body, and CTA."},
+      {"id": "sequence_only", "check": "The deliverable is the corrected sequence itself; accurate draft content (clamp use cases, included accessories, three brightness and two color-temperature settings, audience framing) is preserved rather than discarded."}
+    ],
+    "skill_adherence": [
+      {"id": "price_corrected", "check": "The $59 price is gone; if a price appears anywhere it is exactly $68."},
+      {"id": "canonical_name", "check": "Every product reference uses the canonical name Arc Clip Lamp; the shortened 'Arc Lamp' does not appear."},
+      {"id": "battery_corrected", "check": "The 12-hour battery claim is gone; any battery claim says up to eight hours on the lowest brightness."},
+      {"id": "clamp_corrected", "check": "The 3-inch clamp claim is gone; any clamp thickness stated is 2.25 inches."},
+      {"id": "testimonial_removed", "check": "The invented Maya S. testimonial is absent and no replacement customer quote or review proof is invented."},
+      {"id": "guarantee_removed", "check": "The 'guaranteed to double your focus' claim is absent and no other guaranteed-outcome claim is added."},
+      {"id": "urgency_removed", "check": "The 'Only 50 left' scarcity and the 24-hour deadline are absent and no replacement urgency, scarcity, or countdown tactic is added."},
+      {"id": "shipping_claim_removed", "check": "The free 2-day shipping offer is absent and no other unsupplied offer or promotion is added."},
+      {"id": "cta_exact", "check": "Every CTA field is exactly 'Explore the Arc Clip Lamp'; 'Buy Now' does not appear as a CTA."},
+      {"id": "merge_tag_fixed", "check": "The malformed '{{first_name}' merge tag is either repaired to a well-formed tag or removed; no malformed personalization token remains."}
+    ],
+    "best_practices": [
+      {"id": "one_job_per_email", "check": "Each corrected email keeps one job and one primary call to action, consistent with the lifecycle-email guidance."},
+      {"id": "no_new_claims", "check": "No new product fact, capability, audience, proof point, offer, or performance claim appears beyond the supplied sources."}
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "id": "factorial-ad-test",
   "title": "Constraint-dense 2x2 Meta creative experiment",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

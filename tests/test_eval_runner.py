@@ -45,9 +45,9 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 11
-    assert sum(task["split"] == "development" for task in tasks.values()) == 7
-    assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
+    assert len(tasks) == 14
+    assert sum(task["split"] == "development" for task in tasks.values()) == 11
+    assert sum(task["split"] == "holdout" for task in tasks.values()) == 3
     for task in tasks.values():
         assert task["prompt_version"] >= 1
         assert task["rubric_version"] >= 1
@@ -294,8 +294,8 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 7
-    assert len(bench._select_tasks(None, "holdout", tasks)) == 4
+    assert len(bench._select_tasks(None, "development", tasks)) == 11
+    assert len(bench._select_tasks(None, "holdout", tasks)) == 3
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
@@ -1122,7 +1122,7 @@ def test_partial_regrade_requires_and_preserves_existing_label(tmp_path, monkeyp
 
     def fake_generate(_spec, prompt, *_args, **_kwargs):
         calls.append(prompt)
-        criterion_ids = re.findall(r"(?m)^- \[[^]]+\] ([^:]+):", prompt)
+        criterion_ids = re.findall(r"(?m)^- id: (\S+) · ", prompt)
         return {"text": json.dumps({
             "completed": True,
             "criteria": [
@@ -1175,3 +1175,120 @@ def test_partial_regrade_requires_and_preserves_existing_label(tmp_path, monkeyp
     assert json.loads(
         (run_dir / "grading.audit.json").read_text()
     )["rubrics"]["blog-post"] == saved_blog_meta
+
+
+def test_judge_usage_totals_aggregates_and_skips_legacy_records():
+    legacy = {"task_id": "headline", "criteria": []}
+    assert bench.judge_usage_totals([legacy]) is None
+    modern = [
+        {"judge_calls": 1, "judge_input_tokens": 1000,
+         "judge_output_tokens": 500, "judge_cost_usd": 0.007},
+        {"judge_calls": 2, "judge_input_tokens": 2000,
+         "judge_output_tokens": 700, "judge_cost_usd": 0.011},
+        legacy,
+    ]
+    totals = bench.judge_usage_totals(modern)
+    assert totals == {
+        "calls": 3,
+        "input_tokens": 3000,
+        "output_tokens": 1200,
+        "cost_usd": 0.018,
+    }
+
+
+def test_grade_records_judge_usage(tmp_path, monkeypatch):
+    task = bench.load_tasks()["headline"]
+    run_dir = tmp_path / "run"
+    (run_dir / "prompts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    prompt = bench.assemble_prompt(task, include_skills=True)
+    (run_dir / "prompts" / "headline.md").write_text(prompt)
+    (run_dir / "responses" / "answer.md").write_text("## Option 1\nHeadline\n")
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "run", "models": {"claude-haiku-4-5": {
+            "model": "anthropic/claude-haiku-4-5"}},
+        "tasks": ["headline"], "repetitions": 1, "skills_included": True,
+        "tools_enabled": False, "max_output_tokens": 16000,
+    }))
+    (run_dir / "attempts.jsonl").write_text(json.dumps({
+        "task_id": "headline", "model_id": "claude-haiku-4-5",
+        "repetition": 1, "response_path": "responses/answer.md",
+        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+    }) + "\n")
+
+    judge_ids = [
+        criterion["id"]
+        for section in bench.RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+        if "programmatic" not in criterion
+    ]
+    monkeypatch.setattr(bench.providers, "generate", lambda *args, **kwargs: {
+        "text": json.dumps({
+            "completed": True,
+            "criteria": [
+                {"id": criterion_id, "pass": True, "evidence": "present"}
+                for criterion_id in judge_ids
+            ],
+        }),
+        "input_tokens": 1000,
+        "output_tokens": 500,
+    })
+
+    import argparse
+    args = argparse.Namespace(
+        run=str(run_dir), judge="claude-sonnet-5",
+        current_rubric=False, label=None,
+    )
+    assert bench.cmd_grade(args) == 0
+    judgment = json.loads((run_dir / "judgments.jsonl").read_text().strip())
+    assert judgment["judge_calls"] == 1
+    assert judgment["judge_input_tokens"] == 1000
+    assert judgment["judge_output_tokens"] == 500
+    # sonnet-5 pricing: (1000 * $2 + 500 * $10) / 1M
+    assert judgment["judge_cost_usd"] == pytest.approx(0.007)
+    grading = json.loads((run_dir / "grading.json").read_text())
+    assert grading["judge_usage"] == {
+        "calls": 1, "input_tokens": 1000, "output_tokens": 500,
+        "cost_usd": 0.007,
+    }
+
+
+def test_agreement_compares_only_judge_scored_criteria(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    def record(agree_pass: bool) -> dict:
+        return {
+            "task_id": "headline", "model_id": "claude-haiku-4-5",
+            "repetition": 1, "completed": True,
+            "criteria": [
+                {"id": "shared_agree", "section": "completion", "pass": True,
+                 "evidence": "x", "source": "judge"},
+                {"id": "shared_split", "section": "completion",
+                 "pass": agree_pass, "evidence": "y", "source": "judge"},
+                {"id": "measured", "section": "completion", "pass": True,
+                 "evidence": "z", "source": "programmatic"},
+            ],
+        }
+
+    (run_dir / "judgments.jsonl").write_text(
+        json.dumps(record(True)) + "\n"
+    )
+    (run_dir / "judgments.judge-b.jsonl").write_text(
+        json.dumps(record(False)) + "\n"
+    )
+
+    import argparse
+    assert bench.cmd_agreement(argparse.Namespace(
+        run=str(run_dir), label=None, label_b="judge-b",
+    )) == 0
+    payload = json.loads((run_dir / "agreement.judge-b.json").read_text())
+    assert payload["criteria_compared"] == 2  # programmatic rows excluded
+    assert payload["criteria_agreed"] == 1
+    assert payload["criterion_agreement_rate"] == 0.5
+    assert payload["completed_agreement_rate"] == 1.0
+    assert payload["by_criterion"] == [{
+        "task_id": "headline", "criterion_id": "shared_split",
+        "compared": 1, "disagreed": 1,
+    }]
+    assert len(payload["disagreements"]) == 1

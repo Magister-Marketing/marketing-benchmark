@@ -61,6 +61,10 @@ def main() -> int:
     parser.add_argument("--tools", action="store_true",
                         help="enable provider-hosted web search (tools arm)")
     parser.add_argument("--judge", default=bench.JUDGE_DEFAULT)
+    parser.add_argument(
+        "--judge-b",
+        help="also grade with a second judge model and report agreement (paid)",
+    )
     parser.add_argument("-y", "--yes", action="store_true", help="skip confirmation")
     parser.add_argument("--env-file", help="KEY=value file to load API keys from")
     args = parser.parse_args()
@@ -76,6 +80,7 @@ def main() -> int:
         no_skills=args.no_skills,
         tools=args.tools,
         judge=args.judge,
+        judge_b=args.judge_b,
         yes=args.yes,
     ))
 

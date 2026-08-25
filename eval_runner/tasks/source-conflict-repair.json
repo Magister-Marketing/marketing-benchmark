@@ -1,7 +1,7 @@
 {
   "id": "source-conflict-repair",
   "title": "Audit and repair a contradictory agency ad brief",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [
