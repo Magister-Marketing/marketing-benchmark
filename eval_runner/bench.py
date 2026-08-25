@@ -1159,12 +1159,17 @@ def cmd_grade(args: argparse.Namespace) -> int:
             )
             return record
 
-        for judge_try in range(2):
+        # Malformed judge JSON is correlated per attempt (a judge that trips
+        # over one response tends to trip the same way again), so a single
+        # retry is often not enough; four tries clears most streaks.
+        last_raw: str | None = None
+        for judge_try in range(4):
             try:
                 result = providers.generate(judge_spec, prompt, MAX_OUTPUT_TOKENS)
                 usage["calls"] += 1
                 usage["input_tokens"] += result.get("input_tokens") or 0
                 usage["output_tokens"] += result.get("output_tokens") or 0
+                last_raw = result["text"]
                 verdict = parse_judge_json(result["text"])
                 got_ids = {c.get("id") for c in verdict["criteria"]}
                 if got_ids != expected_ids:
@@ -1189,8 +1194,10 @@ def cmd_grade(args: argparse.Namespace) -> int:
                 print(f"  judged {record['task_id']} / {record['model_id']} r{record['repetition']}")
                 return finalize()
             except (providers.ProviderError, ValueError, json.JSONDecodeError, KeyError) as exc:
-                if judge_try == 1:
+                if judge_try == 3:
                     record["error"] = f"judge failed: {exc}"
+                    if last_raw is not None:
+                        record["error_raw_prefix"] = last_raw[:300]
                     print(f"  JUDGE FAIL {record['task_id']} / {record['model_id']} "
                           f"r{record['repetition']}: {exc}")
         return finalize()
