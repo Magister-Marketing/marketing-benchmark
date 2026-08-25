@@ -282,6 +282,12 @@ def test_platform_gauntlet_facts_measure_labels_limits_and_exact_strings():
     assert facts["missing_or_duplicate_label_count"] == 0
     assert facts["over_limit_field_count"] == 0
     assert facts["approved_cta_count"] == 2
+    # The brand facts list the CTA at the end of a sentence, so a terminal
+    # period is an equally faithful reading (every model in run 20260825-170012
+    # included it).
+    dotted = response.replace("LI-CTA: Review consultation availability",
+                              "LI-CTA: Review consultation availability.")
+    assert bench.measured_facts(task, dotted)["approved_cta_count"] == 2
     assert facts["disclaimer_field_count"] == 3
     assert facts["sms_optout_present"] is True
     assert facts["price_160_count"] == 2

@@ -3,7 +3,7 @@
   "title": "Cross-platform promo copy under hard character limits",
   "split": "holdout",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
     "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
@@ -17,7 +17,7 @@
     "completion": [
       {"id": "all_fields_present", "check": "All eleven labeled fields (RSA-H1, RSA-H2, RSA-H3, RSA-D1, RSA-D2, META-PRIMARY, META-HEADLINE, META-CTA, LI-INTRO, LI-CTA, SMS-BODY) appear exactly once each.", "programmatic": {"fact": "missing_or_duplicate_label_count", "equals": 0}},
       {"id": "within_char_limits", "check": "Every limited field value is at or under its hard character maximum (RSA-H 30, RSA-D 90, META-PRIMARY 125, META-HEADLINE 40, LI-INTRO 150, SMS-BODY 160).", "programmatic": {"fact": "over_limit_field_count", "equals": 0}},
-      {"id": "approved_cta_exact", "check": "META-CTA and LI-CTA are each exactly 'Review consultation availability'.", "programmatic": {"fact": "approved_cta_count", "equals": 2}},
+      {"id": "approved_cta_exact", "check": "META-CTA and LI-CTA are each exactly 'Review consultation availability' (a single terminal period is accepted, matching the brand facts' own punctuation).", "programmatic": {"fact": "approved_cta_count", "equals": 2}},
       {"id": "disclaimer_everywhere", "check": "The exact sentence 'Educational only; not medical care.' appears inside META-PRIMARY, LI-INTRO, and SMS-BODY.", "programmatic": {"fact": "disclaimer_field_count", "equals": 3}},
       {"id": "sms_optout_present", "check": "SMS-BODY contains 'Reply STOP to opt out'.", "programmatic": {"fact": "sms_optout_present", "equals": true}}
     ],

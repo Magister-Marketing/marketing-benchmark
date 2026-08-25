@@ -746,8 +746,10 @@ def _platform_gauntlet_facts(response_text: str) -> dict:
             1 for label in _GAUNTLET_LIMITS if len(values[label]) != 1
         ),
         "over_limit_field_count": over_limit,
+        # The brand facts list the approved CTA at the end of a sentence, so
+        # a single terminal period is an equally faithful reading and counts.
         "approved_cta_count": sum(
-            value == _GAUNTLET_CTA
+            value in (_GAUNTLET_CTA, _GAUNTLET_CTA + ".")
             for value in values["META-CTA"] + values["LI-CTA"]
         ),
         "disclaimer_field_count": disclaimer_field_count,
