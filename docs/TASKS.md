@@ -9,7 +9,10 @@ package.
 
 - **The assignment** says what to produce.
 - **The source material** supplies the facts the model may use.
-- **The skill guidance** describes Magister's approach to that kind of work.
+- **The skill guidance** is the relevant verbatim SKILL.md from
+  [marketingskills](https://github.com/coreyhaines31/marketingskills), Corey
+  Haines's open skill pack that ships on every Magister agent machine
+  (provenance: `evals/fixtures/public/skills/README.md`).
 - **The checklist** defines every requirement the answer must pass.
 
 The task files linked below are the source of truth.
