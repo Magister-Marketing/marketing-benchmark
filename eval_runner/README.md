@@ -100,10 +100,13 @@ change to graded behavior or fixture contract requires a new task id.
 | development | `marketing-plan` | budget, sequencing, and mature activation cohorts |
 | development | `landing-page` | single-file conversion page and deterministic HTML gates |
 | development | `shopify-meta-capi` | retry-stable browser/server deduplication |
-| holdout | `source-conflict-repair` | contradiction detection and grounded repair |
-| holdout | `attribution-sensitivity` | deduplication, refunds, two attribution oracles, conditional judgment |
-| holdout | `factorial-ad-test` | dense interacting constraints in a 2x2 experiment |
-| holdout | `landing-page-repair` | correction of planted factual, safety, proof, action, and HTML defects |
+| development | `source-conflict-repair` | contradiction detection and grounded repair (holdout until 2026-08-25) |
+| development | `attribution-sensitivity` | deduplication, refunds, two attribution oracles, conditional judgment (holdout until 2026-08-25) |
+| development | `factorial-ad-test` | dense interacting constraints in a 2x2 experiment (holdout until 2026-08-25) |
+| development | `landing-page-repair` | correction of planted factual, safety, proof, action, and HTML defects (holdout until 2026-08-25) |
+| holdout | `email-flow-repair` | unprompted defect detection in a lifecycle sequence — no defect categories are named |
+| holdout | `budget-reconciliation-trap` | catching an infeasible brief instead of papering over it |
+| holdout | `analytics-source-conflict` | reconciling contradictory platform/GA4 numbers without inventing a single truth |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a

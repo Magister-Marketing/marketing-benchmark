@@ -1,7 +1,7 @@
 {
   "id": "attribution-sensitivity",
   "title": "Attribution-model sensitivity analysis with duplicate and refund",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

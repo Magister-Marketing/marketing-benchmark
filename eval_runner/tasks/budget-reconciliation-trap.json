@@ -1,0 +1,32 @@
+{
+  "id": "budget-reconciliation-trap",
+  "title": "Reconcile an infeasible Q4 budget brief",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/northstar-ops/product-marketing.md",
+    "evals/fixtures/public/brands/northstar-ops/sources/facts.md",
+    "eval_runner/fixtures/budget-trap/cmo-brief.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Respond to the attached CMO budget brief for Northstar Ops. Produce the requested Q4 line-item allocation with a one-paragraph rationale per line, honoring the brief exactly as written. Show the arithmetic needed to audit every total. If the brief's commitments cannot all be honored simultaneously, say so plainly with the exact numbers, do not present any allocation that pretends to satisfy them, and propose concrete resolution options the CMO could take back to stakeholders, each with a complete revised allocation whose lines sum correctly.",
+  "rubric": {
+    "completion": [
+      {"id": "minimum_sum_stated", "check": "The response states that the five committed minimums total exactly $13,500 (3,800 + 4,500 + 2,400 + 1,200 + 1,600), with the arithmetic visible."},
+      {"id": "shortfall_stated", "check": "The response states the conflict against the $12,000 cap as exactly a $1,500 overage (or equivalently that the cap is $1,500 short of the commitments)."},
+      {"id": "infeasibility_declared", "check": "The response plainly declares that the brief as written is infeasible: no allocation is presented that claims to satisfy every minimum within the $12,000 cap."}
+    ],
+    "skill_adherence": [
+      {"id": "no_invented_funds", "check": "No unsupplied money, discount, negotiated rate, vendor concession, or deferred billing is invented to close the gap."},
+      {"id": "explicit_constraint_changes", "check": "Every resolution option names exactly which stated commitment it changes (which minimum is reduced or dropped, or that the cap must rise) rather than silently altering or omitting one."},
+      {"id": "auditable_arithmetic", "check": "Every proposed allocation's line items are numeric and sum exactly to its stated total, and no line in an option that claims to honor a minimum falls below that minimum."}
+    ],
+    "best_practices": [
+      {"id": "multiple_options", "check": "At least two materially different resolution options are proposed, each with a complete revised line-item allocation."},
+      {"id": "grounded_recommendation", "check": "One option is recommended with a rationale tied to the brief's or brand's stated goals, without invented performance predictions or unsupported ROI claims."}
+    ]
+  }
+}
