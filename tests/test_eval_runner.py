@@ -1122,7 +1122,7 @@ def test_partial_regrade_requires_and_preserves_existing_label(tmp_path, monkeyp
 
     def fake_generate(_spec, prompt, *_args, **_kwargs):
         calls.append(prompt)
-        criterion_ids = re.findall(r"(?m)^- \[[^]]+\] ([^:]+):", prompt)
+        criterion_ids = re.findall(r"(?m)^- id: (\S+) · ", prompt)
         return {"text": json.dumps({
             "completed": True,
             "criteria": [

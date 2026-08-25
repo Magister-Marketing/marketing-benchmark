@@ -372,9 +372,12 @@ def build_judge_prompt(
             for criterion in task["rubric"][section]
         ]
     criteria_lines = [
-        f"- [{section}] {criterion['id']}: {criterion['check']}"
+        f"- id: {criterion['id']} · section: {section} · check: {criterion['check']}"
         for section, criterion in criteria
     ]
+    required_ids = json.dumps(
+        [criterion["id"] for _section, criterion in criteria]
+    )
     if exact_prompt is None:
         exact_prompt = assemble_prompt(task, include_skills=True)
     measured_block = "\n".join(f"- {key}: {value}" for key, value in measured.items())
@@ -385,6 +388,9 @@ def build_judge_prompt(
         f"## Measured facts (computed programmatically; trust these over your own counting)\n\n"
         f"{measured_block or '(none)'}\n\n"
         f"## Rubric criteria\n\n" + "\n".join(criteria_lines) + "\n\n"
+        f"## Required criterion ids\n\n"
+        f"Your criteria array must contain exactly one entry for each of these "
+        f"ids, verbatim, and no others:\n{required_ids}\n\n"
         f"## Model response to grade (JSON string)\n\n"
         f"{json.dumps(response_text, ensure_ascii=False)}\n"
     )
@@ -3088,9 +3094,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
             run=str(run_dir), judge=judge_b, current_rubric=False,
             label="judge-b",
         ))
-        judge_b_exit = max(judge_b_exit, cmd_agreement(argparse.Namespace(
-            run=str(run_dir), label=None, label_b="judge-b",
-        )))
+        try:
+            agreement_exit = cmd_agreement(argparse.Namespace(
+                run=str(run_dir), label=None, label_b="judge-b",
+            ))
+        except SystemExit as exc:
+            print(f"judge-b agreement unavailable: {exc}")
+            agreement_exit = 1
+        judge_b_exit = max(judge_b_exit, agreement_exit)
     print(
         f"\nEval finished: {run_dir}/report.html (shareable) · "
         f"{run_dir}/report.md (details)"
