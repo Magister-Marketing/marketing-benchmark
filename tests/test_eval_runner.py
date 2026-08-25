@@ -1,5 +1,6 @@
 """Offline tests for the direct-model eval runner. No provider calls."""
 
+import argparse
 import base64
 import hashlib
 from html import unescape
@@ -663,6 +664,30 @@ def test_ceiling_retry_gives_up_after_one_doubling(monkeypatch):
                            settings={"max_output_tokens": 16000})
 
 
+def test_ceiling_retry_covers_anthropic_default_cap(monkeypatch):
+    # Anthropic's max_tokens is always explicit (the API requires it), so an
+    # all-thinking empty completion that stopped on the cap retries with a
+    # doubled cap even when the candidate set no cap of its own.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"content": [{"type": "thinking", "thinking": "…"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 16000},
+                    "stop_reason": "max_tokens"}
+        return {"content": [{"type": "text", "text": "recovered"}],
+                "usage": {"input_tokens": 1, "output_tokens": 900},
+                "stop_reason": "end_turn"}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    result = providers.generate("anthropic/claude-opus-5", "hi", 16000)
+    assert [c["max_tokens"] for c in calls] == [16000, 32000]
+    assert result["text"] == "recovered"
+    assert result["ceiling_retried"] is True
+
+
 def test_uncapped_truncation_never_retries(monkeypatch):
     # With no explicit cap the request is bounded only by the model's own
     # maximum; doubling cannot help, so the failure is recorded honestly
@@ -680,6 +705,72 @@ def test_uncapped_truncation_never_retries(monkeypatch):
         providers.generate("openai/gpt-5.6-luna", "hi", 16000)
     assert len(calls) == 1
     assert "max_output_tokens" not in calls[0]
+
+
+def _retry_fixture(tmp_path, prompt_text="hello prompt"):
+    run_dir = tmp_path / "run"
+    (run_dir / "prompts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    (run_dir / "prompts" / "t.md").write_text(prompt_text)
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "test-run",
+        "models": {"m": {"model": "anthropic/x",
+                         "pricing": {"input_per_mtok": 1, "output_per_mtok": 1}}},
+        "tasks": ["t"],
+        "skills_included": True,
+        "tools_enabled": False,
+        "max_output_tokens": 16000,
+    }))
+    sha = hashlib.sha256(prompt_text.encode()).hexdigest()
+    attempts = [
+        {"task_id": "t", "model_id": "m", "repetition": 1,
+         "prompt_sha256": sha, "finish_reason": "end_turn",
+         "response_path": "responses/t--m--r1.md"},
+        {"task_id": "t", "model_id": "m", "repetition": 2,
+         "prompt_sha256": sha, "error": "provider exploded"},
+    ]
+    with (run_dir / "attempts.jsonl").open("w") as handle:
+        for record in attempts:
+            handle.write(json.dumps(record) + "\n")
+    return run_dir
+
+
+def test_retry_reruns_only_errored_attempts(tmp_path, monkeypatch):
+    run_dir = _retry_fixture(tmp_path)
+    calls = []
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None):
+        calls.append((model_spec, prompt, max_output_tokens, web_search))
+        return {"text": "recovered answer", "input_tokens": 10,
+                "output_tokens": 20, "tool_calls": {}, "web_search_calls": 0,
+                "finish_reason": "end_turn", "ceiling_retried": True,
+                "provider": "anthropic", "model": "x", "latency_seconds": 1.0}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    exit_code = bench.cmd_retry(
+        argparse.Namespace(run=str(run_dir), yes=True)
+    )
+    assert exit_code == 0
+    assert calls == [("anthropic/x", "hello prompt", 16000, False)]
+    updated = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert "error" not in updated[1]
+    assert updated[1]["retried"] is True
+    assert updated[1]["finish_reason"] == "end_turn"
+    assert updated[1]["response_path"] == "responses/t--m--r2.md"
+    assert (run_dir / "responses" / "t--m--r2.md").read_text() == "recovered answer"
+    assert "retried" not in updated[0]  # successful attempts are untouched
+
+
+def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
+    run_dir = _retry_fixture(tmp_path)
+    (run_dir / "prompts" / "t.md").write_text("a different prompt")
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match="prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
 def test_attempt_mark_letters():

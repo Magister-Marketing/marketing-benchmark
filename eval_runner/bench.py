@@ -314,6 +314,72 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if errors == 0 else 1
 
 
+def cmd_retry(args: argparse.Namespace) -> int:
+    """Re-execute only the errored attempts of an existing run, in place.
+
+    Uses the run's recorded prompts, model settings, and configuration so the
+    retried attempt is the same experiment; the record keeps a `retried` flag
+    for provenance. Successful attempts are never re-run.
+    """
+    run_dir = Path(args.run)
+    run_meta = json.loads((run_dir / "run.json").read_text())
+    attempts = _read_jsonl(run_dir / "attempts.jsonl")
+    errored = [record for record in attempts if "error" in record]
+    if not errored:
+        print("No errored attempts to retry.")
+        return 0
+    models = run_meta["models"]
+    print(f"About to retry {len(errored)} errored paid model call(s) "
+          f"from run {run_meta['run_id']}:")
+    for record in errored:
+        print(f"  {record['task_id']} / {record['model_id']} "
+              f"r{record['repetition']}: {record['error']}")
+    if not args.yes:
+        answer = input("Type RETRY to proceed: ").strip()
+        if answer != "RETRY":
+            print("Aborted; nothing was called.")
+            return 1
+    for record in errored:
+        prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
+        recorded_sha = record.get("prompt_sha256")
+        current_sha = hashlib.sha256(prompt.encode()).hexdigest()
+        if recorded_sha and recorded_sha != current_sha:
+            raise SystemExit(
+                f"recorded prompt for {record['task_id']} no longer matches its "
+                "attempt's prompt_sha256; refusing to retry a different experiment"
+            )
+        spec = models[record["model_id"]]
+        try:
+            result = providers.generate(
+                spec["model"], prompt, run_meta["max_output_tokens"],
+                web_search=run_meta["tools_enabled"],
+                settings=_candidate_settings(spec),
+            )
+        except providers.ProviderError as exc:
+            record["error"] = str(exc)
+            print(f"  FAIL {record['task_id']} / {record['model_id']} "
+                  f"r{record['repetition']}: {exc}")
+            continue
+        record.pop("error", None)
+        response_name = (
+            f"{record['task_id']}--{record['model_id']}"
+            f"--r{record['repetition']}.md"
+        )
+        (run_dir / "responses" / response_name).write_text(result.pop("text"))
+        record.update(result)
+        record["response_path"] = f"responses/{response_name}"
+        record["retried"] = True
+        print(f"  done {record['task_id']} / {record['model_id']} "
+              f"r{record['repetition']} ({record['latency_seconds']}s)")
+    _write_jsonl(run_dir / "attempts.jsonl", attempts)
+    remaining = sum(1 for record in attempts if "error" in record)
+    affected = ",".join(sorted({record["task_id"] for record in errored}))
+    print(f"Retry complete: {len(errored) - remaining} recovered, "
+          f"{remaining} still errored. Regrade affected tasks with: "
+          f"python3 -m eval_runner.bench grade --run {run_dir} --tasks {affected}")
+    return 0 if remaining == 0 else 1
+
+
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
     if not raw:
         if kind == "model":
@@ -3269,6 +3335,14 @@ def main(argv: list[str] | None = None) -> int:
                             help="enable provider-hosted web search (tools arm)")
     run_parser.add_argument("--yes", action="store_true", help="skip confirmation prompt")
     run_parser.set_defaults(func=cmd_run)
+
+    retry_parser = sub.add_parser(
+        "retry", help="re-run only a run's errored attempts, in place (paid)"
+    )
+    retry_parser.add_argument("--run", required=True, help="run directory")
+    retry_parser.add_argument("--yes", action="store_true",
+                              help="skip confirmation prompt")
+    retry_parser.set_defaults(func=cmd_retry)
 
     grade_parser = sub.add_parser("grade", help="LLM-judge attempts (paid)")
     grade_parser.add_argument("--run", required=True, help="run directory")
