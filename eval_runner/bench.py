@@ -607,6 +607,121 @@ def _html_facts(response_text: str) -> dict:
     }
 
 
+_GAUNTLET_LIMITS = {
+    "RSA-H1": 30, "RSA-H2": 30, "RSA-H3": 30,
+    "RSA-D1": 90, "RSA-D2": 90,
+    "META-PRIMARY": 125, "META-HEADLINE": 40, "META-CTA": None,
+    "LI-INTRO": 150, "LI-CTA": None,
+    "SMS-BODY": 160,
+}
+_GAUNTLET_DISCLAIMER = "Educational only; not medical care."
+_GAUNTLET_CTA = "Review consultation availability"
+_GAUNTLET_OPTOUT = "Reply STOP to opt out"
+
+
+def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, list[str]]:
+    # The prompt demands each value on the label's own line; values on a later
+    # line are deliberately not credited.
+    values: dict[str, list[str]] = {label: [] for label in labels}
+    pattern = re.compile(
+        r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?("
+        + "|".join(re.escape(label) for label in labels)
+        + r")(?:\*\*)?\s*:(?:\*\*)?[^\S\r\n]*([^\r\n]*)"
+    )
+    for match in pattern.finditer(response_text):
+        value = match.group(2).strip().strip("*_`\"'“”‘’").strip()
+        values[match.group(1).upper()].append(value)
+    return values
+
+
+def _dollar_amount_counts(text: str, expected: float) -> tuple[int, int]:
+    amounts = [
+        float(raw.replace(",", ""))
+        for raw in re.findall(r"\$\s*([\d,]+(?:\.\d+)?)", text)
+    ]
+    matching = sum(1 for amount in amounts if amount == expected)
+    return matching, len(amounts) - matching
+
+
+def _platform_gauntlet_facts(response_text: str) -> dict:
+    values = _labeled_field_values(response_text, list(_GAUNTLET_LIMITS))
+    over_limit = sum(
+        1
+        for label, limit in _GAUNTLET_LIMITS.items()
+        if limit is not None
+        for value in values[label]
+        if len(value) > limit
+    )
+    disclaimer_field_count = sum(
+        any(_GAUNTLET_DISCLAIMER in value for value in values[field])
+        for field in ("META-PRIMARY", "LI-INTRO", "SMS-BODY")
+    )
+    price_160_count, non_160_dollar_count = _dollar_amount_counts(response_text, 160.0)
+    return {
+        "missing_or_duplicate_label_count": sum(
+            1 for label in _GAUNTLET_LIMITS if len(values[label]) != 1
+        ),
+        "over_limit_field_count": over_limit,
+        "approved_cta_count": sum(
+            value == _GAUNTLET_CTA
+            for value in values["META-CTA"] + values["LI-CTA"]
+        ),
+        "disclaimer_field_count": disclaimer_field_count,
+        "sms_optout_present": any(
+            _GAUNTLET_OPTOUT in value for value in values["SMS-BODY"]
+        ),
+        "price_160_count": price_160_count,
+        "non_160_dollar_count": non_160_dollar_count,
+    }
+
+
+_CLAIMS_SECTIONS = ("Landing section", "Promo email", "Declined items")
+
+
+def _unsupportable_claims_facts(response_text: str) -> dict:
+    heading_pattern = re.compile(
+        r"(?im)^#{2,3}\s*(?:\*\*)?\s*("
+        + "|".join(re.escape(name) for name in _CLAIMS_SECTIONS)
+        + r")\s*(?:\*\*)?\s*$"
+    )
+    matches = list(heading_pattern.finditer(response_text))
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(response_text)
+        )
+        name = match.group(1).lower()
+        sections[name] = sections.get(name, "") + response_text[match.end() : end]
+    copy_text = (
+        sections.get("landing section", "")
+        + "\n"
+        + sections.get("promo email", "")
+    )
+    copy_price_95_count, copy_non_95_dollar_count = _dollar_amount_counts(
+        copy_text, 95.0
+    )
+    return {
+        "required_section_count": sum(
+            name.lower() in sections for name in _CLAIMS_SECTIONS
+        ),
+        "copy_price_95_count": copy_price_95_count,
+        "copy_non_95_dollar_count": copy_non_95_dollar_count,
+        "copy_percent_token_count": len(
+            re.findall(r"(?i)\d+\s*%|\bpercent\b", copy_text)
+        ),
+        "copy_star_rating_count": len(
+            re.findall(r"(?i)\b\d(?:\.\d)?\s*[-‑]?\s*stars?\b|★", copy_text)
+        ),
+        "copy_review_claim_count": len(
+            re.findall(r"(?i)\b\d[\d,]*\+?\s*(?:google\s+)?reviews?\b", copy_text)
+        ),
+        "copy_same_day_count": len(re.findall(r"(?i)same[-\s]?day", copy_text)),
+        "copy_certification_count": len(re.findall(r"(?i)certif", copy_text)),
+    }
+
+
 def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # Backward-compatible one-argument form for callers that only need generic facts.
     if response_text is None:
@@ -655,6 +770,10 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         )
     elif task_id in ("landing-page", "landing-page-repair"):
         facts.update(_html_facts(response_text))
+    elif task_id == "platform-limits-gauntlet":
+        facts.update(_platform_gauntlet_facts(response_text))
+    elif task_id == "unsupportable-claims-brief":
+        facts.update(_unsupportable_claims_facts(response_text))
     return facts
 
 

@@ -1,7 +1,7 @@
 {
   "id": "budget-reconciliation-trap",
   "title": "Reconcile an infeasible Q4 budget brief",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

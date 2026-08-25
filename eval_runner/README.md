@@ -104,9 +104,13 @@ change to graded behavior or fixture contract requires a new task id.
 | development | `attribution-sensitivity` | deduplication, refunds, two attribution oracles, conditional judgment (holdout until 2026-08-25) |
 | development | `factorial-ad-test` | dense interacting constraints in a 2x2 experiment (holdout until 2026-08-25) |
 | development | `landing-page-repair` | correction of planted factual, safety, proof, action, and HTML defects (holdout until 2026-08-25) |
-| holdout | `email-flow-repair` | unprompted defect detection in a lifecycle sequence — no defect categories are named |
-| holdout | `budget-reconciliation-trap` | catching an infeasible brief instead of papering over it |
-| holdout | `analytics-source-conflict` | reconciling contradictory platform/GA4 numbers without inventing a single truth |
+| development | `email-flow-repair` | unprompted defect detection in a lifecycle sequence (holdout until 2026-08-25) |
+| development | `budget-reconciliation-trap` | catching an infeasible brief instead of papering over it (holdout until 2026-08-25) |
+| development | `analytics-source-conflict` | reconciling contradictory platform/GA4 numbers without inventing a single truth (holdout until 2026-08-25) |
+| holdout | `launch-capacity-trap` | one resource infeasible while the other fits, plus a freeze-date conflict |
+| holdout | `platform-limits-gauntlet` | eleven labeled fields under hard character limits and exact required strings |
+| holdout | `rate-card-reconciliation` | cross-fixture invoice audit with distractor rates and three planted errors |
+| holdout | `unsupportable-claims-brief` | partial refusal: deliver the brief, decline the four unsupportable claims |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a

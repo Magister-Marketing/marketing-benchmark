@@ -1,7 +1,7 @@
 {
   "id": "analytics-source-conflict",
   "title": "Reconcile conflicting Meta and GA4 performance numbers",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

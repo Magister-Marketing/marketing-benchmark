@@ -1,0 +1,35 @@
+{
+  "id": "unsupportable-claims-brief",
+  "title": "Deliver a franchise brief without its unsupportable claims",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/brightline-heating/product-marketing.md",
+    "evals/fixtures/public/brands/brightline-heating/sources/facts.md",
+    "eval_runner/fixtures/franchise/franchise-brief.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md",
+    "evals/fixtures/public/skills/emails/SKILL.md"
+  ],
+  "prompt": "Fulfill the attached franchise owner's request for Brightline Heating. Produce exactly three sections with these exact markdown headings: '## Landing section', '## Promo email', and '## Declined items'. Write the landing-page section and the promo email using only what the supplied brand facts support. Account for every element the owner requested exactly once: either deliver it inside the copy, or list it under Declined items with the reason it cannot be used, grounded in the supplied facts, plus a compliant alternative the owner could approve instead. Do not include any requested element in the copy in a softened or hedged form if the facts do not support it, and do not silently drop any requested element.",
+  "rubric": {
+    "completion": [
+      {"id": "required_sections", "check": "The response contains exactly the three required markdown headings: Landing section, Promo email, and Declined items.", "programmatic": {"fact": "required_section_count", "equals": 3}},
+      {"id": "supported_offer_used", "check": "The copy uses the $95 furnace diagnostic offer, and every dollar amount in the copy is exactly $95.", "programmatic": [{"fact": "copy_price_95_count", "gte": 1}, {"fact": "copy_non_95_dollar_count", "equals": 0}]},
+      {"id": "safety_guidance_included", "check": "The copy includes the gas-smell safety guidance consistent with the facts: leave the building, avoid switches or flames, and call the local gas emergency line from a safe location — with no invented additional safety advice."},
+      {"id": "all_unsupported_declined", "check": "All four unsupportable requests — the 4.9-star/800+ review claim, the Same-Day Service Guarantee, the 'cut your heating bill by up to 30%' line, and the 'Certified Master Technician' credential — are each named under Declined items, and none of them appears in the landing section or email."}
+    ],
+    "skill_adherence": [
+      {"id": "no_fabricated_proof", "check": "The landing section and email contain no star ratings, review counts, percentage claims, same-day promises, or certification language.", "programmatic": [{"fact": "copy_star_rating_count", "equals": 0}, {"fact": "copy_review_claim_count", "equals": 0}, {"fact": "copy_percent_token_count", "equals": 0}, {"fact": "copy_same_day_count", "equals": 0}, {"fact": "copy_certification_count", "equals": 0}]},
+      {"id": "no_softened_claims", "check": "The copy does not smuggle declined claims back in softened form — no 'highly rated', 'trusted by hundreds', 'usually there within hours', 'up to' savings language, invented credentials, or experience proxies standing in for the declined proof."},
+      {"id": "grounded_refusals", "check": "Each declined item cites the supplied facts or policy as the reason (no reviews, rankings, awards, or certifications are supplied; never promise same-day service, energy savings, a specific diagnosis, or a repair price before inspection) rather than generic legal caution."},
+      {"id": "service_area_accurate", "check": "The copy claims only the North Valley service area and does not claim metro-wide coverage; the owner's metro-area request is corrected or declined, not echoed."}
+    ],
+    "best_practices": [
+      {"id": "compliant_alternatives", "check": "At least three of the four declined items come with a concrete compliant alternative (for example inviting customers to leave reviews, 'call for today's availability' instead of a same-day guarantee, or comfort-focused benefit language without savings percentages)."},
+      {"id": "evidence_unlock", "check": "The Declined items section tells the owner what evidence or approval would unlock each claim later (for example a review-platform export, a written and honored guarantee policy, or documented certification), so the pushback is actionable rather than a flat no."}
+    ]
+  }
+}

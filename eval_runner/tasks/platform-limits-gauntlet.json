@@ -1,0 +1,34 @@
+{
+  "id": "platform-limits-gauntlet",
+  "title": "Cross-platform promo copy under hard character limits",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/harborline-sleep/product-marketing.md",
+    "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ad-creative/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "Draft one coordinated promotion for the Harborline Sleep consultation across four placements. Output every field as its own single line starting with the exact label shown, followed by a colon and the field value on that same line. Character counts include spaces and punctuation; the limits are hard maximums for the field value.\n\nGoogle responsive search ad:\nRSA-H1: (headline, 30 characters max)\nRSA-H2: (headline, 30 characters max)\nRSA-H3: (headline, 30 characters max)\nRSA-D1: (description, 90 characters max)\nRSA-D2: (description, 90 characters max)\n\nMeta ad:\nMETA-PRIMARY: (primary text, 125 characters max)\nMETA-HEADLINE: (headline, 40 characters max)\nMETA-CTA: (call to action)\n\nLinkedIn ad:\nLI-INTRO: (intro text, 150 characters max)\nLI-CTA: (call to action)\n\nSMS to opted-in subscribers:\nSMS-BODY: (message, 160 characters max)\n\nRules: META-CTA and LI-CTA must each be exactly the approved CTA from the brand facts. The exact sentence \"Educational only; not medical care.\" must appear inside META-PRIMARY, LI-INTRO, and SMS-BODY. SMS-BODY must also contain \"Reply STOP to opt out\". The three RSA headlines must take meaningfully different angles, and every claim in every placement must come only from the supplied facts.",
+  "rubric": {
+    "completion": [
+      {"id": "all_fields_present", "check": "All eleven labeled fields (RSA-H1, RSA-H2, RSA-H3, RSA-D1, RSA-D2, META-PRIMARY, META-HEADLINE, META-CTA, LI-INTRO, LI-CTA, SMS-BODY) appear exactly once each.", "programmatic": {"fact": "missing_or_duplicate_label_count", "equals": 0}},
+      {"id": "within_char_limits", "check": "Every limited field value is at or under its hard character maximum (RSA-H 30, RSA-D 90, META-PRIMARY 125, META-HEADLINE 40, LI-INTRO 150, SMS-BODY 160).", "programmatic": {"fact": "over_limit_field_count", "equals": 0}},
+      {"id": "approved_cta_exact", "check": "META-CTA and LI-CTA are each exactly 'Review consultation availability'.", "programmatic": {"fact": "approved_cta_count", "equals": 2}},
+      {"id": "disclaimer_everywhere", "check": "The exact sentence 'Educational only; not medical care.' appears inside META-PRIMARY, LI-INTRO, and SMS-BODY.", "programmatic": {"fact": "disclaimer_field_count", "equals": 3}},
+      {"id": "sms_optout_present", "check": "SMS-BODY contains 'Reply STOP to opt out'.", "programmatic": {"fact": "sms_optout_present", "equals": true}}
+    ],
+    "skill_adherence": [
+      {"id": "accurate_price", "check": "Every stated dollar amount is exactly $160, and the price appears at least once.", "programmatic": [{"fact": "non_160_dollar_count", "equals": 0}, {"fact": "price_160_count", "gte": 1}]},
+      {"id": "grounded_claims", "check": "Every claim uses only the supplied facts (45-minute virtual consultation, $160 paid directly, intake review, routine-planning conversation, written educational summary, adults organizing non-clinical bedtime habits). No outcomes, testimonials, credentials, guarantees, urgency, scarcity, discounts, or clinical framing (diagnosis or treatment) are invented."},
+      {"id": "single_ask", "check": "Each placement carries one job: getting the reader to review consultation availability. No placement adds a competing ask such as a newsletter signup, follow, download, or second offer."}
+    ],
+    "best_practices": [
+      {"id": "distinct_rsa_assets", "check": "The three RSA headlines take meaningfully different angles rather than near-duplicate phrasings, and the two RSA descriptions differ in substance."},
+      {"id": "honest_specificity", "check": "Copy leans on the concrete supplied specifics (45 minutes, virtual, written summary, non-clinical routine help) instead of generic superlatives or vague promises of better sleep."}
+    ]
+  }
+}
