@@ -15,6 +15,7 @@ wire shapes are covered by offline tests.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -295,7 +296,15 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
             last_error = f"HTTP {exc.code}: {snippet}"
             if exc.code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
                 raise ProviderError(f"{provider} call failed ({last_error})") from None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            # A dropped connection mid-body surfaces as IncompleteRead, an
+            # HTTPException that is not an OSError; it is as transient as a
+            # refused connection and gets the same retry.
+            http.client.HTTPException,
+        ) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             if attempt == MAX_RETRIES:
                 raise ProviderError(f"{provider} call failed ({last_error})") from None
