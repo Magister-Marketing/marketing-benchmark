@@ -30,6 +30,7 @@ import hashlib
 from html import escape
 from html.parser import HTMLParser
 import json
+import os
 import re
 import shlex
 import sys
@@ -314,6 +315,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if errors == 0 else 1
 
 
+API_ENV_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+
+def _load_env_file(path: str) -> None:
+    """Load only the two provider keys from a KEY=value file; never print them."""
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key in API_ENV_KEYS and not os.environ.get(key):
+            os.environ[key] = value.strip().strip('"').strip("'")
+
+
 def cmd_retry(args: argparse.Namespace) -> int:
     """Re-execute only the errored attempts of an existing run, in place.
 
@@ -321,6 +337,8 @@ def cmd_retry(args: argparse.Namespace) -> int:
     retried attempt is the same experiment; the record keeps a `retried` flag
     for provenance. Successful attempts are never re-run.
     """
+    if getattr(args, "env_file", None):
+        _load_env_file(args.env_file)
     run_dir = Path(args.run)
     run_meta = json.loads((run_dir / "run.json").read_text())
     attempts = _read_jsonl(run_dir / "attempts.jsonl")
@@ -1009,6 +1027,8 @@ def _tasks_for_grading(
 
 
 def cmd_grade(args: argparse.Namespace) -> int:
+    if getattr(args, "env_file", None):
+        _load_env_file(args.env_file)
     run_dir = Path(args.run)
     run_meta = json.loads((run_dir / "run.json").read_text())
     models = load_models()
@@ -3342,6 +3362,11 @@ def main(argv: list[str] | None = None) -> int:
     retry_parser.add_argument("--run", required=True, help="run directory")
     retry_parser.add_argument("--yes", action="store_true",
                               help="skip confirmation prompt")
+    retry_parser.add_argument(
+        "--env-file",
+        help="KEY=value file to load provider API keys from (values are "
+             "never printed)",
+    )
     retry_parser.set_defaults(func=cmd_retry)
 
     grade_parser = sub.add_parser("grade", help="LLM-judge attempts (paid)")
@@ -3357,6 +3382,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     grade_parser.add_argument(
         "--tasks", help="regrade only these comma-separated tasks, merging by label"
+    )
+    grade_parser.add_argument(
+        "--env-file",
+        help="KEY=value file to load provider API keys from (values are "
+             "never printed)",
     )
     grade_parser.set_defaults(func=cmd_grade)
 
