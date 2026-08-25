@@ -112,4 +112,3 @@ Built by [Magister Marketing](https://magistermarketing.com).
 
 > **Private staging project.** This repository is not currently open source
 > and does not grant a redistribution license.
-phase3 acceptance 0825a
