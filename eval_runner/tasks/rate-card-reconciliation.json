@@ -1,0 +1,37 @@
+{
+  "id": "rate-card-reconciliation",
+  "title": "Audit a vendor invoice against the signed agreement",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/northstar-ops/product-marketing.md",
+    "evals/fixtures/public/brands/northstar-ops/sources/facts.md",
+    "eval_runner/fixtures/vendor-audit/rate-card.md",
+    "eval_runner/fixtures/vendor-audit/services-agreement.md",
+    "eval_runner/fixtures/vendor-audit/delivery-log.csv",
+    "eval_runner/fixtures/vendor-audit/october-invoice.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Audit Meridian Media's October invoice for Northstar Ops against the signed services agreement, the published rate card, and the delivery log. Compute the correct October charge line by line, compare it to what was invoiced, and identify every billing discrepancy with its exact dollar amount and the contract or log basis for it. Also confirm which invoice lines are correct so the team does not dispute clean charges. Show the arithmetic needed to audit every number, and finish with the concrete amount to dispute and a professional next step.",
+  "rubric": {
+    "completion": [
+      {"id": "correct_total", "check": "The correct October charge is stated as exactly $10,500 (newsletters 6 x $410 = $2,460; sponsored articles 6 x $1,200 = $7,200 minus the 5% volume discount = $6,840; podcast spots 4 x $300 = $1,200), with the arithmetic visible."},
+      {"id": "overbilling_stated", "check": "The response states the invoice overbills by exactly $1,050 (invoiced $11,550 versus correct $10,500)."},
+      {"id": "newsletter_errors_identified", "check": "Both newsletter errors are identified: the invoice uses $450 instead of the negotiated $410, and bills 7 placements when the delivery log shows 6 ran and one was canceled. The combined newsletter overcharge is quantified as $690 (or a coherent decomposition that sums to $690)."},
+      {"id": "discount_missed_identified", "check": "The missed 5% sponsored-article volume discount is identified as $360, triggered because the $7,200 of sponsored-article charges exceeds the $6,000 monthly threshold."}
+    ],
+    "skill_adherence": [
+      {"id": "sow_precedence", "check": "The negotiated $410 newsletter rate from the agreement is used over the rate card, and the 5% discount is applied only to sponsored-article line items, never to newsletters or podcast spots or the whole invoice."},
+      {"id": "no_stale_rates", "check": "Neither the pre-October rates ($400/$1,100/$275) nor the DRAFT 2027 rates ($500/$1,300/$340) are used in any calculation."},
+      {"id": "delivery_grounded", "check": "Billable quantities come from the delivery log under the make-good clause: the canceled October 22 newsletter is not payable, and no delivered placement is dropped."},
+      {"id": "no_false_disputes", "check": "The podcast line (4 x $300 = $1,200) is confirmed correct and is not disputed."}
+    ],
+    "best_practices": [
+      {"id": "auditable_math", "check": "Per-line arithmetic (quantities, rates, the discount base and threshold comparison, and every difference) is shown completely enough for a reviewer to reproduce the audit."},
+      {"id": "actionable_dispute", "check": "The response ends with a concrete dispute: the itemized discrepancies summing to $1,050, a request for a corrected invoice or credit, and no invented vendor intent, fraud accusation, or threat."}
+    ]
+  }
+}

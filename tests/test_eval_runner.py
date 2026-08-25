@@ -1,5 +1,6 @@
 """Offline tests for the direct-model eval runner. No provider calls."""
 
+import argparse
 import base64
 import hashlib
 from html import unescape
@@ -45,9 +46,9 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 14
-    assert sum(task["split"] == "development" for task in tasks.values()) == 11
-    assert sum(task["split"] == "holdout" for task in tasks.values()) == 3
+    assert len(tasks) == 18
+    assert sum(task["split"] == "development" for task in tasks.values()) == 14
+    assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
     for task in tasks.values():
         assert task["prompt_version"] >= 1
         assert task["rubric_version"] >= 1
@@ -262,6 +263,109 @@ def test_html_facts_accept_html5_optional_tags_and_rendered_cta_text():
     assert facts["inline_css_count"] == 1
 
 
+def test_platform_gauntlet_facts_measure_labels_limits_and_exact_strings():
+    task = bench.load_tasks()["platform-limits-gauntlet"]
+    response = "\n".join([
+        "RSA-H1: Sleep routine help for adults",
+        "RSA-H2: 45-minute virtual consult",
+        "RSA-H3: Build a calmer bedtime",
+        "RSA-D1: A 45-minute virtual consultation to organize bedtime habits. $160, paid directly.",
+        "RSA-D2: Intake review, routine planning, and a written summary in one session.",
+        "META-PRIMARY: Organize your bedtime habits in one 45-minute virtual session. Educational only; not medical care.",
+        "META-HEADLINE: 45-minute sleep consultation",
+        "**META-CTA:** Review consultation availability",
+        "LI-INTRO: Help organizing bedtime habits: a 45-minute virtual consultation. Educational only; not medical care.",
+        "- LI-CTA: Review consultation availability",
+        "SMS-BODY: Harborline: 45-min virtual sleep routine consult, $160. Educational only; not medical care. Reply STOP to opt out",
+    ])
+    facts = bench.measured_facts(task, response)
+    assert facts["missing_or_duplicate_label_count"] == 0
+    assert facts["over_limit_field_count"] == 0
+    assert facts["approved_cta_count"] == 2
+    # The brand facts list the CTA at the end of a sentence, so a terminal
+    # period is an equally faithful reading (every model in run 20260825-170012
+    # included it).
+    dotted = response.replace("LI-CTA: Review consultation availability",
+                              "LI-CTA: Review consultation availability.")
+    assert bench.measured_facts(task, dotted)["approved_cta_count"] == 2
+    assert facts["disclaimer_field_count"] == 3
+    assert facts["sms_optout_present"] is True
+    assert facts["price_160_count"] == 2
+    assert facts["non_160_dollar_count"] == 0
+    results = bench.programmatic_results(task, facts)
+    assert results["within_char_limits"]["pass"] is True
+    assert results["accurate_price"]["pass"] is True
+
+    flawed = (
+        response
+        .replace("Sleep routine help for adults",
+                 "Sleep routine help for adults everywhere")
+        .replace("**META-CTA:** Review consultation availability",
+                 "**META-CTA:** Book now")
+        .replace(" Educational only; not medical care. Reply STOP",
+                 " Reply STOP")
+        .replace("$160, paid directly", "$150, paid directly")
+    )
+    flawed_facts = bench.measured_facts(task, flawed)
+    assert flawed_facts["over_limit_field_count"] == 1
+    assert flawed_facts["approved_cta_count"] == 1
+    assert flawed_facts["disclaimer_field_count"] == 2
+    assert flawed_facts["non_160_dollar_count"] == 1
+    flawed_results = bench.programmatic_results(task, flawed_facts)
+    assert flawed_results["within_char_limits"]["pass"] is False
+    assert flawed_results["accurate_price"]["pass"] is False
+
+
+def test_unsupportable_claims_facts_scope_checks_to_copy_sections():
+    task = bench.load_tasks()["unsupportable-claims-brief"]
+    response = "\n".join([
+        "## Landing section",
+        "Fall furnace tune-up in North Valley. Book a $95 furnace diagnostic visit.",
+        "If you smell gas: leave the building, avoid switches or flames, and call",
+        "the local gas emergency line from a safe location.",
+        "",
+        "## Promo email",
+        "Subject: Ready for the cold? A $95 diagnostic gets you answers.",
+        "",
+        "## Declined items",
+        "- 4.9-star average from 800+ Google reviews: no reviews are supplied.",
+        "  Alternative: invite customers to leave reviews.",
+        "- Same-day guarantee: policy says never promise same-day service.",
+        "- 'Cut your heating bill by up to 30%': policy bans energy-savings promises.",
+        "- Certified Master Technician: no certifications are supplied.",
+    ])
+    facts = bench.measured_facts(task, response)
+    assert facts["required_section_count"] == 3
+    assert facts["copy_price_95_count"] == 2
+    assert facts["copy_non_95_dollar_count"] == 0
+    assert facts["copy_percent_token_count"] == 0
+    assert facts["copy_star_rating_count"] == 0
+    assert facts["copy_review_claim_count"] == 0
+    assert facts["copy_same_day_count"] == 0
+    assert facts["copy_certification_count"] == 0
+    results = bench.programmatic_results(task, facts)
+    assert results["required_sections"]["pass"] is True
+    assert results["no_fabricated_proof"]["pass"] is True
+
+    flawed = response.replace(
+        "Fall furnace tune-up in North Valley.",
+        "4.9 stars from 800 reviews - same-day service, save 30%!",
+    )
+    flawed_facts = bench.measured_facts(task, flawed)
+    assert flawed_facts["copy_star_rating_count"] == 1
+    assert flawed_facts["copy_review_claim_count"] == 1
+    assert flawed_facts["copy_same_day_count"] == 1
+    assert flawed_facts["copy_percent_token_count"] == 1
+    assert bench.programmatic_results(task, flawed_facts)[
+        "no_fabricated_proof"
+    ]["pass"] is False
+
+    missing_section = response.replace("## Declined items", "## Notes")
+    assert bench.measured_facts(task, missing_section)[
+        "required_section_count"
+    ] == 2
+
+
 def test_html_facts_reject_css_imports_data_images_and_asset_links():
     task = bench.load_tasks()["landing-page"]
     html = """<!doctype html><html><head>
@@ -294,8 +398,8 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 11
-    assert len(bench._select_tasks(None, "holdout", tasks)) == 3
+    assert len(bench._select_tasks(None, "development", tasks)) == 14
+    assert len(bench._select_tasks(None, "holdout", tasks)) == 4
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
@@ -566,6 +670,30 @@ def test_ceiling_retry_gives_up_after_one_doubling(monkeypatch):
                            settings={"max_output_tokens": 16000})
 
 
+def test_ceiling_retry_covers_anthropic_default_cap(monkeypatch):
+    # Anthropic's max_tokens is always explicit (the API requires it), so an
+    # all-thinking empty completion that stopped on the cap retries with a
+    # doubled cap even when the candidate set no cap of its own.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"content": [{"type": "thinking", "thinking": "…"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 16000},
+                    "stop_reason": "max_tokens"}
+        return {"content": [{"type": "text", "text": "recovered"}],
+                "usage": {"input_tokens": 1, "output_tokens": 900},
+                "stop_reason": "end_turn"}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    result = providers.generate("anthropic/claude-opus-5", "hi", 16000)
+    assert [c["max_tokens"] for c in calls] == [16000, 32000]
+    assert result["text"] == "recovered"
+    assert result["ceiling_retried"] is True
+
+
 def test_uncapped_truncation_never_retries(monkeypatch):
     # With no explicit cap the request is bounded only by the model's own
     # maximum; doubling cannot help, so the failure is recorded honestly
@@ -583,6 +711,72 @@ def test_uncapped_truncation_never_retries(monkeypatch):
         providers.generate("openai/gpt-5.6-luna", "hi", 16000)
     assert len(calls) == 1
     assert "max_output_tokens" not in calls[0]
+
+
+def _retry_fixture(tmp_path, prompt_text="hello prompt"):
+    run_dir = tmp_path / "run"
+    (run_dir / "prompts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    (run_dir / "prompts" / "t.md").write_text(prompt_text)
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "test-run",
+        "models": {"m": {"model": "anthropic/x",
+                         "pricing": {"input_per_mtok": 1, "output_per_mtok": 1}}},
+        "tasks": ["t"],
+        "skills_included": True,
+        "tools_enabled": False,
+        "max_output_tokens": 16000,
+    }))
+    sha = hashlib.sha256(prompt_text.encode()).hexdigest()
+    attempts = [
+        {"task_id": "t", "model_id": "m", "repetition": 1,
+         "prompt_sha256": sha, "finish_reason": "end_turn",
+         "response_path": "responses/t--m--r1.md"},
+        {"task_id": "t", "model_id": "m", "repetition": 2,
+         "prompt_sha256": sha, "error": "provider exploded"},
+    ]
+    with (run_dir / "attempts.jsonl").open("w") as handle:
+        for record in attempts:
+            handle.write(json.dumps(record) + "\n")
+    return run_dir
+
+
+def test_retry_reruns_only_errored_attempts(tmp_path, monkeypatch):
+    run_dir = _retry_fixture(tmp_path)
+    calls = []
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None):
+        calls.append((model_spec, prompt, max_output_tokens, web_search))
+        return {"text": "recovered answer", "input_tokens": 10,
+                "output_tokens": 20, "tool_calls": {}, "web_search_calls": 0,
+                "finish_reason": "end_turn", "ceiling_retried": True,
+                "provider": "anthropic", "model": "x", "latency_seconds": 1.0}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    exit_code = bench.cmd_retry(
+        argparse.Namespace(run=str(run_dir), yes=True)
+    )
+    assert exit_code == 0
+    assert calls == [("anthropic/x", "hello prompt", 16000, False)]
+    updated = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert "error" not in updated[1]
+    assert updated[1]["retried"] is True
+    assert updated[1]["finish_reason"] == "end_turn"
+    assert updated[1]["response_path"] == "responses/t--m--r2.md"
+    assert (run_dir / "responses" / "t--m--r2.md").read_text() == "recovered answer"
+    assert "retried" not in updated[0]  # successful attempts are untouched
+
+
+def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
+    run_dir = _retry_fixture(tmp_path)
+    (run_dir / "prompts" / "t.md").write_text("a different prompt")
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match="prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
 def test_attempt_mark_letters():

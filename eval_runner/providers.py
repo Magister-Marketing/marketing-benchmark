@@ -244,12 +244,20 @@ def generate(
     # doubled cap so the attempt records an answer or a real failure. With no
     # explicit cap the request was already bounded only by the model's own
     # maximum — doubling cannot help, so the truncation is recorded honestly.
+    # Anthropic requests always carry a cap (the Messages API requires
+    # max_tokens), so its 'max_tokens' stop reason qualifies even when the
+    # candidate set no cap of its own; OpenAI requests are capped only when
+    # the candidate set one, and report 'incomplete' on truncation.
     finish = result["finish_reason"] or ""
     explicit_cap = (settings or {}).get("max_output_tokens")
-    if not result["text"].strip() and "incomplete" in finish and explicit_cap:
+    effective_cap = explicit_cap or (
+        max_output_tokens if provider == "anthropic" else None
+    )
+    truncated = "incomplete" in finish or finish == "max_tokens"
+    if not result["text"].strip() and truncated and effective_cap:
         ceiling_retried = True
         raised = dict(settings or {})
-        raised["max_output_tokens"] = explicit_cap * CEILING_RETRY_MULTIPLIER
+        raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )

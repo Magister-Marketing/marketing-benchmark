@@ -1,7 +1,7 @@
 {
   "id": "email-flow-repair",
   "title": "Repair an email onboarding sequence against the supplied facts",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
   "fixtures": [

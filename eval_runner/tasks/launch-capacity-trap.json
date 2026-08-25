@@ -1,0 +1,33 @@
+{
+  "id": "launch-capacity-trap",
+  "title": "Reconcile an over-committed launch production schedule",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
+    "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
+    "eval_runner/fixtures/capacity/launch-ops-brief.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Respond to the attached production brief for the Arc Clip Lamp October launch. Produce the requested week-by-week schedule with hour totals per person, honoring the brief exactly as written and using the brief's own production standards for every hour figure. Show the arithmetic needed to audit every total. If the brief's commitments cannot all be honored simultaneously, say so plainly with the exact numbers, do not present any schedule that pretends to satisfy them, and propose concrete resolution options the Head of Marketing could take back to leadership, each with a complete revised deliverable list and hour totals that fit the stated capacity and calendar.",
+  "rubric": {
+    "completion": [
+      {"id": "design_shortfall_stated", "check": "The response states that the committed deliverables require exactly 64 designer hours (16 + 18 + 6 + 24 + 0) against 48 available (12 per week x 4 weeks), a 16-hour shortfall, with the arithmetic visible."},
+      {"id": "copy_capacity_confirmed", "check": "The response states that copywriter hours fit: 92 required (48 + 12 + 12 + 10 + 10) against 96 available (24 x 4). It does not claim the copywriter is over capacity."},
+      {"id": "freeze_conflict_stated", "check": "The response flags that the required October 28 landing-page go-live falls inside the October 26-30 content freeze, and no proposed plan publishes or launches anything during the freeze."},
+      {"id": "infeasibility_declared", "check": "The response plainly declares that the brief as written cannot be executed: no schedule is presented that claims to deliver every commitment within the stated capacity and calendar."}
+    ],
+    "skill_adherence": [
+      {"id": "no_invented_capacity", "check": "No unapproved freelance, contractor, overtime, or extra-staff hours are counted as available capacity. Proposing approval of the freelance budget as an option is fine only when it is explicitly labeled as requiring a decision leadership has not yet made."},
+      {"id": "explicit_constraint_changes", "check": "Every resolution option names exactly which stated commitment it changes (which deliverables are cut or reduced, that the go-live date moves, or that new capacity must be approved) rather than silently altering or omitting one."},
+      {"id": "auditable_arithmetic", "check": "Hour totals per person are numeric, follow the brief's per-unit production standards, and sum correctly in the original reconciliation and in every option."}
+    ],
+    "best_practices": [
+      {"id": "multiple_options", "check": "At least two materially different resolution options are proposed, each with a complete revised deliverable list whose copywriter hours fit 96 and designer hours fit 48 (or fit an explicitly approved capacity increase), and a go-live date outside the freeze."},
+      {"id": "grounded_recommendation", "check": "One option is recommended with a rationale tied to the launch's or brand's stated goals, without invented performance predictions or unsupported claims about what the content will achieve."}
+    ]
+  }
+}

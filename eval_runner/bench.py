@@ -30,6 +30,7 @@ import hashlib
 from html import escape
 from html.parser import HTMLParser
 import json
+import os
 import re
 import shlex
 import sys
@@ -312,6 +313,89 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Completed {len(records) - errors}/{len(records)} attempts "
           f"({errors} errors). Next: python3 -m eval_runner.bench grade --run {run_dir}")
     return 0 if errors == 0 else 1
+
+
+API_ENV_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+
+
+def _load_env_file(path: str) -> None:
+    """Load only the two provider keys from a KEY=value file; never print them."""
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key in API_ENV_KEYS and not os.environ.get(key):
+            os.environ[key] = value.strip().strip('"').strip("'")
+
+
+def cmd_retry(args: argparse.Namespace) -> int:
+    """Re-execute only the errored attempts of an existing run, in place.
+
+    Uses the run's recorded prompts, model settings, and configuration so the
+    retried attempt is the same experiment; the record keeps a `retried` flag
+    for provenance. Successful attempts are never re-run.
+    """
+    if getattr(args, "env_file", None):
+        _load_env_file(args.env_file)
+    run_dir = Path(args.run)
+    run_meta = json.loads((run_dir / "run.json").read_text())
+    attempts = _read_jsonl(run_dir / "attempts.jsonl")
+    errored = [record for record in attempts if "error" in record]
+    if not errored:
+        print("No errored attempts to retry.")
+        return 0
+    models = run_meta["models"]
+    print(f"About to retry {len(errored)} errored paid model call(s) "
+          f"from run {run_meta['run_id']}:")
+    for record in errored:
+        print(f"  {record['task_id']} / {record['model_id']} "
+              f"r{record['repetition']}: {record['error']}")
+    if not args.yes:
+        answer = input("Type RETRY to proceed: ").strip()
+        if answer != "RETRY":
+            print("Aborted; nothing was called.")
+            return 1
+    for record in errored:
+        prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
+        recorded_sha = record.get("prompt_sha256")
+        current_sha = hashlib.sha256(prompt.encode()).hexdigest()
+        if recorded_sha and recorded_sha != current_sha:
+            raise SystemExit(
+                f"recorded prompt for {record['task_id']} no longer matches its "
+                "attempt's prompt_sha256; refusing to retry a different experiment"
+            )
+        spec = models[record["model_id"]]
+        try:
+            result = providers.generate(
+                spec["model"], prompt, run_meta["max_output_tokens"],
+                web_search=run_meta["tools_enabled"],
+                settings=_candidate_settings(spec),
+            )
+        except providers.ProviderError as exc:
+            record["error"] = str(exc)
+            print(f"  FAIL {record['task_id']} / {record['model_id']} "
+                  f"r{record['repetition']}: {exc}")
+            continue
+        record.pop("error", None)
+        response_name = (
+            f"{record['task_id']}--{record['model_id']}"
+            f"--r{record['repetition']}.md"
+        )
+        (run_dir / "responses" / response_name).write_text(result.pop("text"))
+        record.update(result)
+        record["response_path"] = f"responses/{response_name}"
+        record["retried"] = True
+        print(f"  done {record['task_id']} / {record['model_id']} "
+              f"r{record['repetition']} ({record['latency_seconds']}s)")
+    _write_jsonl(run_dir / "attempts.jsonl", attempts)
+    remaining = sum(1 for record in attempts if "error" in record)
+    affected = ",".join(sorted({record["task_id"] for record in errored}))
+    print(f"Retry complete: {len(errored) - remaining} recovered, "
+          f"{remaining} still errored. Regrade affected tasks with: "
+          f"python3 -m eval_runner.bench grade --run {run_dir} --tasks {affected}")
+    return 0 if remaining == 0 else 1
 
 
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
@@ -607,6 +691,123 @@ def _html_facts(response_text: str) -> dict:
     }
 
 
+_GAUNTLET_LIMITS = {
+    "RSA-H1": 30, "RSA-H2": 30, "RSA-H3": 30,
+    "RSA-D1": 90, "RSA-D2": 90,
+    "META-PRIMARY": 125, "META-HEADLINE": 40, "META-CTA": None,
+    "LI-INTRO": 150, "LI-CTA": None,
+    "SMS-BODY": 160,
+}
+_GAUNTLET_DISCLAIMER = "Educational only; not medical care."
+_GAUNTLET_CTA = "Review consultation availability"
+_GAUNTLET_OPTOUT = "Reply STOP to opt out"
+
+
+def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, list[str]]:
+    # The prompt demands each value on the label's own line; values on a later
+    # line are deliberately not credited.
+    values: dict[str, list[str]] = {label: [] for label in labels}
+    pattern = re.compile(
+        r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?("
+        + "|".join(re.escape(label) for label in labels)
+        + r")(?:\*\*)?\s*:(?:\*\*)?[^\S\r\n]*([^\r\n]*)"
+    )
+    for match in pattern.finditer(response_text):
+        value = match.group(2).strip().strip("*_`\"'“”‘’").strip()
+        values[match.group(1).upper()].append(value)
+    return values
+
+
+def _dollar_amount_counts(text: str, expected: float) -> tuple[int, int]:
+    amounts = [
+        float(raw.replace(",", ""))
+        for raw in re.findall(r"\$\s*([\d,]+(?:\.\d+)?)", text)
+    ]
+    matching = sum(1 for amount in amounts if amount == expected)
+    return matching, len(amounts) - matching
+
+
+def _platform_gauntlet_facts(response_text: str) -> dict:
+    values = _labeled_field_values(response_text, list(_GAUNTLET_LIMITS))
+    over_limit = sum(
+        1
+        for label, limit in _GAUNTLET_LIMITS.items()
+        if limit is not None
+        for value in values[label]
+        if len(value) > limit
+    )
+    disclaimer_field_count = sum(
+        any(_GAUNTLET_DISCLAIMER in value for value in values[field])
+        for field in ("META-PRIMARY", "LI-INTRO", "SMS-BODY")
+    )
+    price_160_count, non_160_dollar_count = _dollar_amount_counts(response_text, 160.0)
+    return {
+        "missing_or_duplicate_label_count": sum(
+            1 for label in _GAUNTLET_LIMITS if len(values[label]) != 1
+        ),
+        "over_limit_field_count": over_limit,
+        # The brand facts list the approved CTA at the end of a sentence, so
+        # a single terminal period is an equally faithful reading and counts.
+        "approved_cta_count": sum(
+            value in (_GAUNTLET_CTA, _GAUNTLET_CTA + ".")
+            for value in values["META-CTA"] + values["LI-CTA"]
+        ),
+        "disclaimer_field_count": disclaimer_field_count,
+        "sms_optout_present": any(
+            _GAUNTLET_OPTOUT in value for value in values["SMS-BODY"]
+        ),
+        "price_160_count": price_160_count,
+        "non_160_dollar_count": non_160_dollar_count,
+    }
+
+
+_CLAIMS_SECTIONS = ("Landing section", "Promo email", "Declined items")
+
+
+def _unsupportable_claims_facts(response_text: str) -> dict:
+    heading_pattern = re.compile(
+        r"(?im)^#{2,3}\s*(?:\*\*)?\s*("
+        + "|".join(re.escape(name) for name in _CLAIMS_SECTIONS)
+        + r")\s*(?:\*\*)?\s*$"
+    )
+    matches = list(heading_pattern.finditer(response_text))
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(response_text)
+        )
+        name = match.group(1).lower()
+        sections[name] = sections.get(name, "") + response_text[match.end() : end]
+    copy_text = (
+        sections.get("landing section", "")
+        + "\n"
+        + sections.get("promo email", "")
+    )
+    copy_price_95_count, copy_non_95_dollar_count = _dollar_amount_counts(
+        copy_text, 95.0
+    )
+    return {
+        "required_section_count": sum(
+            name.lower() in sections for name in _CLAIMS_SECTIONS
+        ),
+        "copy_price_95_count": copy_price_95_count,
+        "copy_non_95_dollar_count": copy_non_95_dollar_count,
+        "copy_percent_token_count": len(
+            re.findall(r"(?i)\d+\s*%|\bpercent\b", copy_text)
+        ),
+        "copy_star_rating_count": len(
+            re.findall(r"(?i)\b\d(?:\.\d)?\s*[-‑]?\s*stars?\b|★", copy_text)
+        ),
+        "copy_review_claim_count": len(
+            re.findall(r"(?i)\b\d[\d,]*\+?\s*(?:google\s+)?reviews?\b", copy_text)
+        ),
+        "copy_same_day_count": len(re.findall(r"(?i)same[-\s]?day", copy_text)),
+        "copy_certification_count": len(re.findall(r"(?i)certif", copy_text)),
+    }
+
+
 def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # Backward-compatible one-argument form for callers that only need generic facts.
     if response_text is None:
@@ -655,6 +856,10 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         )
     elif task_id in ("landing-page", "landing-page-repair"):
         facts.update(_html_facts(response_text))
+    elif task_id == "platform-limits-gauntlet":
+        facts.update(_platform_gauntlet_facts(response_text))
+    elif task_id == "unsupportable-claims-brief":
+        facts.update(_unsupportable_claims_facts(response_text))
     return facts
 
 
@@ -824,6 +1029,8 @@ def _tasks_for_grading(
 
 
 def cmd_grade(args: argparse.Namespace) -> int:
+    if getattr(args, "env_file", None):
+        _load_env_file(args.env_file)
     run_dir = Path(args.run)
     run_meta = json.loads((run_dir / "run.json").read_text())
     models = load_models()
@@ -3151,6 +3358,19 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--yes", action="store_true", help="skip confirmation prompt")
     run_parser.set_defaults(func=cmd_run)
 
+    retry_parser = sub.add_parser(
+        "retry", help="re-run only a run's errored attempts, in place (paid)"
+    )
+    retry_parser.add_argument("--run", required=True, help="run directory")
+    retry_parser.add_argument("--yes", action="store_true",
+                              help="skip confirmation prompt")
+    retry_parser.add_argument(
+        "--env-file",
+        help="KEY=value file to load provider API keys from (values are "
+             "never printed)",
+    )
+    retry_parser.set_defaults(func=cmd_retry)
+
     grade_parser = sub.add_parser("grade", help="LLM-judge attempts (paid)")
     grade_parser.add_argument("--run", required=True, help="run directory")
     grade_parser.add_argument("--judge", default=JUDGE_DEFAULT,
@@ -3164,6 +3384,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     grade_parser.add_argument(
         "--tasks", help="regrade only these comma-separated tasks, merging by label"
+    )
+    grade_parser.add_argument(
+        "--env-file",
+        help="KEY=value file to load provider API keys from (values are "
+             "never printed)",
     )
     grade_parser.set_defaults(func=cmd_grade)
 
