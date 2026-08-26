@@ -241,6 +241,12 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     run_id = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     run_dir = RESULTS_DIR / run_id
+    # cmd_eval grades exactly this directory. Never re-derive it by scanning
+    # results/ for what appeared during the run: a concurrent run — a second
+    # eval.py, or the Magister bridge writing its own run dir — lands in that
+    # scan and the grade step then reads a stranger's (or a not-yet-written)
+    # attempts.jsonl.
+    args.created_run_dir = str(run_dir)
     (run_dir / "responses").mkdir(parents=True)
     (run_dir / "prompts").mkdir()
     (run_dir / "tasks").mkdir()
@@ -3301,12 +3307,11 @@ def cmd_validate(_args: argparse.Namespace) -> int:
 
 def cmd_eval(args: argparse.Namespace) -> int:
     """run -> grade -> report in one command (the ./eval.py path)."""
-    before = set(RESULTS_DIR.glob("*")) if RESULTS_DIR.exists() else set()
     run_exit = cmd_run(args)
-    new_dirs = sorted(set(RESULTS_DIR.glob("*")) - before)
-    if not new_dirs:
+    created = getattr(args, "created_run_dir", None)
+    if not created:
         return run_exit or 1  # aborted at the confirmation prompt
-    run_dir = new_dirs[-1]
+    run_dir = Path(created)
     # Grade and report even when some attempts errored: errors auto-fail
     # and the report is where they become visible.
     grade_args = argparse.Namespace(

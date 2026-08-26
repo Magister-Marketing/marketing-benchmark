@@ -592,7 +592,25 @@ def test_candidate_settings_validated():
                                 settings={"temperature": 0})
     with pytest.raises(providers.ProviderError, match="OpenAI-only"):
         providers.build_request("anthropic/claude-sonnet-5", "hi", 1, False, "k",
-                                settings={"reasoning_effort": "high"})
+                                settings={"text_verbosity": "medium"})
+    with pytest.raises(providers.ProviderError, match="effort vocabulary"):
+        providers.build_request("anthropic/claude-opus-5", "hi", 1, False, "k",
+                                settings={"reasoning_effort": "xhigh"})
+
+
+def test_anthropic_effort_sends_adaptive_thinking():
+    """A Claude candidate at an effort level asks for the same work the
+    Magister gateway asks for: adaptive thinking + output_config.effort."""
+    _, _, body = providers.build_request(
+        "anthropic/claude-opus-5", "hi", 16000, web_search=False, api_key="k",
+        settings={"reasoning_effort": "high", "max_output_tokens": 32000})
+    assert body["thinking"] == {"type": "adaptive"}
+    assert body["output_config"] == {"effort": "high"}
+    assert body["max_tokens"] == 32000
+    # Without an effort the request stays exactly as it was: no thinking.
+    _, _, body = providers.build_request(
+        "anthropic/claude-opus-5", "hi", 16000, web_search=False, api_key="k")
+    assert "thinking" not in body and "output_config" not in body
 
 
 def test_finish_reason_surfaces_truncation():
@@ -617,15 +635,21 @@ def test_candidate_manifest_shape():
         ("gpt-5.6-luna-max", "openai/gpt-5.6-luna", "max"),
         ("gpt-5.6-terra-medium", "openai/gpt-5.6-terra", "medium"),
         ("gpt-5.6-sol-medium", "openai/gpt-5.6-sol", "medium"),
+        ("gpt-5.6-sol-high", "openai/gpt-5.6-sol", "high"),
+        ("claude-opus-5-high", "anthropic/claude-opus-5", "high"),
     ):
         assert models[candidate_id]["model"] == model_spec
         assert models[candidate_id]["reasoning_effort"] == effort
     for candidate_id, spec in models.items():
         # Every candidate must carry real pricing so cost never silently
-        # reports n/a, and none may cap output ("let the model work").
+        # reports n/a. A candidate may RAISE its output ceiling above the run
+        # default — Anthropic always requires max_tokens, and adaptive
+        # thinking shares that budget — but never lower it below what every
+        # other candidate gets ("let the model work").
         assert spec["pricing"]["input_per_mtok"] > 0, candidate_id
         assert spec["pricing"]["output_per_mtok"] > 0, candidate_id
-        assert "max_output_tokens" not in spec, candidate_id
+        cap = spec.get("max_output_tokens")
+        assert cap is None or cap > bench.MAX_OUTPUT_TOKENS, candidate_id
 
 
 def test_max_output_tokens_override_and_validation():
@@ -1101,6 +1125,33 @@ def test_provider_refuses_without_env_key(monkeypatch):
 def test_provider_rejects_unknown_spec():
     with pytest.raises(providers.ProviderError, match="unsupported model spec"):
         providers.split_model_spec("gemini/some-model")
+
+
+def test_eval_grades_the_run_it_created_not_the_newest(tmp_path, monkeypatch):
+    """A run dir that appears while this one is in flight — a second eval.py,
+    or the Magister bridge — must not hijack the grade/report step."""
+    import argparse
+
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+
+    def fake_run(args):
+        mine = tmp_path / "20260101-000000-aaaaaaaa"
+        mine.mkdir()
+        args.created_run_dir = str(mine)
+        (tmp_path / "20260101-235959-zzzzzzzz").mkdir()  # a concurrent run
+        return 0
+
+    graded: list[str] = []
+    monkeypatch.setattr(bench, "cmd_run", fake_run)
+    monkeypatch.setattr(bench, "cmd_grade", lambda a: graded.append(a.run) or 0)
+    monkeypatch.setattr(bench, "cmd_report", lambda a: 0)
+    args = argparse.Namespace(
+        models="claude-haiku-4-5", tasks="headline", repetitions=1,
+        no_skills=False, tools=False, yes=True, judge="claude-sonnet-5",
+        judge_b=None,
+    )
+    assert bench.cmd_eval(args) == 0
+    assert graded == [str(tmp_path / "20260101-000000-aaaaaaaa")]
 
 
 def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):

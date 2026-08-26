@@ -62,8 +62,11 @@ def split_model_spec(model_spec: str) -> tuple[str, str]:
 
 
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# Anthropic's effort scale has no xhigh; a candidate must name a level the
+# provider actually accepts rather than being silently clamped into one.
+ANTHROPIC_EFFORTS = ("low", "medium", "high", "max")
 ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens")
-OPENAI_ONLY_SETTINGS = ("reasoning_effort", "text_verbosity")
+OPENAI_ONLY_SETTINGS = ("text_verbosity",)
 CEILING_RETRY_MULTIPLIER = 2  # one retry with a doubled cap on empty+incomplete
 
 
@@ -105,21 +108,34 @@ def build_request(
         openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
         if openai_only:
             raise ProviderError(
-                "reasoning_effort/text_verbosity settings are OpenAI-only for now; "
+                f"{'/'.join(OPENAI_ONLY_SETTINGS)} settings are OpenAI-only; "
                 f"got {sorted(openai_only)} for {model_spec}"
+            )
+        if effort is not None and effort not in ANTHROPIC_EFFORTS:
+            raise ProviderError(
+                f"Anthropic effort vocabulary is {'/'.join(ANTHROPIC_EFFORTS)}; "
+                f"got {effort!r} for {model_spec}"
             )
         headers = {
             "x-api-key": api_key,
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
-        # The Messages API requires max_tokens; it is a pure ceiling (unused
-        # headroom costs nothing, and no extended thinking is enabled here).
+        # The Messages API requires max_tokens. With no effort set it is a
+        # pure ceiling on the visible answer; with one, adaptive thinking
+        # shares the same budget, so an effort-carrying candidate should set
+        # its own roomier max_output_tokens.
         body: dict = {
             "model": model,
             "max_tokens": cap_override or max_output_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }
+        if effort is not None:
+            # Current shape for Claude 5: adaptive thinking plus the effort
+            # level, exactly what the Magister gateway sends, so the direct
+            # and harness arms of a comparison ask for the same work.
+            body["thinking"] = {"type": "adaptive"}
+            body["output_config"] = {"effort": effort}
         if web_search:
             body["tools"] = [anthropic_web_search_tool(model)]
         return ANTHROPIC_URL, headers, body
