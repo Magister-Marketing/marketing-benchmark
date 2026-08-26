@@ -2093,6 +2093,7 @@ def submission_records(
     model_ids: list[str],
     report_tasks: dict,
     repetitions: int,
+    skills_included: bool,
     passes: dict,
     task_criteria: dict,
     attempts_by_key: dict,
@@ -2185,7 +2186,12 @@ def submission_records(
                     "task_prompt": task["prompt"],
                     # Skill-pack folder names (e.g. "analytics"), so consumers
                     # can link each task to its marketingskills source folder.
-                    "skills": [Path(s).parent.name for s in task.get("skills", [])],
+                    # Empty when the run did not put skill text in the prompt.
+                    "skills": (
+                        [Path(s).parent.name for s in task.get("skills", [])]
+                        if skills_included
+                        else []
+                    ),
                     "assembled_prompt_path": (
                         assembled_prompt_path if assembled_prompt is not None else None
                     ),
@@ -2874,6 +2880,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         model_ids=model_ids,
         report_tasks=report_tasks,
         repetitions=repetitions,
+        skills_included=bool(run_meta.get("skills_included")),
         passes=passes,
         task_criteria=task_criteria,
         attempts_by_key=attempts_by_key,
