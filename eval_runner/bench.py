@@ -2183,6 +2183,9 @@ def submission_records(
                     "task_id": task_id,
                     "task_title": task["title"],
                     "task_prompt": task["prompt"],
+                    # Skill-pack folder names (e.g. "analytics"), so consumers
+                    # can link each task to its marketingskills source folder.
+                    "skills": [Path(s).parent.name for s in task.get("skills", [])],
                     "assembled_prompt_path": (
                         assembled_prompt_path if assembled_prompt is not None else None
                     ),
