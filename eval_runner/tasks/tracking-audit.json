@@ -1,0 +1,94 @@
+{
+  "id": "tracking-audit",
+  "title": "Pre-Q4 tracking audit against the documented standards",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/tracking-audit/tracking_standards.md",
+    "eval_runner/fixtures/tracking-audit/active_links.csv",
+    "eval_runner/fixtures/tracking-audit/gtm_ga4_setup.md",
+    "eval_runner/fixtures/tracking-audit/analytics_notes.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "prompt": "Loam & Ledger (DTC home goods, Shopify, GA4 via GTM, Meta/Google/TikTok/Klaviyo) has engaged you to audit their tracking before Q4 budgets unlock. You are supplied their documented measurement standards, the full list of live campaign links, a summary of the GTM container, and a memo of unexplained symptoms.\n\nDeliver the audit report. For every defect you find: name exactly where it is (which link, tag, trigger, or setting), why it is wrong (against the standards or against correct measurement practice), the measurement or compliance impact — connecting it to the reported symptoms where the evidence supports it — and the concrete fix. Order findings by impact. Close with a short list of what you checked and found clean, so the team knows what they can trust.\n\nFlag only real defects: do not pad the report by flagging conforming items. This is an audit document for internal review; change nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "covers_all_sources",
+        "check": "The audit addresses all supplied artifacts: the campaign links, the GTM/GA4 tag configuration, and the consent setup (a clean-bill mention counts as addressing an artifact)."
+      },
+      {
+        "id": "findings_located",
+        "check": "Each reported defect names its specific location — the exact link/channel, tag, trigger, or setting — precisely enough that an engineer could act without re-deriving the audit."
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "finds_uppercase_medium",
+        "check": "Flags the uppercase utm_medium=CPC values on the Google links (google-search x2 and google-pmax) as violating the lowercase standard and fragmenting paid-search reporting."
+      },
+      {
+        "id": "finds_missing_source",
+        "check": "Flags the klaviyo-welcome link as missing utm_source entirely."
+      },
+      {
+        "id": "finds_meta_source_inconsistency",
+        "check": "Flags that some Meta links use utm_source=facebook while the standard (and other links) use utm_source=meta, splitting Meta reporting."
+      },
+      {
+        "id": "finds_campaign_spaces",
+        "check": "Flags the meta-summer link's utm_campaign value ('2026q3 summer sale') for containing spaces / violating the hyphenated campaign format."
+      },
+      {
+        "id": "finds_duplicate_purchase_firing",
+        "check": "Identifies that purchase fires from two live tags (the confirmation-page tag and the place-order button-click tag), double-counting purchases, and connects this to GA4 reporting far more purchases than Shopify."
+      },
+      {
+        "id": "finds_missing_transaction_id",
+        "check": "Identifies that the GA4 purchase tags omit the transaction_id parameter required by the standards, so duplicate purchase events cannot be deduplicated."
+      },
+      {
+        "id": "finds_hardcoded_currency",
+        "check": "Identifies that purchase currency is hardcoded to USD while the ca. storefront transacts in CAD, and connects this to the inflated Canadian revenue."
+      },
+      {
+        "id": "finds_consent_default",
+        "check": "Identifies that analytics_storage defaults to granted for EEA/UK visitors, violating the documented Consent Mode defaults, and connects this to the legal/privacy finding."
+      },
+      {
+        "id": "finds_http_links",
+        "check": "Flags the two http:// newsletter links as violating the https standard and ties them to newsletter traffic landing in Direct (attribution loss on the redirect)."
+      },
+      {
+        "id": "finds_event_name_casing",
+        "check": "Flags the 'Add to Cart' event name (spaces, not snake_case) as violating the naming standard and explains the add-to-cart reporting going quiet after the rename."
+      },
+      {
+        "id": "finds_duplicate_campaign_param",
+        "check": "Flags the cart-recovery link carrying utm_campaign twice with different values, and ties it to the cart-recovery campaign appearing under two names."
+      },
+      {
+        "id": "finds_pending_page_regex",
+        "check": "Identifies that the purchase trigger RegEx ^/order-confirmation also matches /order-confirmation-pending, so purchases fire for unsettled payments, and connects this to the payment-outage / revenue-runs-ahead symptoms."
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "no_false_positives",
+        "critical": true,
+        "check": "No conforming item is reported as a defect (for example the google-brand link, the begin_checkout tag, the TikTok/Pinterest/affiliate links, or the ca-storefront links' UTMs). Describing a correct item as clean is fine; flagging it as broken is not."
+      },
+      {
+        "id": "fix_per_finding",
+        "check": "Every reported defect comes with a concrete, implementable fix (what to change, not 'review this')."
+      },
+      {
+        "id": "impact_prioritized",
+        "check": "Findings are ordered or explicitly tiered by measurement/compliance impact, with the purchase-integrity and consent issues ranked above cosmetic UTM issues."
+      }
+    ]
+  }
+}

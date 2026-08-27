@@ -46,8 +46,8 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 18
-    assert sum(task["split"] == "development" for task in tasks.values()) == 14
+    assert len(tasks) == 20
+    assert sum(task["split"] == "development" for task in tasks.values()) == 16
     assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
     for task in tasks.values():
         assert task["prompt_version"] >= 1
@@ -405,7 +405,7 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 14
+    assert len(bench._select_tasks(None, "development", tasks)) == 16
     assert len(bench._select_tasks(None, "holdout", tasks)) == 4
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
@@ -959,9 +959,9 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "direct-api harness" in report
     assert "- Harness: direct-api" in report
     assert "## Results at a glance" in report
-    assert "| Model | Pass@1 |" in report
+    assert "| Model | Score (0–100) | Pass@1 |" in report
     assert "**1/1 (100%)**" in report
-    assert "**PASS**<br><sub>1/1 criteria</sub>" in report
+    assert "**PASS**<br><sub>100.0 · 1/1 criteria</sub>" in report
     assert "Output tokens (total)" in report
     assert "Candidate cost (total)" in report
     assert "Avg task time" in report
@@ -1544,3 +1544,135 @@ def test_agreement_compares_only_judge_scored_criteria(tmp_path):
         "compared": 1, "disagreed": 1,
     }]
     assert len(payload["disagreements"]) == 1
+
+
+# ----------------------------------------------------- v2 scoring (0-100)
+
+
+def test_near_condition_bands_credit_relative_and_absolute():
+    relative = {"fact": "answer_q1", "near": 100.0,
+                "tolerance": {"kind": "relative", "full": 0.01, "zero": 0.10}}
+    ok, score = bench._programmatic_condition_result(relative, {"answer_q1": 100.9})
+    assert ok and score == 1.0
+    ok, score = bench._programmatic_condition_result(relative, {"answer_q1": 105.5})
+    assert not ok and 0.49 < score < 0.51
+    ok, score = bench._programmatic_condition_result(relative, {"answer_q1": 111.0})
+    assert not ok and score == 0.0
+    absolute = {"fact": "answer_q1", "near": 10,
+                "tolerance": {"kind": "absolute", "full": 0, "zero": 2}}
+    assert bench._programmatic_condition_result(absolute, {"answer_q1": 10.0}) == (True, 1.0)
+    ok, score = bench._programmatic_condition_result(absolute, {"answer_q1": 11})
+    assert not ok and score == 0.5
+    assert bench._programmatic_condition_result(absolute, {"answer_q1": 13}) == (False, 0.0)
+    # a missing answer scores zero instead of erroring
+    assert bench._programmatic_condition_result(absolute, {"answer_q1": None}) == (False, 0.0)
+
+
+def test_near_condition_rejects_bad_tolerances():
+    with pytest.raises(ValueError):
+        bench._programmatic_condition_result(
+            {"fact": "x", "near": 1,
+             "tolerance": {"kind": "relative", "full": 0.2, "zero": 0.1}},
+            {"x": 1},
+        )
+    with pytest.raises(ValueError):
+        bench._programmatic_condition_result(
+            {"fact": "x", "near": 0,
+             "tolerance": {"kind": "relative", "full": 0.1, "zero": 0.2}},
+            {"x": 1},
+        )
+    with pytest.raises(ValueError):
+        bench._programmatic_condition_result({"fact": "x", "near": 1}, {"x": 1})
+
+
+def test_answer_block_parsing_last_wins_and_normalizes():
+    task = {"id": "ads-ledger-analysis", "answers": {"count": 5}}
+    response = (
+        "Working notes: an example block looks like\n"
+        "A1: $99.99\n\n"
+        "...analysis...\n\n"
+        "## Answers\n"
+        "A1: $25.37\n"
+        "**A2:** 10,228.41 dollars\n"
+        "- A3: W10 (the week of May 4)\n"
+        "A4: approximately $8,470.84\n"
+    )
+    facts = bench.measured_facts(task, response)
+    assert facts["answer_q1"] == 25.37       # last occurrence wins
+    assert facts["answer_q2"] == 10228.41    # commas and bold stripped
+    assert facts["answer_q3"] == 10.0        # first numeric token of the value
+    assert facts["answer_q4"] == 8470.84
+    assert facts["answer_q5"] is None        # absent line stays None
+    assert facts["answer_count"] == 4
+    empty = bench.measured_facts(task, "")
+    assert empty["answer_count"] == 0 and empty["answer_q1"] is None
+
+
+def test_attempt_score_partial_credit_gates_and_legacy_fallback():
+    def judgment(criteria, completed=True):
+        return {"completed": completed, "criteria": criteria}
+
+    # fractional scores average; legacy records without a score fall back to pass
+    scored = judgment([
+        {"pass": True, "score": 1.0},
+        {"pass": False, "score": 0.5},
+        {"pass": False},               # legacy: no score key -> 0.0
+        {"pass": True},                # legacy: no score key -> 1.0
+    ])
+    assert bench._attempt_score(scored) == 62.5
+    # a failed critical criterion caps the attempt
+    gated = judgment([
+        {"pass": True, "score": 1.0},
+        {"pass": True, "score": 1.0},
+        {"pass": False, "score": 0.0, "critical": True},
+    ])
+    assert bench._attempt_score(gated) == bench.GATED_SCORE_CAP
+    # incomplete deliverables are capped the same way
+    assert bench._attempt_score(
+        judgment([{"pass": True, "score": 1.0}], completed=False)
+    ) == bench.GATED_SCORE_CAP
+    # missing or errored grading scores zero
+    assert bench._attempt_score(None) == 0.0
+    assert bench._attempt_score({"error": "boom"}) == 0.0
+
+
+def test_task_score_table_averages_repetitions():
+    judgments = [
+        {"task_id": "t", "model_id": "m", "repetition": 1, "completed": True,
+         "criteria": [{"pass": True, "score": 1.0}, {"pass": False, "score": 0.0}]},
+        # repetition 2 missing -> scores 0
+    ]
+    table = bench.task_score_table(["t"], ["m"], judgments, repetitions=2)
+    assert table[("t", "m")] == 25.0
+
+
+def test_ads_ledger_ground_truth_matches_task_json():
+    """The task's near targets must equal values recomputed from the shipped CSV."""
+    import csv as _csv
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "gen_ads_ledger", bench.REPO_ROOT / "scripts" / "gen_ads_ledger.py"
+    )
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    with (bench.REPO_ROOT / "eval_runner/fixtures/ads-ledger/ads_daily.csv").open() as fh:
+        rows = list(_csv.DictReader(fh))
+    truth = gen.ground_truth(rows)
+    # the generator itself must reproduce the shipped CSV byte-for-byte
+    assert gen.ground_truth(gen.generate_rows()) == truth
+
+    task = bench.load_tasks()["ads-ledger-analysis"]
+    targets = {
+        criterion["id"]: criterion["programmatic"]["near"]
+        for criterion in task["rubric"]["completion"]
+        if "near" in criterion.get("programmatic", {})
+    }
+    assert targets["q1_blended_cpa"] == truth["q1_blended_cpa"]
+    assert targets["q2_wasted_spend"] == truth["q2_wasted_spend"]
+    assert targets["q3_underwater_week"] == truth["q3_first_underwater_week"]
+    assert targets["q4_refund_drag"] == truth["q4_worst_refund_amount"]
+    assert targets["q5_final_roas"] == truth["q5_final_28d_net_roas"]
+    assert truth["q4_worst_refund_adset"] == "rt-lookalike"
+    # the winner must be unambiguous enough to grade a name against
+    assert truth["q4_margin_over_runner_up"] > 1000

@@ -1,0 +1,23 @@
+channel,destination_url,notes
+google-search,https://www.loamandledger.com/collections/linen?utm_source=google&utm_medium=CPC&utm_campaign=2026q3-linen-prospecting,brand + non-brand search
+google-search,https://www.loamandledger.com/collections/ceramics?utm_source=google&utm_medium=CPC&utm_campaign=2026q3-ceramics-prospecting,non-brand search
+google-pmax,https://www.loamandledger.com/collections/new?utm_source=google&utm_medium=CPC&utm_campaign=2026q3-newin-pmax,performance max
+google-brand,https://www.loamandledger.com/?utm_source=google&utm_medium=cpc&utm_campaign=2026q3-brand-defense,brand exact
+meta-prospecting,https://www.loamandledger.com/collections/linen?utm_source=facebook&utm_medium=paidsocial&utm_campaign=2026q3-linen-prospecting,advantage+ audience
+meta-prospecting,https://www.loamandledger.com/collections/table?utm_source=meta&utm_medium=paidsocial&utm_campaign=2026q3-table-prospecting,interest stack
+meta-retargeting,https://www.loamandledger.com/collections/bestsellers?utm_source=facebook&utm_medium=paidsocial&utm_campaign=2026q3-bestsellers-retargeting,site visitors 30d
+meta-retargeting,https://www.loamandledger.com/cart?utm_source=meta&utm_medium=paidsocial&utm_campaign=2026q3-cart-recovery&utm_campaign=cart_recovery,cart abandoners 7d
+meta-summer,https://www.loamandledger.com/collections/summer?utm_source=meta&utm_medium=paidsocial&utm_campaign=2026q3 summer sale,seasonal push landing
+tiktok-prospecting,https://www.loamandledger.com/collections/linen?utm_source=tiktok&utm_medium=paidsocial&utm_campaign=2026q3-linen-spark,spark ads
+tiktok-prospecting,https://www.loamandledger.com/collections/ceramics?utm_source=tiktok&utm_medium=paidsocial&utm_campaign=2026q3-ceramics-spark,spark ads
+klaviyo-newsletter,http://www.loamandledger.com/collections/new?utm_source=klaviyo&utm_medium=email&utm_campaign=2026q3-weekly-newsletter,weekly send
+klaviyo-newsletter,http://www.loamandledger.com/collections/bestsellers?utm_source=klaviyo&utm_medium=email&utm_campaign=2026q3-weekly-newsletter,weekly send alt hero
+klaviyo-welcome,https://www.loamandledger.com/collections/starter?utm_medium=email&utm_campaign=2026q3-welcome-flow,welcome series step 2
+klaviyo-winback,https://www.loamandledger.com/collections/new?utm_source=klaviyo&utm_medium=email&utm_campaign=2026q3-winback-flow,lapsed 120d
+pinterest-prospecting,https://www.loamandledger.com/collections/table?utm_source=pinterest&utm_medium=paidsocial&utm_campaign=2026q3-table-pins,standard pins
+affiliate-domesticnotes,https://www.loamandledger.com/collections/linen?utm_source=domesticnotes.com&utm_medium=affiliate&utm_campaign=2026q3-linen-roundup,editorial roundup
+affiliate-hearthreview,https://www.loamandledger.com/collections/ceramics?utm_source=hearthreview.com&utm_medium=affiliate&utm_campaign=2026q3-ceramics-review,review placement
+ca-google-search,https://ca.loamandledger.com/collections/linen?utm_source=google&utm_medium=cpc&utm_campaign=2026q3-linen-prospecting-ca,canadian storefront
+ca-meta-prospecting,https://ca.loamandledger.com/collections/linen?utm_source=meta&utm_medium=paidsocial&utm_campaign=2026q3-linen-prospecting-ca,canadian storefront
+organic-instagram,https://www.loamandledger.com/collections/new?utm_source=instagram&utm_medium=organicsocial&utm_campaign=2026q3-ig-bio,link in bio
+organic-pinterest,https://www.loamandledger.com/collections/table?utm_source=pinterest&utm_medium=organicsocial&utm_campaign=2026q3-boards,board links

@@ -150,6 +150,14 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
                 f"{path.name}: duplicate historical prompt version {item['version']}"
             )
         historical_versions.add(item["version"])
+    answers = task.get("answers")
+    if answers is not None and (
+        not isinstance(answers, dict)
+        or not isinstance(answers.get("count"), int)
+        or isinstance(answers.get("count"), bool)
+        or answers["count"] < 1
+    ):
+        raise ValueError(f"{path.name}: answers needs a positive integer count")
     seen: set[str] = set()
     for section in RUBRIC_SECTIONS:
         criteria = task["rubric"].get(section)
@@ -160,6 +168,10 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
                 raise ValueError(f"{path.name}: rubric.{section} entries need id and check")
             if criterion["id"] in seen:
                 raise ValueError(f"{path.name}: duplicate criterion id {criterion['id']!r}")
+            if not isinstance(criterion.get("critical", False), bool):
+                raise ValueError(
+                    f"{path.name}: criterion {criterion['id']!r} critical must be a boolean"
+                )
             seen.add(criterion["id"])
     if validate_paths:
         for field, roots in (("fixtures", FIXTURE_ROOTS), ("skills", SKILL_ROOTS)):
@@ -828,6 +840,29 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         "word_count": len(response_text.split()),
         "character_count": len(response_text),
     }
+    answers = (task or {}).get("answers")
+    if answers:
+        # Labeled answer-block lines (`A3: $1,234.56`). The last occurrence of
+        # a label wins, so a worked example earlier in the response cannot
+        # shadow the final answer block the prompt requires. The first numeric
+        # token of the value is the answer; `answer_q<n>` stays None when the
+        # line is absent or carries no number, and `near` conditions score a
+        # None fact as 0 rather than erroring.
+        count = answers["count"]
+        parsed: dict[int, float] = {}
+        for match in re.finditer(
+            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
+            response_text,
+        ):
+            index = int(match.group(1))
+            if not 1 <= index <= count:
+                continue
+            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", match.group(2))
+            if number:
+                parsed[index] = float(number.group(0).replace(",", ""))
+        facts["answer_count"] = len(parsed)
+        for index in range(1, count + 1):
+            facts[f"answer_q{index}"] = parsed.get(index)
     task_id = (task or {}).get("id")
     if task_id == "headline":
         facts["option_labels"] = [
@@ -874,21 +909,61 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     return facts
 
 
-def _programmatic_condition_passes(condition: dict, facts: dict) -> bool:
+def _programmatic_condition_result(condition: dict, facts: dict) -> tuple[bool, float]:
+    """(pass, score 0..1). Binary operators score 1.0 or 0.0; `near` is banded.
+
+    A `near` condition compares a numeric fact against a target with a
+    tolerance band: full credit (and a pass) inside `full`, zero credit at or
+    beyond `zero`, linear in between. `kind` selects relative (fraction of the
+    target) or absolute error. A missing or non-numeric fact scores 0.
+    """
     fact = condition.get("fact")
     if fact not in facts:
         raise ValueError(f"unknown measured fact {fact!r}")
     value = facts[fact]
-    operators = [key for key in ("equals", "gte", "lte") if key in condition]
+    operators = [key for key in ("equals", "gte", "lte", "near") if key in condition]
     if len(operators) != 1:
-        raise ValueError("programmatic condition needs exactly one of equals/gte/lte")
+        raise ValueError(
+            "programmatic condition needs exactly one of equals/gte/lte/near"
+        )
     operator = operators[0]
     target = condition[operator]
+    if operator == "near":
+        tolerance = condition.get("tolerance")
+        if (
+            not isinstance(tolerance, dict)
+            or tolerance.get("kind") not in ("relative", "absolute")
+            or not isinstance(tolerance.get("full"), (int, float))
+            or isinstance(tolerance.get("full"), bool)
+            or not isinstance(tolerance.get("zero"), (int, float))
+            or isinstance(tolerance.get("zero"), bool)
+            or tolerance["full"] < 0
+            or tolerance["zero"] <= tolerance["full"]
+        ):
+            raise ValueError(
+                "near condition needs tolerance "
+                "{kind: relative|absolute, full >= 0, zero > full}"
+            )
+        if tolerance["kind"] == "relative" and target == 0:
+            raise ValueError("relative tolerance needs a non-zero target")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return False, 0.0
+        error = abs(value - target)
+        if tolerance["kind"] == "relative":
+            error /= abs(target)
+        full, zero = float(tolerance["full"]), float(tolerance["zero"])
+        if error <= full:
+            return True, 1.0
+        if error >= zero:
+            return False, 0.0
+        return False, (zero - error) / (zero - full)
     if operator == "equals":
-        return value == target
-    if operator == "gte":
-        return value >= target
-    return value <= target
+        passed = value == target
+    elif operator == "gte":
+        passed = value >= target
+    else:
+        passed = value <= target
+    return passed, 1.0 if passed else 0.0
 
 
 def programmatic_results(task: dict, facts: dict) -> dict:
@@ -899,8 +974,12 @@ def programmatic_results(task: dict, facts: dict) -> dict:
             if not raw_conditions:
                 continue
             conditions = raw_conditions if isinstance(raw_conditions, list) else [raw_conditions]
-            passed = all(_programmatic_condition_passes(condition, facts)
-                         for condition in conditions)
+            outcomes = [
+                _programmatic_condition_result(condition, facts)
+                for condition in conditions
+            ]
+            passed = all(ok for ok, _score in outcomes)
+            score = sum(item_score for _ok, item_score in outcomes) / len(outcomes)
             evidence = "; ".join(
                 f"{condition['fact']}={facts[condition['fact']]!r}"
                 for condition in conditions
@@ -909,6 +988,8 @@ def programmatic_results(task: dict, facts: dict) -> dict:
                 "id": criterion["id"],
                 "section": section,
                 "pass": passed,
+                "score": round(score, 4),
+                "critical": bool(criterion.get("critical")),
                 "evidence": f"Programmatic check: {evidence}.",
                 "source": "programmatic",
             }
@@ -1142,6 +1223,11 @@ def cmd_grade(args: argparse.Namespace) -> int:
             for section in RUBRIC_SECTIONS
             for criterion in task["rubric"][section]
         }
+        critical_of = {
+            criterion["id"]: bool(criterion.get("critical"))
+            for section in RUBRIC_SECTIONS
+            for criterion in task["rubric"][section]
+        }
         expected_ids = {criterion["id"] for _section, criterion in judge_criteria}
         usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
 
@@ -1186,6 +1272,8 @@ def cmd_grade(args: argparse.Namespace) -> int:
                         "id": c["id"],
                         "section": section_of[c["id"]],
                         "pass": c["pass"],
+                        "score": 1.0 if c["pass"] else 0.0,
+                        "critical": critical_of[c["id"]],
                         "evidence": c["evidence"],
                         "source": "judge",
                     }
@@ -1570,6 +1658,63 @@ def task_criterion_counts(
     return counts
 
 
+# A task whose answer violates a critical criterion (fabricated evidence, a
+# false accusation, an incomplete deliverable) is not "mostly right" — it is
+# unusable until a human catches the violation. The cap prices that in without
+# the all-or-nothing cliff where one soft judge call zeroes an otherwise
+# strong answer.
+GATED_SCORE_CAP = 40.0
+
+
+def _attempt_score(judgment: dict | None) -> float:
+    """0-100 for one graded attempt; 0 when grading is missing or errored.
+
+    The mean of criterion scores (fractional for banded `near` checks, the
+    pass boolean otherwise — which also covers judgments recorded before the
+    score field existed), capped at GATED_SCORE_CAP when a critical criterion
+    fails or the judge marked the deliverable incomplete.
+    """
+    if not judgment or "error" in judgment or not judgment.get("criteria"):
+        return 0.0
+    criteria = judgment["criteria"]
+    total = 0.0
+    for criterion in criteria:
+        score = criterion.get("score")
+        if not isinstance(score, (int, float)) or isinstance(score, bool):
+            score = 1.0 if criterion.get("pass") else 0.0
+        total += max(0.0, min(1.0, float(score)))
+    score = 100.0 * total / len(criteria)
+    gated = any(c.get("critical") and not c.get("pass") for c in criteria)
+    if gated or not judgment.get("completed", True):
+        score = min(score, GATED_SCORE_CAP)
+    return round(score, 1)
+
+
+def task_score_table(
+    task_ids: list[str],
+    model_ids: list[str],
+    judgments: list,
+    repetitions: int,
+) -> dict:
+    """(task, model) -> 0-100 across repetitions; an ungraded run scores 0."""
+    by_key = {
+        (item["task_id"], item["model_id"], item["repetition"]): item
+        for item in judgments
+    }
+    return {
+        (task_id, model_id): round(
+            sum(
+                _attempt_score(by_key.get((task_id, model_id, repetition)))
+                for repetition in range(1, repetitions + 1)
+            )
+            / repetitions,
+            1,
+        )
+        for task_id in task_ids
+        for model_id in model_ids
+    }
+
+
 def _flag_partial_observations(cell: str, observed: int, expected: int) -> str:
     if observed == expected:
         return cell
@@ -1587,6 +1732,7 @@ def _report_summary_rows(
     task_pass_counts: dict[str, int],
     repetition_pass_counts: dict[str, int],
     efficiency: dict[str, dict],
+    composite_scores: dict[str, float],
 ) -> list[dict]:
     attempts_per_model = repetitions * task_count
     rows = []
@@ -1595,6 +1741,7 @@ def _report_summary_rows(
         rows.append(
             {
                 "model_id": model_id,
+                "composite_score": composite_scores[model_id],
                 "tasks_passed": task_pass_counts[model_id],
                 "tasks_total": task_count,
                 "task_score_pct": round(100 * task_pass_counts[model_id] / task_count),
@@ -2102,6 +2249,7 @@ def submission_records(
     skills_included: bool,
     passes: dict,
     task_criteria: dict,
+    task_scores: dict,
     attempts_by_key: dict,
     verdicts: dict,
     judgments: list,
@@ -2204,6 +2352,7 @@ def submission_records(
                     "assembled_prompt": assembled_prompt,
                     "model_id": model_id,
                     "pass": passes[(task_id, model_id)],
+                    "score": task_scores[(task_id, model_id)],
                     "criteria": task_criteria[(task_id, model_id)],
                     "metrics": _submission_metrics(runs),
                     "runs": runs,
@@ -2363,7 +2512,7 @@ def _render_report_html(
             f'data-jump-model="{h(model_id)}">{h(model_id)}</button></td>',
             '<td class="matrix-score"><span class="score-main">'
             f'{row["tasks_passed"]}/{row["tasks_total"]}</span>'
-            f'<span class="score-sub">{row["task_score_pct"]}% · '
+            f'<span class="score-sub">score {row["composite_score"]}/100 · '
             f'{h(run_detail)}</span></td>',
         ]
         for task_id in task_ids:
@@ -2851,6 +3000,15 @@ def cmd_report(args: argparse.Namespace) -> int:
     task_criteria = task_criterion_counts(
         task_ids, model_ids, judgments, attempts_by_key
     )
+    task_scores = task_score_table(task_ids, model_ids, judgments, repetitions)
+    composite_scores = {
+        model_id: round(
+            sum(task_scores[(task_id, model_id)] for task_id in task_ids)
+            / len(task_ids),
+            1,
+        )
+        for model_id in model_ids
+    }
     repetition_pass_counts = {
         model_id: sum(
             verdicts.get((task_id, model_id, repetition), {}).get("pass", False)
@@ -2879,6 +3037,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         task_pass_counts,
         repetition_pass_counts,
         efficiency,
+        composite_scores,
     )
     submissions = submission_records(
         run_dir=run_dir,
@@ -2889,6 +3048,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         skills_included=bool(run_meta.get("skills_included")),
         passes=passes,
         task_criteria=task_criteria,
+        task_scores=task_scores,
         attempts_by_key=attempts_by_key,
         verdicts=verdicts,
         judgments=judgments,
@@ -2907,10 +3067,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Results at a glance",
         "",
-        f"| Model | {_score_column_label(repetitions)} | "
+        f"| Model | Score (0–100) | {_score_column_label(repetitions)} | "
         + " | ".join(task_ids)
         + " | Output tokens (total) | Candidate cost (total) | Avg task time |",
-        "|---|---:|" + "---:|" * len(task_ids) + "---:|---:|---:|",
+        "|---|---:|---:|" + "---:|" * len(task_ids) + "---:|---:|---:|",
     ]
     for row in summary_rows:
         score = (
@@ -2927,10 +3087,11 @@ def cmd_report(args: argparse.Namespace) -> int:
             tally = task_criteria[(task_id, row["model_id"])]
             task_cells.append(
                 f"**{'PASS' if passes[(task_id, row['model_id'])] else 'FAIL'}**"
-                f"<br><sub>{_criterion_fraction(tally)}</sub>"
+                f"<br><sub>{task_scores[(task_id, row['model_id'])]} · "
+                f"{_criterion_fraction(tally)}</sub>"
             )
         lines.append(
-            f"| {row['model_id']} | {score} | "
+            f"| {row['model_id']} | **{row['composite_score']}** | {score} | "
             + " | ".join(task_cells)
             + f" | {row['total_tokens']} | {row['total_cost']} | "
             f"{row['average_latency']} |"
@@ -2948,6 +3109,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         f"- Grade label: {label or 'default'}",
         "- Score: one point per task only when every criterion and configured run passes",
+        "- Score (0–100): mean of per-task scores; a task's score is the mean of its "
+        "criterion scores (banded numeric checks earn partial credit) and is capped "
+        f"at {GATED_SCORE_CAP:g} when a critical criterion fails or the deliverable "
+        "is incomplete",
         "- Efficiency: output tokens and candidate cost are totals; task time is the mean "
         "because candidate calls run in parallel; judge usage is excluded",
     ]
@@ -3093,6 +3258,11 @@ def cmd_report(args: argparse.Namespace) -> int:
             model_id: {
                 "tasks_passed": task_pass_counts[model_id],
                 "tasks_total": len(task_ids),
+                "composite_score": composite_scores[model_id],
+                "task_scores": {
+                    task_id: task_scores[(task_id, model_id)]
+                    for task_id in task_ids
+                },
                 "task_passes": {t: passes[(t, model_id)] for t in task_ids},
                 "task_criteria": {
                     task_id: task_criteria[(task_id, model_id)]
