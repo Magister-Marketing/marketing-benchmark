@@ -12,7 +12,9 @@ finance. Every live link and every tag change is supposed to conform.
 - `utm_medium` is one of exactly: `cpc`, `paidsocial`, `email`, `affiliate`,
   `organicsocial`.
 - `utm_campaign` format: `<year>q<quarter>-<line>-<goal>`, hyphen-separated,
-  no spaces, e.g. `2026q3-linen-prospecting`.
+  no spaces, e.g. `2026q3-linen-prospecting`. Campaigns run for the `ca.`
+  storefront append the market suffix `-ca` (e.g.
+  `2026q3-linen-prospecting-ca`).
 - Every parameter appears at most once per URL.
 - All destination URLs are `https://` on `www.loamandledger.com` (or the
   `ca.` storefront).
