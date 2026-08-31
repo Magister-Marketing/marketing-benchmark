@@ -13,23 +13,27 @@
 ## Latest results
 
 Live board: **https://marketingbenchmark.ai** — every run, every answer, and
-every judge verdict, criterion by criterion. The six-model run of
-August 25, 2026 (18 tasks, one attempt each, skills on, web search off):
+every judge verdict, criterion by criterion. The three-configuration run of
+August 31, 2026: the same model (GPT-5.6 Sol, high reasoning effort), the
+same 20 tasks, one attempt each — what changes is everything around the
+model:
 
-| Model | Pass@1 | Answer cost | Avg. task time |
-|---|---:|---:|---:|
-| Claude Opus 5 | **15/18 (83%)** | $3.02 | 93.5s |
-| GPT-5.6 Terra medium | 13/18 (72%) | $0.66 | 35.0s |
-| GPT-5.6 Sol medium | 13/18 (72%) | $1.81 | 48.4s |
-| GPT-5.6 Luna medium | 12/18 (67%) | $0.06 | 22.3s |
-| Claude Sonnet 5 | 9/18 (50%) | $1.03 | 66.9s |
-| Claude Haiku 4.5 | 4/18 (22%) | $0.26 | 24.5s |
+| Configuration | Score (0–100) | Tasks passed | Answer cost | Avg. task time |
+|---|---:|---:|---:|---:|
+| **Magister agent** (full harness) | **97.4** | **16/20 (80%)** | $23.10 | 104.8s |
+| Plain model + web search | 96.8 | 14/20 (70%) | $5.11 | 123.3s |
+| Model + marketingskills in the prompt | 96.6 | 14/20 (70%) | $5.71 | 95.4s |
 
-Each task is worth one point: an answer that passes 7 of 8 checks still fails
-that task. Tokens and cost cover the model answering the tasks, not the
-judge. A same-day identical-input repeat moved individual scores by up to 3
-tasks, so read single pass@1 boards as ±3. These judge verdicts have not been
-human-verified yet.
+The score is the average task score, 0–100 to one decimal. Each task scores
+by its requirement checklist — missing a critical requirement caps that task
+at 40, near-miss numeric answers earn banded partial credit — and a task only
+counts as *passed* when every requirement is met, so a 94.4 with one miss
+still fails its task. Cost covers the answering side only, priced at
+provider list rates; for the Magister configuration that is every LLM call
+of the agent's working turn, not just the final answer. One attempt per
+task; a same-day identical-input repeat has moved pass counts by up to 3
+tasks, so read small gaps as within noise. These judge verdicts have not
+been human-verified yet.
 
 ### The skills arm uses Magister's real skill pack
 
@@ -61,7 +65,9 @@ For every task, the runner:
 3. creates an HTML report where every score can be traced back to the task,
    answer, and judge explanation.
 
-The main score is intentionally simple: **tasks passed ÷ tasks attempted**.
+The headline score is the **average task score, 0–100** (one decimal); a
+task scores by its requirement checklist. The stricter companion number,
+**tasks passed**, is all-or-nothing: one missed requirement fails the task.
 
 ## Run it yourself
 
@@ -87,14 +93,17 @@ The runner shows the number of paid API calls before it starts. When it
 finishes, it prints the location of the results. Open `report.html` for the
 shareable report.
 
-To reproduce the latest run shown above:
+To reproduce the two direct configurations of the latest run:
 
 ```bash
-./eval.py gpt-5.6-luna-medium gpt-5.6-luna-xhigh \
-  --tasks marketing-plan,shopify-meta-capi,ad-performance-analysis \
-  --repetitions 1 --judge claude-sonnet-5 \
-  --env-file .env.local
+./eval.py gpt-5.6-sol-high --tools --env-file .env.local            # + skills
+./eval.py gpt-5.6-sol-high --tools --no-skills --env-file .env.local # plain
 ```
+
+The Magister configuration runs the same tasks through the production
+Magister agent on an internal test project, so it cannot be reproduced from
+this repository alone — its prompts, answers, and verdicts are published on
+the board like every other configuration.
 
 ## Eval options
 
