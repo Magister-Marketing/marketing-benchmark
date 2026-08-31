@@ -18,20 +18,17 @@ August 31, 2026: the same model (GPT-5.6 Sol, high reasoning effort), the
 same 20 tasks, one attempt each — what changes is everything around the
 model:
 
-| Configuration | Score (0–100) | Tasks passed | Answer cost | Avg. task time |
-|---|---:|---:|---:|---:|
-| **Magister agent** (full harness) | **97.4** | **16/20 (80%)** | $23.10 | 104.8s |
-| Plain model + web search | 96.8 | 14/20 (70%) | $5.11 | 123.3s |
-| Model + marketingskills in the prompt | 96.6 | 14/20 (70%) | $5.71 | 95.4s |
+| Configuration | Pass@1 | Answer cost | Avg. task time |
+|---|---:|---:|---:|
+| **Magister agent** (full harness) | **16/20 (80%)** | $23.10 | 104.8s |
+| Plain model + web search | 14/20 (70%) | $5.11 | 123.3s |
+| Model + marketingskills in the prompt | 14/20 (70%) | $5.71 | 95.4s |
 
-The score is the average task score, 0–100 to one decimal. Each task scores
-by its requirement checklist — missing a critical requirement caps that task
-at 40, near-miss numeric answers earn banded partial credit — and a task only
-counts as *passed* when every requirement is met, so a 94.4 with one miss
-still fails its task. Cost covers the answering side only, priced at
-provider list rates; for the Magister configuration that is every LLM call
-of the agent's working turn, not just the final answer. One attempt per
-task; a same-day identical-input repeat has moved pass counts by up to 3
+Each task is worth one point: an answer that passes 7 of 8 checks still
+fails that task. Cost covers the answering side only, priced at provider
+list rates; for the Magister configuration that is every LLM call of the
+agent's working turn, not just the final answer. One attempt per task; a
+same-day identical-input repeat has moved individual scores by up to 3
 tasks, so read small gaps as within noise. These judge verdicts have not
 been human-verified yet.
 
@@ -65,9 +62,7 @@ For every task, the runner:
 3. creates an HTML report where every score can be traced back to the task,
    answer, and judge explanation.
 
-The headline score is the **average task score, 0–100** (one decimal); a
-task scores by its requirement checklist. The stricter companion number,
-**tasks passed**, is all-or-nothing: one missed requirement fails the task.
+The main score is intentionally simple: **tasks passed ÷ tasks attempted**.
 
 ## Run it yourself
 
