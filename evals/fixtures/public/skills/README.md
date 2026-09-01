@@ -5,7 +5,7 @@ These SKILL.md files are **verbatim, unmodified copies** from
 open marketing skill pack written by Corey Haines, co-founder of Magister —
 vendored via Magister's production fork
 ([elliot-ylambda/marketingskills](https://github.com/elliot-ylambda/marketingskills))
-at commit `3b1b4c03fdd2ee654536a866fdd9a33babc86800`, the same pin that ships
+at commit `1982ce1b1206e24b0c291d3f4dc9535108505aba`, the same pin that ships
 on every Magister agent machine.
 
 | Benchmark path | Upstream path | Version |
