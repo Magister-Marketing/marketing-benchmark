@@ -17,7 +17,7 @@
     "completion": [
       {"id": "platform_oracle", "check": "Meta platform totals are correct: $2,400 spend, 60 reported conversions, $5,400 reported revenue, blended CPA of $40.00, and ROAS of 2.25."},
       {"id": "ga4_oracle", "check": "GA4 figures for Meta are correct: 36 purchases, $3,240 revenue, CPA of about $66.67, and ROAS of 1.35 against the same $2,400 spend."},
-      {"id": "no_single_truth", "check": "The response never declares one reconciled 'true' Meta conversion count and never averages or splits the difference between 36 and 60 to produce one."},
+      {"id": "no_single_truth", "negative": true, "check": "The response never declares one reconciled 'true' Meta conversion count and never averages or splits the difference between 36 and 60 to produce one."},
       {"id": "defensible_range", "check": "Meta-attributed purchases are bounded between 36 and 60 (optionally noting the 8 lost-UTM sessions push GA4's floor upward), presented as a range rather than a point estimate."}
     ],
     "skill_adherence": [

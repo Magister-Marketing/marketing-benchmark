@@ -21,7 +21,7 @@
       {"id": "infeasibility_declared", "check": "The response plainly declares that the brief as written cannot be executed: no schedule is presented that claims to deliver every commitment within the stated capacity and calendar."}
     ],
     "skill_adherence": [
-      {"id": "no_invented_capacity", "check": "No unapproved freelance, contractor, overtime, or extra-staff hours are counted as available capacity. Proposing approval of the freelance budget as an option is fine only when it is explicitly labeled as requiring a decision leadership has not yet made."},
+      {"id": "no_invented_capacity", "negative": true, "check": "No unapproved freelance, contractor, overtime, or extra-staff hours are counted as available capacity. Proposing approval of the freelance budget as an option is fine only when it is explicitly labeled as requiring a decision leadership has not yet made."},
       {"id": "explicit_constraint_changes", "check": "Every resolution option names exactly which stated commitment it changes (which deliverables are cut or reduced, that the go-live date moves, or that new capacity must be approved) rather than silently altering or omitting one."},
       {"id": "auditable_arithmetic", "check": "Hour totals per person are numeric, follow the brief's per-unit production standards, and sum correctly in the original reconciliation and in every option."}
     ],

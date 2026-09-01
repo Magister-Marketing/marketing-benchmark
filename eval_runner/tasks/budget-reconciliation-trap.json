@@ -20,7 +20,7 @@
       {"id": "infeasibility_declared", "check": "The response plainly declares that the brief as written is infeasible: no allocation is presented that claims to satisfy every minimum within the $12,000 cap."}
     ],
     "skill_adherence": [
-      {"id": "no_invented_funds", "check": "No unsupplied money, discount, negotiated rate, vendor concession, or deferred billing is invented to close the gap."},
+      {"id": "no_invented_funds", "negative": true, "check": "No unsupplied money, discount, negotiated rate, vendor concession, or deferred billing is invented to close the gap."},
       {"id": "explicit_constraint_changes", "check": "Every resolution option names exactly which stated commitment it changes (which minimum is reduced or dropped, or that the cap must rise) rather than silently altering or omitting one."},
       {"id": "auditable_arithmetic", "check": "Every proposed allocation's line items are numeric and sum exactly to its stated total, and no line in an option that claims to honor a minimum falls below that minimum."}
     ],

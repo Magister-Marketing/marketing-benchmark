@@ -101,6 +101,7 @@
       },
       {
         "id": "no_invented_data",
+        "negative": true,
         "critical": true,
         "check": "Every figure presented as coming from the export is derivable from the supplied CSV; no external benchmarks, industry averages, or invented segment data are presented as if they were in the data."
       }

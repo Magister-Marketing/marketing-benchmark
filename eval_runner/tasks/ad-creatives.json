@@ -25,7 +25,7 @@
     ],
     "skill_adherence": [
       {"id": "distinct_motivations", "check": "The three concepts are built on distinct audience motivations (per the audience insights), not rewordings of the same angle."},
-      {"id": "no_invented_proof", "check": "No invented reviews, customers, performance numbers, scarcity, awards, or product capabilities beyond the supplied facts; forbidden claims (award-winning, best-selling, clinically proven, limited time, carbon neutral, guaranteed productivity) are absent."},
+      {"id": "no_invented_proof", "negative": true, "check": "No invented reviews, customers, performance numbers, scarcity, awards, or product capabilities beyond the supplied facts; forbidden claims (award-winning, best-selling, clinically proven, limited time, carbon neutral, guaranteed productivity) are absent."},
       {"id": "canonical_product_name", "check": "Whenever the product is named, it is called 'Arc Clip Lamp'; shortened or altered names such as 'Arc Lamp' fail."}
     ],
     "best_practices": [

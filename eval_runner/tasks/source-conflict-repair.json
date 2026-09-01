@@ -37,7 +37,7 @@
     "best_practices": [
       {"id": "supported_direction_preserved", "check": "The corrected concept preserves the useful supported visual idea of moving the lamp between a narrow workspace/shelf and bedside, tied to adaptable light in compact spaces."},
       {"id": "operational_hypothesis", "check": "The Test hypothesis names the changed message or visual variable, its comparator, an observable KPI, and the expected direction."},
-      {"id": "no_new_claims", "check": "The audit and corrected concept introduce no new product fact, customer, proof point, offer, urgency, or performance claim beyond the authoritative sources."}
+      {"id": "no_new_claims", "negative": true, "check": "The audit and corrected concept introduce no new product fact, customer, proof point, offer, urgency, or performance claim beyond the authoritative sources."}
     ]
   }
 }

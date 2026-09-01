@@ -27,7 +27,7 @@
     ],
     "skill_adherence": [
       {"id": "safety_preserved", "check": "Nothing instructs the reader to open, bypass, or repair gas or electrical components; dangerous signs (e.g. gas smell) route to shutting off at accessible user controls, leaving, or calling emergency/professional help."},
-      {"id": "no_invented_facts", "check": "No response-time promises, invented statistics, certifications, review counts, or customer stories; the only price used is the $95 diagnostic."}
+      {"id": "no_invented_facts", "negative": true, "check": "No response-time promises, invented statistics, certifications, review counts, or customer stories; the only price used is the $95 diagnostic."}
     ],
     "best_practices": [
       {"id": "noise_specificity", "check": "The post names multiple distinguishable furnace noises and ties each to a safe observation or a clear professional/emergency escalation path rather than generic filler. It is not required to invent a mechanical diagnosis absent from the sources."},

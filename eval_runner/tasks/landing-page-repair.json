@@ -23,16 +23,16 @@
       {"id": "offering_type", "check": "The offer is accurately described as one virtual educational routine-planning consultation, not a medical consultation."},
       {"id": "sections_and_order", "check": "All requested sections appear in the exact cautious-visitor decision order."},
       {"id": "cta_target", "check": "The exact CTA 'Book a consultation' appears once or twice and every instance is an anchor whose href is exactly '/consultations/harborline'.", "programmatic": [{"fact": "book_cta_count", "gte": 1}, {"fact": "book_cta_count", "lte": 2}, {"fact": "book_cta_all_instances_are_anchors", "equals": true}, {"fact": "book_cta_all_targeted", "equals": true}]},
-      {"id": "no_competing_action", "check": "'Start sleeping better', 'Call now', and every competing primary action from the flawed draft are absent."}
+      {"id": "no_competing_action", "negative": true, "check": "'Start sleeping better', 'Call now', and every competing primary action from the flawed draft are absent."}
     ],
     "skill_adherence": [
       {"id": "educational_scope", "check": "The page clearly says Harborline is educational coaching, not a medical clinic, and does not diagnose or treat sleep disorders; cure, diagnosis, and treatment claims are absent."},
-      {"id": "prescription_claim_removed", "check": "The invented prescription-review service is absent and no replacement clinical service is added."},
-      {"id": "credential_removed", "check": "The invented certified-clinician credential is absent and no replacement credential is invented."},
-      {"id": "testimonial_removed", "check": "The invented Taylor M. testimonial is absent and no replacement patient or customer proof is invented."},
+      {"id": "prescription_claim_removed", "negative": true, "check": "The invented prescription-review service is absent and no replacement clinical service is added."},
+      {"id": "credential_removed", "negative": true, "check": "The invented certified-clinician credential is absent and no replacement credential is invented."},
+      {"id": "testimonial_removed", "negative": true, "check": "The invented Taylor M. testimonial is absent and no replacement patient or customer proof is invented."},
       {"id": "guarantee_removed", "check": "All cure and guaranteed-improvement claims are absent, and the page explicitly says outcomes are not guaranteed."},
       {"id": "insurance_removed", "check": "The insurance-coverage claim is absent, and the page explicitly says insurance is not represented."},
-      {"id": "urgency_removed", "check": "The three-appointments scarcity claim is absent and no replacement urgency, scarcity, or pressure tactic is added."},
+      {"id": "urgency_removed", "negative": true, "check": "The three-appointments scarcity claim is absent and no replacement urgency, scarcity, or pressure tactic is added."},
       {"id": "emergency_direction", "check": "The page says it is not emergency care and directs urgent symptoms or safety concerns to local emergency services or an appropriate licensed clinician."}
     ],
     "best_practices": [

@@ -19,7 +19,7 @@
       {"id": "activation_anchored", "check": "Funnel metrics are explicitly tied to the documented activation event (inviting two teammates and completing one shared workflow), not a generic signup metric."}
     ],
     "skill_adherence": [
-      {"id": "no_invented_proof", "check": "No invented customers, logos, revenue, market statistics, benchmark conversion rates stated as fact, or testimonials; assumptions are labeled as assumptions."},
+      {"id": "no_invented_proof", "negative": true, "check": "No invented customers, logos, revenue, market statistics, benchmark conversion rates stated as fact, or testimonials; assumptions are labeled as assumptions."},
       {"id": "measurement_defined", "check": "Each tracked metric names its source/definition (where the number comes from), and the measurement plan is weekly as requested."}
     ],
     "best_practices": [

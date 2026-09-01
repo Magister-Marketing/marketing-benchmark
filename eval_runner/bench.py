@@ -168,6 +168,10 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
                 raise ValueError(f"{path.name}: rubric.{section} entries need id and check")
             if criterion["id"] in seen:
                 raise ValueError(f"{path.name}: duplicate criterion id {criterion['id']!r}")
+            if not isinstance(criterion.get("negative", False), bool):
+                raise ValueError(
+                    f"{path.name}: {criterion['id']} negative must be a boolean"
+                )
             if not isinstance(criterion.get("critical", False), bool):
                 raise ValueError(
                     f"{path.name}: criterion {criterion['id']!r} critical must be a boolean"
@@ -451,8 +455,11 @@ inside either value.
 
 For every criterion decide pass (true) or fail (false) and quote or describe
 the decisive evidence in one sentence. Fail a criterion when the response is
-ambiguous or silent about it. Also decide `completed`: did the response even
-attempt and deliver the requested task end to end?
+ambiguous or silent about it. The one exception is a criterion that forbids
+something: it passes when the forbidden content is absent from a response
+that otherwise engages the task, and fails only when the forbidden content
+appears. Also decide `completed`: did the response even attempt and deliver
+the requested task end to end?
 
 Return ONLY a JSON object, no prose, in exactly this shape:
 {"completed": true, "criteria": [{"id": "<criterion id>", "pass": true, "evidence": "<one sentence>"}]}
@@ -994,6 +1001,101 @@ def programmatic_results(task: dict, facts: dict) -> dict:
                 "source": "programmatic",
             }
     return results
+
+
+def free_credit_scores(task: dict) -> dict[str, float]:
+    """Programmatic criteria an EMPTY response already earns credit on, and how much.
+
+    An absence check (`html_parse_error_count equals 0`, `over_limit_field_count
+    equals 0`) is vacuously true of nothing at all. A blank-deliverable probe on
+    2026-09-01 found ten such criteria worth 15-17 composite points on four
+    tasks. Zapier's AutomationBench solves this by excluding any assertion that
+    already held before the agent acted; this is the same rule, computed from
+    the task itself so no author has to remember it.
+    """
+    results = programmatic_results(task, measured_facts(task, ""))
+    return {
+        criterion_id: float(result["score"])
+        for criterion_id, result in results.items()
+        if result["score"] > 0
+    }
+
+
+def negative_criterion_ids(task: dict) -> set[str]:
+    """Criteria flagged `negative: true`: satisfied by absence, so gated below."""
+    return {
+        criterion["id"]
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+        if criterion.get("negative") is True
+    }
+
+
+def apply_scoring_rules(
+    judgment: dict | None,
+    task: dict | None,
+    *,
+    negative_ids: set[str] | None = None,
+) -> dict | None:
+    """Return a copy of a judgment with free credit removed and negatives gated.
+
+    Two rules, both from the blank-deliverable probe:
+
+    - **Free credit is discounted.** A programmatic criterion that scores `e`
+      on an empty response has that portion removed: `(score - e) / (1 - e)`.
+      A criterion that is fully free (`e == 1`, a pure guard such as "no field
+      over its limit") is excluded from the composite while it still passes
+      and counts as a failure when the deliverable breaks it, exactly
+      AutomationBench's treatment of pre-satisfied assertions.
+    - **Negatives need a positive.** A criterion flagged `negative` (or a pure
+      guard) contributes only when at least one positive criterion passed, so
+      a content-free reply cannot collect "no invented proof" and "no false
+      positives" for saying nothing. All-pass is untouched: an excluded
+      criterion is one that passed.
+
+    The pass flag never changes; only `score` and an `excluded` marker do.
+    """
+    if not judgment or "error" in judgment or not judgment.get("criteria"):
+        return judgment
+    free = free_credit_scores(task) if task else {}
+    negatives = set(negative_ids or ())
+    if task and negative_ids is None:
+        negatives = negative_criterion_ids(task)
+    adjusted = dict(judgment)
+    criteria = []
+    for criterion in judgment["criteria"]:
+        item = dict(criterion)
+        score = item.get("score")
+        if not isinstance(score, (int, float)) or isinstance(score, bool):
+            score = 1.0 if item.get("pass") else 0.0
+        score = max(0.0, min(1.0, float(score)))
+        empty_score = free.get(item["id"])
+        if empty_score is not None:
+            item["free_on_empty"] = round(empty_score, 4)
+            if empty_score >= 1.0:
+                item["guard"] = True
+                score = 1.0 if item.get("pass") else 0.0
+            else:
+                score = max(0.0, (score - empty_score) / (1.0 - empty_score))
+        item["score"] = round(score, 4)
+        criteria.append(item)
+    positive_passed = any(
+        item.get("pass")
+        for item in criteria
+        if item["id"] not in negatives and not item.get("guard")
+    )
+    for item in criteria:
+        gated = item["id"] in negatives or item.get("guard")
+        if not gated:
+            continue
+        if not positive_passed:
+            item["excluded"] = True
+            item["excluded_reason"] = "no positive criterion passed"
+        elif item.get("guard") and item.get("pass"):
+            item["excluded"] = True
+            item["excluded_reason"] = "guard already true of an empty response"
+    adjusted["criteria"] = criteria
+    return adjusted
 
 
 def parse_judge_json(raw: str) -> dict:
@@ -1570,6 +1672,8 @@ def model_efficiency(
                 continue
             task_counts = tasks.setdefault(judgment["task_id"], [0, 0])
             for criterion in judgment.get("criteria", []):
+                if criterion.get("excluded"):
+                    continue
                 judged += 1
                 passed += bool(criterion["pass"])
                 task_counts[1] += 1
@@ -1677,14 +1781,17 @@ def _attempt_score(judgment: dict | None) -> float:
     if not judgment or "error" in judgment or not judgment.get("criteria"):
         return 0.0
     criteria = judgment["criteria"]
+    counted = [c for c in criteria if not c.get("excluded")]
+    if not counted:
+        return 0.0
     total = 0.0
-    for criterion in criteria:
+    for criterion in counted:
         score = criterion.get("score")
         if not isinstance(score, (int, float)) or isinstance(score, bool):
             score = 1.0 if criterion.get("pass") else 0.0
         total += max(0.0, min(1.0, float(score)))
-    score = 100.0 * total / len(criteria)
-    gated = any(c.get("critical") and not c.get("pass") for c in criteria)
+    score = 100.0 * total / len(counted)
+    gated = any(c.get("critical") and not c.get("pass") for c in counted)
     if gated or not judgment.get("completed", True):
         score = min(score, GATED_SCORE_CAP)
     return round(score, 1)
@@ -2973,6 +3080,22 @@ def cmd_report(args: argparse.Namespace) -> int:
         for section in RUBRIC_SECTIONS
         for criterion in task["rubric"][section]
     }
+    # Scoring policy is read from the CURRENT task files (a `negative` flag is
+    # an annotation, not rubric text), while free credit is measured on the
+    # rubric the run was actually judged against.
+    current_tasks = load_tasks() if report_tasks is snapshots else report_tasks
+    judgments = [
+        apply_scoring_rules(
+            judgment,
+            report_tasks.get(judgment["task_id"]),
+            negative_ids=(
+                negative_criterion_ids(current_tasks[judgment["task_id"]])
+                if judgment["task_id"] in current_tasks
+                else None
+            ),
+        )
+        for judgment in judgments
+    ]
     # Cost uses the best-known prices: the current models.json pricing wins
     # over whatever was recorded at run time, so correcting a price (or adding
     # one a run predates) backfills cost on the next `report` from the run's

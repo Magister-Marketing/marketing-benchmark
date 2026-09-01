@@ -30,7 +30,10 @@ list rates; for the Magister configuration that is every LLM call of the
 agent's working turn, not just the final answer. One attempt per task; a
 same-day identical-input repeat has moved individual scores by up to 3
 tasks, so read small gaps as within noise. These judge verdicts have not
-been human-verified yet.
+been human-verified yet. The diagnostic 0-100 score behind each cell drops
+any check an empty answer already satisfies and counts a must-not check only
+once something positive passed, so a blank or content-free reply scores
+zero (a 2026-09-01 probe found ten checks worth up to 17 points otherwise).
 
 ### The skills arm uses Magister's real skill pack
 
