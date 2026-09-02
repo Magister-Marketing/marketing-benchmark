@@ -652,6 +652,28 @@ def test_parse_response_openrouter_chat_completions_shape():
     assert "provider_cost_usd" not in result
 
 
+def test_parse_response_openrouter_counts_web_plugin_search_once():
+    # The web plugin reports results as url_citation annotations, never as
+    # tool calls; one request is one search regardless of citation count.
+    payload = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "cited answer",
+                "annotations": [
+                    {"type": "url_citation", "url_citation": {"url": "https://a.example"}},
+                    {"type": "url_citation", "url_citation": {"url": "https://b.example"}},
+                ],
+            },
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+    }
+    result = providers.parse_response("openrouter", payload)
+    assert result["web_search_calls"] == 1
+    assert result["tool_calls"] == {}
+
+
 def test_parse_response_anthropic_with_web_search():
     payload = {
         "content": [

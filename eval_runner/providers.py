@@ -300,12 +300,21 @@ def parse_response(provider: str, payload: dict) -> dict:
         finish = choice.get("finish_reason")
         if finish == "length":
             finish = "incomplete:max_output_tokens"
+        # The web plugin never surfaces as a tool call: it runs one search
+        # before the model turn and reports the results as url_citation
+        # annotations on the message, so a request either searched once or
+        # not at all.
+        annotations = message.get("annotations") or []
+        searched = any(
+            isinstance(item, dict) and item.get("type") == "url_citation"
+            for item in annotations
+        )
         result = {
             "text": text,
             "input_tokens": usage.get("prompt_tokens"),
             "output_tokens": usage.get("completion_tokens"),
             "tool_calls": tool_calls,
-            "web_search_calls": tool_calls.get("web", 0),
+            "web_search_calls": 1 if searched else 0,
             "finish_reason": finish,
         }
         if usage.get("cost") is not None:
