@@ -87,6 +87,10 @@ Add your API keys to `.env.local`, then run one model on one task:
 ./eval.py claude-haiku-4-5 --tasks headline --env-file .env.local
 ```
 
+The direct harness supports Anthropic, OpenAI, and OpenRouter candidates.
+Every OpenRouter request pins zero-data-retention, denies data collection, and
+restricts routing to the candidate's allowlisted endpoints.
+
 The runner shows the number of paid API calls before it starts. When it
 finishes, it prints the location of the results. Open `report.html` for the
 shareable report.

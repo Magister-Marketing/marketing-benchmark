@@ -23,7 +23,7 @@ point for direct-model marketing quality.
   passed/total criterion counts explain near misses without becoming partial
   credit; macro and pooled criterion rates remain structured diagnostics.
 - Provider errors and judge failures count as failed runs.
-- Temperature is never sent. Anthropic gets its required output ceiling;
+- Temperature is never sent. Anthropic and OpenRouter get an output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
@@ -33,7 +33,8 @@ point for direct-model marketing quality.
     measurable with the same tasks and rubric.
   - **Tools**: off by default; `--tools` enables provider-hosted web
     search on the same API call (Anthropic server web-search tool,
-    OpenAI Responses `web_search`). Tasks and rubrics do not change, so
+    OpenAI Responses `web_search`, or the OpenRouter `web` plugin). Tasks and
+    rubrics do not change, so
     on fixture-grounded tasks the tools arm also measures tool
     discipline — staying inside supplied sources when search is available. The
     judge is always tool-less and receives no explicit arm flag or candidate
@@ -129,10 +130,15 @@ contracts, not chosen to force an arbitrary failure rate.
 
 ## Usage
 
-Keys come only from the environment: `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY` (or `--env-file <KEY=value file>` on `eval.py`, which
-reads only those two names and never prints values). Candidates live in
-`models.json`.
+Keys come only from the environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+and `OPENROUTER_API_KEY` (or `--env-file <KEY=value file>` on `eval.py`,
+which reads only those three names and never prints values). Candidates live
+in `models.json`; its OpenRouter entries are `gemini-3.7-flash-high` and
+`glm-5.3`.
+
+OpenRouter requests always pin zero-data-retention, deny data collection, and
+restrict routing to each candidate's explicit provider allowlist. Gemini 3.x
+requests additionally select the flex service tier required by those routes.
 
 **The one-liner** — run, grade, and report in a single command from the
 repo root:
@@ -218,5 +224,6 @@ Rules that keep the ladder honest:
 - **Prime Intellect / verifiers** — task JSONs are self-contained
   (prompt + fixtures + binary rubric), so porting to a `verifiers`
   Environment later is mechanical.
-- **More providers** — `providers.py` is a registry of two small HTTP
-  functions; Gemini is a ~15-line addition when needed.
+- **More providers** — `providers.py` keeps the three direct HTTP adapters
+  small and isolated, so another provider can be added without changing task
+  or report contracts.

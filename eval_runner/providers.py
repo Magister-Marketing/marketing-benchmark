@@ -1,8 +1,8 @@
 """Direct provider API calls for the eval runner's direct-API harness.
 
 Stdlib only. Credentials come exclusively from the operator environment
-(ANTHROPIC_API_KEY, OPENAI_API_KEY); they are never read from manifests,
-flags, or files, and never written to evidence.
+(ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY); they are never read
+from manifests, flags, or files, and never written to evidence.
 
 Default API settings: temperature is always omitted so each provider uses
 its own default. The only knobs are an output-token ceiling, uniform
@@ -25,6 +25,39 @@ import urllib.request
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 OPENAI_URL = "https://api.openai.com/v1/responses"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Every OpenRouter benchmark request pins this zero-data-retention posture:
+# deny data collection and route only to explicitly approved ZDR endpoints.
+# Provider slugs and flex eligibility are API request-policy values; reasoning
+# capability keeps non-reasoning rows from receiving an ignored setting.
+OPENROUTER_MODEL_POLICIES = {
+    "google/gemini-3.7-flash": {
+        "providers": ["google-vertex"],
+        "flex": True,
+        "supports_reasoning": True,
+    },
+    "z-ai/glm-5.3": {
+        "providers": ["fireworks", "together", "parasail", "novita"],
+        "flex": False,
+        "supports_reasoning": False,
+    },
+    "google/gemini-3.1-pro-preview": {
+        "providers": ["google-vertex"],
+        "flex": True,
+        "supports_reasoning": True,
+    },
+    "google/gemini-2.5-pro": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": False,
+    },
+    "google/gemini-2.5-flash": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": False,
+    },
+}
 
 # Server-side web search tool versions. Newer Anthropic models take the
 # dated 2026-02-09 tool; every other model keeps the basic variant.
@@ -47,16 +80,24 @@ class ProviderError(RuntimeError):
 
 
 def required_env_key(provider: str) -> str:
-    return {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[provider]
+    return {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+    }[provider]
 
 
 def split_model_spec(model_spec: str) -> tuple[str, str]:
-    """Split 'anthropic/claude-sonnet-5' into (provider, model)."""
-    provider, _, model = model_spec.partition("/")
-    if provider not in ("anthropic", "openai") or not model:
+    """Split a provider/model spec on its first slash."""
+    provider, separator, model = model_spec.partition("/")
+    direct_spec = provider in ("anthropic", "openai") and "/" not in model
+    openrouter_parts = model.split("/") if provider == "openrouter" else []
+    openrouter_spec = len(openrouter_parts) == 2 and all(openrouter_parts)
+    if not separator or not model or not (direct_spec or openrouter_spec):
         raise ProviderError(
             f"unsupported model spec {model_spec!r}; expected "
-            "'anthropic/<model>' or 'openai/<model>'"
+            "'anthropic/<model>', 'openai/<model>', or "
+            "'openrouter/<vendor>/<model>'"
         )
     return provider, model
 
@@ -89,7 +130,7 @@ def build_request(
     `settings` are optional per-candidate knobs from models.json
     (reasoning_effort, text_verbosity, max_output_tokens). Absent settings
     are omitted from the request so the provider default applies. The
-    `max_output_tokens` argument is the Anthropic-required ceiling; OpenAI
+    `max_output_tokens` argument is the Anthropic/OpenRouter ceiling; OpenAI
     requests carry no cap unless the candidate sets one explicitly.
     """
     provider, model = split_model_spec(model_spec)
@@ -104,13 +145,14 @@ def build_request(
     if cap_override is not None and (not isinstance(cap_override, int) or cap_override <= 0):
         raise ProviderError(f"invalid max_output_tokens {cap_override!r}")
 
-    if provider == "anthropic":
+    if provider in ("anthropic", "openrouter"):
         openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
         if openai_only:
             raise ProviderError(
                 f"{'/'.join(OPENAI_ONLY_SETTINGS)} settings are OpenAI-only; "
                 f"got {sorted(openai_only)} for {model_spec}"
             )
+    if provider == "anthropic":
         if effort is not None and effort not in ANTHROPIC_EFFORTS:
             raise ProviderError(
                 f"Anthropic effort vocabulary is {'/'.join(ANTHROPIC_EFFORTS)}; "
@@ -139,6 +181,39 @@ def build_request(
         if web_search:
             body["tools"] = [anthropic_web_search_tool(model)]
         return ANTHROPIC_URL, headers, body
+
+    if provider == "openrouter":
+        policy = OPENROUTER_MODEL_POLICIES.get(model)
+        if policy is None:
+            raise ProviderError(
+                f"OpenRouter model {model!r} has no zero-data-retention policy"
+            )
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "content-type": "application/json",
+        }
+        body = {
+            "model": model,
+            "max_tokens": cap_override or max_output_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+            "provider": {
+                "zdr": True,
+                "data_collection": "deny",
+                "only": list(policy["providers"]),
+                "allow_fallbacks": True,
+            },
+        }
+        if policy["flex"]:
+            body["service_tier"] = "flex"
+        if effort is not None and policy["supports_reasoning"]:
+            body["reasoning"] = {
+                "effort": "high" if effort in ("xhigh", "max") else effort
+            }
+        if web_search:
+            # The OpenRouter web plugin preserves the other providers' tier
+            # semantics: search is provider-hosted only in the --tools arm.
+            body["plugins"] = [{"id": "web"}]
+        return OPENROUTER_URL, headers, body
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -202,6 +277,41 @@ def parse_response(provider: str, payload: dict) -> dict:
             "finish_reason": payload.get("stop_reason"),
         }
 
+    if provider == "openrouter":
+        choices = payload.get("choices") or []
+        choice = choices[0] if choices else {}
+        message = choice.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") in (None, "text")
+            )
+        else:
+            text = ""
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            name = function.get("name") or call.get("type") or "unknown_tool"
+            tool_calls[name] = tool_calls.get(name, 0) + 1
+        usage = payload.get("usage") or {}
+        finish = choice.get("finish_reason")
+        if finish == "length":
+            finish = "incomplete:max_output_tokens"
+        result = {
+            "text": text,
+            "input_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "tool_calls": tool_calls,
+            "web_search_calls": tool_calls.get("web", 0),
+            "finish_reason": finish,
+        }
+        if usage.get("cost") is not None:
+            result["provider_cost_usd"] = usage["cost"]
+        return result
+
     text_parts = []
     for item in payload.get("output", []):
         item_type = item.get("type") or ""
@@ -261,14 +371,13 @@ def generate(
     # doubled cap so the attempt records an answer or a real failure. With no
     # explicit cap the request was already bounded only by the model's own
     # maximum — doubling cannot help, so the truncation is recorded honestly.
-    # Anthropic requests always carry a cap (the Messages API requires
-    # max_tokens), so its 'max_tokens' stop reason qualifies even when the
-    # candidate set no cap of its own; OpenAI requests are capped only when
-    # the candidate set one, and report 'incomplete' on truncation.
+    # Anthropic and OpenRouter requests always carry a cap, so truncation
+    # qualifies even when the candidate set no cap of its own; OpenAI requests
+    # are capped only when the candidate set one.
     finish = result["finish_reason"] or ""
     explicit_cap = (settings or {}).get("max_output_tokens")
     effective_cap = explicit_cap or (
-        max_output_tokens if provider == "anthropic" else None
+        max_output_tokens if provider in ("anthropic", "openrouter") else None
     )
     truncated = "incomplete" in finish or finish == "max_tokens"
     if not result["text"].strip() and truncated and effective_cap:

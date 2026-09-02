@@ -9,6 +9,7 @@ import re
 
 import pytest
 
+import eval as eval_cli
 from eval_runner import bench, brand_assets, providers
 
 
@@ -17,7 +18,7 @@ def test_models_load_and_specs_are_supported():
     assert models, "models.json must not be empty"
     for spec in models.values():
         provider, model = providers.split_model_spec(spec["model"])
-        assert provider in ("anthropic", "openai")
+        assert provider in ("anthropic", "openai", "openrouter")
         assert model
 
 
@@ -505,6 +506,152 @@ def test_build_request_openai_responses_api():
     assert "max_output_tokens" not in body
 
 
+def test_split_model_spec_preserves_openrouter_upstream_slug():
+    assert providers.split_model_spec(
+        "openrouter/google/gemini-3.7-flash"
+    ) == ("openrouter", "google/gemini-3.7-flash")
+    assert providers.split_model_spec("openai/gpt-5.6-sol") == (
+        "openai", "gpt-5.6-sol"
+    )
+    for invalid in (
+        "openrouter/google-only",
+        "openrouter//gemini-3.7-flash",
+        "openrouter/google/",
+        "openrouter/google/gemini/extra",
+        "openai/vendor/model",
+    ):
+        with pytest.raises(providers.ProviderError, match="unsupported model spec"):
+            providers.split_model_spec(invalid)
+
+
+def test_required_env_key_includes_openrouter():
+    assert providers.required_env_key("anthropic") == "ANTHROPIC_API_KEY"
+    assert providers.required_env_key("openai") == "OPENAI_API_KEY"
+    assert providers.required_env_key("openrouter") == "OPENROUTER_API_KEY"
+
+
+def test_eval_env_file_loads_openrouter_key(tmp_path, monkeypatch):
+    for key in eval_cli.API_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    env_file = tmp_path / "keys.env"
+    env_file.write_text(
+        "OPENROUTER_API_KEY=router-test\nIGNORED_KEY=do-not-load\n"
+    )
+    eval_cli.load_env_file(str(env_file))
+    assert eval_cli.os.environ["OPENROUTER_API_KEY"] == "router-test"
+    assert "IGNORED_KEY" not in eval_cli.os.environ
+
+
+def test_build_request_openrouter_zdr_policy_and_web_plugin():
+    url, headers, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 16000,
+        web_search=True, api_key="k", settings={"reasoning_effort": "high"},
+    )
+    assert url == providers.OPENROUTER_URL
+    assert headers == {
+        "Authorization": "Bearer k",
+        "content-type": "application/json",
+    }
+    assert body == {
+        "model": "google/gemini-3.7-flash",
+        "max_tokens": 16000,
+        "messages": [{"role": "user", "content": "hi"}],
+        "provider": {
+            "zdr": True,
+            "data_collection": "deny",
+            "only": ["google-vertex"],
+            "allow_fallbacks": True,
+        },
+        "service_tier": "flex",
+        "reasoning": {"effort": "high"},
+        "plugins": [{"id": "web"}],
+    }
+    assert "temperature" not in body
+
+
+def test_build_request_openrouter_model_policies_and_flex_tier():
+    expected = {
+        "google/gemini-3.7-flash": (["google-vertex"], True),
+        "z-ai/glm-5.3": (
+            ["fireworks", "together", "parasail", "novita"], False
+        ),
+        "google/gemini-3.1-pro-preview": (["google-vertex"], True),
+        "google/gemini-2.5-pro": (["google-vertex"], False),
+        "google/gemini-2.5-flash": (["google-vertex"], False),
+    }
+    assert set(providers.OPENROUTER_MODEL_POLICIES) == set(expected)
+    for model, (only, flex) in expected.items():
+        _, _, body = providers.build_request(
+            f"openrouter/{model}", "hi", 100, web_search=False, api_key="k"
+        )
+        assert body["provider"] == {
+            "zdr": True,
+            "data_collection": "deny",
+            "only": only,
+            "allow_fallbacks": True,
+        }
+        assert (body.get("service_tier") == "flex") is flex
+        assert "reasoning" not in body
+        assert "plugins" not in body
+        assert "temperature" not in body
+
+
+@pytest.mark.parametrize(
+    ("effort", "wire_effort"),
+    (("low", "low"), ("medium", "medium"), ("high", "high"),
+     ("xhigh", "high"), ("max", "high")),
+)
+def test_build_request_openrouter_maps_reasoning_effort(effort, wire_effort):
+    _, _, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+        settings={"reasoning_effort": effort},
+    )
+    assert body["reasoning"] == {"effort": wire_effort}
+
+    _, _, body = providers.build_request(
+        "openrouter/z-ai/glm-5.3", "hi", 100, False, "k",
+        settings={"reasoning_effort": effort},
+    )
+    assert "reasoning" not in body
+
+
+def test_build_request_openrouter_rejects_openai_only_settings():
+    with pytest.raises(providers.ProviderError, match="OpenAI-only"):
+        providers.build_request(
+            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            settings={"text_verbosity": "medium"},
+        )
+    with pytest.raises(providers.ProviderError, match="unknown candidate settings"):
+        providers.build_request(
+            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            settings={"temperature": 0},
+        )
+
+
+def test_parse_response_openrouter_chat_completions_shape():
+    payload = {
+        "choices": [{
+            "message": {"role": "assistant", "content": "answer"},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 7, "cost": 0.00123},
+    }
+    assert providers.parse_response("openrouter", payload) == {
+        "text": "answer",
+        "input_tokens": 5,
+        "output_tokens": 7,
+        "tool_calls": {},
+        "web_search_calls": 0,
+        "finish_reason": "stop",
+        "provider_cost_usd": 0.00123,
+    }
+    payload["choices"][0]["finish_reason"] = "length"
+    del payload["usage"]["cost"]
+    result = providers.parse_response("openrouter", payload)
+    assert result["finish_reason"] == "incomplete:max_output_tokens"
+    assert "provider_cost_usd" not in result
+
+
 def test_parse_response_anthropic_with_web_search():
     payload = {
         "content": [
@@ -637,9 +784,19 @@ def test_candidate_manifest_shape():
         ("gpt-5.6-sol-medium", "openai/gpt-5.6-sol", "medium"),
         ("gpt-5.6-sol-high", "openai/gpt-5.6-sol", "high"),
         ("claude-opus-5-high", "anthropic/claude-opus-5", "high"),
+        ("gemini-3.7-flash-high", "openrouter/google/gemini-3.7-flash", "high"),
+        ("glm-5.3", "openrouter/z-ai/glm-5.3", None),
     ):
         assert models[candidate_id]["model"] == model_spec
-        assert models[candidate_id]["reasoning_effort"] == effort
+        assert models[candidate_id].get("reasoning_effort") == effort
+    assert models["gemini-3.7-flash-high"]["pricing"] == {
+        "input_per_mtok": 0.375,
+        "output_per_mtok": 1.875,
+    }
+    assert models["glm-5.3"]["pricing"] == {
+        "input_per_mtok": 1.40,
+        "output_per_mtok": 4.40,
+    }
     for candidate_id, spec in models.items():
         # Every candidate must carry real pricing so cost never silently
         # reports n/a. A candidate may RAISE its output ceiling above the run
@@ -661,6 +818,10 @@ def test_max_output_tokens_override_and_validation():
         "anthropic/claude-sonnet-5", "hi", 16000, web_search=False, api_key="k",
         settings={"max_output_tokens": 32000})
     assert body["max_tokens"] == 32000  # allowed on anthropic, unlike effort
+    _, _, body = providers.build_request(
+        "openrouter/z-ai/glm-5.3", "hi", 16000, web_search=False, api_key="k",
+        settings={"max_output_tokens": 32000})
+    assert body["max_tokens"] == 32000
     with pytest.raises(providers.ProviderError, match="invalid max_output_tokens"):
         providers.build_request("openai/gpt-5.6-luna", "hi", 1, False, "k",
                                 settings={"max_output_tokens": "lots"})
