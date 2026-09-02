@@ -207,10 +207,16 @@ def build_request(
         }
         if policy["flex"]:
             body["service_tier"] = "flex"
-        if effort is not None and policy["supports_reasoning"]:
-            body["reasoning"] = {
-                "effort": "high" if effort in ("xhigh", "max") else effort
-            }
+        if effort is not None:
+            if not policy["supports_reasoning"]:
+                raise ProviderError(
+                    f"{model} does not take a reasoning effort; got {effort!r} "
+                    f"for {model_spec}"
+                )
+            # OpenRouter accepts the full low..max vocabulary and maps it to
+            # each vendor's own scale (Gemini caps at high), so the candidate's
+            # named level goes on the wire unchanged, as for the other providers.
+            body["reasoning"] = {"effort": effort}
         if web_search:
             # The OpenRouter web plugin preserves the other providers' tier
             # semantics: search is provider-hosted only in the --tools arm.
@@ -426,7 +432,19 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
         request = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                return json.loads(response.read().decode("utf-8"))
+                payload = json.loads(response.read().decode("utf-8"))
+            embedded = _embedded_error(provider, payload)
+            if embedded is None:
+                return payload
+            # OpenRouter reports some provider failures as HTTP 200 with an
+            # error object (top-level, or on the choice next to partial
+            # text). Treat the embedded code like the HTTP status it stands
+            # in for: retry the transient ones, fail the rest loudly rather
+            # than grading partial text as the model's answer.
+            code, message = embedded
+            last_error = f"embedded {code}: {message}"
+            if code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
+                raise ProviderError(f"{provider} call failed ({last_error})")
         except urllib.error.HTTPError as exc:
             snippet = _safe_error_snippet(exc)
             last_error = f"HTTP {exc.code}: {snippet}"
@@ -446,6 +464,25 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
                 raise ProviderError(f"{provider} call failed ({last_error})") from None
         time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
     raise ProviderError(f"{provider} call failed ({last_error})")
+
+
+def _embedded_error(provider: str, payload: dict) -> tuple[int, str] | None:
+    """Return (code, message) for an error carried inside a 200 body."""
+    if provider != "openrouter" or not isinstance(payload, dict):
+        return None
+    candidates = [payload.get("error")]
+    choices = payload.get("choices") or []
+    if choices and isinstance(choices[0], dict):
+        candidates.append(choices[0].get("error"))
+    for error in candidates:
+        if isinstance(error, dict):
+            try:
+                code = int(error.get("code") or 0)
+            except (TypeError, ValueError):
+                code = 0
+            message = str(error.get("message") or "no message")[:300]
+            return code, message.replace("\n", " ")
+    return None
 
 
 def _safe_error_snippet(exc: urllib.error.HTTPError) -> str:

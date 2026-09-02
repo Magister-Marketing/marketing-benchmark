@@ -607,23 +607,90 @@ def test_build_request_openrouter_sends_an_opted_in_flex_tier(monkeypatch):
     assert body["service_tier"] == "flex"
 
 
-@pytest.mark.parametrize(
-    ("effort", "wire_effort"),
-    (("low", "low"), ("medium", "medium"), ("high", "high"),
-     ("xhigh", "high"), ("max", "high")),
-)
-def test_build_request_openrouter_maps_reasoning_effort(effort, wire_effort):
+@pytest.mark.parametrize("effort", providers.REASONING_EFFORTS)
+def test_build_request_openrouter_sends_the_named_reasoning_effort(effort):
     _, _, body = providers.build_request(
         "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
         settings={"reasoning_effort": effort},
     )
-    assert body["reasoning"] == {"effort": wire_effort}
+    assert body["reasoning"] == {"effort": effort}
 
-    _, _, body = providers.build_request(
-        "openrouter/z-ai/glm-5.3", "hi", 100, False, "k",
-        settings={"reasoning_effort": effort},
+    # A non-reasoning row rejects an effort instead of dropping it silently,
+    # the same contract Anthropic enforces for its vocabulary.
+    with pytest.raises(providers.ProviderError, match="does not take a reasoning effort"):
+        providers.build_request(
+            "openrouter/z-ai/glm-5.3", "hi", 100, False, "k",
+            settings={"reasoning_effort": effort},
+        )
+
+
+def test_openrouter_stop_is_a_normal_finish():
+    payload = {
+        "choices": [{"message": {"content": "done"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+    }
+    result = providers.parse_response("openrouter", payload)
+    assert result["finish_reason"] == "stop"
+    assert bench.attempt_mark(result, {"pass": True}) == "P"
+    assert bench.attempt_mark(result, {"pass": False}) == "F"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"error": {"code": 400, "message": "bad prompt"}},
+        {"choices": [{"message": {"content": "partial"}, "finish_reason": "error",
+                      "error": {"code": 400, "message": "bad prompt"}}]},
+    ),
+)
+def test_openrouter_embedded_error_in_a_200_body_fails_loudly(monkeypatch, payload):
+    calls = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    def fake_urlopen(request, timeout):
+        calls.append(request)
+        return _Resp()
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(providers.ProviderError, match="embedded 400: bad prompt"):
+        providers._post_json_with_retries("https://x", {}, {}, "openrouter")
+    assert len(calls) == 1
+
+
+def test_openrouter_embedded_transient_error_is_retried(monkeypatch):
+    payloads = iter([
+        {"error": {"code": 429, "message": "slow down"}},
+        {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+    ])
+
+    class _Resp:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(self.body).encode()
+
+    monkeypatch.setattr(
+        providers.urllib.request, "urlopen", lambda request, timeout: _Resp(next(payloads))
     )
-    assert "reasoning" not in body
+    monkeypatch.setattr(providers.time, "sleep", lambda seconds: None)
+    payload = providers._post_json_with_retries("https://x", {}, {}, "openrouter")
+    assert payload["choices"][0]["message"]["content"] == "ok"
 
 
 def test_build_request_openrouter_rejects_openai_only_settings():
