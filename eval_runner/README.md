@@ -81,7 +81,17 @@ condition. Counts, exact CTA values, word minimums, HTML document shape,
 active/embedded assets, and heading order are computed locally and never
 delegated to the judge. Semantic criteria remain binary judge calls with
 one-sentence evidence. Judge output is accepted only when every requested id
-appears exactly once with literal JSON booleans and string evidence.
+appears exactly once with literal JSON booleans and string evidence, plus a
+top-level `self_report` (`complete`, `partial`, or `blocked`) describing how
+the response presents its own deliverable.
+
+A criterion marked `critical` caps the attempt's diagnostic score at 40 when
+it fails, and must name, in `fails_if_zero`, the banded programmatic checks
+that prove it; when one of those scores 0 the criterion fails on oracle
+evidence and the attempt scores 0. A judge-only critical is rejected by
+`bench validate`: one interpretive call must not swing a task by 40 points,
+and a judge without an oracle passed invented figures on 2026-09-02. See
+`docs/SCORING.md` for the honesty rules.
 
 Every task also has independent `prompt_version` and `rubric_version` fields.
 A rubric may be hardened against the same recorded prompt. A compatible prompt
@@ -111,6 +121,8 @@ change to graded behavior or fixture contract requires a new task id.
 | holdout | `platform-limits-gauntlet` | eleven labeled fields under hard character limits and exact required strings |
 | holdout | `rate-card-reconciliation` | cross-fixture invoice audit with distractor rates and three planted errors |
 | holdout | `unsupportable-claims-brief` | partial refusal: deliver the brief, decline the four unsupportable claims |
+| development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
+| development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a

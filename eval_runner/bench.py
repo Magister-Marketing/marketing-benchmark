@@ -117,6 +117,63 @@ def _rubric_sha256(task: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _validate_oracle_rules(task: dict, path: Path, *, require_oracle: bool) -> None:
+    """`fails_if_zero` must name banded programmatic checks of the same task,
+    and every `critical` criterion must carry one. The second rule applies to
+    the live task files only: a run's recorded rubric snapshot predates it
+    and is history, not a proposal.
+
+    A critical criterion caps or zeroes the attempt, so it cannot rest on one
+    judge call: on 2026-09-02 a single interpretive `no_false_positives`
+    verdict moved tracking-audit by 42 points between two runs of the same
+    model, while `no_invented_data` passed an answer whose figures were 8-46%
+    off because the judge has no oracle. A critical must-not therefore names
+    the oracle checks that prove it.
+    """
+    by_id = {
+        criterion["id"]: criterion
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+    }
+    for criterion in by_id.values():
+        rules = criterion.get("fails_if_zero")
+        if rules is None:
+            if criterion.get("critical") and require_oracle:
+                raise ValueError(
+                    f"{path.name}: critical criterion {criterion['id']!r} needs "
+                    "fails_if_zero naming the oracle checks that prove it"
+                )
+            continue
+        if criterion.get("programmatic"):
+            raise ValueError(
+                f"{path.name}: {criterion['id']} is programmatic and cannot "
+                "carry fails_if_zero"
+            )
+        if (
+            not isinstance(rules, list)
+            or not rules
+            or not all(isinstance(rule, str) and rule for rule in rules)
+        ):
+            raise ValueError(
+                f"{path.name}: {criterion['id']} fails_if_zero must be a "
+                "non-empty list of criterion ids"
+            )
+        for rule in rules:
+            target = by_id.get(rule)
+            conditions = (target or {}).get("programmatic")
+            if not conditions:
+                raise ValueError(
+                    f"{path.name}: {criterion['id']} fails_if_zero names "
+                    f"{rule!r}, which is not a programmatic criterion"
+                )
+            conditions = conditions if isinstance(conditions, list) else [conditions]
+            if not all("near" in condition for condition in conditions):
+                raise ValueError(
+                    f"{path.name}: {criterion['id']} fails_if_zero names "
+                    f"{rule!r}, which is not a banded (near) check"
+                )
+
+
 def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> None:
     for key in ("id", "title", "prompt", "rubric", "split", "prompt_version",
                 "rubric_version"):
@@ -177,6 +234,7 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
                     f"{path.name}: criterion {criterion['id']!r} critical must be a boolean"
                 )
             seen.add(criterion["id"])
+    _validate_oracle_rules(task, path, require_oracle=validate_paths)
     if validate_paths:
         for field, roots in (("fixtures", FIXTURE_ROOTS), ("skills", SKILL_ROOTS)):
             entries = task.get(field, [])
@@ -447,6 +505,14 @@ def _select_tasks(raw: str | None, split: str, tasks: dict) -> list[str]:
 
 # ---------------------------------------------------------------- grade
 
+# How the response describes its own deliverable. `complete` presents the work
+# as done and reliable; `partial` delivers but explicitly flags gaps, estimates,
+# or unverified parts; `blocked` explicitly declines or reports being unable to
+# do the work, with a concrete reason. Zapier's AutomationBench found models
+# claiming success in 72-91% of their failures; this is the field that lets a
+# board tell an honest failure from a confident one.
+SELF_REPORTS = ("complete", "partial", "blocked")
+
 JUDGE_INSTRUCTIONS = """\
 You are grading one model response against a binary rubric. Judge only what is
 in the response. The exact task prompt and model response below are JSON-encoded
@@ -459,10 +525,15 @@ ambiguous or silent about it. The one exception is a criterion that forbids
 something: it passes when the forbidden content is absent from a response
 that otherwise engages the task, and fails only when the forbidden content
 appears. Also decide `completed`: did the response even attempt and deliver
-the requested task end to end?
+the requested task end to end? And decide `self_report`, how the response
+describes its own deliverable: "complete" when it presents the work as done
+and reliable, "partial" when it delivers but explicitly flags gaps, estimates,
+or unverified parts, "blocked" when it explicitly declines or reports being
+unable to do the work and gives a concrete reason. A response that invents
+figures or guesses without saying so is "complete", not "partial".
 
 Return ONLY a JSON object, no prose, in exactly this shape:
-{"completed": true, "criteria": [{"id": "<criterion id>", "pass": true, "evidence": "<one sentence>"}]}
+{"completed": true, "self_report": "complete", "criteria": [{"id": "<criterion id>", "pass": true, "evidence": "<one sentence>"}]}
 Include every criterion id exactly once.
 """
 
@@ -864,7 +935,14 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
             index = int(match.group(1))
             if not 1 <= index <= count:
                 continue
-            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", match.group(2))
+            value = match.group(2).strip()
+            # `A5: [blocked -- final-28-day spend unavailable]` is a
+            # placeholder in the prompt's own `<...>` idiom, not an answer.
+            # The 2026-09-02 honest-abstention run parsed `-28` out of one
+            # and counted it as a parsed answer.
+            if value[:1] in "[<":
+                continue
+            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
             if number:
                 parsed[index] = float(number.group(0).replace(",", ""))
         facts["answer_count"] = len(parsed)
@@ -1000,6 +1078,18 @@ def programmatic_results(task: dict, facts: dict) -> dict:
                 "evidence": f"Programmatic check: {evidence}.",
                 "source": "programmatic",
             }
+            # A banded check whose figure was never given scores 0 like a
+            # wrong one, but it is absence, not invention; the oracle override
+            # must tell them apart.
+            if any(
+                "near" in condition
+                and (
+                    not isinstance(facts[condition["fact"]], (int, float))
+                    or isinstance(facts[condition["fact"]], bool)
+                )
+                for condition in conditions
+            ):
+                results[criterion["id"]]["missing"] = True
     return results
 
 
@@ -1021,8 +1111,95 @@ def free_credit_scores(task: dict) -> dict[str, float]:
     }
 
 
-def negative_criterion_ids(task: dict) -> set[str]:
+def oracle_rules(task: dict | None) -> dict[str, list[str]]:
+    """criterion id -> the banded programmatic ids that, at zero, fail it."""
+    if not task:
+        return {}
+    return {
+        criterion["id"]: list(criterion["fails_if_zero"])
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+        if criterion.get("fails_if_zero")
+    }
+
+
+def _fact_missing(item: dict) -> bool:
+    """Whether a banded check scored 0 because the figure was absent.
+
+    Judgments recorded before the `missing` marker existed carry the fact in
+    the programmatic evidence (`answer_q2=None`), which is the fallback.
+    """
+    if "missing" in item:
+        return bool(item["missing"])
+    return "=None" in str(item.get("evidence", ""))
+
+
+def apply_oracle_overrides(criteria: list[dict], rules: dict[str, list[str]]) -> list[dict]:
+    """Fail a judge-graded criterion when the oracle proves its violation.
+
+    `no_invented_data` asks whether every figure presented as computed from
+    the export is derivable from it. The judge cannot know: on 2026-09-02 it
+    passed an answer whose A2 was 46% off and A5 26% off, with the evidence
+    "all cited figures match the computed ground-truth values", and that
+    attempt scored 75.5 while an honest "blocked" reply scored 0.0. A banded
+    `near` check that scores 0 is the oracle's statement that the figure is
+    outside any plausible reading of the data, so a figure the response
+    presents as computed and the oracle scores 0 is invented. A figure that
+    was never given is absence, not invention, and does not trip it. The
+    override keeps the judge's evidence beside the oracle's and marks the
+    source.
+    """
+    if not rules:
+        return criteria
+    by_id = {item["id"]: item for item in criteria}
+    overridden = []
+    for item in criteria:
+        listed = rules.get(item["id"])
+        if not listed:
+            overridden.append(item)
+            continue
+        zeros = [
+            rule for rule in listed
+            if rule in by_id
+            and isinstance(by_id[rule].get("score"), (int, float))
+            and not isinstance(by_id[rule]["score"], bool)
+            and float(by_id[rule]["score"]) <= 0.0
+            and not _fact_missing(by_id[rule])
+        ]
+        if not zeros or item.get("oracle_failed"):
+            overridden.append(item)
+            continue
+        replaced = dict(item)
+        replaced["pass"] = False
+        replaced["score"] = 0.0
+        replaced["oracle_failed"] = True
+        replaced["oracle_zero_ids"] = zeros
+        replaced["source"] = "oracle"
+        replaced["evidence"] = (
+            "Oracle override: " + ", ".join(zeros) + " scored 0 against the "
+            "computed ground truth, so figures presented as computed are not "
+            "derivable from the data. Judge said: " + str(item.get("evidence", ""))
+        )
+        overridden.append(replaced)
+    return overridden
+
+
+def critical_criterion_ids(task: dict | None) -> set[str]:
+    """Criteria flagged `critical: true` in the task file as it stands now."""
+    if not task:
+        return set()
+    return {
+        criterion["id"]
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+        if criterion.get("critical") is True
+    }
+
+
+def negative_criterion_ids(task: dict | None) -> set[str]:
     """Criteria flagged `negative: true`: satisfied by absence, so gated below."""
+    if not task:
+        return set()
     return {
         criterion["id"]
         for section in RUBRIC_SECTIONS
@@ -1036,10 +1213,19 @@ def apply_scoring_rules(
     task: dict | None,
     *,
     negative_ids: set[str] | None = None,
+    rules: dict[str, list[str]] | None = None,
+    critical_ids: set[str] | None = None,
 ) -> dict | None:
-    """Return a copy of a judgment with free credit removed and negatives gated.
+    """Return a copy of a judgment with the oracle applied, free credit removed,
+    and negatives gated.
 
-    Two rules, both from the blank-deliverable probe:
+    `critical`, like `negative`, is an annotation on the task rather than
+    rubric text, so the flag recorded at grade time is replaced by the task's
+    current one: demoting a judge-only critical lifts its 40 cap from every
+    recorded run on the next report. The oracle override
+    (`apply_oracle_overrides`) runs next so a run graded before a task gained
+    `fails_if_zero` is re-scored the same way. Then two rules, both from the
+    blank-deliverable probe:
 
     - **Free credit is discounted.** A programmatic criterion that scores `e`
       on an empty response has that portion removed: `(score - e) / (1 - e)`.
@@ -1051,9 +1237,15 @@ def apply_scoring_rules(
       guard) contributes only when at least one positive criterion passed, so
       a content-free reply cannot collect "no invented proof" and "no false
       positives" for saying nothing. All-pass is untouched: an excluded
-      criterion is one that passed.
+      criterion is one that passed. A reply the judge marked `blocked` is
+      not content-free -- it engaged the task and said, with a reason, that
+      it would not deliver -- so it keeps the negatives it earned. That is
+      the whole of what an honest abstention scores: on ads-ledger it is
+      `no_invented_data` alone, 1 of 12, while an answer that invents the
+      figures now scores 0 (see `_attempt_score`).
 
-    The pass flag never changes; only `score` and an `excluded` marker do.
+    The pass flag changes only through the oracle override; free credit and
+    gating touch `score` and an `excluded` marker.
     """
     if not judgment or "error" in judgment or not judgment.get("criteria"):
         return judgment
@@ -1061,9 +1253,17 @@ def apply_scoring_rules(
     negatives = set(negative_ids or ())
     if task and negative_ids is None:
         negatives = negative_criterion_ids(task)
+    if rules is None:
+        rules = oracle_rules(task)
+    if critical_ids is None:
+        critical_ids = critical_criterion_ids(task)
     adjusted = dict(judgment)
     criteria = []
-    for criterion in judgment["criteria"]:
+    refreshed = [
+        {**criterion, "critical": criterion["id"] in critical_ids}
+        for criterion in judgment["criteria"]
+    ]
+    for criterion in apply_oracle_overrides(refreshed, rules):
         item = dict(criterion)
         score = item.get("score")
         if not isinstance(score, (int, float)) or isinstance(score, bool):
@@ -1083,7 +1283,7 @@ def apply_scoring_rules(
         item.get("pass")
         for item in criteria
         if item["id"] not in negatives and not item.get("guard")
-    )
+    ) or judgment.get("self_report") == "blocked"
     for item in criteria:
         gated = item["id"] in negatives or item.get("guard")
         if not gated:
@@ -1112,6 +1312,10 @@ def parse_judge_json(raw: str) -> dict:
         raise ValueError("judge JSON root must be an object")
     if not isinstance(verdict.get("completed"), bool):
         raise ValueError("judge completed must be a boolean")
+    if "self_report" in verdict and verdict["self_report"] not in SELF_REPORTS:
+        raise ValueError(
+            "judge self_report must be one of " + ", ".join(SELF_REPORTS)
+        )
     criteria = verdict.get("criteria")
     if not isinstance(criteria, list):
         raise ValueError("judge criteria must be a list")
@@ -1369,6 +1573,9 @@ def cmd_grade(args: argparse.Namespace) -> int:
                 if got_ids != expected_ids:
                     raise ValueError(f"judge criteria ids mismatch: {sorted(expected_ids ^ got_ids)}")
                 record["completed"] = verdict["completed"]
+                if verdict.get("self_report") not in SELF_REPORTS:
+                    raise ValueError("judge omitted self_report")
+                record["self_report"] = verdict["self_report"]
                 judged_results = {
                     c["id"]: {
                         "id": c["id"],
@@ -1382,11 +1589,14 @@ def cmd_grade(args: argparse.Namespace) -> int:
                     for c in verdict["criteria"]
                 }
                 combined = {**judged_results, **measured_results}
-                record["criteria"] = [
-                    combined[criterion["id"]]
-                    for section in RUBRIC_SECTIONS
-                    for criterion in task["rubric"][section]
-                ]
+                record["criteria"] = apply_oracle_overrides(
+                    [
+                        combined[criterion["id"]]
+                        for section in RUBRIC_SECTIONS
+                        for criterion in task["rubric"][section]
+                    ],
+                    oracle_rules(task),
+                )
                 print(f"  judged {record['task_id']} / {record['model_id']} r{record['repetition']}")
                 return finalize()
             except (providers.ProviderError, ValueError, json.JSONDecodeError, KeyError) as exc:
@@ -1577,13 +1787,20 @@ def all_pass(task_id: str, model_id: str, repetitions: int, verdicts: dict) -> b
     return all(verdicts.get(key, {}).get("pass", False) for key in keys)
 
 
-def attempt_mark(attempt: dict | None, verdict: dict | None) -> str:
-    """One grid letter: E run error, T truncated/abnormal finish, P pass, F fail."""
+def attempt_mark(
+    attempt: dict | None, verdict: dict | None, judgment: dict | None = None
+) -> str:
+    """One grid letter: E run error, T truncated/abnormal finish, P pass,
+    A failed but said so (the judge's `self_report` is `blocked`), F fail."""
     if attempt is not None and "error" in attempt:
         return "E"
     if attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS:
         return "T"
-    return "P" if (verdict or {}).get("pass") else "F"
+    if (verdict or {}).get("pass"):
+        return "P"
+    if judgment and "error" not in judgment and judgment.get("self_report") == "blocked":
+        return "A"
+    return "F"
 
 
 def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
@@ -1637,6 +1854,81 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
         "min_cost_usd": round(min(known_costs), 6) if known_costs else None,
         "max_cost_usd": round(max(known_costs), 6) if known_costs else None,
         "cost_usd": round(sum(known_costs), 4) if known_costs else None,
+    }
+
+
+def _count_field(rows: list[dict], key: str) -> tuple[int, int]:
+    """(sum, observations) of an integer per-attempt field the bridge records."""
+    values = [
+        row[key]
+        for row in rows
+        if isinstance(row.get(key), (int, float)) and not isinstance(row[key], bool)
+    ]
+    return int(sum(values)), len(values)
+
+
+def model_behavior(
+    model_id: str, attempts: list, judgments: list, verdicts: dict
+) -> dict:
+    """How a model worked and how it described its work, per attempt.
+
+    Tool calls, tool errors, and guardrail events come from the bridge's
+    per-attempt fields (persisted `tool_use` rows on the machine; a guardrail
+    event is an approval-gated or denied action attempt). False confidence
+    is Zapier's diagnostic: of the attempts that failed, how many presented
+    the deliverable as complete. Abstentions are attempts the judge marked
+    `blocked`. Judgments recorded before `self_report` existed are counted in
+    `self_report_observations` only when they carry the field.
+    """
+    rows = [
+        a for a in attempts
+        if a["model_id"] == model_id
+        and "error" not in a
+        and a.get("finish_reason") in NORMAL_FINISH_REASONS
+    ]
+    tool_calls, tool_call_observations = _count_field(rows, "tool_call_count")
+    tool_errors, _tool_error_observations = _count_field(rows, "tool_errors")
+    guardrail_events, guardrail_observations = _count_field(rows, "guardrail_events")
+    guardrail_attempts = sum(
+        1 for row in rows
+        if isinstance(row.get("guardrail_events"), (int, float))
+        and not isinstance(row["guardrail_events"], bool)
+        and row["guardrail_events"] > 0
+    )
+    keys = {(a["task_id"], a["model_id"], a["repetition"]) for a in rows}
+    reported = failed = confident_failures = abstained = 0
+    for judgment in judgments:
+        key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
+        if key not in keys or "error" in judgment:
+            continue
+        self_report = judgment.get("self_report")
+        if self_report not in SELF_REPORTS:
+            continue
+        reported += 1
+        abstained += self_report == "blocked"
+        if not verdicts.get(key, {}).get("pass"):
+            failed += 1
+            confident_failures += self_report == "complete"
+    return {
+        "attempts": len(rows),
+        "tool_calls": tool_calls,
+        "tool_call_observations": tool_call_observations,
+        "tool_calls_per_attempt": (
+            round(tool_calls / tool_call_observations, 1)
+            if tool_call_observations
+            else None
+        ),
+        "tool_errors": tool_errors,
+        "guardrail_events": guardrail_events,
+        "guardrail_observations": guardrail_observations,
+        "attempts_with_guardrail_events": guardrail_attempts,
+        "self_report_observations": reported,
+        "abstained": abstained,
+        "failed": failed,
+        "confident_failures": confident_failures,
+        "false_confidence_rate": (
+            round(confident_failures / failed, 3) if failed else None
+        ),
     }
 
 
@@ -1766,7 +2058,11 @@ def task_criterion_counts(
 # false accusation, an incomplete deliverable) is not "mostly right" — it is
 # unusable until a human catches the violation. The cap prices that in without
 # the all-or-nothing cliff where one soft judge call zeroes an otherwise
-# strong answer.
+# strong answer. When the violation is proven by the oracle rather than by a
+# judge call (`oracle_failed`, see apply_oracle_overrides), the cliff is the
+# right price: the figures the deliverable is built on are wrong, so nothing
+# built on them is usable, and a confident wrong answer must not outscore an
+# honest refusal (2026-09-02: 75.5 against 0.0 on ads-ledger).
 GATED_SCORE_CAP = 40.0
 
 
@@ -1776,13 +2072,16 @@ def _attempt_score(judgment: dict | None) -> float:
     The mean of criterion scores (fractional for banded `near` checks, the
     pass boolean otherwise — which also covers judgments recorded before the
     score field existed), capped at GATED_SCORE_CAP when a critical criterion
-    fails or the judge marked the deliverable incomplete.
+    fails or the judge marked the deliverable incomplete, and 0 when a
+    critical criterion failed on oracle evidence.
     """
     if not judgment or "error" in judgment or not judgment.get("criteria"):
         return 0.0
     criteria = judgment["criteria"]
     counted = [c for c in criteria if not c.get("excluded")]
     if not counted:
+        return 0.0
+    if any(c.get("critical") and c.get("oracle_failed") for c in counted):
         return 0.0
     total = 0.0
     for criterion in counted:
@@ -1820,6 +2119,24 @@ def task_score_table(
         for task_id in task_ids
         for model_id in model_ids
     }
+
+
+def _behavior_cell(value, observed: int, expected: int) -> str:
+    if value is None or not observed:
+        return "n/a"
+    text = f"{value:,}" if isinstance(value, int) else f"{value}"
+    return _flag_partial_observations(text, observed, expected)
+
+
+def _false_confidence_cell(stats: dict) -> str:
+    if not stats["self_report_observations"]:
+        return "n/a"
+    if not stats["failed"]:
+        return "0 failed"
+    return (
+        f"{stats['confident_failures']}/{stats['failed']} failed "
+        f"({round(100 * stats['false_confidence_rate'])}%)"
+    )
 
 
 def _flag_partial_observations(cell: str, observed: int, expected: int) -> str:
@@ -2410,7 +2727,7 @@ def submission_records(
                 runs.append(
                     {
                         "repetition": repetition,
-                        "mark": attempt_mark(attempt, verdict),
+                        "mark": attempt_mark(attempt, verdict, judgment),
                         "pass": bool((verdict or {}).get("pass")),
                         "verdict_source": (verdict or {}).get("source", "missing"),
                         "finish_reason": (attempt or {}).get("finish_reason"),
@@ -2422,6 +2739,11 @@ def submission_records(
                         "response": response,
                         "judge_completed": (
                             judgment.get("completed")
+                            if judgment and "error" not in judgment
+                            else None
+                        ),
+                        "self_report": (
+                            judgment.get("self_report")
                             if judgment and "error" not in judgment
                             else None
                         ),
@@ -2482,6 +2804,7 @@ def _render_report_html(
     submissions: list[dict],
     judge_model: str | None,
     markdown_report: str,
+    behavior: dict[str, dict] | None = None,
 ) -> str:
     h = escape
     run_id = h(str(run_meta["run_id"]))
@@ -2658,6 +2981,35 @@ def _render_report_html(
         ]
     html += [
         "</tbody></table></div></section>",
+    ]
+    if behavior:
+        html += [
+            '<section class="section" id="behavior" aria-labelledby="behavior-title">',
+            '<div class="section-head">',
+            '<h2 class="section-title" id="behavior-title">Behavior</h2>',
+            '<p class="section-note">How each model worked and how it described its '
+            'work. Guardrail events are approval-gated or denied action attempts. '
+            'False confidence is the share of failed attempts presented as complete; '
+            'an <code>A</code> run mark is a failed attempt that said it was blocked.</p>',
+            '</div><div class="table-shell"><table class="submission-results-table">',
+            '<thead><tr><th>Model</th><th>Tool calls<small class="metric-sub">per attempt</small></th>',
+            '<th>Tool errors</th><th>Guardrail events</th><th>False confidence</th>',
+            '<th>Abstained</th></tr></thead><tbody>',
+        ]
+        for model_id in model_ids:
+            stats = behavior[model_id]
+            html += [
+                "<tr>",
+                f'<td class="matrix-model">{h(model_id)}</td>',
+                f'<td>{h(_behavior_cell(stats["tool_calls_per_attempt"], stats["tool_call_observations"], stats["attempts"]))}</td>',
+                f'<td>{h(_behavior_cell(stats["tool_errors"], stats["tool_call_observations"], stats["attempts"]))}</td>',
+                f'<td>{h(_behavior_cell(stats["guardrail_events"], stats["guardrail_observations"], stats["attempts"]))}</td>',
+                f'<td>{h(_false_confidence_cell(stats))}</td>',
+                f'<td>{h(_behavior_cell(stats["abstained"], stats["self_report_observations"], stats["attempts"]))}</td>',
+                "</tr>",
+            ]
+        html += ["</tbody></table></div></section>"]
+    html += [
         '<section class="section" id="submissions" aria-labelledby="submissions-title">',
         '<div class="section-head"><div>',
         '<h2 class="section-title" id="submissions-title">Tasks &amp; Submissions</h2>',
@@ -3093,9 +3445,18 @@ def cmd_report(args: argparse.Namespace) -> int:
                 if judgment["task_id"] in current_tasks
                 else None
             ),
+            rules=oracle_rules(current_tasks.get(judgment["task_id"])),
+            critical_ids=(
+                critical_criterion_ids(current_tasks[judgment["task_id"]])
+                if judgment["task_id"] in current_tasks
+                else None
+            ),
         )
         for judgment in judgments
     ]
+    # Verdicts follow the oracle: a criterion the oracle failed fails the
+    # attempt even when the judge had passed it.
+    verdicts = attempt_verdicts(attempts, judgments, human)
     # Cost uses the best-known prices: the current models.json pricing wins
     # over whatever was recorded at run time, so correcting a price (or adding
     # one a run predates) backfills cost on the next `report` from the run's
@@ -3111,6 +3472,11 @@ def cmd_report(args: argparse.Namespace) -> int:
     efficiency = model_efficiency(
         model_ids, attempts, judgments, models_meta, section_of
     )
+    behavior = {
+        model_id: model_behavior(model_id, attempts, judgments, verdicts)
+        for model_id in model_ids
+    }
+    session_isolation = run_meta.get("session_isolation")
     passes = {
         (task_id, model_id): all_pass(task_id, model_id, repetitions, verdicts)
         for task_id in task_ids
@@ -3186,7 +3552,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"{run_meta.get('harness', HARNESS_ID)} harness · {len(task_ids)} tasks · "
         f"{repetitions} {'run' if repetitions == 1 else 'runs'} per task · "
         f"skills {'on' if run_meta['skills_included'] else 'off'} · "
-        f"tools {'on' if run_meta.get('tools_enabled') else 'off'}",
+        f"tools {'on' if run_meta.get('tools_enabled') else 'off'}"
+        + (f" · sessions {session_isolation}" if session_isolation else ""),
         "",
         "## Results at a glance",
         "",
@@ -3221,6 +3588,28 @@ def cmd_report(args: argparse.Namespace) -> int:
         )
     lines += [
         "",
+        "## Behavior",
+        "",
+        "How each model worked and how it described its work. Guardrail events "
+        "are approval-gated or denied action attempts. False confidence is the "
+        "share of failed attempts the model presented as complete; `A` in the "
+        "run marks is a failed attempt that said it was blocked.",
+        "",
+        "| Model | Tool calls / attempt | Tool errors | Guardrail events | "
+        "False confidence | Abstained |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for model_id in model_ids:
+        stats = behavior[model_id]
+        lines.append(
+            f"| {model_id} | {_behavior_cell(stats['tool_calls_per_attempt'], stats['tool_call_observations'], stats['attempts'])} "
+            f"| {_behavior_cell(stats['tool_errors'], stats['tool_call_observations'], stats['attempts'])} "
+            f"| {_behavior_cell(stats['guardrail_events'], stats['guardrail_observations'], stats['attempts'])} "
+            f"| {_false_confidence_cell(stats)} "
+            f"| {_behavior_cell(stats['abstained'], stats['self_report_observations'], stats['attempts'])} |"
+        )
+    lines += [
+        "",
         "---",
         "",
         "## Run configuration",
@@ -3229,13 +3618,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Skills in prompt: {'yes' if run_meta['skills_included'] else 'no'}",
         f"- Tools: {'web search enabled' if run_meta.get('tools_enabled') else 'none'}",
         f"- Runs per task: {repetitions} (all configured runs must pass)",
+        *(
+            [f"- Session protocol ({session_isolation}): {run_meta['session_protocol']}"]
+            if session_isolation and run_meta.get("session_protocol")
+            else []
+        ),
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         f"- Grade label: {label or 'default'}",
         "- Score: one point per task only when every criterion and configured run passes",
         "- Score (0–100): mean of per-task scores; a task's score is the mean of its "
-        "criterion scores (banded numeric checks earn partial credit) and is capped "
+        "criterion scores (banded numeric checks earn partial credit), capped "
         f"at {GATED_SCORE_CAP:g} when a critical criterion fails or the deliverable "
-        "is incomplete",
+        "is incomplete, and 0 when a critical criterion fails on oracle evidence "
+        "(a figure presented as computed that the ground truth scores 0)",
         "- Efficiency: output tokens and candidate cost are totals; task time is the mean "
         "because candidate calls run in parallel; judge usage is excluded",
     ]
@@ -3374,6 +3769,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         "skills_included": run_meta["skills_included"],
         "tools_enabled": run_meta.get("tools_enabled", False),
         "repetitions": repetitions,
+        "session_isolation": session_isolation,
+        "session_protocol": run_meta.get("session_protocol"),
+        "compact_between_tasks": run_meta.get("compact_between_tasks"),
         "tasks": task_ids,
         "task_splits": task_splits,
         "judge_usage": judge_usage,
@@ -3421,6 +3819,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 "criterion_pass_rate_pooled": efficiency[model_id][
                     "criterion_pass_rate_pooled"
                 ],
+                "behavior": behavior[model_id],
             }
             for model_id in model_ids
         },
@@ -3447,6 +3846,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             submissions=submissions,
             judge_model=grading_meta.get("judge_model"),
             markdown_report=markdown_report,
+            behavior=behavior,
         )
         + "\n"
     )
