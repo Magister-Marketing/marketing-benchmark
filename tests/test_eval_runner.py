@@ -1026,7 +1026,24 @@ def test_attempt_cost_requires_pricing():
     assert bench.attempt_cost_usd(attempt, {"model": "openai/x"}) is None
     spec = {"pricing": {"input_per_mtok": 3.0, "output_per_mtok": 15.0}}
     assert bench.attempt_cost_usd(attempt, spec) == 0.018
+    assert bench.attempt_cost_usd(
+        {**attempt, "gateway_provider_cost_usd": 0.007}, {}
+    ) == 0.007
+    assert bench.attempt_cost_usd(
+        {**attempt, "provider_cost_usd": 0.008}, {}
+    ) == 0.008
+    assert bench.attempt_cost_usd({
+        **attempt,
+        "gateway_provider_cost_usd": 0.007,
+        "provider_cost_usd": 0.008,
+    }, spec) == 0.007
+    assert bench.attempt_cost_usd(
+        {**attempt, "provider_cost_usd": -1}, spec
+    ) == 0.018
     assert bench.attempt_cost_usd({"error": "boom"}, spec) is None
+    assert bench.attempt_cost_usd(
+        {"error": "boom", "provider_cost_usd": 0.008}, spec
+    ) is None
     assert bench.attempt_cost_usd({"input_tokens": 1000}, spec) is None
 
 
