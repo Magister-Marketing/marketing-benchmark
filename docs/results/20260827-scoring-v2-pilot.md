@@ -4,6 +4,18 @@
 `20260827-015441-c29e75ca`, skills `20260827-014659-45db0d35` /
 `20260827-015442-c4d7464f`, magister `20260827-014910-b4ef29d0`
 
+> **Re-graded 2026-09-02** under the scoring shipped in
+> [PR #11](https://github.com/Magister-Marketing/marketing-benchmark/pull/11)
+> (oracle-backed critical criteria, judge `self_report`, `critical` read live,
+> free-credit discount, negatives gated on a positive). Same judge, same
+> recorded rubric snapshots. Two figures moved, both by rule rather than by
+> judge variance: the Magister ledger attempt is now recorded as
+> `self_report: blocked` and keeps its negatives (8.3, was 0.0; run mark
+> `A`), and the two attempts on the un-fixed tracking-audit fixture lift from
+> the 40 critical cap to 94.1 because `no_false_positives` is no longer
+> critical (runs `014657` / `014659`: 65.8 → 92.9 and 70.0 → 97.0). No
+> pass/fail changed; re-grade judge spend $0.66.
+
 First live test of 0–100 task scoring (mean criterion score, critical-gate cap
 at 40, banded `near` credit on numeric answers) on the two new
 headroom-seeking tasks, run pass@1 on one mid-tier model across all three
@@ -13,9 +25,9 @@ configurations.
 
 | task | plain | + skills | Magister |
 |---|---:|---:|---:|
-| ads-ledger-analysis | 91.7 | 100.0 | **0.0** |
+| ads-ledger-analysis | 91.7 | 100.0 | **8.3** (was 0.0) |
 | tracking-audit (fixed fixture) | 100.0 | 100.0 | 100.0 |
-| **composite** | **95.9** | **100.0** | **50.0** |
+| **composite** | **95.9** | **100.0** | **54.1** (was 50.0) |
 
 Answer cost for the two tasks: ~$1.29 per direct arm; **$15.16** for the
 Magister arm (all-in agent-turn token bill).
@@ -23,10 +35,13 @@ Magister arm (all-in agent-turn token bill).
 ## What the pilot proved
 
 1. **The 0–100 scale expresses real differences pass@1 could not.** A single
-   task now spans 0 → 91.7 → 100 across configurations, and each gap is
+   task now spans 8.3 → 91.7 → 100 across configurations, and each gap is
    attributable to a concrete behavior, not judge noise.
-2. **The Magister ledger 0.0 is a real product finding, third sighting of the
-   under-delivery class.** The agent worked 462s / 5,716 output tokens —
+2. **The Magister ledger 8.3 (0.0 as published) is a real product finding,
+   third sighting of the under-delivery class.** On the re-grade the judge
+   records the reply as `self_report: blocked`, so it keeps the negatives it
+   honestly earned instead of scoring zero — the finding is unchanged: no
+   deliverable. The agent worked 462s / 5,716 output tokens —
    almost certainly computing the right numbers in its sandbox — then ended
    its turn (`end_turn`, healthy stream) with a 169-byte status line: *"I'm
    running a deterministic ledger pass now…"* and never posted the review.
@@ -38,7 +53,9 @@ Magister arm (all-in agent-turn token bill).
    nonconforming, and they were right: the standards doc never documented the
    market suffix the rubric declared clean. Fixed in the standards doc
    (`f0dd2cb`); on the corrected fixture both direct arms score 100 with zero
-   false accusations.
+   false accusations. (`no_false_positives` has since been demoted from
+   critical — PR #11 reads `critical` live — so the un-fixed-fixture attempts
+   now score 94.1 rather than the 40 cap; the fixture fix stands on its own.)
 4. **sol-medium is stronger than the tasks' core mechanics.** It summed the
    784-row CSV to the cent by pure reasoning (no code tool: Q2/Q4/Q5 exact,
    Q1 off 0.32%) and recalled 12/12 seeded audit defects. Frontier-tier
