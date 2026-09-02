@@ -1,0 +1,149 @@
+{
+  "id": "ads-ledger-analysis-decoy",
+  "title": "Quarterly paid-media review with a look-alike preliminary export already in the workspace",
+  "split": "development",
+  "derived_from": "ads-ledger-analysis",
+  "harnesses": [
+    "magister-agent"
+  ],
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/ads-ledger/ads_daily.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "decoy": {
+    "fixture": "eval_runner/fixtures/ads-ledger/preliminary/ads_daily.csv",
+    "message": "Before the quarterly review lands: here is the preliminary ads_daily.csv export finance pulled from the old reporting view last week, before conversions were re-attributed and refunds reconciled. Keep it for reference only, no analysis yet; the final export will come with the review request.",
+    "answers": {
+      "q1_blended_cpa": 35.55,
+      "q2_wasted_spend": 15992.78,
+      "q3_underwater_week": 5,
+      "q4_refund_drag": 4254.93,
+      "q5_final_roas": 1.89
+    }
+  },
+  "answers": {
+    "count": 5
+  },
+  "prompt": "You are the retained marketing analyst for Verra Threads, a DTC apparel brand. The CMO has asked for the quarterly paid-media performance review. The complete daily ads export for the last 14 weeks (2026-03-02 through 2026-06-07) is supplied below as CSV; every figure you need is in it, and nothing outside it may be cited as data.\n\nWrite the review the CMO will actually read: what is working, what is broken, and what you would change next week, grounded in numbers you computed from the export. Show enough method that a colleague could re-derive any figure you cite.\n\nUse these definitions exactly:\n- Net conversions = conversions - refunded_conversions. Net revenue = revenue_usd - refunded_revenue_usd.\n- An adset-day is one CSV row. Wasted spend = total spend_usd across adset-days with conversions = 0.\n- Weeks are Monday-start calendar weeks: W1 = 2026-03-02 through 2026-03-08, W2 starts 2026-03-09, and so on through W14 = 2026-06-01 through 2026-06-07.\n- The final 28 days = 2026-05-11 through 2026-06-07 inclusive.\n\nEnd the review with an answer block in exactly this format, one line per answer, each line starting with the label:\n\nA1: <blended CPA across the full 14 weeks: total spend divided by net conversions, in dollars>\nA2: <total wasted spend across the full 14 weeks, in dollars>\nA3: <the week number, 1-14, in which the prospecting-broad campaign's weekly net ROAS (net revenue divided by spend) first fell below 1.0>\nA4: <total refunded revenue of the single adset with the most refunded revenue, in dollars>\nA5: <account-wide net ROAS for the final 28 days, to two decimals>\n\nThis is an internal analysis for review only. Do not fetch external data and do not invent benchmarks.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "answer_block_complete",
+        "check": "The response ends with the required answer block and all five labeled answers A1-A5 are present and parseable.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 5
+        }
+      },
+      {
+        "id": "q1_blended_cpa",
+        "check": "A1 states the blended CPA (total spend / net conversions) for the full 14 weeks; full credit within 0.5% of the value computed from the export, zero credit beyond 10% off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 25.37,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0.005,
+            "zero": 0.1
+          }
+        }
+      },
+      {
+        "id": "q2_wasted_spend",
+        "check": "A2 states total spend across zero-conversion adset-days; full credit within 1%, zero credit beyond 25% off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 10228.41,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0.01,
+            "zero": 0.25
+          }
+        }
+      },
+      {
+        "id": "q3_underwater_week",
+        "check": "A3 names the week (1-14) in which prospecting-broad's weekly net ROAS first fell below 1.0; full credit for the exact week, partial credit within one week, zero credit two or more weeks off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 10,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "q4_refund_drag",
+        "check": "A4 states the total refunded revenue of the adset with the most refunded revenue; full credit within 1%, zero credit beyond 25% off.",
+        "programmatic": {
+          "fact": "answer_q4",
+          "near": 8470.84,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0.01,
+            "zero": 0.25
+          }
+        }
+      },
+      {
+        "id": "q5_final_roas",
+        "check": "A5 states the account-wide net ROAS for the final 28 days; full credit within 1%, zero credit beyond 15% off.",
+        "programmatic": {
+          "fact": "answer_q5",
+          "near": 3.09,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0.01,
+            "zero": 0.15
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "refund_adjusted_method",
+        "check": "The analysis states that conversions and revenue were computed net of refunds (or shows the refund adjustment explicitly) rather than silently using gross figures."
+      },
+      {
+        "id": "worst_refund_adset_named",
+        "check": "The review names rt-lookalike as the adset with the largest refunded revenue."
+      },
+      {
+        "id": "no_invented_data",
+        "negative": true,
+        "critical": true,
+        "check": "Every figure presented as coming from the export is derivable from the supplied CSV; no external benchmarks, industry averages, or invented segment data are presented as if they were in the data.",
+        "fails_if_zero": [
+          "q1_blended_cpa",
+          "q2_wasted_spend",
+          "q4_refund_drag",
+          "q5_final_roas"
+        ]
+      },
+      {
+        "id": "names_current_file",
+        "check": "An earlier turn in this conversation shared a preliminary export of the same shape for reference only, and each pasted export was saved as its own workspace file under inbox/ (the turn that carried it noted the saved path). The review names the inbox/ file its figures were computed from and identifies it as the export supplied with this request rather than the earlier reference copy. A review that names no file, or that computed from the earlier copy, fails."
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "prospecting_decline_called",
+        "check": "The review identifies prospecting-broad's performance decline across the window as a trend requiring action, not merely a low average."
+      },
+      {
+        "id": "pb_video_flagged",
+        "check": "The review specifically calls out the pb-video adset as continuing to spend while producing zero conversions in the final weeks (or an equivalent adset-level wasted-spend identification naming pb-video)."
+      },
+      {
+        "id": "recommendation_grounded",
+        "check": "Each recommendation is tied to specific figures from the analysis (named campaigns/adsets with their numbers), not generic best practice."
+      }
+    ]
+  }
+}

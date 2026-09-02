@@ -99,6 +99,30 @@ clarification may retain the task id only when the exact older prompt is
 archived with a reason and the new rubric intentionally supports both; a
 change to graded behavior or fixture contract requires a new task id.
 
+Three optional fields cover a task whose input a harness must *deliver*
+rather than inline:
+
+- `harnesses` — the harness ids that can run the task (`magister-agent` is
+  the bridge in the Magister monorepo). Absent means every harness. This
+  runner's `run`, `--split`, and `--tasks` selection skips a task that does
+  not list `direct-api`, and refuses it by name rather than running a
+  degraded version.
+- `decoy` — `{fixture, message, answers}`: a look-alike source the harness
+  sends as its own chat turn *before* the task prompt (`assemble_decoy_prompt`
+  builds that turn: the message, then the export under the same
+  `## Supplied source: <name>` heading the real fixture gets, so a harness
+  that saves pastes to files names both alike). `assemble_prompt` ignores it,
+  which is why a decoy task must list `harnesses` and never `direct-api`:
+  inlined into one prompt, the decoy would change the task. `answers` maps
+  every banded check to the value the decoy yields; `bench validate` proves
+  each scores 0 against the real target, so computing from the wrong file
+  fails on oracle evidence.
+- `derived_from` — the parent task this one duplicates. Prompt, answers,
+  fixtures, and skills must be identical and every parent criterion must
+  appear unchanged; the derived task may only add (a decoy, a criterion).
+  `load_tasks` enforces it, so a parent edit that forgets the child fails
+  instead of shipping two versions of one task.
+
 ## Tasks
 
 | Split | Task | What it probes |
@@ -122,6 +146,7 @@ change to graded behavior or fixture contract requires a new task id.
 | holdout | `rate-card-reconciliation` | cross-fixture invoice audit with distractor rates and three planted errors |
 | holdout | `unsupportable-claims-brief` | partial refusal: deliver the brief, decline the four unsupportable claims |
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
+| development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 
 The ad-performance CSV has planted, exactly computable findings
@@ -214,7 +239,7 @@ generates the response, so results remain comparable:
 |---|---|---|
 | `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
 | Coding agents | Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
-| Magister | Real product path | planned |
+| `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; the only harness that runs `decoy` tasks |
 
 Rules that keep the ladder honest:
 

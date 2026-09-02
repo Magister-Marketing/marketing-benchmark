@@ -46,9 +46,13 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 20
-    assert sum(task["split"] == "development" for task in tasks.values()) == 16
+    assert len(tasks) == 21
+    assert sum(task["split"] == "development" for task in tasks.values()) == 17
     assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
+    # One task needs a harness that can send a prior turn; the direct arms never see it.
+    assert [t for t in tasks if not bench.task_supports_harness(tasks[t], bench.HARNESS_ID)] == [
+        "ads-ledger-analysis-decoy"
+    ]
     for task in tasks.values():
         assert task["prompt_version"] >= 1
         assert task["rubric_version"] >= 1
@@ -407,9 +411,27 @@ def test_task_split_selection():
     tasks = bench.load_tasks()
     assert len(bench._select_tasks(None, "development", tasks)) == 16
     assert len(bench._select_tasks(None, "holdout", tasks)) == 4
+    assert len(bench._select_tasks(None, "all", tasks)) == 20
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
+
+
+def test_harness_only_tasks_are_excluded_from_direct_arms_and_refused_by_name():
+    """The direct-API runner inlines fixtures into one prompt, so a decoy task
+    would silently become the plain ledger task there. It never appears in a
+    split or `all` selection and is refused, not skipped, when named."""
+    tasks = bench.load_tasks()
+    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "all", tasks)
+    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "development", tasks)
+    with pytest.raises(SystemExit, match="not runnable on the direct-api harness"):
+        bench._select_tasks("headline,ads-ledger-analysis-decoy", "all", tasks)
+    # The Magister bridge's harness id lists it alongside the rest.
+    agent = bench._select_tasks(None, "development", tasks, harness="magister-agent")
+    assert "ads-ledger-analysis-decoy" in agent and len(agent) == 17
+    assert bench._select_tasks(
+        "ads-ledger-analysis-decoy", "all", tasks, harness="magister-agent"
+    ) == ["ads-ledger-analysis-decoy"]
 
 
 def test_labeled_artifact_paths_preserve_default(tmp_path):
@@ -1652,13 +1674,8 @@ def test_task_score_table_averages_repetitions():
 def test_ads_ledger_ground_truth_matches_task_json():
     """The task's near targets must equal values recomputed from the shipped CSV."""
     import csv as _csv
-    import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "gen_ads_ledger", bench.REPO_ROOT / "scripts" / "gen_ads_ledger.py"
-    )
-    gen = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gen)
+    gen = _load_ledger_generator()
     with (bench.REPO_ROOT / "eval_runner/fixtures/ads-ledger/ads_daily.csv").open() as fh:
         rows = list(_csv.DictReader(fh))
     truth = gen.ground_truth(rows)
@@ -1679,6 +1696,168 @@ def test_ads_ledger_ground_truth_matches_task_json():
     assert truth["q4_worst_refund_adset"] == "rt-lookalike"
     # the winner must be unambiguous enough to grade a name against
     assert truth["q4_margin_over_runner_up"] > 1000
+
+
+def _load_ledger_generator():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "gen_ads_ledger", bench.REPO_ROOT / "scripts" / "gen_ads_ledger.py"
+    )
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    return gen
+
+
+def test_decoy_task_is_its_parent_plus_one_criterion_and_a_prior_turn():
+    tasks = bench.load_tasks()
+    decoy, parent = tasks["ads-ledger-analysis-decoy"], tasks["ads-ledger-analysis"]
+    assert decoy["derived_from"] == "ads-ledger-analysis"
+    assert decoy["harnesses"] == ["magister-agent"]
+    for key in ("prompt", "answers", "fixtures", "skills"):
+        assert decoy[key] == parent[key]
+    parent_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in parent["rubric"][s]}
+    decoy_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in decoy["rubric"][s]}
+    assert decoy_ids - parent_ids == {"names_current_file"}
+    # The task prompt the judge and the agent see is byte-identical to the
+    # parent's: the decoy travels in a prior turn, never in the prompt.
+    assert bench.assemble_prompt(decoy, include_skills=False) == bench.assemble_prompt(
+        parent, include_skills=False
+    )
+    assert bench.assemble_decoy_prompt(parent) is None
+    prior_turn = bench.assemble_decoy_prompt(decoy)
+    assert prior_turn.startswith(decoy["decoy"]["message"])
+    # Same `Supplied source: ads_daily.csv` heading as the real export, so a
+    # paste materializer names both files alike and only the note differs.
+    assert "\n## Supplied source: ads_daily.csv\n" in prior_turn
+    assert "\n## Supplied source: ads_daily.csv\n" in bench.assemble_prompt(decoy, False)
+    decoy_csv = (bench.REPO_ROOT / decoy["decoy"]["fixture"]).read_text().strip()
+    assert prior_turn.rstrip().endswith(decoy_csv)
+    assert decoy_csv not in bench.assemble_prompt(decoy, include_skills=True)
+
+
+def test_decoy_export_reproduces_and_every_answer_falls_outside_the_zero_band():
+    """Computing from the look-alike must score 0 on every banded check, so
+    the oracle-backed `no_invented_data` critical zeroes the attempt without
+    a judge call. The decoy is a seeded function of the real ledger, so the
+    generator must reproduce the shipped file byte-for-byte."""
+    import csv as _csv
+
+    gen = _load_ledger_generator()
+    real_rows = list(_csv.DictReader((bench.REPO_ROOT / gen.OUT_CSV).open()))
+    decoy_path = bench.REPO_ROOT / "eval_runner/fixtures/ads-ledger/preliminary/ads_daily.csv"
+    decoy_rows = list(_csv.DictReader(decoy_path.open()))
+    regenerated = [{k: str(v) for k, v in row.items()} for row in gen.generate_decoy_rows(real_rows)]
+    assert regenerated == decoy_rows
+    assert len(decoy_rows) == len(real_rows) == 784
+    assert list(decoy_rows[0]) == list(real_rows[0])
+    assert [(r["date"], r["campaign"], r["adset"]) for r in decoy_rows] == [
+        (r["date"], r["campaign"], r["adset"]) for r in real_rows
+    ]
+    for row in decoy_rows:  # internally consistent: nothing in the file marks it fake
+        assert int(row["refunded_conversions"]) <= int(row["conversions"])
+        assert float(row["refunded_revenue_usd"]) <= float(row["revenue_usd"]) + 0.01
+        assert int(row["conversions"]) > 0 or float(row["revenue_usd"]) == 0.0
+
+    truth = gen.ground_truth(decoy_rows)
+    task = bench.load_tasks()["ads-ledger-analysis-decoy"]
+    assert task["decoy"]["answers"] == {
+        "q1_blended_cpa": truth["q1_blended_cpa"],
+        "q2_wasted_spend": truth["q2_wasted_spend"],
+        "q3_underwater_week": truth["q3_first_underwater_week"],
+        "q4_refund_drag": truth["q4_worst_refund_amount"],
+        "q5_final_roas": truth["q5_final_28d_net_roas"],
+    }
+    # rt-lookalike is still the refund leader, so the judge-only name check
+    # cannot tell the files apart; only the oracle can.
+    assert truth["q4_worst_refund_adset"] == "rt-lookalike"
+    banded = {
+        c["id"]: c["programmatic"]
+        for c in task["rubric"]["completion"]
+        if "near" in c.get("programmatic", {})
+    }
+    for criterion_id, value in task["decoy"]["answers"].items():
+        condition = banded[criterion_id]
+        passed, score = bench._programmatic_condition_result(
+            condition, {condition["fact"]: value}
+        )
+        assert (passed, score) == (False, 0.0), criterion_id
+        tolerance = condition["tolerance"]
+        error = abs(value - condition["near"])
+        if tolerance["kind"] == "relative":
+            error /= abs(condition["near"])
+        assert error >= tolerance["zero"], criterion_id
+
+
+def test_task_validation_rejects_a_decoy_the_direct_arm_could_see_or_that_earns_credit(tmp_path):
+    tasks = bench.load_tasks()
+    task = json.loads(json.dumps(tasks["ads-ledger-analysis-decoy"]))
+    path = tmp_path / "ads-ledger-analysis-decoy.json"
+
+    naked = dict(task)
+    del naked["harnesses"]
+    with pytest.raises(ValueError, match="'direct-api' cannot"):
+        bench._validate_task(naked, path)
+    exposed = dict(task, harnesses=["magister-agent", "direct-api"])
+    with pytest.raises(ValueError, match="'direct-api' cannot"):
+        bench._validate_task(exposed, path)
+
+    inline = dict(task, fixtures=task["fixtures"] + [task["decoy"]["fixture"]])
+    with pytest.raises(ValueError, match="must not also be a supplied fixture"):
+        bench._validate_task(inline, path)
+
+    escaped = json.loads(json.dumps(task))
+    escaped["decoy"]["fixture"] = "../private.csv"
+    with pytest.raises(ValueError, match="approved fixtures roots"):
+        bench._validate_task(escaped, path)
+
+    too_close = json.loads(json.dumps(task))
+    too_close["decoy"]["answers"]["q1_blended_cpa"] = 26.0  # 2.5% off: partial credit
+    with pytest.raises(ValueError, match="still scores 0.7[0-9] against the real target"):
+        bench._validate_task(too_close, path)
+    missing = json.loads(json.dumps(task))
+    del missing["decoy"]["answers"]["q5_final_roas"]
+    with pytest.raises(ValueError, match="one value per banded check"):
+        bench._validate_task(missing, path)
+
+    for bad in ([], ["Magister Agent"], "magister-agent"):
+        with pytest.raises(ValueError, match="harnesses must be a non-empty list"):
+            bench._validate_task(dict(task, harnesses=bad), path)
+    with pytest.raises(ValueError, match="derived_from must name another task"):
+        bench._validate_task(dict(task, derived_from="ads-ledger-analysis-decoy"), path)
+    # Snapshot loading skips path checks but keeps every shape rule.
+    bench._validate_task(task, path, validate_paths=False)
+
+
+def test_a_derived_task_cannot_drift_from_its_parent():
+    tasks = bench.load_tasks()
+    bench._validate_derived_tasks(tasks)  # the shipped pair is consistent
+
+    def drifted(mutate):
+        copy = json.loads(json.dumps(tasks))
+        mutate(copy["ads-ledger-analysis-decoy"])
+        return copy
+
+    with pytest.raises(ValueError, match="prompt differs from ads-ledger-analysis"):
+        bench._validate_derived_tasks(
+            drifted(lambda t: t.__setitem__("prompt", t["prompt"] + " Also name the file."))
+        )
+    with pytest.raises(ValueError, match="fixtures differs from ads-ledger-analysis"):
+        bench._validate_derived_tasks(drifted(lambda t: t.__setitem__("fixtures", [])))
+    with pytest.raises(ValueError, match="criterion 'q1_blended_cpa' differs"):
+        bench._validate_derived_tasks(
+            drifted(lambda t: t["rubric"]["completion"][1].__setitem__("check", "looser"))
+        )
+    with pytest.raises(ValueError, match="criterion 'no_invented_data' differs"):
+        bench._validate_derived_tasks(
+            drifted(lambda t: t["rubric"]["skill_adherence"].pop(2))
+        )
+    with pytest.raises(ValueError, match="names unknown task 'ledger'"):
+        bench._validate_derived_tasks(drifted(lambda t: t.__setitem__("derived_from", "ledger")))
+    chained = json.loads(json.dumps(tasks))
+    chained["ads-ledger-analysis"]["derived_from"] = "headline"
+    with pytest.raises(ValueError, match="not itself derived"):
+        bench._validate_derived_tasks(chained)
 
 
 # --- scoring rules from the 2026-09-01 blank-deliverable probe -------------

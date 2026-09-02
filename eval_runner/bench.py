@@ -109,7 +109,51 @@ def load_tasks() -> dict:
         tasks[task["id"]] = task
     if not tasks:
         raise ValueError(f"no tasks found in {TASKS_DIR}")
+    _validate_derived_tasks(tasks)
     return tasks
+
+
+def _validate_derived_tasks(tasks: dict) -> None:
+    """A task that names `derived_from` is its parent plus something — a
+    decoy turn, an extra criterion — never a quietly diverging copy. The
+    prompt, answers, fixtures, and skills must be identical and every parent
+    criterion must appear unchanged, so a parent edit that forgets the child
+    fails here instead of shipping two versions of one task."""
+    for task in tasks.values():
+        parent_id = task.get("derived_from")
+        if parent_id is None:
+            continue
+        parent = tasks.get(parent_id)
+        if parent is None:
+            raise ValueError(
+                f"{task['id']}: derived_from names unknown task {parent_id!r}"
+            )
+        if parent.get("derived_from"):
+            raise ValueError(
+                f"{task['id']}: derived_from must name a task that is not itself derived"
+            )
+        for key in ("prompt", "answers", "fixtures", "skills"):
+            if task.get(key) != parent.get(key):
+                raise ValueError(
+                    f"{task['id']}: {key} differs from {parent_id}; a derived task "
+                    "changes only what it adds"
+                )
+        for section in RUBRIC_SECTIONS:
+            derived = {c["id"]: c for c in task["rubric"][section]}
+            for criterion in parent["rubric"][section]:
+                if derived.get(criterion["id"]) != criterion:
+                    raise ValueError(
+                        f"{task['id']}: rubric.{section} criterion "
+                        f"{criterion['id']!r} differs from {parent_id}"
+                    )
+
+
+def task_supports_harness(task: dict, harness_id: str) -> bool:
+    """Absent `harnesses` means every harness. A task lists them only when its
+    input cannot be delivered by all of them — a decoy task needs a harness
+    that can send a prior turn into the same session."""
+    harnesses = task.get("harnesses")
+    return harnesses is None or harness_id in harnesses
 
 
 def _rubric_sha256(task: dict) -> str:
@@ -215,6 +259,47 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         or answers["count"] < 1
     ):
         raise ValueError(f"{path.name}: answers needs a positive integer count")
+    harnesses = task.get("harnesses")
+    if harnesses is not None and (
+        not isinstance(harnesses, list)
+        or not harnesses
+        or not all(
+            isinstance(item, str) and re.fullmatch(r"[a-z0-9-]+", item)
+            for item in harnesses
+        )
+    ):
+        raise ValueError(
+            f"{path.name}: harnesses must be a non-empty list of harness id slugs"
+        )
+    derived_from = task.get("derived_from")
+    if derived_from is not None and (
+        not isinstance(derived_from, str)
+        or not derived_from
+        or derived_from == task["id"]
+    ):
+        raise ValueError(f"{path.name}: derived_from must name another task id")
+    decoy = task.get("decoy")
+    if decoy is not None:
+        if (
+            not isinstance(decoy, dict)
+            or not isinstance(decoy.get("fixture"), str)
+            or not decoy["fixture"]
+            or not isinstance(decoy.get("message"), str)
+            or not decoy["message"].strip()
+        ):
+            raise ValueError(f"{path.name}: decoy needs a fixture path and a message")
+        if decoy["fixture"] in (task.get("fixtures") or []):
+            raise ValueError(
+                f"{path.name}: the decoy fixture must not also be a supplied fixture"
+            )
+        # The direct-API runner inlines every fixture into one prompt; it has
+        # no prior turn to hide a decoy in, so a decoy task must say which
+        # harnesses can deliver it — and this one is never among them.
+        if harnesses is None or HARNESS_ID in harnesses:
+            raise ValueError(
+                f"{path.name}: a decoy task must list the harnesses that can "
+                f"send a prior turn, and {HARNESS_ID!r} cannot"
+            )
     seen: set[str] = set()
     for section in RUBRIC_SECTIONS:
         criteria = task["rubric"].get(section)
@@ -243,19 +328,59 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
             ):
                 raise ValueError(f"{path.name}: {field} must be a list of paths")
             for relative in entries:
-                candidate = Path(relative)
-                resolved = (REPO_ROOT / candidate).resolve()
-                if candidate.is_absolute() or ".." in candidate.parts or not any(
-                    resolved.is_relative_to(root.resolve()) for root in roots
-                ):
-                    raise ValueError(
-                        f"{path.name}: {field[:-1]} must stay inside approved "
-                        f"{field} roots: {relative}"
-                    )
-                if not resolved.is_file():
-                    raise ValueError(f"{path.name}: {field[:-1]} not found: {relative}")
+                _validate_source_path(path, field, relative, roots)
+        if decoy is not None:
+            _validate_source_path(path, "fixtures", decoy["fixture"], FIXTURE_ROOTS)
     # Empty-response evaluation validates programmatic fact names and operators.
     programmatic_results(task, measured_facts(task, ""))
+    if decoy is not None:
+        _validate_decoy_answers(task, path)
+
+
+def _validate_source_path(
+    path: Path, field: str, relative: str, roots: tuple[Path, ...]
+) -> None:
+    candidate = Path(relative)
+    resolved = (REPO_ROOT / candidate).resolve()
+    if candidate.is_absolute() or ".." in candidate.parts or not any(
+        resolved.is_relative_to(root.resolve()) for root in roots
+    ):
+        raise ValueError(
+            f"{path.name}: {field[:-1]} must stay inside approved "
+            f"{field} roots: {relative}"
+        )
+    if not resolved.is_file():
+        raise ValueError(f"{path.name}: {field[:-1]} not found: {relative}")
+
+
+def _validate_decoy_answers(task: dict, path: Path) -> None:
+    """The decoy's own oracle answers must score 0 against every banded check,
+    or computing from the wrong file would earn credit. `decoy.answers` maps
+    each banded criterion id to the value the decoy export yields; the test
+    suite recomputes those values from the shipped decoy CSV."""
+    answers = task["decoy"].get("answers")
+    banded = {
+        criterion["id"]: criterion["programmatic"]
+        for section in RUBRIC_SECTIONS
+        for criterion in task["rubric"][section]
+        if "near" in (criterion.get("programmatic") or {})
+    }
+    if not isinstance(answers, dict) or set(answers) != set(banded):
+        raise ValueError(
+            f"{path.name}: decoy.answers must give one value per banded check: "
+            f"{', '.join(sorted(banded))}"
+        )
+    for criterion_id, value in answers.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{path.name}: decoy answer {criterion_id} must be a number")
+        condition = banded[criterion_id]
+        _, score = _programmatic_condition_result(condition, {condition["fact"]: value})
+        if score != 0.0:
+            raise ValueError(
+                f"{path.name}: decoy answer for {criterion_id} ({value}) still "
+                f"scores {score:.2f} against the real target {condition['near']}; "
+                "a decoy must fall outside the zero-credit band"
+            )
 
 
 # ------------------------------------------------------- prompt assembly
@@ -270,6 +395,24 @@ def assemble_prompt(task: dict, include_skills: bool) -> str:
             content = (REPO_ROOT / skill).read_text().strip()
             parts.append(f"---\n\n## Skill guidance you should follow\n\n{content}")
     return "\n\n".join(parts) + "\n"
+
+
+def assemble_decoy_prompt(task: dict) -> str | None:
+    """The prior turn a decoy task's harness sends before the real prompt: the
+    decoy message, then the look-alike export under the same `Supplied
+    source` heading `assemble_prompt` uses, so a harness that saves pastes to
+    files infers the same file name for both and only that turn's own note
+    tells them apart. Never part of the task prompt itself — `assemble_prompt`
+    ignores `decoy` — which is why a harness that cannot send a prior turn is
+    kept off the task by `harnesses`."""
+    decoy = task.get("decoy")
+    if not decoy:
+        return None
+    content = (REPO_ROOT / decoy["fixture"]).read_text().strip()
+    return (
+        f"{decoy['message'].strip()}\n\n---\n\n"
+        f"## Supplied source: {Path(decoy['fixture']).name}\n\n{content}\n"
+    )
 
 
 def _prompt_candidate(task: dict, prompt_text: str, include_skills: bool) -> str:
@@ -490,14 +633,32 @@ def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
     return selected
 
 
-def _select_tasks(raw: str | None, split: str, tasks: dict) -> list[str]:
+def _select_tasks(
+    raw: str | None, split: str, tasks: dict, harness: str = HARNESS_ID
+) -> list[str]:
     if raw:
-        return _select(raw, tasks, "task")
+        selected = _select(raw, tasks, "task")
+        unsupported = [
+            task_id for task_id in selected
+            if not task_supports_harness(tasks[task_id], harness)
+        ]
+        if unsupported:
+            raise SystemExit(
+                f"task(s) not runnable on the {harness} harness: "
+                f"{', '.join(unsupported)} (each lists the harnesses that can "
+                "deliver its input in `harnesses`)"
+            )
+        return selected
+    runnable = {
+        task_id: task
+        for task_id, task in tasks.items()
+        if task_supports_harness(task, harness)
+    }
     if split == "all":
-        return list(tasks)
+        return list(runnable)
     if split not in TASK_SPLITS:
         raise SystemExit(f"unknown task split {split!r}; known: all, {', '.join(TASK_SPLITS)}")
-    selected = [task_id for task_id, task in tasks.items() if task["split"] == split]
+    selected = [task_id for task_id, task in runnable.items() if task["split"] == split]
     if not selected:
         raise SystemExit(f"no tasks found in split {split!r}")
     return selected
@@ -3981,6 +4142,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     tasks = load_tasks()
     for task in tasks.values():
         assemble_prompt(task, include_skills=True)  # proves fixtures readable
+        assemble_decoy_prompt(task)  # and the decoy export, when there is one
     counts = {
         section: sum(len(task["rubric"][section]) for task in tasks.values())
         for section in RUBRIC_SECTIONS
@@ -3989,8 +4151,12 @@ def cmd_validate(_args: argparse.Namespace) -> int:
         split: sum(task["split"] == split for task in tasks.values())
         for split in TASK_SPLITS
     }
+    harness_only = sum(
+        not task_supports_harness(task, HARNESS_ID) for task in tasks.values()
+    )
     print(
-        f"OK: {len(tasks)} tasks {split_counts}, {len(models)} models, "
+        f"OK: {len(tasks)} tasks {split_counts} ({harness_only} harness-only, "
+        f"not run by {HARNESS_ID}), {len(models)} models, "
         f"criteria per section: {counts}"
     )
     return 0
