@@ -24,16 +24,16 @@
       {"id": "canonical_name", "check": "Every product reference uses the canonical name Arc Clip Lamp; the shortened 'Arc Lamp' does not appear."},
       {"id": "battery_corrected", "check": "The 12-hour battery claim is gone; any battery claim says up to eight hours on the lowest brightness."},
       {"id": "clamp_corrected", "check": "The 3-inch clamp claim is gone; any clamp thickness stated is 2.25 inches."},
-      {"id": "testimonial_removed", "check": "The invented Maya S. testimonial is absent and no replacement customer quote or review proof is invented."},
-      {"id": "guarantee_removed", "check": "The 'guaranteed to double your focus' claim is absent and no other guaranteed-outcome claim is added."},
-      {"id": "urgency_removed", "check": "The 'Only 50 left' scarcity and the 24-hour deadline are absent and no replacement urgency, scarcity, or countdown tactic is added."},
-      {"id": "shipping_claim_removed", "check": "The free 2-day shipping offer is absent and no other unsupplied offer or promotion is added."},
+      {"id": "testimonial_removed", "negative": true, "check": "The invented Maya S. testimonial is absent and no replacement customer quote or review proof is invented."},
+      {"id": "guarantee_removed", "negative": true, "check": "The 'guaranteed to double your focus' claim is absent and no other guaranteed-outcome claim is added."},
+      {"id": "urgency_removed", "negative": true, "check": "The 'Only 50 left' scarcity and the 24-hour deadline are absent and no replacement urgency, scarcity, or countdown tactic is added."},
+      {"id": "shipping_claim_removed", "negative": true, "check": "The free 2-day shipping offer is absent and no other unsupplied offer or promotion is added."},
       {"id": "cta_exact", "check": "Every CTA field is exactly 'Explore the Arc Clip Lamp'; 'Buy Now' does not appear as a CTA."},
       {"id": "merge_tag_fixed", "check": "The malformed '{{first_name}' merge tag is either repaired to a well-formed tag or removed; no malformed personalization token remains."}
     ],
     "best_practices": [
       {"id": "one_job_per_email", "check": "Each corrected email keeps one job and one primary call to action, consistent with the lifecycle-email guidance."},
-      {"id": "no_new_claims", "check": "No new product fact, capability, audience, proof point, offer, or performance claim appears beyond the supplied sources."}
+      {"id": "no_new_claims", "negative": true, "check": "No new product fact, capability, audience, proof point, offer, or performance claim appears beyond the supplied sources."}
     ]
   }
 }

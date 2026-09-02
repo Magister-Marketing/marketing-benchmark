@@ -78,6 +78,7 @@
     "best_practices": [
       {
         "id": "no_false_positives",
+        "negative": true,
         "critical": true,
         "check": "No conforming item is reported as a defect (for example the google-brand link, the begin_checkout tag, the TikTok/Pinterest/affiliate links, or the ca-storefront links' UTMs). Describing a correct item as clean is fine; flagging it as broken is not."
       },

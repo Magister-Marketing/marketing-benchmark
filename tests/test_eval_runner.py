@@ -1676,3 +1676,104 @@ def test_ads_ledger_ground_truth_matches_task_json():
     assert truth["q4_worst_refund_adset"] == "rt-lookalike"
     # the winner must be unambiguous enough to grade a name against
     assert truth["q4_margin_over_runner_up"] > 1000
+
+
+# --- scoring rules from the 2026-09-01 blank-deliverable probe -------------
+
+
+def _scored_judgment(task_id: str, criteria: list[dict]) -> dict:
+    return {"task_id": task_id, "model_id": "m", "repetition": 1, "completed": True, "criteria": criteria}
+
+
+def test_free_programmatic_credit_is_measured_from_the_task_itself():
+    from eval_runner.bench import free_credit_scores, load_tasks
+
+    tasks = load_tasks()
+    free = free_credit_scores(tasks["landing-page"])
+    assert free == {"complete_html": 0.5, "cta_count": 0.5, "no_external_assets": 0.75}
+    assert free_credit_scores(tasks["platform-limits-gauntlet"])["within_char_limits"] == 1.0
+    assert free_credit_scores(tasks["headline"]) == {}
+
+
+def test_free_credit_is_discounted_and_pure_guards_are_excluded_while_passing():
+    from eval_runner.bench import _attempt_score, apply_scoring_rules, load_tasks
+
+    task = load_tasks()["platform-limits-gauntlet"]
+    ids = [c["id"] for s in task["rubric"].values() for c in s]
+    # A real deliverable that satisfies everything: the guard is excluded, score stays 100.
+    perfect = _scored_judgment(task["id"], [{"id": i, "pass": True, "score": 1.0} for i in ids])
+    adjusted = apply_scoring_rules(perfect, task)
+    guard = next(c for c in adjusted["criteria"] if c["id"] == "within_char_limits")
+    assert guard["guard"] is True and guard["excluded"] is True
+    assert _attempt_score(adjusted) == 100.0
+    # Break the guard: it counts as a plain failure now, not a free 1.0.
+    broken = _scored_judgment(task["id"], [
+        {"id": i, "pass": i != "within_char_limits", "score": 0.0 if i == "within_char_limits" else 1.0}
+        for i in ids
+    ])
+    adjusted = apply_scoring_rules(broken, task)
+    guard = next(c for c in adjusted["criteria"] if c["id"] == "within_char_limits")
+    assert "excluded" not in guard and guard["score"] == 0.0
+    assert _attempt_score(adjusted) == round(100.0 * (len(ids) - 1) / len(ids), 1)
+
+
+def test_partially_free_credit_is_renormalized():
+    from eval_runner.bench import apply_scoring_rules, load_tasks
+
+    task = load_tasks()["landing-page"]
+    ids = [c["id"] for s in task["rubric"].values() for c in s]
+    # Three of no_external_assets' four conditions already hold for an empty page
+    # (free 0.75); passing only those three earns nothing, all four earns full.
+    partial = _scored_judgment(task["id"], [
+        {"id": i, "pass": i != "no_external_assets", "score": 0.75 if i == "no_external_assets" else 1.0}
+        for i in ids
+    ])
+    adjusted = {c["id"]: c for c in apply_scoring_rules(partial, task)["criteria"]}
+    assert adjusted["no_external_assets"]["score"] == 0.0
+    assert adjusted["no_external_assets"]["free_on_empty"] == 0.75
+    full = _scored_judgment(task["id"], [{"id": i, "pass": True, "score": 1.0} for i in ids])
+    assert {c["id"]: c["score"] for c in apply_scoring_rules(full, task)["criteria"]}["no_external_assets"] == 1.0
+
+
+def test_negative_criteria_need_a_positive_pass():
+    from eval_runner.bench import _attempt_score, apply_scoring_rules, load_tasks
+
+    task = load_tasks()["tracking-audit"]
+    ids = [c["id"] for s in task["rubric"].values() for c in s]
+    assert any(c.get("negative") for s in task["rubric"].values() for c in s if c["id"] == "no_false_positives")
+    # A content-free reply accuses nothing, so the judge passes no_false_positives.
+    blank = _scored_judgment(task["id"], [{"id": i, "pass": i == "no_false_positives"} for i in ids])
+    adjusted = apply_scoring_rules(blank, task)
+    negative = next(c for c in adjusted["criteria"] if c["id"] == "no_false_positives")
+    assert negative["excluded"] is True and negative["pass"] is True
+    assert _attempt_score(adjusted) == 0.0
+    # One genuine finding unlocks it.
+    real = _scored_judgment(task["id"], [{"id": i, "pass": i in ("no_false_positives", ids[0])} for i in ids])
+    adjusted = apply_scoring_rules(real, task)
+    assert "excluded" not in next(c for c in adjusted["criteria"] if c["id"] == "no_false_positives")
+    assert _attempt_score(adjusted) == round(100.0 * 2 / len(ids), 1)
+
+
+def test_a_blank_deliverable_earns_nothing_on_any_task():
+    """The 2026-09-01 probe: empty and content-free replies scored 5-17 on four tasks."""
+    from eval_runner.bench import _attempt_score, apply_scoring_rules, load_tasks, measured_facts, programmatic_results
+
+    for task in load_tasks().values():
+        measured = programmatic_results(task, measured_facts(task, ""))
+        criteria = [
+            {**measured[c["id"]]} if c["id"] in measured else {"id": c["id"], "pass": bool(c.get("negative"))}
+            for section in task["rubric"].values()
+            for c in section
+        ]
+        assert _attempt_score(apply_scoring_rules(_scored_judgment(task["id"], criteria), task)) == 0.0, task["id"]
+
+
+def test_scoring_rules_never_change_a_pass_flag():
+    from eval_runner.bench import apply_scoring_rules, load_tasks
+
+    for task in load_tasks().values():
+        ids = [c["id"] for s in task["rubric"].values() for c in s]
+        for pattern in (True, False):
+            judgment = _scored_judgment(task["id"], [{"id": i, "pass": pattern, "score": 0.6} for i in ids])
+            adjusted = apply_scoring_rules(judgment, task)
+            assert [c["pass"] for c in adjusted["criteria"]] == [pattern] * len(ids)
