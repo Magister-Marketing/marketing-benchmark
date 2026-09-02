@@ -137,8 +137,9 @@ in `models.json`; its OpenRouter entries are `gemini-3.7-flash-high` and
 `glm-5.3`.
 
 OpenRouter requests always pin zero-data-retention, deny data collection, and
-restrict routing to each candidate's explicit provider allowlist. Gemini 3.x
-requests additionally select the flex service tier required by those routes.
+restrict routing to each candidate's explicit provider allowlist. Every request
+runs on the provider's default service tier; the discounted flex tier is not
+used because it never falls back on a capacity error.
 
 **The one-liner** — run, grade, and report in a single command from the
 repo root:

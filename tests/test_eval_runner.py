@@ -562,20 +562,19 @@ def test_build_request_openrouter_zdr_policy_and_web_plugin():
             "only": ["google-vertex"],
             "allow_fallbacks": True,
         },
-        "service_tier": "flex",
         "reasoning": {"effort": "high"},
         "plugins": [{"id": "web"}],
     }
     assert "temperature" not in body
 
 
-def test_build_request_openrouter_model_policies_and_flex_tier():
+def test_build_request_openrouter_model_policies_and_default_tier():
     expected = {
-        "google/gemini-3.7-flash": (["google-vertex"], True),
+        "google/gemini-3.7-flash": (["google-vertex"], False),
         "z-ai/glm-5.3": (
             ["fireworks", "together", "parasail", "novita"], False
         ),
-        "google/gemini-3.1-pro-preview": (["google-vertex"], True),
+        "google/gemini-3.1-pro-preview": (["google-vertex"], False),
         "google/gemini-2.5-pro": (["google-vertex"], False),
         "google/gemini-2.5-flash": (["google-vertex"], False),
     }
@@ -594,6 +593,18 @@ def test_build_request_openrouter_model_policies_and_flex_tier():
         assert "reasoning" not in body
         assert "plugins" not in body
         assert "temperature" not in body
+
+
+def test_build_request_openrouter_sends_an_opted_in_flex_tier(monkeypatch):
+    monkeypatch.setitem(
+        providers.OPENROUTER_MODEL_POLICIES,
+        "google/gemini-3.7-flash",
+        {"providers": ["google-vertex"], "flex": True, "supports_reasoning": True},
+    )
+    _, _, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 100, web_search=False, api_key="k"
+    )
+    assert body["service_tier"] == "flex"
 
 
 @pytest.mark.parametrize(
@@ -812,8 +823,8 @@ def test_candidate_manifest_shape():
         assert models[candidate_id]["model"] == model_spec
         assert models[candidate_id].get("reasoning_effort") == effort
     assert models["gemini-3.7-flash-high"]["pricing"] == {
-        "input_per_mtok": 0.375,
-        "output_per_mtok": 1.875,
+        "input_per_mtok": 0.75,
+        "output_per_mtok": 3.75,
     }
     assert models["glm-5.3"]["pricing"] == {
         "input_per_mtok": 1.40,

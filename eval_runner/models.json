@@ -103,8 +103,8 @@
     "model": "openrouter/google/gemini-3.7-flash",
     "reasoning_effort": "high",
     "pricing": {
-      "input_per_mtok": 0.375,
-      "output_per_mtok": 1.875
+      "input_per_mtok": 0.75,
+      "output_per_mtok": 3.75
     }
   },
   "glm-5.3": {

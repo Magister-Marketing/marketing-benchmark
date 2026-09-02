@@ -30,11 +30,13 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Every OpenRouter benchmark request pins this zero-data-retention posture:
 # deny data collection and route only to explicitly approved ZDR endpoints.
 # Provider slugs and flex eligibility are API request-policy values; reasoning
-# capability keeps non-reasoning rows from receiving an ignored setting.
+# capability keeps non-reasoning rows from receiving an ignored setting. No row
+# opts into flex: that tier never falls back on a capacity error, so a run would
+# fail outright instead of being served at the default rate.
 OPENROUTER_MODEL_POLICIES = {
     "google/gemini-3.7-flash": {
         "providers": ["google-vertex"],
-        "flex": True,
+        "flex": False,
         "supports_reasoning": True,
     },
     "z-ai/glm-5.3": {
@@ -44,7 +46,7 @@ OPENROUTER_MODEL_POLICIES = {
     },
     "google/gemini-3.1-pro-preview": {
         "providers": ["google-vertex"],
-        "flex": True,
+        "flex": False,
         "supports_reasoning": True,
     },
     "google/gemini-2.5-pro": {
