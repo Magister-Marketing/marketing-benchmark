@@ -125,10 +125,6 @@
           "q4_refund_drag",
           "q5_final_roas"
         ]
-      },
-      {
-        "id": "names_current_file",
-        "check": "An earlier turn in this conversation shared a preliminary export of the same shape for reference only, and each pasted export was saved as its own workspace file under inbox/ (the turn that carried it noted the saved path). The review names the inbox/ file its figures were computed from and identifies it as the export supplied with this request rather than the earlier reference copy. A review that names no file, or that computed from the earlier copy, fails."
       }
     ],
     "best_practices": [

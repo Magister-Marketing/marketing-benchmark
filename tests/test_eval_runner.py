@@ -1709,7 +1709,7 @@ def _load_ledger_generator():
     return gen
 
 
-def test_decoy_task_is_its_parent_plus_one_criterion_and_a_prior_turn():
+def test_decoy_task_is_its_parent_plus_a_prior_turn():
     tasks = bench.load_tasks()
     decoy, parent = tasks["ads-ledger-analysis-decoy"], tasks["ads-ledger-analysis"]
     assert decoy["derived_from"] == "ads-ledger-analysis"
@@ -1718,7 +1718,10 @@ def test_decoy_task_is_its_parent_plus_one_criterion_and_a_prior_turn():
         assert decoy[key] == parent[key]
     parent_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in parent["rubric"][s]}
     decoy_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in decoy["rubric"][s]}
-    assert decoy_ids - parent_ids == {"names_current_file"}
+    # No extra criterion: the prompt never asks the review to name its source
+    # file, so the oracle-backed parent rubric is the whole score and the
+    # attempt record keeps `inbox_files_named` as unscored evidence.
+    assert decoy_ids == parent_ids
     # The task prompt the judge and the agent see is byte-identical to the
     # parent's: the decoy travels in a prior turn, never in the prompt.
     assert bench.assemble_prompt(decoy, include_skills=False) == bench.assemble_prompt(

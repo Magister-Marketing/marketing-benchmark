@@ -7,9 +7,10 @@
   moved) shared one turn earlier for reference only. All five oracle answers
   from the decoy fall outside the zero-credit band (A1 +40%, A2 +56%, A3
   five weeks early, A4 -50%, A5 -39%), so computing from the wrong file
-  scores 0 through the existing oracle-backed `no_invented_data`; a new
-  judge criterion, `names_current_file`, asks the review to say which saved
-  file it used. Harness-only: the task lists `harnesses: [magister-agent]`,
+  scores 0 through the existing oracle-backed `no_invented_data`; the rubric
+  is otherwise the parent's, because the prompt is byte-identical and never
+  asks the review to name its source file (the harness records which saved
+  file the review named as unscored evidence). Harness-only: the task lists `harnesses: [magister-agent]`,
   and `run`/`--split`/`--tasks` skip or refuse it on `direct-api`, whose
   inlined prompt could not carry a prior turn. New task fields `harnesses`,
   `decoy` (fixture, message, answers — each validated to score 0 against the
