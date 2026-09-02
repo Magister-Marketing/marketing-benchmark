@@ -3,7 +3,7 @@
   "title": "Pre-Q4 tracking audit against the documented standards",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "eval_runner/fixtures/tracking-audit/tracking_standards.md",
     "eval_runner/fixtures/tracking-audit/active_links.csv",
@@ -28,7 +28,11 @@
     "skill_adherence": [
       {
         "id": "finds_uppercase_medium",
-        "check": "Flags the uppercase utm_medium=CPC values on the Google links (google-search x2 and google-pmax) as violating the lowercase standard and fragmenting paid-search reporting."
+        "check": "Flags the uppercase utm_medium=CPC values on the two google-search links as violating the lowercase standard and fragmenting paid-search reporting."
+      },
+      {
+        "id": "finds_uppercase_medium_pmax",
+        "check": "Also flags the google-pmax link's uppercase utm_medium=CPC (the same defect on the Performance Max campaign, not only on the search campaigns)."
       },
       {
         "id": "finds_missing_source",
@@ -79,7 +83,6 @@
       {
         "id": "no_false_positives",
         "negative": true,
-        "critical": true,
         "check": "No conforming item is reported as a defect (for example the google-brand link, the begin_checkout tag, the TikTok/Pinterest/affiliate links, or the ca-storefront links' UTMs). Describing a correct item as clean is fine; flagging it as broken is not."
       },
       {

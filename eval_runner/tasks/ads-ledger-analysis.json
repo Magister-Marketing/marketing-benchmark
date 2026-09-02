@@ -3,7 +3,7 @@
   "title": "Quarterly paid-media review from the raw daily export",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "eval_runner/fixtures/ads-ledger/ads_daily.csv"
   ],
@@ -103,7 +103,13 @@
         "id": "no_invented_data",
         "negative": true,
         "critical": true,
-        "check": "Every figure presented as coming from the export is derivable from the supplied CSV; no external benchmarks, industry averages, or invented segment data are presented as if they were in the data."
+        "check": "Every figure presented as coming from the export is derivable from the supplied CSV; no external benchmarks, industry averages, or invented segment data are presented as if they were in the data.",
+        "fails_if_zero": [
+          "q1_blended_cpa",
+          "q2_wasted_spend",
+          "q4_refund_drag",
+          "q5_final_roas"
+        ]
       }
     ],
     "best_practices": [

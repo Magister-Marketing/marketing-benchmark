@@ -40,6 +40,8 @@ performance on an untouched test.
 | [Email-flow repair](../eval_runner/tasks/email-flow-repair.json) | A corrected four-email onboarding sequence | Finding every planted defect with no defect categories named in the prompt | 14 |
 | [Budget reconciliation trap](../eval_runner/tasks/budget-reconciliation-trap.json) | A Q4 allocation response to an infeasible brief | Catching that the commitments exceed the cap and saying so with exact numbers | 8 |
 | [Analytics source conflict](../eval_runner/tasks/analytics-source-conflict.json) | A reconciliation of contradictory Meta and GA4 reports | Computing both sources' truths without inventing a single reconciled number or undocumented causes | 9 |
+| [Quarterly paid-media review](../eval_runner/tasks/ads-ledger-analysis.json) | A CMO-ready review of a 784-row daily ads export with five labeled figures | Computing refund-adjusted CPA, wasted spend, and ROAS exactly; `no_invented_data` is backed by the oracle, so estimated figures score 0 | 12 |
+| [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritized defect list across UTM links, GTM/GA4 tags, and consent defaults | Finding all twelve planted defects (Performance Max counts separately from search) without flagging the conforming decoys | 18 |
 
 ## Holdout tasks
 
