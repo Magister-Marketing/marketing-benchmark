@@ -14,9 +14,9 @@ eval_runner/tasks/. The run directory (prompts, raw submissions, judgments,
 report.md, report.html, report.json) lands under eval_runner/results/ and its
 path is printed at the end.
 
-Keys: ANTHROPIC_API_KEY / OPENAI_API_KEY must be in the environment, or
-pass --env-file pointing at a KEY=value file. Only those two keys are
-read from it, and values are never printed.
+Keys: ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY must be in the
+environment as needed, or pass --env-file pointing at a KEY=value file. Only
+those three keys are read from it, and values are never printed.
 """
 import argparse
 import os
@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_runner import bench  # noqa: E402
 
-API_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+API_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY")
 
 
 def load_env_file(path: str) -> None:

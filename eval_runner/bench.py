@@ -57,7 +57,9 @@ JUDGE_DEFAULT = "claude-sonnet-5"
 RUN_CONCURRENCY = 4
 RUBRIC_SECTIONS = ("completion", "skill_adherence", "best_practices")
 TASK_SPLITS = ("development", "holdout")
-NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed")
+# Anthropic: end_turn / stop_sequence; OpenAI Responses: completed;
+# chat-completions (OpenRouter): stop.
+NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed", "stop")
 FIXTURE_ROOTS = (EVAL_RUNNER_DIR / "fixtures", REPO_ROOT / "evals/fixtures/public")
 SKILL_ROOTS = (REPO_ROOT / "evals/fixtures/public/skills",)
 
@@ -83,8 +85,20 @@ def _candidate_settings(spec: dict) -> dict:
 
 
 def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
+    if "error" in attempt:
+        return None
+    for key in ("gateway_provider_cost_usd", "provider_cost_usd"):
+        recorded = attempt.get(key)
+        # Zero is indistinguishable from "not recorded": no candidate runs
+        # on a free endpoint, so 0 falls through to the token estimate.
+        if (
+            isinstance(recorded, (int, float))
+            and not isinstance(recorded, bool)
+            and recorded > 0
+        ):
+            return float(recorded)
     pricing = spec.get("pricing")
-    if not pricing or "error" in attempt:
+    if not pricing:
         return None
     input_tokens = attempt.get("input_tokens")
     output_tokens = attempt.get("output_tokens")
@@ -538,11 +552,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if errors == 0 else 1
 
 
-API_ENV_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+API_ENV_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY")
 
 
 def _load_env_file(path: str) -> None:
-    """Load only the two provider keys from a KEY=value file; never print them."""
+    """Load only the three provider keys from a KEY=value file; never print them."""
     for line in Path(path).read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:

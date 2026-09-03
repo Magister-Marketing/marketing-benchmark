@@ -9,6 +9,7 @@ import re
 
 import pytest
 
+import eval as eval_cli
 from eval_runner import bench, brand_assets, providers
 
 
@@ -17,7 +18,7 @@ def test_models_load_and_specs_are_supported():
     assert models, "models.json must not be empty"
     for spec in models.values():
         provider, model = providers.split_model_spec(spec["model"])
-        assert provider in ("anthropic", "openai")
+        assert provider in ("anthropic", "openai", "openrouter")
         assert model
 
 
@@ -527,6 +528,252 @@ def test_build_request_openai_responses_api():
     assert "max_output_tokens" not in body
 
 
+def test_split_model_spec_preserves_openrouter_upstream_slug():
+    assert providers.split_model_spec(
+        "openrouter/google/gemini-3.7-flash"
+    ) == ("openrouter", "google/gemini-3.7-flash")
+    assert providers.split_model_spec("openai/gpt-5.6-sol") == (
+        "openai", "gpt-5.6-sol"
+    )
+    for invalid in (
+        "openrouter/google-only",
+        "openrouter//gemini-3.7-flash",
+        "openrouter/google/",
+        "openrouter/google/gemini/extra",
+        "openai/vendor/model",
+    ):
+        with pytest.raises(providers.ProviderError, match="unsupported model spec"):
+            providers.split_model_spec(invalid)
+
+
+def test_required_env_key_includes_openrouter():
+    assert providers.required_env_key("anthropic") == "ANTHROPIC_API_KEY"
+    assert providers.required_env_key("openai") == "OPENAI_API_KEY"
+    assert providers.required_env_key("openrouter") == "OPENROUTER_API_KEY"
+
+
+def test_eval_env_file_loads_openrouter_key(tmp_path, monkeypatch):
+    for key in eval_cli.API_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    env_file = tmp_path / "keys.env"
+    env_file.write_text(
+        "OPENROUTER_API_KEY=router-test\nIGNORED_KEY=do-not-load\n"
+    )
+    eval_cli.load_env_file(str(env_file))
+    assert eval_cli.os.environ["OPENROUTER_API_KEY"] == "router-test"
+    assert "IGNORED_KEY" not in eval_cli.os.environ
+
+
+def test_build_request_openrouter_zdr_policy_and_web_plugin():
+    url, headers, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 16000,
+        web_search=True, api_key="k", settings={"reasoning_effort": "high"},
+    )
+    assert url == providers.OPENROUTER_URL
+    assert headers == {
+        "Authorization": "Bearer k",
+        "content-type": "application/json",
+    }
+    assert body == {
+        "model": "google/gemini-3.7-flash",
+        "max_tokens": 16000,
+        "messages": [{"role": "user", "content": "hi"}],
+        "provider": {
+            "zdr": True,
+            "data_collection": "deny",
+            "only": ["google-vertex"],
+            "allow_fallbacks": True,
+        },
+        "reasoning": {"effort": "high"},
+        "plugins": [{"id": "web"}],
+    }
+    assert "temperature" not in body
+
+
+def test_build_request_openrouter_model_policies_and_default_tier():
+    expected = {
+        "google/gemini-3.7-flash": (["google-vertex"], False),
+        "z-ai/glm-5.3": (
+            ["fireworks", "together", "parasail", "novita"], False
+        ),
+        "google/gemini-3.1-pro-preview": (["google-vertex"], False),
+        "google/gemini-2.5-pro": (["google-vertex"], False),
+        "google/gemini-2.5-flash": (["google-vertex"], False),
+    }
+    assert set(providers.OPENROUTER_MODEL_POLICIES) == set(expected)
+    for model, (only, flex) in expected.items():
+        _, _, body = providers.build_request(
+            f"openrouter/{model}", "hi", 100, web_search=False, api_key="k"
+        )
+        assert body["provider"] == {
+            "zdr": True,
+            "data_collection": "deny",
+            "only": only,
+            "allow_fallbacks": True,
+        }
+        assert (body.get("service_tier") == "flex") is flex
+        assert "reasoning" not in body
+        assert "plugins" not in body
+        assert "temperature" not in body
+
+
+def test_build_request_openrouter_sends_an_opted_in_flex_tier(monkeypatch):
+    monkeypatch.setitem(
+        providers.OPENROUTER_MODEL_POLICIES,
+        "google/gemini-3.7-flash",
+        {"providers": ["google-vertex"], "flex": True, "supports_reasoning": True},
+    )
+    _, _, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 100, web_search=False, api_key="k"
+    )
+    assert body["service_tier"] == "flex"
+
+
+@pytest.mark.parametrize("effort", providers.REASONING_EFFORTS)
+def test_build_request_openrouter_sends_the_named_reasoning_effort(effort):
+    _, _, body = providers.build_request(
+        "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+        settings={"reasoning_effort": effort},
+    )
+    assert body["reasoning"] == {"effort": effort}
+
+    # A non-reasoning row rejects an effort instead of dropping it silently,
+    # the same contract Anthropic enforces for its vocabulary.
+    with pytest.raises(providers.ProviderError, match="does not take a reasoning effort"):
+        providers.build_request(
+            "openrouter/z-ai/glm-5.3", "hi", 100, False, "k",
+            settings={"reasoning_effort": effort},
+        )
+
+
+def test_openrouter_stop_is_a_normal_finish():
+    payload = {
+        "choices": [{"message": {"content": "done"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+    }
+    result = providers.parse_response("openrouter", payload)
+    assert result["finish_reason"] == "stop"
+    assert bench.attempt_mark(result, {"pass": True}) == "P"
+    assert bench.attempt_mark(result, {"pass": False}) == "F"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"error": {"code": 400, "message": "bad prompt"}},
+        {"choices": [{"message": {"content": "partial"}, "finish_reason": "error",
+                      "error": {"code": 400, "message": "bad prompt"}}]},
+    ),
+)
+def test_openrouter_embedded_error_in_a_200_body_fails_loudly(monkeypatch, payload):
+    calls = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(payload).encode()
+
+    def fake_urlopen(request, timeout):
+        calls.append(request)
+        return _Resp()
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(providers.ProviderError, match="embedded 400: bad prompt"):
+        providers._post_json_with_retries("https://x", {}, {}, "openrouter")
+    assert len(calls) == 1
+
+
+def test_openrouter_embedded_transient_error_is_retried(monkeypatch):
+    payloads = iter([
+        {"error": {"code": 429, "message": "slow down"}},
+        {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+    ])
+
+    class _Resp:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps(self.body).encode()
+
+    monkeypatch.setattr(
+        providers.urllib.request, "urlopen", lambda request, timeout: _Resp(next(payloads))
+    )
+    monkeypatch.setattr(providers.time, "sleep", lambda seconds: None)
+    payload = providers._post_json_with_retries("https://x", {}, {}, "openrouter")
+    assert payload["choices"][0]["message"]["content"] == "ok"
+
+
+def test_build_request_openrouter_rejects_openai_only_settings():
+    with pytest.raises(providers.ProviderError, match="OpenAI-only"):
+        providers.build_request(
+            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            settings={"text_verbosity": "medium"},
+        )
+    with pytest.raises(providers.ProviderError, match="unknown candidate settings"):
+        providers.build_request(
+            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            settings={"temperature": 0},
+        )
+
+
+def test_parse_response_openrouter_chat_completions_shape():
+    payload = {
+        "choices": [{
+            "message": {"role": "assistant", "content": "answer"},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 7, "cost": 0.00123},
+    }
+    assert providers.parse_response("openrouter", payload) == {
+        "text": "answer",
+        "input_tokens": 5,
+        "output_tokens": 7,
+        "tool_calls": {},
+        "web_search_calls": 0,
+        "finish_reason": "stop",
+        "provider_cost_usd": 0.00123,
+    }
+    payload["choices"][0]["finish_reason"] = "length"
+    del payload["usage"]["cost"]
+    result = providers.parse_response("openrouter", payload)
+    assert result["finish_reason"] == "incomplete:max_output_tokens"
+    assert "provider_cost_usd" not in result
+
+
+def test_parse_response_openrouter_counts_web_plugin_search_once():
+    # The web plugin reports results as url_citation annotations, never as
+    # tool calls; one request is one search regardless of citation count.
+    payload = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "cited answer",
+                "annotations": [
+                    {"type": "url_citation", "url_citation": {"url": "https://a.example"}},
+                    {"type": "url_citation", "url_citation": {"url": "https://b.example"}},
+                ],
+            },
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+    }
+    result = providers.parse_response("openrouter", payload)
+    assert result["web_search_calls"] == 1
+    assert result["tool_calls"] == {}
+
+
 def test_parse_response_anthropic_with_web_search():
     payload = {
         "content": [
@@ -659,9 +906,19 @@ def test_candidate_manifest_shape():
         ("gpt-5.6-sol-medium", "openai/gpt-5.6-sol", "medium"),
         ("gpt-5.6-sol-high", "openai/gpt-5.6-sol", "high"),
         ("claude-opus-5-high", "anthropic/claude-opus-5", "high"),
+        ("gemini-3.7-flash-high", "openrouter/google/gemini-3.7-flash", "high"),
+        ("glm-5.3", "openrouter/z-ai/glm-5.3", None),
     ):
         assert models[candidate_id]["model"] == model_spec
-        assert models[candidate_id]["reasoning_effort"] == effort
+        assert models[candidate_id].get("reasoning_effort") == effort
+    assert models["gemini-3.7-flash-high"]["pricing"] == {
+        "input_per_mtok": 0.75,
+        "output_per_mtok": 3.75,
+    }
+    assert models["glm-5.3"]["pricing"] == {
+        "input_per_mtok": 1.40,
+        "output_per_mtok": 4.40,
+    }
     for candidate_id, spec in models.items():
         # Every candidate must carry real pricing so cost never silently
         # reports n/a. A candidate may RAISE its output ceiling above the run
@@ -683,6 +940,10 @@ def test_max_output_tokens_override_and_validation():
         "anthropic/claude-sonnet-5", "hi", 16000, web_search=False, api_key="k",
         settings={"max_output_tokens": 32000})
     assert body["max_tokens"] == 32000  # allowed on anthropic, unlike effort
+    _, _, body = providers.build_request(
+        "openrouter/z-ai/glm-5.3", "hi", 16000, web_search=False, api_key="k",
+        settings={"max_output_tokens": 32000})
+    assert body["max_tokens"] == 32000
     with pytest.raises(providers.ProviderError, match="invalid max_output_tokens"):
         providers.build_request("openai/gpt-5.6-luna", "hi", 1, False, "k",
                                 settings={"max_output_tokens": "lots"})
@@ -887,7 +1148,24 @@ def test_attempt_cost_requires_pricing():
     assert bench.attempt_cost_usd(attempt, {"model": "openai/x"}) is None
     spec = {"pricing": {"input_per_mtok": 3.0, "output_per_mtok": 15.0}}
     assert bench.attempt_cost_usd(attempt, spec) == 0.018
+    assert bench.attempt_cost_usd(
+        {**attempt, "gateway_provider_cost_usd": 0.007}, {}
+    ) == 0.007
+    assert bench.attempt_cost_usd(
+        {**attempt, "provider_cost_usd": 0.008}, {}
+    ) == 0.008
+    assert bench.attempt_cost_usd({
+        **attempt,
+        "gateway_provider_cost_usd": 0.007,
+        "provider_cost_usd": 0.008,
+    }, spec) == 0.007
+    assert bench.attempt_cost_usd(
+        {**attempt, "provider_cost_usd": -1}, spec
+    ) == 0.018
     assert bench.attempt_cost_usd({"error": "boom"}, spec) is None
+    assert bench.attempt_cost_usd(
+        {"error": "boom", "provider_cost_usd": 0.008}, spec
+    ) is None
     assert bench.attempt_cost_usd({"input_tokens": 1000}, spec) is None
 
 
