@@ -900,6 +900,7 @@ def test_candidate_manifest_shape():
     models = bench.load_models()
     for candidate_id, model_spec, effort in (
         ("gpt-5.6-luna-medium", "openai/gpt-5.6-luna", "medium"),
+        ("gpt-5.6-luna-high", "openai/gpt-5.6-luna", "high"),
         ("gpt-5.6-luna-xhigh", "openai/gpt-5.6-luna", "xhigh"),
         ("gpt-5.6-luna-max", "openai/gpt-5.6-luna", "max"),
         ("gpt-5.6-terra-medium", "openai/gpt-5.6-terra", "medium"),
@@ -1627,6 +1628,62 @@ def test_labeled_current_rubric_grade_combines_judge_and_programmatic(
         "version": task["prompt_version"],
         "sha256": hashlib.sha256(prompt.encode()).hexdigest(),
     }
+
+
+def test_judge_call_carries_the_judge_entry_settings(tmp_path, monkeypatch):
+    # A judge picked from models.json must be called with that entry's
+    # reasoning settings, not the provider default: `--judge gpt-5.6-luna-high`
+    # is meaningless if the request never carries `high`.
+    tasks = bench.load_tasks()
+    task = tasks["headline"]
+    run_dir = tmp_path / "run"
+    (run_dir / "prompts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    prompt = bench.assemble_prompt(task, include_skills=True)
+    (run_dir / "prompts" / "headline.md").write_text(prompt)
+    (run_dir / "responses" / "answer.md").write_text("\n".join(
+        f"## Option {number}\nHeadline {number}\nRationale: distinct appeal {number}"
+        for number in range(1, 6)
+    ))
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "run", "models": {"claude-haiku-4-5": {
+            "model": "anthropic/claude-haiku-4-5"}},
+        "tasks": ["headline"], "repetitions": 1, "skills_included": True,
+        "tools_enabled": False, "max_output_tokens": 16000,
+    }))
+    (run_dir / "attempts.jsonl").write_text(json.dumps({
+        "task_id": "headline", "model_id": "claude-haiku-4-5",
+        "repetition": 1, "response_path": "responses/answer.md",
+        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+    }) + "\n")
+
+    seen = []
+
+    def fake_generate(spec, prompt, max_output_tokens, web_search=False, settings=None):
+        seen.append((spec, settings))
+        criterion_ids = re.findall(r"(?m)^- id: (\S+) · ", prompt)
+        return {"text": json.dumps({
+            "completed": True,
+            "self_report": "complete",
+            "criteria": [
+                {"id": criterion_id, "pass": True, "evidence": "present"}
+                for criterion_id in criterion_ids
+            ],
+        })}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    import argparse
+    args = argparse.Namespace(
+        run=str(run_dir), judge="gpt-5.6-luna-high", current_rubric=True,
+        label=None, tasks=None,
+    )
+    assert bench.cmd_grade(args) == 0
+    assert seen == [(
+        "openai/gpt-5.6-luna",
+        {"reasoning_effort": "high", "text_verbosity": "medium"},
+    )]
+    judgment = json.loads((run_dir / "judgments.jsonl").read_text().strip())
+    assert judgment["judge_model"] == "gpt-5.6-luna-high"
 
 
 def test_partial_regrade_requires_and_preserves_existing_label(tmp_path, monkeypatch):

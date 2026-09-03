@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
+  `text_verbosity` with every judge request; before, a judge picked from
+  models.json was called at the provider default effort whatever its entry
+  said, so only the effort-less Anthropic ids graded as named. New
+  `gpt-5.6-luna-high` catalog entry (Luna at high effort) as a cheap judge;
+  a run's `judge_model` records the id, so scores graded by different
+  judges stay distinguishable.
 - Tasks: `ads-ledger-analysis-decoy`, the ledger review with a look-alike
   "preliminary" export (same name, header, 784 rows, and dates; every number
   moved) shared one turn earlier for reference only. All five oracle answers
