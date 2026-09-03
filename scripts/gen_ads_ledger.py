@@ -11,6 +11,13 @@ The data plants four findings a competent analyst should surface:
   - pb-video stops converting entirely for the final 28 days (wasted spend)
   - rt-lookalike refunds ~22% of conversions (the refund drag)
   - brand-search stays healthy throughout (the control nobody should touch)
+
+It also writes the look-alike "preliminary" export the decoy task plants in
+the agent's workspace one turn before the real prompt: same header, same 784
+adset-days, same dates, every number perturbed (seeded) so that all five
+oracle answers computed from it fall outside the zero-credit band of the
+ledger rubric. Computing from the wrong file therefore scores 0 on the
+oracle-backed `no_invented_data` criterion with no judge involved.
 """
 from __future__ import annotations
 
@@ -22,6 +29,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUT_CSV = REPO_ROOT / "eval_runner" / "fixtures" / "ads-ledger" / "ads_daily.csv"
+# Same basename on purpose: the decoy is the look-alike a user pasted earlier
+# under the platform's fixed export name, so on the machine both materialize
+# as inbox/ads_daily-<run tail>.csv and only the turn's note tells them apart.
+DECOY_CSV = REPO_ROOT / "eval_runner" / "fixtures" / "ads-ledger" / "preliminary" / "ads_daily.csv"
+DECOY_SEED = 11
 
 START = dt.date(2026, 3, 2)  # a Monday; 14 exact Monday-start weeks
 DAYS = 98
@@ -83,6 +95,49 @@ def generate_rows() -> list[dict]:
     return rows
 
 
+def generate_decoy_rows(rows: list[dict]) -> list[dict]:
+    """The preliminary export: the real ledger with every figure moved.
+
+    Deterministic in the real rows (seeded), so the shipped decoy is a pure
+    function of the shipped ledger and a test can reproduce it byte-for-byte.
+    Spend runs ~28% high, conversions drop by one on a third of the converting
+    adset-days (which also opens new zero-conversion rows, moving wasted
+    spend), revenue runs ~23% low, and refunds are about halved; every row
+    stays internally consistent (refunds never exceed conversions or revenue,
+    a zero-conversion row carries zero revenue) so nothing in the file itself
+    marks it as fake.
+    """
+    rng = random.Random(DECOY_SEED)
+    decoy = []
+    for row in rows:
+        spend = round(float(row["spend_usd"]) * rng.uniform(1.22, 1.34), 2)
+        conversions = int(row["conversions"])
+        if conversions > 0 and rng.random() < 0.35:
+            conversions -= 1
+        revenue = (
+            round(float(row["revenue_usd"]) * rng.uniform(0.72, 0.82), 2)
+            if conversions
+            else 0.0
+        )
+        refunded = min(int(row["refunded_conversions"]), conversions)
+        refunded_revenue = (
+            round(revenue / conversions * refunded * rng.uniform(0.55, 0.65), 2)
+            if refunded
+            else 0.0
+        )
+        decoy.append({
+            **row,
+            "spend_usd": f"{spend:.2f}",
+            "impressions": int(int(row["impressions"]) * rng.uniform(1.15, 1.30)),
+            "clicks": int(int(row["clicks"]) * rng.uniform(1.05, 1.20)),
+            "conversions": conversions,
+            "revenue_usd": f"{revenue:.2f}",
+            "refunded_conversions": refunded,
+            "refunded_revenue_usd": f"{refunded_revenue:.2f}",
+        })
+    return decoy
+
+
 def ground_truth(rows: list[dict]) -> dict:
     spend = sum(float(r["spend_usd"]) for r in rows)
     conv = sum(int(r["conversions"]) for r in rows)
@@ -132,16 +187,24 @@ def ground_truth(rows: list[dict]) -> dict:
     }
 
 
-def main() -> None:
-    rows = generate_rows()
-    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with OUT_CSV.open("w", newline="") as fh:
+def write_csv(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def main() -> None:
+    rows = generate_rows()
+    write_csv(OUT_CSV, rows)
     truth = ground_truth(rows)
     print(f"wrote {OUT_CSV} ({OUT_CSV.stat().st_size:,} bytes, {len(rows)} rows)")
     print(json.dumps(truth, indent=2))
+    decoy = generate_decoy_rows(rows)
+    write_csv(DECOY_CSV, decoy)
+    print(f"wrote {DECOY_CSV} ({DECOY_CSV.stat().st_size:,} bytes, {len(decoy)} rows)")
+    print(json.dumps(ground_truth(decoy), indent=2))
 
 
 if __name__ == "__main__":

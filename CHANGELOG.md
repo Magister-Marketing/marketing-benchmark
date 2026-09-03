@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Tasks: `ads-ledger-analysis-decoy`, the ledger review with a look-alike
+  "preliminary" export (same name, header, 784 rows, and dates; every number
+  moved) shared one turn earlier for reference only. All five oracle answers
+  from the decoy fall outside the zero-credit band (A1 +40%, A2 +56%, A3
+  five weeks early, A4 -50%, A5 -39%), so computing from the wrong file
+  scores 0 through the existing oracle-backed `no_invented_data`; the rubric
+  is otherwise the parent's, because the prompt is byte-identical and never
+  asks the review to name its source file (the harness records which saved
+  file the review named as unscored evidence). Harness-only: the task lists `harnesses: [magister-agent]`,
+  and `run`/`--split`/`--tasks` skip or refuse it on `direct-api`, whose
+  inlined prompt could not carry a prior turn. New task fields `harnesses`,
+  `decoy` (fixture, message, answers — each validated to score 0 against the
+  real target), and `derived_from` (prompt, answers, sources, and every
+  parent criterion must match the parent; `load_tasks` enforces).
+  `scripts/gen_ads_ledger.py` writes the decoy deterministically from the
+  real ledger.
 - Scoring: a critical criterion fails on oracle evidence. `fails_if_zero`
   names the banded programmatic checks that prove a must-not; when one
   scores 0 the criterion fails regardless of the judge and the attempt
