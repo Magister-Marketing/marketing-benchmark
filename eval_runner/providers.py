@@ -34,7 +34,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # opts into flex: that tier never falls back on a capacity error, so a run would
 # fail outright instead of being served at the default rate.
 OPENROUTER_MODEL_POLICIES = {
-    "google/gemini-3.7-flash": {
+    "google/gemini-3.8-flash": {
         "providers": ["google-vertex"],
         "flex": False,
         "supports_reasoning": True,

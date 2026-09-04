@@ -530,14 +530,14 @@ def test_build_request_openai_responses_api():
 
 def test_split_model_spec_preserves_openrouter_upstream_slug():
     assert providers.split_model_spec(
-        "openrouter/google/gemini-3.7-flash"
-    ) == ("openrouter", "google/gemini-3.7-flash")
+        "openrouter/google/gemini-3.8-flash"
+    ) == ("openrouter", "google/gemini-3.8-flash")
     assert providers.split_model_spec("openai/gpt-5.6-sol") == (
         "openai", "gpt-5.6-sol"
     )
     for invalid in (
         "openrouter/google-only",
-        "openrouter//gemini-3.7-flash",
+        "openrouter//gemini-3.8-flash",
         "openrouter/google/",
         "openrouter/google/gemini/extra",
         "openai/vendor/model",
@@ -566,7 +566,7 @@ def test_eval_env_file_loads_openrouter_key(tmp_path, monkeypatch):
 
 def test_build_request_openrouter_zdr_policy_and_web_plugin():
     url, headers, body = providers.build_request(
-        "openrouter/google/gemini-3.7-flash", "hi", 16000,
+        "openrouter/google/gemini-3.8-flash", "hi", 16000,
         web_search=True, api_key="k", settings={"reasoning_effort": "high"},
     )
     assert url == providers.OPENROUTER_URL
@@ -575,7 +575,7 @@ def test_build_request_openrouter_zdr_policy_and_web_plugin():
         "content-type": "application/json",
     }
     assert body == {
-        "model": "google/gemini-3.7-flash",
+        "model": "google/gemini-3.8-flash",
         "max_tokens": 16000,
         "messages": [{"role": "user", "content": "hi"}],
         "provider": {
@@ -592,7 +592,7 @@ def test_build_request_openrouter_zdr_policy_and_web_plugin():
 
 def test_build_request_openrouter_model_policies_and_default_tier():
     expected = {
-        "google/gemini-3.7-flash": (["google-vertex"], False),
+        "google/gemini-3.8-flash": (["google-vertex"], False),
         "z-ai/glm-5.3": (
             ["fireworks", "together", "parasail", "novita"], False
         ),
@@ -620,11 +620,11 @@ def test_build_request_openrouter_model_policies_and_default_tier():
 def test_build_request_openrouter_sends_an_opted_in_flex_tier(monkeypatch):
     monkeypatch.setitem(
         providers.OPENROUTER_MODEL_POLICIES,
-        "google/gemini-3.7-flash",
+        "google/gemini-3.8-flash",
         {"providers": ["google-vertex"], "flex": True, "supports_reasoning": True},
     )
     _, _, body = providers.build_request(
-        "openrouter/google/gemini-3.7-flash", "hi", 100, web_search=False, api_key="k"
+        "openrouter/google/gemini-3.8-flash", "hi", 100, web_search=False, api_key="k"
     )
     assert body["service_tier"] == "flex"
 
@@ -632,7 +632,7 @@ def test_build_request_openrouter_sends_an_opted_in_flex_tier(monkeypatch):
 @pytest.mark.parametrize("effort", providers.REASONING_EFFORTS)
 def test_build_request_openrouter_sends_the_named_reasoning_effort(effort):
     _, _, body = providers.build_request(
-        "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+        "openrouter/google/gemini-3.8-flash", "hi", 100, False, "k",
         settings={"reasoning_effort": effort},
     )
     assert body["reasoning"] == {"effort": effort}
@@ -718,12 +718,12 @@ def test_openrouter_embedded_transient_error_is_retried(monkeypatch):
 def test_build_request_openrouter_rejects_openai_only_settings():
     with pytest.raises(providers.ProviderError, match="OpenAI-only"):
         providers.build_request(
-            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            "openrouter/google/gemini-3.8-flash", "hi", 100, False, "k",
             settings={"text_verbosity": "medium"},
         )
     with pytest.raises(providers.ProviderError, match="unknown candidate settings"):
         providers.build_request(
-            "openrouter/google/gemini-3.7-flash", "hi", 100, False, "k",
+            "openrouter/google/gemini-3.8-flash", "hi", 100, False, "k",
             settings={"temperature": 0},
         )
 
@@ -906,12 +906,12 @@ def test_candidate_manifest_shape():
         ("gpt-5.6-sol-medium", "openai/gpt-5.6-sol", "medium"),
         ("gpt-5.6-sol-high", "openai/gpt-5.6-sol", "high"),
         ("claude-opus-5-high", "anthropic/claude-opus-5", "high"),
-        ("gemini-3.7-flash-high", "openrouter/google/gemini-3.7-flash", "high"),
+        ("gemini-3.8-flash-high", "openrouter/google/gemini-3.8-flash", "high"),
         ("glm-5.3", "openrouter/z-ai/glm-5.3", None),
     ):
         assert models[candidate_id]["model"] == model_spec
         assert models[candidate_id].get("reasoning_effort") == effort
-    assert models["gemini-3.7-flash-high"]["pricing"] == {
+    assert models["gemini-3.8-flash-high"]["pricing"] == {
         "input_per_mtok": 0.75,
         "output_per_mtok": 3.75,
     }
