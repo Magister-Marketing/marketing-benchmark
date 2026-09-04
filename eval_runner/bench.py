@@ -1738,7 +1738,10 @@ def cmd_grade(args: argparse.Namespace) -> int:
         last_raw: str | None = None
         for judge_try in range(4):
             try:
-                result = providers.generate(judge_spec, prompt, MAX_OUTPUT_TOKENS)
+                result = providers.generate(
+                    judge_spec, prompt, MAX_OUTPUT_TOKENS,
+                    settings=_candidate_settings(models[judge_id]),
+                )
                 usage["calls"] += 1
                 usage["input_tokens"] += result.get("input_tokens") or 0
                 usage["output_tokens"] += result.get("output_tokens") or 0
