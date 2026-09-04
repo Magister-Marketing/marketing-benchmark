@@ -170,7 +170,7 @@ contracts, not chosen to force an arbitrary failure rate.
 Keys come only from the environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 and `OPENROUTER_API_KEY` (or `--env-file <KEY=value file>` on `eval.py`,
 which reads only those three names and never prints values). Candidates live
-in `models.json`; its OpenRouter entries are `gemini-3.7-flash-high` and
+in `models.json`; its OpenRouter entries are `gemini-3.8-flash-high` and
 `glm-5.3`.
 
 OpenRouter requests always pin zero-data-retention, deny data collection, and
