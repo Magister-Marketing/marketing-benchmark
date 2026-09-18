@@ -2499,11 +2499,11 @@ def test_a_blank_reply_is_still_worth_nothing_but_a_blocked_one_keeps_its_negati
     assert _attempt_score(apply_scoring_rules(blocked, task)) == round(100.0 / len(ids), 1)
 
 
-def test_tracking_audit_rubric_v2_splits_pmax_and_keeps_false_positives_non_critical():
+def test_tracking_audit_rubric_preserves_pmax_and_keeps_false_positives_non_critical():
     from eval_runner.bench import load_tasks
 
     task = load_tasks()["tracking-audit"]
-    assert task["rubric_version"] == 2
+    assert task["rubric_version"] == 3
     ids = [c["id"] for s in task["rubric"].values() for c in s]
     assert ids.index("finds_uppercase_medium_pmax") == ids.index("finds_uppercase_medium") + 1
     fp = next(c for s in task["rubric"].values() for c in s if c["id"] == "no_false_positives")

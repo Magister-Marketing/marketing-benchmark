@@ -3,7 +3,7 @@
   "title": "Paid ad campaign performance analysis",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 2,
+  "rubric_version": 3,
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
@@ -14,19 +14,19 @@
   "rubric": {
     "completion": [
       {"id": "totals_correct", "check": "Per-campaign four-week totals are computed and correct within rounding: Prospecting - Broad spend $4,800, 169 conversions, CPA ~$28.40; Prospecting - Small-Space Interest spend $2,400, 138 conversions, CPA ~$17.39; Retargeting - 30d Engagers spend $1,600, 83 conversions, CPA ~$19.28 (or stated over known weeks only); Launch Teaser totals acknowledge the missing week."},
-      {"id": "best_worst", "check": "Small-Space Interest is identified as the best performer (lowest CPA ~$17.39, stable, ROAS ~3.9) and Broad as the biggest problem (weekly CPA rising from $20 to $48 while CTR halves from 1.8% to 0.9%); calling the Launch Teaser 'worst' on CPA alone without noting its video-views objective does not pass."},
+      {"id": "best_worst", "check": "Identifies Small-Space Interest as best observed purchase efficiency and explains Broad's worsening weekly CPA ($20 to $48) and CTR (1.8% to 0.9%). A worst-campaign ranking may name Broad or Launch Teaser if the comparison scope is explicit, Launch's video-views objective and missing outcomes are acknowledged, and poor observed purchase efficiency is not equated with proven overall business harm. The prompt does not mandate one campaign name as worst. Broad's trend diagnosis may occur elsewhere in the response."},
       {"id": "recommendation", "check": "There is one specific budget change (e.g. shift spend from Broad toward Small-Space Interest) and one bounded test (what change, what metric, what timeframe or budget)."}
     ],
     "skill_adherence": [
       {"id": "missing_preserved", "check": "The empty conversions/revenue cells for Launch Teaser in the week of 2026-07-20 are flagged as missing data (e.g. a tracking gap), not treated as zero or silently summed over."},
-      {"id": "partial_metric_denominators", "check": "Any Launch Teaser CPA or ROAS uses spend and outcomes from exactly the same complete rows, or is reported as unavailable. Dividing all four weeks of spend by only three known weeks of conversions/revenue fails."},
+      {"id": "partial_metric_denominators", "check": "Inspect EVERY reported Launch CPA and ROAS, including alternate tables, prose, notes and footnotes. Each reported metric must use spend and outcomes from the same complete rows, or be unavailable. Complete-row spend is $750, purchases 7, revenue $476: CPA about $107.14 and ROAS about 0.635. Presenting $1,000/7=$142.86 or $476/$1,000=0.476 as actual or nominal performance rates fails even if correct matched rates also appear. An explicit example REJECTING such a calculation is not a claimed rate and should pass. Evidence for a pass must address the whole answer, not only its main table."},
       {"id": "evidence_shown", "check": "The arithmetic behind key claims is shown (at least CPA calculations), and metric definitions/sources are used as supplied rather than invented."},
       {"id": "cautious_conclusions", "check": "A limitation that would most change the conclusion is stated (e.g. attribution window, missing week, four-week sample), and correlation is not presented as proven causation."}
     ],
     "best_practices": [
       {"id": "trend_over_snapshot", "check": "The diagnosis is driven by week-over-week movement (Broad's CTR/CPA deterioration, Retargeting frequency climbing 6.1 to 11.4 with falling conversions), not four-week averages alone."},
       {"id": "prioritized_action", "check": "Recommendations are prioritized (one clear primary move) rather than an unranked laundry list."},
-      {"id": "bounded_test_decision", "check": "The proposed test has one control and one changed variable, a duration or spend cap, one primary KPI, a numeric win rule, and either a numeric minimum sample or an explicit rule for declaring the result inconclusive."}
+      {"id": "bounded_test_decision", "check": "The proposed test identifies a control, the factor(s) being varied, one primary decision KPI, a duration or spend cap, a numeric win rule, and either a numeric minimum sample or an explicit inconclusive outcome. Multiple levels of one factor (e.g. two new creative variants plus a control) do not by themselves violate single-factor design. Fail for confounded changes or missing decision criteria, not merely the number of variants. '95% significance' alone is not a defined win rule or sample/inconclusive policy. Secondary and guardrail metrics are allowed when the primary decision KPI is clear."}
     ]
   }
 }

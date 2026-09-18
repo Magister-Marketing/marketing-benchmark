@@ -3,7 +3,7 @@
   "title": "Pre-Q4 tracking audit against the documented standards",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 2,
+  "rubric_version": 3,
   "fixtures": [
     "eval_runner/fixtures/tracking-audit/tracking_standards.md",
     "eval_runner/fixtures/tracking-audit/active_links.csv",
@@ -13,7 +13,7 @@
   "skills": [
     "evals/fixtures/public/skills/analytics/SKILL.md"
   ],
-  "prompt": "Loam & Ledger (DTC home goods, Shopify, GA4 via GTM, Meta/Google/TikTok/Klaviyo) has engaged you to audit their tracking before Q4 budgets unlock. You are supplied their documented measurement standards, the full list of live campaign links, a summary of the GTM container, and a memo of unexplained symptoms.\n\nDeliver the audit report. For every defect you find: name exactly where it is (which link, tag, trigger, or setting), why it is wrong (against the standards or against correct measurement practice), the measurement or compliance impact — connecting it to the reported symptoms where the evidence supports it — and the concrete fix. Order findings by impact. Close with a short list of what you checked and found clean, so the team knows what they can trust.\n\nFlag only real defects: do not pad the report by flagging conforming items. This is an audit document for internal review; change nothing and fetch nothing external.",
+  "prompt": "Loam & Ledger (DTC home goods, Shopify, GA4 via GTM, Meta/Google/TikTok/Klaviyo) has engaged you to audit their tracking before Q4 budgets unlock. You are supplied their documented measurement standards, the full list of live campaign links, a summary of the GTM container, and a memo of unexplained symptoms.\n\nDeliver the audit report. For every defect you find: name exactly where it is (which link, tag, trigger, or setting), why it is wrong (against the standards or against correct measurement practice), the measurement or compliance impact \u2014 connecting it to the reported symptoms where the evidence supports it \u2014 and the concrete fix. Order findings by impact. Close with a short list of what you checked and found clean, so the team knows what they can trust.\n\nFlag only real defects: do not pad the report by flagging conforming items. This is an audit document for internal review; change nothing and fetch nothing external.",
   "rubric": {
     "completion": [
       {
@@ -22,7 +22,7 @@
       },
       {
         "id": "findings_located",
-        "check": "Each reported defect names its specific location — the exact link/channel, tag, trigger, or setting — precisely enough that an engineer could act without re-deriving the audit."
+        "check": "Each reported defect names its specific location \u2014 the exact link/channel, tag, trigger, or setting \u2014 precisely enough that an engineer could act without re-deriving the audit."
       }
     ],
     "skill_adherence": [
@@ -83,7 +83,7 @@
       {
         "id": "no_false_positives",
         "negative": true,
-        "check": "No conforming item is reported as a defect (for example the google-brand link, the begin_checkout tag, the TikTok/Pinterest/affiliate links, or the ca-storefront links' UTMs). Describing a correct item as clean is fine; flagging it as broken is not."
+        "check": "No actually conforming item is reported as defective. Examples of clean items are google-brand, begin_checkout, tiktok-prospecting, tiktok-retargeting, pinterest-prospecting, the affiliate links, and the ca-storefront UTMs. Assess the specific parameter against the supplied standard, not the platform label: organic-pinterest has campaign 2026q3-boards, which lacks the required line/goal component, so flagging that naming defect is valid. The organic-instagram source is also absent from the documented source list; identifying that inconsistency is not a false positive. Do not penalize additional evidence-supported findings merely because they lack a separate rubric criterion."
       },
       {
         "id": "fix_per_finding",
