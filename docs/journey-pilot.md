@@ -80,3 +80,39 @@ No production deployment or migration is needed for these evaluation tools.
 The follow-up [factual-grading protocol](judge-factuality.md) addresses false
 passes found in the complete rerun responses. It versions all five affected
 task rubrics and records judge-protocol provenance; earlier scores remain intact.
+
+## Journey grading protocol 3
+
+Conversation grading now has its own protocol version (3), retaining the shared
+single-answer instruction version (2) separately. It requires an ordered audit
+of every response, checks budget pacing and full decision conditions across
+current deliverables, and permits lower budgets, requested revisions and
+explicitly superseded history. The native worksheet scenario requires verified
+current file contents at each turn; a reused link is sufficient when the adapter
+rereads the file. It is not part of the direct simulated-tool runner.
+
+Incomplete turns, failed native capture, missing required files and mismatched
+content hashes are **ineligible evidence**, not model quality failures. They
+receive no paid judge call. Generation errors and costs remain in the original
+attempt. Grading errors also remain distinct from valid quality failures.
+
+The judge has an explicit 8192-token output ceiling. Empty or truncated replies
+are retained with their usage, finish reason and raw output, without a hidden
+ceiling retry. Do not replace old judgment files or compare grades across these
+protocols as evidence of product improvement. Freeze the evaluator sources,
+model settings, scenarios and runtime before a new baseline/comparison.
+
+Eight synthetic development controls exercise an earlier budget contradiction
+followed by a correct final answer, a missing minimum-count rule in a current
+file, unsupported causality, mixed periods, valid lower spending, a reused
+worksheet, an explicit user-requested plan revision and superseded history. Offline tests verify protocol and
+evidence handling; a paid calibration tests actual judge behavior:
+
+```sh
+python -m eval_runner.journey_calibration --output /tmp/journey-v3-calibration.jsonl \
+  --judge claude-sonnet-5 --env-file /path/to/private/provider.env
+```
+
+Calibration is a release check, not proof that the judge finds every error.
+Review actual answers and file contents alongside scores, cost and latency.
+No product deployment or migrations are required for these evaluator changes.

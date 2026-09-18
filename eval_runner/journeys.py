@@ -94,6 +94,53 @@ def tool(name: str, description: str, properties: dict) -> dict:
             "required": list(properties), "additionalProperties": False}}
 
 
+# File revision is a native-adapter scenario; the direct simulator has no files.
+WORKSHEET_SCENARIO = {'id': 'worksheet-revision-acceptance',
+ 'steps': [{'user': 'Prepare a draft-only seven-day tracking-validation pilot for fictional Alder '
+                    'Home campaign A, with a total budget of £140. Source export for Sep 1–7: '
+                    'campaign A spent £420, had 14 purchases and £980 revenue; campaign B spent '
+                    '£280, but its purchase and revenue fields are missing. Write a Markdown '
+                    'worksheet in the supplied writable evaluation directory containing the source '
+                    'table, what can be concluded, what is unknown, and the pilot recommendation. '
+                    'Link the worksheet in your reply. Do not activate or publish anything.'},
+           {'user': 'Revise that same worksheet: run the tracking-validation pilot on campaign B '
+                    'instead, with £84 total over seven days (£12 per day). The missing export has '
+                    'arrived: B had seven purchases and £420 revenue for Sep 1–7. Update the '
+                    'purchase-only combined metrics and the recommendation. This choice is for '
+                    'measurement validation, not a claim that B outperformed A. Keep the old '
+                    'proposal clearly superseded.'},
+           {'user': 'Give me the final handoff: a link to the current worksheet and a brief '
+                    'summary of the campaign, total budget, daily budget and duration. Make sure '
+                    'the worksheet and handoff agree. Include a useful success check and '
+                    'acknowledge the small sample; keep this draft-only.'}],
+ 'checks': {'source_and_period_integrity': "Before B's outcomes arrive, actual combined purchase "
+                                           'CPA/ROAS are unknown; do not silently count missing '
+                                           'fields as zero. With the corrected same-period export, '
+                                           'purchase-only totals are £700 spend, 21 purchases and '
+                                           '£1400 revenue, CPA approximately £33.33 and ROAS 2.0. '
+                                           'A CPA is £30 and ROAS approximately 2.33; B CPA is £40 '
+                                           'and ROAS 1.5. Any reported metrics in prose, UI or '
+                                           'files must be correct. Do not infer causation or label '
+                                           'B the proven winner.',
+            'verified_current_worksheet': 'The final turn contains a current verified artifact '
+                                          'with content_captured=true, not merely a claimed path. '
+                                          'Its active recommendation and final chat both specify '
+                                          'campaign B, £84 total, £12/day and seven days. Earlier '
+                                          'campaign A/£140 text may appear only as clearly '
+                                          'superseded history. The current worksheet incorporates '
+                                          'corrected B source data and combined metrics. The '
+                                          'ordered draft revisions are expected; distinguish an '
+                                          'earlier superseded version from a contradiction in the '
+                                          'current deliverable.',
+            'actionable_draft_pilot': 'Final handoff includes a useful tracking-validation success '
+                                      'check, bounded budget and duration, and acknowledges '
+                                      'sparse/small-sample uncertainty. No campaign activation, '
+                                      'publishing or spend is claimed or performed. It need not '
+                                      'promise statistical significance or invent a performance '
+                                      'threshold.'},
+ 'required_artifact_turns': [1, 2, 'final']}
+
+
 class World:
     """Private simulator state; all mutations are in memory, never external."""
 
@@ -305,33 +352,8 @@ class ResponsesChat:
         raise RuntimeError("six model calls exhausted in one turn")
 
 
-def grade_attempt(attempt: dict, scenario: dict, judge_spec: dict, generate=providers.generate) -> dict:
-    criteria = [("quality", {"id": key, "check": value}) for key, value in scenario["checks"].items()]
-    prompt = bench.build_judge_prompt({}, json.dumps({"turns": attempt["turns"], "tool_events": attempt["tool_events"]}), {},
-        exact_prompt="Evaluate this ordered conversation against all user requests. Tool events are controller receipts, prose is not proof of execution. Assess EVERY assistant turn, not only the last.", criteria=criteria)
-    record = {"judge_protocol_version": bench.JUDGE_PROTOCOL_VERSION,
-            "judge_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-            "judge_calls": 1, "judge_cost_estimate_usd": None,
-            "judge_cost_unknown": True, "pass": False}
-    try:
-        generated = generate(judge_spec["model"], prompt, 4096, settings=bench._candidate_settings(judge_spec))
-        # A malformed verdict can still be billed. Save usage before parsing,
-        # and make transport failures with no receipt explicitly unknown.
-        record.update(judge_cost_estimate_usd=bench.attempt_cost_usd(generated, judge_spec),
-                      judge_input_tokens=generated.get("input_tokens"),
-                      judge_output_tokens=generated.get("output_tokens"))
-        record["judge_cost_unknown"] = record["judge_cost_estimate_usd"] is None
-        verdict = bench.parse_judge_json(generated["text"])
-        if {c["id"] for c in verdict["criteria"]} != set(scenario["checks"]):
-            raise ValueError("judge criterion IDs do not match scenario")
-        if verdict.get("self_report") not in bench.SELF_REPORTS:
-            raise ValueError("judge omitted self_report")
-        checks = {c["id"]: c["pass"] for c in verdict["criteria"]} | attempt["deterministic"]
-        record.update(verdict=verdict, checks=checks,
-                      **{"pass": attempt["status"] == "complete" and verdict["completed"] and all(checks.values())})
-    except Exception as exc:
-        record["error"] = f"{type(exc).__name__}: {exc}"
-    return record
+# Imported here to preserve the public runner entry point.
+from eval_runner.journey_grading import grade_attempt  # noqa: E402
 
 
 def validate_cleanup(run_dir: Path, metadata: dict) -> None:
@@ -402,7 +424,7 @@ def main() -> int:
                 result.update(grade_attempt(attempt, scenarios[attempt["scenario_id"]], models[args.judge]))
             except Exception as exc:
                 result.update(error=f"{type(exc).__name__}: {exc}", **{"pass": False})
-            errors += bool(result.get("error"))
+            errors += bool(result.get("error")) or result.get("eligible") is False
             stream.write(json.dumps(result) + "\n")
             stream.flush()
             print(f"{result['model_id']} {result['scenario_id']} r{result['repetition']}: pass={result['pass']}", flush=True)

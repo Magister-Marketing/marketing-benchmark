@@ -361,12 +361,17 @@ def generate(
     max_output_tokens: int,
     web_search: bool = False,
     settings: dict | None = None,
+    *,
+    retry_empty_completion: bool = True,
+    retry_transport: bool = True,
 ) -> dict:
     """One prompt in, one text completion out.
 
     Returns {text, input_tokens, output_tokens, web_search_calls,
     finish_reason, latency_seconds, provider, model}. Raises
-    ProviderError on missing keys or exhausted retries.
+    ProviderError on missing keys or exhausted retries. With retry_empty_completion
+    disabled, return even an empty billed completion and its usage without a
+    ceiling retry; callers can retain the receipt before classifying the error.
     """
     provider, model = split_model_spec(model_spec)
     api_key = os.environ.get(required_env_key(provider), "")
@@ -380,7 +385,8 @@ def generate(
     url, headers, body = build_request(
         model_spec, prompt, max_output_tokens, web_search, api_key, settings
     )
-    payload = _post_json_with_retries(url, headers, body, provider)
+    payload = (_post_json_with_retries(url, headers, body, provider) if retry_transport
+               else _post_json_with_retries(url, headers, body, provider, max_retries=0))
     result = parse_response(provider, payload)
 
     # A reasoning model can spend an explicit output cap thinking and emit no
@@ -397,7 +403,7 @@ def generate(
         max_output_tokens if provider in ("anthropic", "openrouter") else None
     )
     truncated = "incomplete" in finish or finish == "max_tokens"
-    if not result["text"].strip() and truncated and effective_cap:
+    if retry_empty_completion and not result["text"].strip() and truncated and effective_cap:
         ceiling_retried = True
         raised = dict(settings or {})
         raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
@@ -409,7 +415,7 @@ def generate(
     latency = time.monotonic() - started
 
     result["ceiling_retried"] = ceiling_retried
-    if not result["text"].strip():
+    if retry_empty_completion and not result["text"].strip():
         raise ProviderError(
             f"{provider} returned an empty completion for {model} "
             f"(finish_reason={result['finish_reason']!r}, "
@@ -425,10 +431,11 @@ def generate(
     return result
 
 
-def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) -> dict:
+def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str, *, max_retries: int | None = None) -> dict:
+    retries = MAX_RETRIES if max_retries is None else max_retries
     data = json.dumps(body).encode("utf-8")
     last_error = "unknown error"
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(retries + 1):
         request = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
@@ -443,12 +450,12 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
             # than grading partial text as the model's answer.
             code, message = embedded
             last_error = f"embedded {code}: {message}"
-            if code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
+            if code not in RETRYABLE_STATUSES or attempt == retries:
                 raise ProviderError(f"{provider} call failed ({last_error})")
         except urllib.error.HTTPError as exc:
             snippet = _safe_error_snippet(exc)
             last_error = f"HTTP {exc.code}: {snippet}"
-            if exc.code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
+            if exc.code not in RETRYABLE_STATUSES or attempt == retries:
                 raise ProviderError(f"{provider} call failed ({last_error})") from None
         except (
             urllib.error.URLError,
@@ -460,7 +467,7 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
             http.client.HTTPException,
         ) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
-            if attempt == MAX_RETRIES:
+            if attempt == retries:
                 raise ProviderError(f"{provider} call failed ({last_error})") from None
         time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
     raise ProviderError(f"{provider} call failed ({last_error})")

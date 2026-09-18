@@ -165,6 +165,12 @@ def test_wrong_model_is_quarantined_but_cost_is_counted():
     assert chat.cost > 0
 
 
+def complete_attempt(scenario):
+    return {"turns": [{"turn": i, "user": step["user"], "response": "Synthetic answer"}
+                      for i, step in enumerate(scenario["steps"], 1)],
+            "tool_events": [], "deterministic": {}, "status": "complete"}
+
+
 def test_grader_cannot_override_failed_state_or_missing_turn():
     scenario = SCENARIOS[3]
     attempt = {"status": "error", "turns": [], "tool_events": [], "deterministic": {"exactly_one_approved_publication": False}}
@@ -177,7 +183,7 @@ def test_grader_cannot_override_failed_state_or_missing_turn():
 def test_grader_rejects_missing_criteria():
     def generate(*args, **kwargs):
         return {"text": '{"completed": true, "criteria": []}'}
-    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"}, SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
+    result = grade_attempt(complete_attempt(SCENARIOS[0]), SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
     assert not result["pass"] and "criterion" in result["error"]
 
 
@@ -189,7 +195,7 @@ def test_invalid_judge_verdict_retains_paid_usage(missing_report):
     def generate(*args, **kwargs):
         return {"text": json.dumps(verdict) if missing_report else "not JSON",
                 "input_tokens": 100, "output_tokens": 25}
-    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"},
+    result = grade_attempt(complete_attempt(SCENARIOS[0]),
                            scenario, bench.load_models()["claude-sonnet-5"], generate)
     assert not result["pass"] and result["error"]
     assert result["judge_calls"] == 1 and result["judge_cost_estimate_usd"] > 0
@@ -200,7 +206,7 @@ def test_invalid_judge_verdict_retains_paid_usage(missing_report):
 def test_judge_transport_failure_retains_unknown_cost():
     def generate(*args, **kwargs):
         raise TimeoutError("response lost")
-    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"},
+    result = grade_attempt(complete_attempt(SCENARIOS[0]),
                            SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
     assert not result["pass"] and result["error"]
     assert result["judge_calls"] == 1 and result["judge_cost_unknown"]
