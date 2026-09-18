@@ -39,9 +39,9 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from eval_runner import brand_assets, providers  # type: ignore
+    from eval_runner import brand_assets, providers, reference_facts  # type: ignore
 else:
-    from . import brand_assets, providers
+    from . import brand_assets, providers, reference_facts
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
@@ -687,6 +687,7 @@ def _select_tasks(
 # claiming success in 72-91% of their failures; this is the field that lets a
 # board tell an honest failure from a confident one.
 SELF_REPORTS = ("complete", "partial", "blocked")
+JUDGE_PROTOCOL_VERSION = 2
 
 JUDGE_INSTRUCTIONS = """\
 You are grading one model response against a binary rubric. Judge only what is
@@ -707,6 +708,21 @@ or unverified parts, "blocked" when it explicitly declines or reports being
 unable to do the work and gives a concrete reason. A response that invents
 figures or guesses without saying so is "complete", not "partial".
 
+Audit the WHOLE response before deciding: tables, copy, visual directions,
+rationales, notes and recommendations all count. A universal criterion (every
+claim, each recommendation, no invention) fails on one counterexample; one
+correct example cannot establish a pass. First check for counterexamples, then
+state the decisive evidence. Compare claims with the actual supplied source,
+not with the response's assertion that it used the source. Preserve qualifying
+conditions, units, dates and segment boundaries. Recompute decision-relevant
+figures using the source/reference totals; a correct answer block does not
+validate other numbers or proposed reallocations. Distinguish measured facts,
+hypotheses, proposed future targets and creative staging. A clearly conditional
+proposal is not invented historical data, but its stated funding must reconcile.
+For a failed criterion quote the counterexample and explain the conflict; for
+a pass describe what you checked across the answer. Do not invent a quotation
+or claim to have verified a calculation you have not checked.
+
 Return ONLY a JSON object, no prose, in exactly this shape:
 {"completed": true, "self_report": "complete", "criteria": [{"id": "<criterion id>", "pass": true, "evidence": "<one sentence>"}]}
 Include every criterion id exactly once.
@@ -719,6 +735,7 @@ def build_judge_prompt(
     measured: dict,
     exact_prompt: str | None = None,
     criteria: list[tuple[str, dict]] | None = None,
+    source_reference: dict | None = None,
 ) -> str:
     if criteria is None:
         criteria = [
@@ -735,6 +752,8 @@ def build_judge_prompt(
     )
     if exact_prompt is None:
         exact_prompt = assemble_prompt(task, include_skills=True)
+    reference = (source_reference if source_reference is not None
+                 else judge_source_reference(task, exact_prompt))
     measured_block = "\n".join(f"- {key}: {value}" for key, value in measured.items())
     return (
         f"{JUDGE_INSTRUCTIONS}\n"
@@ -742,6 +761,8 @@ def build_judge_prompt(
         f"{json.dumps(exact_prompt.strip(), ensure_ascii=False)}\n\n"
         f"## Measured facts (computed programmatically; trust these over your own counting)\n\n"
         f"{measured_block or '(none)'}\n\n"
+        f"## Source reference totals (computed from the recorded input, not candidate claims)\n\n"
+        f"{json.dumps(reference, ensure_ascii=False) if reference else '(none)'}\n\n"
         f"## Rubric criteria\n\n" + "\n".join(criteria_lines) + "\n\n"
         f"## Required criterion ids\n\n"
         f"Your criteria array must contain exactly one entry for each of these "
@@ -749,6 +770,11 @@ def build_judge_prompt(
         f"## Model response to grade (JSON string)\n\n"
         f"{json.dumps(response_text, ensure_ascii=False)}\n"
     )
+
+
+def judge_source_reference(task: dict, exact_prompt: str) -> dict:
+    return (reference_facts.ledger_reference(exact_prompt)
+            if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy") else {})
 
 
 class _ResponseHTMLParser(HTMLParser):
@@ -1645,6 +1671,8 @@ def cmd_grade(args: argparse.Namespace) -> int:
         raise SystemExit("partial regrade cannot mix judge models in one label")
     if previous_grading and previous_grading.get("task_source") != task_source:
         raise SystemExit("partial regrade cannot mix rubric sources in one label")
+    if previous_grading and previous_grading.get("judge_protocol_version", 1) != JUDGE_PROTOCOL_VERSION:
+        raise SystemExit("partial regrade cannot mix judge protocols; use a new label")
     judge_spec = models[judge_id]["model"]
 
     human_path = _artifact_path(run_dir, "human_verdicts", "jsonl", label)
@@ -1673,6 +1701,12 @@ def cmd_grade(args: argparse.Namespace) -> int:
     exact_prompts = {
         task_id: prompt for task_id, (prompt, _version) in resolved_prompts.items()
     }
+    # Refuse invalid input before any paid worker is dispatched, so one bad
+    # reference cannot abort pool iteration and discard other paid judgments.
+    source_references = {
+        task_id: judge_source_reference(tasks[task_id], prompt)
+        for task_id, prompt in exact_prompts.items()
+    }
     gradeable = [
         attempt for attempt in attempts
         if "error" not in attempt and attempt["task_id"] in selected_task_ids
@@ -1693,10 +1727,13 @@ def cmd_grade(args: argparse.Namespace) -> int:
             if criterion["id"] not in measured_results
         ]
         prompt = build_judge_prompt(
-            task, response_text, facts, exact_prompt, judge_criteria
+            task, response_text, facts, exact_prompt, judge_criteria,
+            source_reference=source_references[task["id"]],
         )
         record = {key: attempt[key] for key in ("task_id", "model_id", "repetition")}
         record["judge_model"] = judge_id
+        record["judge_protocol_version"] = JUDGE_PROTOCOL_VERSION
+        record["judge_prompt_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
         record["rubric_version"] = task["rubric_version"]
         record["rubric_sha256"] = _rubric_sha256(task)
         section_of = {
@@ -1840,6 +1877,9 @@ def cmd_grade(args: argparse.Namespace) -> int:
         "created_at": previous_grading.get("created_at", now),
         "updated_at": now,
         "judge_model": judge_id,
+        "judge_protocol_version": JUDGE_PROTOCOL_VERSION,
+        "judge_instructions": JUDGE_INSTRUCTIONS,
+        "source_reference_version": reference_facts.VERSION,
         "label": label,
         "task_source": task_source,
         "judge_usage": judge_usage,

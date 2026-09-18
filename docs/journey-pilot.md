@@ -66,3 +66,7 @@ and test outcomes. This resolves inconsistent treatment of invented lamp-base
 dimensions; it does not change the task or add a product-specific capability.
 
 No production deployment or migration is needed for these evaluation tools.
+
+The follow-up [factual-grading protocol](judge-factuality.md) addresses false
+passes found in the complete rerun responses. It versions all five affected
+task rubrics and records judge-protocol provenance; earlier scores remain intact.

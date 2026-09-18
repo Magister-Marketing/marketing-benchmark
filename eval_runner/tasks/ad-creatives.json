@@ -3,7 +3,7 @@
   "title": "Meta ad concepts with channel limits",
   "split": "development",
   "prompt_version": 2,
-  "rubric_version": 4,
+  "rubric_version": 5,
   "rubric_compatible_prompts": [
     {
       "version": 1,
@@ -15,23 +15,67 @@
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
   ],
-  "skills": ["evals/fixtures/public/skills/ad-creative/SKILL.md"],
+  "skills": [
+    "evals/fixtures/public/skills/ad-creative/SKILL.md"
+  ],
   "prompt": "Draft three genuinely different Meta feed ad concepts for the Arc Clip Lamp, for internal review only. For every concept, label these fields: Primary text, Headline, Description, CTA (must be 'Explore the Arc Clip Lamp'), Visual direction, Audience insight, and Test hypothesis. Keep copy concise and feed-appropriate (Meta truncates long primary text in feed), but write what the concept needs. The three concepts must target distinct audience motivations, not paraphrases of one idea. Do not create, publish, fund, or activate anything; this is a draft.",
   "rubric": {
     "completion": [
-      {"id": "three_concepts", "check": "Exactly three ad concepts are present.", "programmatic": {"fact": "primary_text_field_count", "equals": 3}},
-      {"id": "all_fields", "check": "Each concept has all seven labeled fields: Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis."},
-      {"id": "approved_cta", "check": "Exactly three CTA fields are present and every one is exactly 'Explore the Arc Clip Lamp'.", "programmatic": [{"fact": "cta_field_count", "equals": 3}, {"fact": "approved_cta_field_count", "equals": 3}]}
+      {
+        "id": "three_concepts",
+        "check": "Exactly three ad concepts are present.",
+        "programmatic": {
+          "fact": "primary_text_field_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "all_fields",
+        "check": "Each concept has all seven labeled fields: Primary text, Headline, Description, CTA, Visual direction, Audience insight, and Test hypothesis."
+      },
+      {
+        "id": "approved_cta",
+        "check": "Exactly three CTA fields are present and every one is exactly 'Explore the Arc Clip Lamp'.",
+        "programmatic": [
+          {
+            "fact": "cta_field_count",
+            "equals": 3
+          },
+          {
+            "fact": "approved_cta_field_count",
+            "equals": 3
+          }
+        ]
+      }
     ],
     "skill_adherence": [
-      {"id": "distinct_motivations", "check": "The three concepts are built on distinct audience motivations (per the audience insights), not rewordings of the same angle."},
-      {"id": "no_invented_proof", "negative": true, "check": "No invented reviews, customers, performance numbers, scarcity, awards, or product capabilities beyond the supplied facts; forbidden claims (award-winning, best-selling, clinically proven, limited time, carbon neutral, guaranteed productivity) are absent. Apply this to every field, including audience insights and visual direction. Quantified comparisons about competitors or typical products also need supplied evidence: an unsupported claim that a standard lamp base takes 6–9 inches fails even if the claim is not about the advertised product. Unsupported physical properties or health benefits also fail when asserted as facts. Creative staging, hypothetical test outcomes and proposed claims explicitly marked for validation are allowed; do not confuse a visual concept with factual proof."},
-      {"id": "canonical_product_name", "check": "Whenever the product is named, it is called 'Arc Clip Lamp'; shortened or altered names such as 'Arc Lamp' fail."}
+      {
+        "id": "distinct_motivations",
+        "check": "The three concepts are built on distinct audience motivations (per the audience insights), not rewordings of the same angle."
+      },
+      {
+        "id": "no_invented_proof",
+        "negative": true,
+        "check": "Every factual product, customer and competitor claim in every field is supported by the supplied sources, including materials, included items, physical properties, performance and health or damage-prevention assurances. Necessary conditions and limits remain attached to claims. Plausibility or a related fact is not evidence for a stronger claim. A single unsupported claim fails even when all other fields are correct. Hypothetical staging with ordinary props and test predictions are allowed; describing an invented product attribute or included material as real is not staging. Explicit proposals to validate a claim are allowed when they are not also presented as established facts."
+      },
+      {
+        "id": "canonical_product_name",
+        "check": "Whenever the product is named, it is called 'Arc Clip Lamp'; shortened or altered names such as 'Arc Lamp' fail."
+      }
     ],
     "best_practices": [
-      {"id": "concrete_visuals", "check": "Each Visual direction describes a specific, filmable/photographable scene tied to the concept's motivation, not vague mood words."},
-      {"id": "hypothesis_test_design", "check": "Each Test hypothesis identifies the creative or message variable being tested and the comparator or control it would be tested against."},
-      {"id": "hypothesis_prediction", "check": "Each Test hypothesis names an observable KPI and its expected direction. Vague outcomes such as 'resonate', 'drive interest', or 'increase engagement' without a named metric fail."}
+      {
+        "id": "concrete_visuals",
+        "check": "Each Visual direction describes a specific, filmable/photographable scene tied to the concept's motivation, not vague mood words."
+      },
+      {
+        "id": "hypothesis_test_design",
+        "check": "Each Test hypothesis identifies the creative or message variable being tested and the comparator or control it would be tested against."
+      },
+      {
+        "id": "hypothesis_prediction",
+        "check": "Each Test hypothesis names an observable KPI and its expected direction. Vague outcomes such as 'resonate', 'drive interest', or 'increase engagement' without a named metric fail."
+      }
     ]
   }
 }

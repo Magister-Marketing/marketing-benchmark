@@ -315,6 +315,8 @@ def grade_attempt(attempt: dict, scenario: dict, judge_spec: dict, generate=prov
         raise ValueError("judge criterion IDs do not match scenario")
     checks = {c["id"]: c["pass"] for c in verdict["criteria"]} | attempt["deterministic"]
     return {"verdict": verdict, "checks": checks,
+            "judge_protocol_version": bench.JUDGE_PROTOCOL_VERSION,
+            "judge_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
             "pass": attempt["status"] == "complete" and verdict["completed"] and all(checks.values()),
             "judge_cost_estimate_usd": bench.attempt_cost_usd(generated, judge_spec),
             "judge_input_tokens": generated.get("input_tokens"), "judge_output_tokens": generated.get("output_tokens")}

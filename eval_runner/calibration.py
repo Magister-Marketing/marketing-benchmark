@@ -1,9 +1,13 @@
-"""Small, explicit judge probes for the rubric-v3 corrections (paid CLI only)."""
+"""Development judge calibration: focused contrasts and whole answers (paid only)."""
 import argparse
+import concurrent.futures
+import hashlib
 import json
 from pathlib import Path
 
 from eval_runner import bench, providers
+
+FIXTURES = Path(__file__).parent / "fixtures" / "judge-calibration"
 
 PROBES = [
     ("invented-competitor-dimensions", "ad-creatives", "no_invented_proof", False,
@@ -24,22 +28,84 @@ PROBES = [
      "Try new images, audiences and copy next week. Pick whichever looks best at 95% significance."),
 ]
 
+# Use whole answers with the full production rubric. A judge can pass a short
+# isolated probe and still miss the same violation in an otherwise good report.
+FULL_PROBES = [
+    ("whole-creative-unsupported-attributes", "ad-creatives", "no_invented_proof", False),
+    ("whole-ledger-invented-baselines", "ads-ledger-analysis", "no_invented_data", False),
+    ("whole-ledger-unreconciled-transfer", "ads-ledger-analysis", "recommendation_grounded", False),
+    ("whole-headline-dropped-qualification", "headline", "grounded_claims", False),
+    ("whole-tracking-false-clean-bill", "tracking-audit", "clean_findings_supported", False),
+    ("whole-tracking-unsupported-causes", "tracking-audit", "causal_claims_supported", False),
+    ("whole-tracking-purchase-priority", "tracking-audit", "impact_prioritized", False),
+    ("whole-performance-wrong-account-cpa", "ad-performance-analysis", "evidence_shown", False),
+    ("whole-performance-causal-certainty", "ad-performance-analysis", "cautious_conclusions", False),
+]
 
-def run_probe(probe, judge_spec, generate=providers.generate):
-    name, task_id, criterion_id, expected, response = probe
+
+def probes():
+    yield from PROBES
+    for name, task, criterion, expected in FULL_PROBES:
+        yield name, task, criterion, expected, (FIXTURES / f"{task}-errors.md").read_text()
+    headline = (FIXTURES / "headline-supported.md").read_text()
+    yield "whole-headline-qualified", "headline", "grounded_claims", True, headline
+    creative = (FIXTURES / "ad-creatives-supported.md").read_text()
+    yield "whole-creative-supported-attributes", "ad-creatives", "no_invented_proof", True, creative
+    yield ("conditional-budget-increase", "ads-ledger-analysis", "recommendation_grounded", True,
+           "The final-week observed rt-lookalike spend is $522.86, or $74.69/day. "
+           "Do not assume that is its configured budget. If the owner separately approves $250/day of NEW funding, "
+           "pilot $125/day each into rt-cart and rt-visitors; their full-period net ROAS is 7.23 and 5.64. "
+           "Without new funding, retain current allocations while checking refund causes; the export does not prove a cause or profitable capacity.")
+    yield ("scoped-clean-parameter", "tracking-audit", "clean_findings_supported", True,
+           "Checked clean: organic-pinterest's utm_source=pinterest is allowed. Its overall link is NOT compliant: "
+           "2026q3-boards lacks the required third campaign component. Organic-instagram's source is not on the allowed list. "
+           "The google-brand link conforms to the documented UTM standard.")
+
+
+def prepare_probe(probe):
+    _name, task_id, criterion_id, _expected, response = probe
     task = bench.load_tasks()[task_id]
-    criteria = [(section, c) for section in bench.RUBRIC_SECTIONS for c in task["rubric"][section] if c["id"] == criterion_id]
-    if len(criteria) != 1:
+    facts = bench.measured_facts(task, response)
+    measured_ids = bench.programmatic_results(task, facts)
+    criteria = [(section, c) for section in bench.RUBRIC_SECTIONS
+                for c in task["rubric"][section] if c["id"] not in measured_ids]
+    if sum(c["id"] == criterion_id for _, c in criteria) != 1:
         raise ValueError("calibration criterion missing or duplicated")
-    prompt = bench.build_judge_prompt(task, response, {}, criteria=criteria)
-    generated = generate(judge_spec["model"], prompt, 2048, settings=bench._candidate_settings(judge_spec))
-    verdict = bench.parse_judge_json(generated["text"])
-    if [c["id"] for c in verdict["criteria"]] != [criterion_id]:
-        raise ValueError("calibration judge returned wrong criteria")
-    return {"probe": name, "task_id": task_id, "rubric_version": task["rubric_version"],
-            "expected": expected, "actual": verdict["criteria"][0]["pass"],
-            "matched": verdict["criteria"][0]["pass"] == expected, "verdict": verdict,
-            "cost_estimate_usd": bench.attempt_cost_usd(generated, judge_spec)}
+    prompt = bench.build_judge_prompt(task, response, facts, criteria=criteria)
+    return task, prompt, criteria
+
+
+def run_probe(probe, judge_spec, generate=None, *, prepared=None):
+    name, task_id, criterion_id, expected, response = probe
+    task, prompt, criteria = prepared or prepare_probe(probe)
+    generate = generate or providers.generate
+    record = {"probe": name, "task_id": task_id, "rubric_version": task["rubric_version"],
+            "rubric_sha256": bench._rubric_sha256(task),
+            "response_sha256": hashlib.sha256(response.encode()).hexdigest(),
+            "judge_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+            "judge_protocol_version": bench.JUDGE_PROTOCOL_VERSION,
+            "criterion_id": criterion_id,
+            "expected": expected, "actual": None, "matched": False,
+            "judge_calls": 1, "cost_estimate_usd": None, "cost_unknown": True}
+    try:
+        generated = generate(judge_spec["model"], prompt, bench.MAX_OUTPUT_TOKENS,
+                             settings=bench._candidate_settings(judge_spec))
+        record["input_tokens"] = generated.get("input_tokens")
+        record["output_tokens"] = generated.get("output_tokens")
+        record["cost_estimate_usd"] = bench.attempt_cost_usd(generated, judge_spec)
+        record["cost_unknown"] = record["cost_estimate_usd"] is None
+        verdict = bench.parse_judge_json(generated["text"])
+        if {c["id"] for c in verdict["criteria"]} != {c["id"] for _, c in criteria}:
+            raise ValueError("calibration judge returned wrong criteria")
+        if verdict.get("self_report") not in bench.SELF_REPORTS:
+            raise ValueError("judge omitted self_report")
+        actual = next(c["pass"] for c in verdict["criteria"] if c["id"] == criterion_id)
+        record.update(actual=actual, matched=actual == expected, verdict=verdict)
+    except Exception as exc:
+        # Retain usage even if parsing fails; let other paid groups complete and
+        # persist. Provider failures without usage remain explicitly unknown.
+        record["error"] = type(exc).__name__
+    return record
 
 
 def main():
@@ -47,19 +113,48 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--env-file")
     parser.add_argument("--judge", default="claude-sonnet-5")
+    parser.add_argument("--probes", help="comma-separated names for a bounded calibration rerun")
     args = parser.parse_args()
     if args.env_file:
         bench._load_env_file(args.env_file)
     spec = bench.load_models()[args.judge]
     passed = True
+    groups = {}
+    selected = list(probes())
+    if args.probes:
+        names = set(args.probes.split(","))
+        unknown = names - {p[0] for p in selected}
+        if unknown:
+            parser.error("unknown probes: " + ", ".join(sorted(unknown)))
+        selected = [p for p in selected if p[0] in names]
+    for probe in selected:
+        groups.setdefault((probe[1], probe[4]), []).append(probe)
+    # No paid calls until every selected source and criterion has been validated.
+    prepared = {probe[0]: prepare_probe(probe) for probe in selected}
+
+    def run_group(group):
+        first = run_probe(group[0], spec, prepared=prepared[group[0][0]])
+        results = [first]
+        actuals = {c["id"]: c["pass"] for c in first.get("verdict", {}).get("criteria", [])}
+        for name, task, criterion, expected, _response in group[1:]:
+            results.append({**first, "probe": name, "task_id": task,
+                            "criterion_id": criterion, "expected": expected,
+                            "actual": actuals.get(criterion),
+                            "matched": criterion in actuals and actuals[criterion] == expected,
+                            "judgment_reused_from": first["probe"], "judge_calls": 0,
+                            "cost_estimate_usd": 0})
+        return results
+
     with args.output.open("x") as stream:
-        for probe in PROBES:
-            result = run_probe(probe, spec)
-            result["judge_model"] = args.judge
-            passed = passed and result["matched"]
-            stream.write(json.dumps(result) + "\n")
-            stream.flush()
-            print(f"{result['probe']}: matched={result['matched']}", flush=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=bench.RUN_CONCURRENCY) as pool:
+            futures = [pool.submit(run_group, group) for group in groups.values()]
+            for future in concurrent.futures.as_completed(futures):
+                for result in future.result():
+                    result["judge_model"] = args.judge
+                    passed = passed and result["matched"]
+                    stream.write(json.dumps(result) + "\n")
+                    stream.flush()
+                    print(f"{result['probe']}: matched={result['matched']}", flush=True)
     return 0 if passed else 1
 
 
