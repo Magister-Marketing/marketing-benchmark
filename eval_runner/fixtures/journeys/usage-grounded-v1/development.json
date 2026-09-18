@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "pack_id": "usage-grounded-v1-development",
+  "partition": "development",
+  "generation_status": "unrun_at_authoring",
+  "scenarios": [
+    {
+      "id": "usage-complete-periods-dev",
+      "steps": [
+        {
+          "user": "Review organic-search performance for fictional Kiteglass Stationery. It is 2031-05-22 at 10:00 in Europe/London. Compare the latest 21 complete reporting days with the preceding 21 complete days. The provider uses inclusive calendar dates in the account timezone. Pick the appropriate reports below, show the exact windows, clicks, impressions and CTR, then give one useful next action. Do not access a real account or change anything.\n\nSupplied synthetic fixture (the only available evidence):\n```json\n{\n  \"account_timezone\": \"Europe/London\",\n  \"today\": \"2031-05-22\",\n  \"latest_complete_date\": \"2031-05-19\",\n  \"date_boundaries\": \"inclusive local calendar dates\",\n  \"reports\": [\n    {\n      \"id\": \"recent-calendar-export\",\n      \"start\": \"2031-05-01\",\n      \"end\": \"2031-05-21\",\n      \"coverage\": \"provisional; May 20 and 21 are not complete\",\n      \"clicks\": 700,\n      \"impressions\": 23000\n    },\n    {\n      \"id\": \"latest-complete-export\",\n      \"start\": \"2031-04-29\",\n      \"end\": \"2031-05-19\",\n      \"coverage\": \"complete\",\n      \"clicks\": 630,\n      \"impressions\": 21000\n    },\n    {\n      \"id\": \"previous-complete-export\",\n      \"start\": \"2031-04-08\",\n      \"end\": \"2031-04-28\",\n      \"coverage\": \"complete\",\n      \"clicks\": 420,\n      \"impressions\": 21000\n    }\n  ],\n  \"context\": \"No experiment, page-level breakdown or conversion data is available.\"\n}\n```"
+        },
+        {
+          "user": "Can I tell the team that clicks rose 50% this month because of our new page titles? Give me a short update they can use, with the relevant qualification. No new data has arrived."
+        }
+      ],
+      "checks": {
+        "aligned_complete_windows": "Uses April 29–May 19 versus April 8–28, 2031 (21 inclusive local days each), grounded in the May 19 complete-data cutoff. Does not substitute May 1–21 provisional data or call these windows a full calendar month. Clearly labels both windows at least once; later replies may refer back unambiguously.",
+        "correct_interpretation": "Complete-window clicks 630 vs 420, +50%; impressions 21,000 vs 21,000, unchanged; CTR 3% vs 2%, +1 percentage point (or accurately labeled +50% relative). Distinguishes measured period-over-period increase from unproven title-change causation; does not claim conversion/revenue improvement. Rounding and equivalent language are allowed.",
+        "useful_summary": "Provides the requested usable team update and a sensible next investigation despite causal uncertainty. Does not refuse all analysis merely because the newest provisional data is incomplete. No prescribed action or phrasing beyond factual accuracy."
+      }
+    },
+    {
+      "id": "usage-daily-lifetime-dev",
+      "steps": [
+        {
+          "user": "For fictional Pebblekite Goods, I saw 28 clicks in an earlier chat but only 5 on the campaign dashboard. Are the numbers broken? Please reconcile this read-only using the export below and tell me what each number means.\n\nSupplied synthetic fixture (the only available evidence):\n```json\n{\n  \"account_timezone\": \"America/Denver\",\n  \"captured_at_local\": \"2032-06-16T10:00:00-06:00\",\n  \"campaign_start\": \"2032-06-10\",\n  \"currency\": \"USD\",\n  \"dashboard_filter\": \"yesterday\",\n  \"date_boundaries\": \"inclusive local calendar dates\",\n  \"rows\": [\n    {\n      \"window\": \"June 10–15, complete\",\n      \"clicks\": 26,\n      \"spend\": 52\n    },\n    {\n      \"window\": \"June 15 only, complete; subset of preceding row\",\n      \"clicks\": 5,\n      \"spend\": 12\n    },\n    {\n      \"window\": \"June 16 so far, provisional\",\n      \"clicks\": 2,\n      \"spend\": 4\n    }\n  ],\n  \"previous_chat_basis\": \"Campaign lifetime including the partial June 16 export: 28 clicks and USD 56 spend.\"\n}\n```"
+        },
+        {
+          "user": "How is it looking now? Still read-only. Show yesterday and campaign-to-date separately, compare yesterday with the previous complete day, and say whether this proves the campaign has improved.\n\nSupplied synthetic fixture (the only available evidence):\n```json\n{\n  \"account_timezone\": \"America/Denver\",\n  \"captured_at_local\": \"2032-06-17T10:00:00-06:00\",\n  \"currency\": \"USD\",\n  \"rows\": [\n    {\n      \"window\": \"June 10–15, complete\",\n      \"clicks\": 26,\n      \"spend\": 52\n    },\n    {\n      \"window\": \"June 15 only, complete; subset of preceding row\",\n      \"clicks\": 5,\n      \"spend\": 12\n    },\n    {\n      \"window\": \"June 16 final, replaces its earlier partial row\",\n      \"clicks\": 8,\n      \"spend\": 20\n    },\n    {\n      \"window\": \"June 17 so far, provisional\",\n      \"clicks\": 1,\n      \"spend\": 2\n    }\n  ],\n  \"outcome_data\": \"No sales or conversion data was supplied.\"\n}\n```"
+        }
+      ],
+      "checks": {
+        "reconcile_filters": "First reply explains 5 clicks is June 15 only; 28 is June 10–16 campaign-to-date including partial June 16. Both can be correct; no unsupported claim of a broken API, lost clicks or dashboard lag. USD 12 versus USD 56 if spend is reported.",
+        "retain_window_labels": "Final distinguishes complete yesterday June 16: 8 clicks/USD 20, previous complete day June 15: 5/USD 12, and June 10–17 campaign-to-date: 35 clicks/USD 74 including provisional June 17. Replaces the old June 16 partial row instead of double counting it; June 15 is a subset and must not be added twice.",
+        "proportionate_conclusion": "Yesterday clicks increased 60% and spend increased about 66.7% if percentages are stated; CPC USD 2.50 vs USD 2.40 if calculated. Must compare at least the click change accurately. Does not claim improved sales/profit or a proven trend from two sparse days. Useful read-only update; no invented external action."
+      }
+    }
+  ]
+}
