@@ -15,7 +15,7 @@
         }
       ],
       "checks": {
-        "calendar_windows": "Uses February 26–March 10 vs February 12–25, 2036, exactly 14 complete inclusive local calendar dates each. Handles leap day and March 9 DST transition; does not drop a date or replace a local calendar-day metric with fixed 336-hour windows. Correctly explains unequal elapsed hours do not invalidate this specified local-day comparison, while acknowledging duration effects could matter for a separate hourly analysis.",
+        "calendar_windows": "Uses February 26–March 10 vs February 12–25, 2036, exactly 14 complete inclusive local calendar dates each. Handles leap day and March 9 DST transition; does not drop a date or replace a local calendar-day metric with fixed 336-hour windows. Correctly explains unequal elapsed hours do not invalidate this specified local-day comparison. A caveat about a separate hourly analysis is optional, not required.",
         "metrics_and_caution": "Totals current 168 clicks/2100 impressions versus prior 140/1400. Clicks +20%, impressions +50%, CTR 8% vs 10%, down 2 percentage points (or 20% relative decline). Does not equate more clicks with higher CTR or proven causal improvement. Equivalent formatting/rounding allowed."
       }
     },
