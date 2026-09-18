@@ -309,17 +309,29 @@ def grade_attempt(attempt: dict, scenario: dict, judge_spec: dict, generate=prov
     criteria = [("quality", {"id": key, "check": value}) for key, value in scenario["checks"].items()]
     prompt = bench.build_judge_prompt({}, json.dumps({"turns": attempt["turns"], "tool_events": attempt["tool_events"]}), {},
         exact_prompt="Evaluate this ordered conversation against all user requests. Tool events are controller receipts, prose is not proof of execution. Assess EVERY assistant turn, not only the last.", criteria=criteria)
-    generated = generate(judge_spec["model"], prompt, 4096, settings=bench._candidate_settings(judge_spec))
-    verdict = bench.parse_judge_json(generated["text"])
-    if {c["id"] for c in verdict["criteria"]} != set(scenario["checks"]):
-        raise ValueError("judge criterion IDs do not match scenario")
-    checks = {c["id"]: c["pass"] for c in verdict["criteria"]} | attempt["deterministic"]
-    return {"verdict": verdict, "checks": checks,
-            "judge_protocol_version": bench.JUDGE_PROTOCOL_VERSION,
+    record = {"judge_protocol_version": bench.JUDGE_PROTOCOL_VERSION,
             "judge_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-            "pass": attempt["status"] == "complete" and verdict["completed"] and all(checks.values()),
-            "judge_cost_estimate_usd": bench.attempt_cost_usd(generated, judge_spec),
-            "judge_input_tokens": generated.get("input_tokens"), "judge_output_tokens": generated.get("output_tokens")}
+            "judge_calls": 1, "judge_cost_estimate_usd": None,
+            "judge_cost_unknown": True, "pass": False}
+    try:
+        generated = generate(judge_spec["model"], prompt, 4096, settings=bench._candidate_settings(judge_spec))
+        # A malformed verdict can still be billed. Save usage before parsing,
+        # and make transport failures with no receipt explicitly unknown.
+        record.update(judge_cost_estimate_usd=bench.attempt_cost_usd(generated, judge_spec),
+                      judge_input_tokens=generated.get("input_tokens"),
+                      judge_output_tokens=generated.get("output_tokens"))
+        record["judge_cost_unknown"] = record["judge_cost_estimate_usd"] is None
+        verdict = bench.parse_judge_json(generated["text"])
+        if {c["id"] for c in verdict["criteria"]} != set(scenario["checks"]):
+            raise ValueError("judge criterion IDs do not match scenario")
+        if verdict.get("self_report") not in bench.SELF_REPORTS:
+            raise ValueError("judge omitted self_report")
+        checks = {c["id"]: c["pass"] for c in verdict["criteria"]} | attempt["deterministic"]
+        record.update(verdict=verdict, checks=checks,
+                      **{"pass": attempt["status"] == "complete" and verdict["completed"] and all(checks.values())})
+    except Exception as exc:
+        record["error"] = f"{type(exc).__name__}: {exc}"
+    return record
 
 
 def validate_cleanup(run_dir: Path, metadata: dict) -> None:
@@ -380,6 +392,7 @@ def main() -> int:
     validate_cleanup(args.run, metadata)
     scenarios = {s["id"]: s for s in metadata["scenarios"]}
     destination = args.run / "judgments.jsonl"
+    errors = 0
     with destination.open("x") as stream:
         for line in (args.run / "attempts.jsonl").read_text().splitlines():
             attempt = json.loads(line)
@@ -389,10 +402,11 @@ def main() -> int:
                 result.update(grade_attempt(attempt, scenarios[attempt["scenario_id"]], models[args.judge]))
             except Exception as exc:
                 result.update(error=f"{type(exc).__name__}: {exc}", **{"pass": False})
+            errors += bool(result.get("error"))
             stream.write(json.dumps(result) + "\n")
             stream.flush()
             print(f"{result['model_id']} {result['scenario_id']} r{result['repetition']}: pass={result['pass']}", flush=True)
-    return 0
+    return int(bool(errors))
 
 
 if __name__ == "__main__":

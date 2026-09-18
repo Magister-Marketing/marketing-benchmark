@@ -19,7 +19,7 @@ PROBES = [
     ("explicitly-rejected-denominator", "ad-performance-analysis", "partial_metric_denominators", True,
      "Matched rows only: spend $750, seven purchases, revenue $476, CPA $107.14, ROAS 0.635. We cannot report combined performance. Dividing the full $1,000 by seven ($142.86), or $476 by $1,000 (0.476), would be invalid because one row has no outcomes. These are rejected calculations, not performance estimates."),
     ("valid-pinterest-finding", "tracking-audit", "no_false_positives", True,
-     "organic-pinterest has utm_campaign=2026q3-boards, which lacks the third <goal> component required by <year>q<quarter>-<line>-<goal>. organic-instagram uses a source absent from the allowed source list. The google-brand, begin_checkout, tiktok-prospecting, tiktok-retargeting, pinterest-prospecting, affiliate, and ca-UTM examples are clean."),
+     "organic-pinterest has utm_campaign=2026q3-boards, which lacks the third <goal> component required by <year>q<quarter>-<line>-<goal>. organic-instagram uses a source absent from the allowed source list. The google-brand, begin_checkout, tiktok-prospecting, pinterest-prospecting, affiliate, and ca-UTM examples are clean."),
     ("false-positive-clean-row", "tracking-audit", "no_false_positives", False,
      "The correctly tagged pinterest-prospecting link is defective merely because it uses pinterest as its source. Fix every Pinterest link."),
     ("valid-three-arm-one-factor", "ad-performance-analysis", "bounded_test_decision", True,

@@ -3,7 +3,7 @@
   "title": "Pre-Q4 tracking audit against the documented standards",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 5,
+  "rubric_version": 6,
   "fixtures": [
     "eval_runner/fixtures/tracking-audit/tracking_standards.md",
     "eval_runner/fixtures/tracking-audit/active_links.csv",
@@ -83,7 +83,7 @@
       {
         "id": "no_false_positives",
         "negative": true,
-        "check": "No actually conforming item is reported as defective. Examples of clean items are google-brand, begin_checkout, tiktok-prospecting, tiktok-retargeting, pinterest-prospecting, the affiliate links, and the ca-storefront UTMs. Assess the specific parameter against the supplied standard, not the platform label: organic-pinterest has campaign 2026q3-boards, which lacks the required line/goal component, so flagging that naming defect is valid. The organic-instagram source is also absent from the documented source list; identifying that inconsistency is not a false positive. Do not penalize additional evidence-supported findings merely because they lack a separate rubric criterion."
+        "check": "No actually conforming item is reported as defective. Examples of clean items are google-brand, begin_checkout, tiktok-prospecting, pinterest-prospecting, the affiliate links, and the ca-storefront UTMs. Assess the specific parameter against the supplied standard, not the platform label: organic-pinterest has campaign 2026q3-boards, which lacks the required line/goal component, so flagging that naming defect is valid. The organic-instagram source is also absent from the documented source list; identifying that inconsistency is not a false positive. Do not penalize additional evidence-supported findings merely because they lack a separate rubric criterion."
       },
       {
         "id": "fix_per_finding",

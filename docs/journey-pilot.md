@@ -40,6 +40,10 @@ call, using catalog prices without cache discounts. Actual invoices can differ;
 reported costs are upper estimates from returned usage. Grading is separately
 billed and not covered by the generation cap. Generation never retries silently.
 Existing run directories and judgment files are refused, preserving history.
+Journey grading retains returned usage even when the judge verdict is malformed,
+marks costs unknown when a provider response is lost, and exits nonzero on
+grading errors after recording the remaining attempts. A validly graded quality
+failure is separate from a grading error; inspect each recorded pass result.
 
 ## Rubric corrections
 
@@ -64,6 +68,12 @@ Ad-creatives rubric v4 applies evidence requirements to quantified competitor
 comparisons and every field, while allowing clearly hypothetical visual staging
 and test outcomes. This resolves inconsistent treatment of invented lamp-base
 dimensions; it does not change the task or add a product-specific capability.
+
+Tracking-audit rubric v6 removes a nonexistent `tiktok-retargeting` example from
+the clean-item guidance and its calibration control. The supplied CSV contains
+two `tiktok-prospecting` links. Previously recorded v5 calibration and grades
+retain their original snapshots; this source correction has only offline
+validation until a separately recorded paid run is performed.
 
 No production deployment or migration is needed for these evaluation tools.
 

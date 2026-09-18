@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from eval_runner import bench
+from eval_runner import bench, journeys
 from eval_runner.journeys import APPROVED_TEXT, SCENARIOS, ResponsesChat, World, grade_attempt, run_journey, validate_cleanup
 
 
@@ -169,7 +169,7 @@ def test_grader_cannot_override_failed_state_or_missing_turn():
     scenario = SCENARIOS[3]
     attempt = {"status": "error", "turns": [], "tool_events": [], "deterministic": {"exactly_one_approved_publication": False}}
     def generate(*args, **kwargs):
-        return {"text": json.dumps({"completed": True, "criteria": [{"id": "honest_status", "pass": True, "evidence": "Looks done"}]}), "input_tokens": 10, "output_tokens": 10}
+        return {"text": json.dumps({"completed": True, "self_report": "complete", "criteria": [{"id": "honest_status", "pass": True, "evidence": "Looks done"}]}), "input_tokens": 10, "output_tokens": 10}
     result = grade_attempt(attempt, scenario, bench.load_models()["claude-sonnet-5"], generate)
     assert not result["pass"]
 
@@ -177,8 +177,48 @@ def test_grader_cannot_override_failed_state_or_missing_turn():
 def test_grader_rejects_missing_criteria():
     def generate(*args, **kwargs):
         return {"text": '{"completed": true, "criteria": []}'}
-    with pytest.raises(ValueError, match="criterion"):
-        grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"}, SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
+    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"}, SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
+    assert not result["pass"] and "criterion" in result["error"]
+
+
+@pytest.mark.parametrize("missing_report", [False, True])
+def test_invalid_judge_verdict_retains_paid_usage(missing_report):
+    scenario = SCENARIOS[0]
+    verdict = {"completed": True, "criteria": [
+        {"id": key, "pass": True, "evidence": "Supported"} for key in scenario["checks"]]}
+    def generate(*args, **kwargs):
+        return {"text": json.dumps(verdict) if missing_report else "not JSON",
+                "input_tokens": 100, "output_tokens": 25}
+    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"},
+                           scenario, bench.load_models()["claude-sonnet-5"], generate)
+    assert not result["pass"] and result["error"]
+    assert result["judge_calls"] == 1 and result["judge_cost_estimate_usd"] > 0
+    assert result["judge_input_tokens"] == 100 and result["judge_output_tokens"] == 25
+    assert not result["judge_cost_unknown"]
+
+
+def test_judge_transport_failure_retains_unknown_cost():
+    def generate(*args, **kwargs):
+        raise TimeoutError("response lost")
+    result = grade_attempt({"turns": [], "tool_events": [], "deterministic": {}, "status": "complete"},
+                           SCENARIOS[0], bench.load_models()["claude-sonnet-5"], generate)
+    assert not result["pass"] and result["error"]
+    assert result["judge_calls"] == 1 and result["judge_cost_unknown"]
+    assert result["judge_cost_estimate_usd"] is None
+
+
+def test_grade_cli_retains_later_results_and_fails_on_grading_error(tmp_path, monkeypatch):
+    (tmp_path / "run.json").write_text(json.dumps({"scenarios": [SCENARIOS[0]]}))
+    attempts = [{"model_id": "candidate", "scenario_id": SCENARIOS[0]["id"], "repetition": n} for n in (1, 2)]
+    (tmp_path / "attempts.jsonl").write_text("".join(json.dumps(a) + "\n" for a in attempts))
+    def grade(attempt, *args):
+        return {"pass": True} if attempt["repetition"] == 2 else {"pass": False, "error": "invalid verdict", "judge_cost_estimate_usd": .1}
+    monkeypatch.setattr(journeys, "grade_attempt", grade)
+    monkeypatch.setattr("sys.argv", ["journeys", "grade", "--run", str(tmp_path)])
+    assert journeys.main() == 1
+    rows = [json.loads(line) for line in (tmp_path / "judgments.jsonl").read_text().splitlines()]
+    assert len(rows) == 2 and rows[1]["pass"]
+    assert rows[0]["judge_cost_estimate_usd"] == .1
 
 
 def test_cleanup_required_for_result_eligibility(tmp_path):
