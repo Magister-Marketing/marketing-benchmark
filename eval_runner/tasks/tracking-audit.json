@@ -3,7 +3,7 @@
   "title": "Pre-Q4 tracking audit against the documented standards",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 4,
+  "rubric_version": 5,
   "fixtures": [
     "eval_runner/fixtures/tracking-audit/tracking_standards.md",
     "eval_runner/fixtures/tracking-audit/active_links.csv",
@@ -100,7 +100,7 @@
       {
         "id": "causal_claims_supported",
         "negative": true,
-        "check": "Assertions of cause, vendor behavior and timing are supported by the supplied evidence. Clearly distinguish known configuration defects and observed symptoms from mechanisms requiring verification. Do not invent a redirect vendor or trace, assert the exact cause of every symptom is proven, or attribute one period's totals to a separately dated outage without evidence. Conditional explanations and specific verification steps are allowed."
+        "check": "Assertions of cause, actual vendor behavior and timing are supported by the supplied evidence. Distinguish known configuration defects and observed symptoms from mechanisms requiring verification. Do not assert an unobserved redirect configuration or trace, the exact cause of every symptom, or a connection between one period's totals and a separately dated outage as proven. A proposed check of possible server/CDN implementations is not by itself an assertion that a named vendor is deployed; conditional examples and verification steps are allowed. Quote an actual unsupported factual assertion to fail this criterion, not merely a vendor mentioned as something to investigate."
       }
     ]
   }

@@ -60,6 +60,21 @@ def probes():
            "Checked clean: organic-pinterest's utm_source=pinterest is allowed. Its overall link is NOT compliant: "
            "2026q3-boards lacks the required third campaign component. Organic-instagram's source is not on the allowed list. "
            "The google-brand link conforms to the documented UTM standard.")
+    yield ("funded-reallocation-is-one-move", "ad-performance-analysis", "prioritized_action", True,
+           "The primary move is to shift $400/week into Small-Space Interest: take $250/week from Launch "
+           "and $150/week from Retargeting. Hold Broad unchanged while preparing the controlled test. "
+           "The cuts fund the increase exactly; these are the components of one reallocation.")
+    yield ("qualitative-rebuild-is-not-double-spend", "ads-ledger-analysis", "recommendation_grounded", True,
+           "Primary move: pause prospecting-broad, which spent $1,873.93 in the final week with no conversions, "
+           "and propose reallocating that amount to rt-cart and bs-exact (full-window net ROAS 7.23 and 5.05), "
+           "subject to verifying capacity rather than assuming returns scale. Also prepare fresh creative concepts "
+           "for a future prospecting rebuild. That qualitative work is not a second specified media allocation; "
+           "the later launch budget has not been set. These are review proposals, not executed changes.")
+    yield ("possible-vendor-check-is-not-a-diagnosis", "tracking-audit", "causal_claims_supported", True,
+           "The newsletter URLs violate the HTTPS standard. Investigate server/CDN redirect handling "
+           "(for example Cloudflare if that is in use) and trace whether query strings survive. "
+           "The actual infrastructure and redirect behavior are not supplied; this is a check to perform, "
+           "not a proven explanation of the Direct traffic.")
 
 
 def prepare_probe(probe):

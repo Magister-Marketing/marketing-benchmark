@@ -3,7 +3,7 @@
   "title": "Paid ad campaign performance analysis",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 4,
+  "rubric_version": 5,
   "fixtures": [
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md",
@@ -53,7 +53,7 @@
       },
       {
         "id": "prioritized_action",
-        "check": "Recommendations are prioritized (one clear primary move) rather than an unranked laundry list."
+        "check": "Recommendations identify one clear primary move or coherent plan rather than an unranked laundry list. A budget reallocation may contain several funding cuts, a destination increase and explicitly unchanged campaigns; those are components of one move, not co-equal unrelated recommendations. Grade wrong sums under numerical correctness, not prioritization."
       },
       {
         "id": "bounded_test_decision",

@@ -29,6 +29,12 @@ expected checks for one answer reuse one judgment and one billed call. The
 examples are development regressions, not holdout evidence or a measure of
 general judge reliability. Failed calibration files must be retained.
 
+Positive contrasts also protect legitimate recommendations: funding cuts and
+an increase can be one coherent reallocation; a qualitative future rebuild is
+not automatically a second media-budget commitment; and proposing a conditional
+vendor check does not assert that vendor's behavior is known. Numeric facts are
+graded separately from causal interpretations and recommendation feasibility.
+
 Run paid calibration manually, never in CI:
 
 ```sh
