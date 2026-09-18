@@ -1474,7 +1474,7 @@ def test_run_writes_prompts_and_responses(tmp_path, monkeypatch):
     assert (run_dir / "prompts" / "headline.md").read_text().startswith(
         "You are the copywriter for Cedar & Coil")
     task_snapshot = json.loads((run_dir / "tasks" / "headline.json").read_text())
-    assert task_snapshot["rubric_version"] == 2
+    assert task_snapshot["rubric_version"] == 3
     run_meta = json.loads((run_dir / "run.json").read_text())
     assert run_meta["harness"] == "direct-api"
     assert run_meta["task_manifest"]["headline"]["split"] == "development"
@@ -1510,7 +1510,7 @@ def test_snapshot_loading_does_not_require_current_fixture_paths(tmp_path):
     task_dir.mkdir()
     (task_dir / "headline.json").write_text(json.dumps(task))
 
-    assert bench._load_task_snapshots(tmp_path)["headline"]["rubric_version"] == 2
+    assert bench._load_task_snapshots(tmp_path)["headline"]["rubric_version"] == 3
     with pytest.raises(ValueError, match="fixture not found"):
         bench._validate_task(task, task_dir / "headline.json")
 
@@ -1624,10 +1624,18 @@ def test_labeled_current_rubric_grade_combines_judge_and_programmatic(
     assert five_options["source"] == "programmatic"
     grading = json.loads((run_dir / "grading.rubric-v2.json").read_text())
     assert grading["task_source"] == "current"
+    assert grading["judge_protocol_version"] == bench.JUDGE_PROTOCOL_VERSION
+    assert grading["judge_instructions"] == bench.JUDGE_INSTRUCTIONS
+    assert len(judgment["judge_prompt_sha256"]) == 64
     assert grading["prompts"]["headline"] == {
         "version": task["prompt_version"],
         "sha256": hashlib.sha256(prompt.encode()).hexdigest(),
     }
+    del grading["judge_protocol_version"]
+    (run_dir / "grading.rubric-v2.json").write_text(json.dumps(grading))
+    args.tasks = "headline"
+    with pytest.raises(SystemExit, match="cannot mix judge protocols"):
+        bench.cmd_grade(args)
 
 
 def test_judge_call_carries_the_judge_entry_settings(tmp_path, monkeypatch):
@@ -2499,11 +2507,11 @@ def test_a_blank_reply_is_still_worth_nothing_but_a_blocked_one_keeps_its_negati
     assert _attempt_score(apply_scoring_rules(blocked, task)) == round(100.0 / len(ids), 1)
 
 
-def test_tracking_audit_rubric_v2_splits_pmax_and_keeps_false_positives_non_critical():
+def test_tracking_audit_rubric_preserves_pmax_and_keeps_false_positives_non_critical():
     from eval_runner.bench import load_tasks
 
     task = load_tasks()["tracking-audit"]
-    assert task["rubric_version"] == 2
+    assert task["rubric_version"] == 6
     ids = [c["id"] for s in task["rubric"].values() for c in s]
     assert ids.index("finds_uppercase_medium_pmax") == ids.index("finds_uppercase_medium") + 1
     fp = next(c for s in task["rubric"].values() for c in s if c["id"] == "no_false_positives")

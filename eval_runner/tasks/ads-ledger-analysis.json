@@ -3,7 +3,7 @@
   "title": "Quarterly paid-media review from the raw daily export",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 2,
+  "rubric_version": 4,
   "fixtures": [
     "eval_runner/fixtures/ads-ledger/ads_daily.csv"
   ],
@@ -103,7 +103,7 @@
         "id": "no_invented_data",
         "negative": true,
         "critical": true,
-        "check": "Every figure presented as coming from the export is derivable from the supplied CSV; no external benchmarks, industry averages, or invented segment data are presented as if they were in the data.",
+        "check": "Every figure presented as an observed or computed fact anywhere in the review is derivable from the recorded CSV for the named segment, dates and units. Inspect tables, notes and the action plan independently of the A1-A5 block. Check decision-relevant starting amounts against source totals; citing an adset name and a number is not verification. Do not invent numerical costs, configured budgets, attribution rates or segment measurements. Explicitly labeled future proposals and hypotheses are not historical figures. Assess causal interpretations and recommendation feasibility separately under recommendation_grounded.",
         "fails_if_zero": [
           "q1_blended_cpa",
           "q2_wasted_spend",
@@ -123,7 +123,7 @@
       },
       {
         "id": "recommendation_grounded",
-        "check": "Each recommendation is tied to specific figures from the analysis (named campaigns/adsets with their numbers), not generic best practice."
+        "check": "Recommendations follow from named campaigns/adsets and verified figures with the relevant period and units. Explicit transfers, cuts and increases reconcile with their stated funding; flag double allocation only when stated amounts or allocations conflict. A transfer based on observed spend cannot exceed that baseline without an explicit additional source or a conditional budget assumption to verify. Observed spend is not configured budget, available scale or profit. Do not require a fully costed budget for qualitative creative, investigation or future rebuild suggestions, or infer a second budget commitment solely because later work may cost money. Causes and future outcomes remain hypotheses unless established by the source."
       }
     ]
   }
