@@ -2252,7 +2252,7 @@ def model_efficiency(
         if "error" not in a and a.get("finish_reason") in NORMAL_FINISH_REASONS
     }
     for model_id in model_ids:
-        rows = [a for a in attempts if a["model_id"] == model_id and "error" not in a]
+        rows = [a for a in attempts if a["model_id"] == model_id]
         passed = judged = 0
         sections: dict[str, list[int]] = {s: [0, 0] for s in RUBRIC_SECTIONS}
         tasks: dict[str, list[int]] = {}

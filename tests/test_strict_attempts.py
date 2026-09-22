@@ -110,3 +110,33 @@ def test_failed_call_spend_is_included_and_unknown_billing_is_labelled():
     table = bench._report_summary_rows(["m"], 3, 1, {"m": 1}, {"m": 1},
                                        {"m": efficiency}, {"m": 33.3})
     assert "lower bound; billing incomplete" in table[0]["total_cost"]
+
+
+def test_model_report_counts_failed_spend_without_counting_failed_quality():
+    rows = [
+        {"model_id": "m", "task_id": "success", "repetition": 1,
+         "finish_reason": "stop", "provider_cost_usd": .10, "latency_seconds": 10},
+        {"model_id": "m", "task_id": "failed", "repetition": 1,
+         "error": "upstream failure", "dispatched": True, "cost_unknown": True,
+         "provider_cost_usd": .03, "latency_seconds": 2},
+        {"model_id": "m", "task_id": "unstarted", "repetition": 1,
+         "error": "not dispatched", "dispatched": False},
+        {"model_id": "other", "task_id": "success", "repetition": 1,
+         "finish_reason": "stop", "provider_cost_usd": 8, "latency_seconds": 100},
+    ]
+    judgments = [
+        {"model_id": "m", "task_id": task, "repetition": 1,
+         "criteria": [{"id": "criterion", "pass": passed}]}
+        for task, passed in (("success", True), ("failed", False))
+    ]
+    stats = bench.model_efficiency(["m"], rows, judgments)["m"]
+    assert stats["cost_usd"] == .13
+    assert stats["cost_unknown_attempts"] == 1
+    assert stats["completed_attempts"] == 1
+    assert stats["latency_observations"] == 2
+    assert stats["mean_latency_seconds"] == 6
+    assert stats["criteria_passed"] == stats["criteria_judged"] == 1
+    table = bench._report_summary_rows(["m"], 3, 1, {"m": 1}, {"m": 1},
+                                       {"m": stats}, {"m": 33.3})
+    assert "$0.1300" in table[0]["total_cost"]
+    assert "lower bound; billing incomplete" in table[0]["total_cost"]
