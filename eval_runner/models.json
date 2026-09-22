@@ -114,7 +114,8 @@
     "pricing": {
       "input_per_mtok": 0.75,
       "output_per_mtok": 3.75
-    }
+    },
+    "max_output_tokens": 65536
   },
   "glm-5.3": {
     "model": "openrouter/z-ai/glm-5.3",
