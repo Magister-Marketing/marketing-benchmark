@@ -1166,7 +1166,7 @@ def test_attempt_cost_requires_pricing():
     assert bench.attempt_cost_usd({"error": "boom"}, spec) is None
     assert bench.attempt_cost_usd(
         {"error": "boom", "provider_cost_usd": 0.008}, spec
-    ) is None
+    ) == 0.008
     assert bench.attempt_cost_usd({"input_tokens": 1000}, spec) is None
 
 
