@@ -47,6 +47,15 @@ def probes():
     yield from PROBES
     for name, task, criterion, expected in FULL_PROBES:
         yield name, task, criterion, expected, (FIXTURES / f"{task}-errors.md").read_text()
+    for name, task, criterion in (
+        ("attribution-budget", "attribution-sensitivity", "conditional_recommendation"),
+        ("email-battery", "email-flow-repair", "battery_corrected"),
+        ("activation-definition", "marketing-plan", "activation_anchored"),
+        ("capi-hashes", "shopify-meta-capi", "pii_hashing"),
+    ):
+        for kind, expected in (("errors", False), ("supported", True)):
+            yield (f"whole-{name}-{kind}", task, criterion, expected,
+                   (FIXTURES / f"{task}-{kind}.md").read_text())
     headline = (FIXTURES / "headline-supported.md").read_text()
     yield "whole-headline-qualified", "headline", "grounded_claims", True, headline
     creative = (FIXTURES / "ad-creatives-supported.md").read_text()

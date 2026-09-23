@@ -15,3 +15,12 @@ command; ordinary tests stub the provider and never call a model.
 Passing these examples establishes regression coverage for known failures, not
 judge accuracy on unseen tasks. Preserve failed calibration runs and validate
 future generalization with different sources and scenarios.
+
+The attribution, email-flow, marketing-plan and CAPI pairs exercise four known
+whole-answer false passes: causal budget recommendations despite a disclaimer,
+an unqualified subject-line claim, a changed activation definition, and invalid
+worked hashes. Supported variants repair the named check only; they are not
+certified perfect answers to the other criteria. CAPI email hashes are recomputed
+by the harness; other raw-field normalization is intentionally left to review.
+The parser is conservative and absence of a parsed example is not evidence that
+hashing is correct. Do not use these development pairs as unseen evaluations.
