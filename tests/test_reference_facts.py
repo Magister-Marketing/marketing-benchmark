@@ -174,3 +174,26 @@ def test_invalid_source_is_rejected_before_any_grading_call(tmp_path, monkeypatc
         bench.cmd_grade(argparse.Namespace(run=str(tmp_path), judge=bench.JUDGE_DEFAULT,
                                           current_rubric=False, label="test", env_file=None))
     assert calls == []
+
+
+def test_boundary_controls_use_whole_answers_and_change_only_named_evidence():
+    probes = {p[0]: p for p in calibration.probes()}
+    for name, task_id, criterion in (
+        ('landing-page-clarity', 'landing-page', 'conversion_clarity'),
+        ('landing-page-repair-credential', 'landing-page-repair', 'credential_removed'),
+        ('capi-delivery-identity', 'shopify-meta-capi', 'event_id_retry_stability'),
+    ):
+        positive = probes[f'whole-{name}-supported']
+        negative = probes[f'whole-{name}-errors']
+        assert positive[1:4] == (task_id, criterion, True)
+        assert negative[1:4] == (task_id, criterion, False)
+        assert positive[4] != negative[4]
+        for probe in (positive, negative):
+            _, prompt, criteria = calibration.prepare_probe(probe)
+            assert len(criteria) > 1
+            assert criterion in prompt
+    assert 'href="#booking"' in probes['whole-landing-page-clarity-supported'][4]
+    assert 'display: none !important' in probes['whole-landing-page-clarity-errors'][4]
+    assert 'certified sleep clinician' in probes['whole-landing-page-repair-credential-errors'][4]
+    assert 'originally stored identifier' in probes['whole-capi-delivery-identity-supported'][4]
+    assert 'fresh UUID suffix' in probes['whole-capi-delivery-identity-errors'][4]
