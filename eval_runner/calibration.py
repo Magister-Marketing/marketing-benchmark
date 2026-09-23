@@ -3,11 +3,33 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import math
 from pathlib import Path
+import re
+import time
 
 from eval_runner import bench, providers
 
 FIXTURES = Path(__file__).parent / "fixtures" / "judge-calibration"
+
+
+def provider_receipt(value):
+    """Retain accounting/identity only, never raw errors, bodies or headers."""
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key in ("input_tokens", "output_tokens", "provider_cost_usd", "latency_seconds"):
+        number = value.get(key)
+        if type(number) in (int, float) and math.isfinite(number) and number >= 0:
+            result[key] = number
+    for key in ("response_id", "resolved_model", "resolved_provider"):
+        text = value.get(key)
+        if isinstance(text, str) and re.fullmatch(r"[A-Za-z0-9 _./-]{1,160}", text):
+            result[key] = text
+    if value.get("finish_reason") in ("stop", "end_turn", "stop_sequence", "completed",
+            "max_tokens", "incomplete:max_output_tokens", "error", "tool_calls"):
+        result["finish_reason"] = value["finish_reason"]
+    return result
 
 PROBES = [
     ("invented-competitor-dimensions", "ad-creatives", "no_invented_proof", False,
@@ -133,12 +155,17 @@ def run_probe(probe, judge_spec, generate=None, *, prepared=None):
             "criterion_id": criterion_id,
             "expected": expected, "actual": None, "matched": False,
             "judge_calls": 1, "cost_estimate_usd": None, "cost_unknown": True}
+    started = time.monotonic()
+    stage = "provider"
     try:
         generated = generate(judge_spec["model"], prompt, bench.MAX_OUTPUT_TOKENS,
                              settings=bench._candidate_settings(judge_spec))
-        record["input_tokens"] = generated.get("input_tokens")
-        record["output_tokens"] = generated.get("output_tokens")
-        record["cost_estimate_usd"] = bench.attempt_cost_usd(generated, judge_spec)
+        stage = "judge_output"
+        receipt = provider_receipt(generated)
+        record["provider_receipt"] = receipt
+        record["input_tokens"] = receipt.get("input_tokens")
+        record["output_tokens"] = receipt.get("output_tokens")
+        record["cost_estimate_usd"] = bench.attempt_cost_usd(receipt, judge_spec)
         record["cost_unknown"] = record["cost_estimate_usd"] is None
         verdict = bench.parse_judge_json(generated["text"])
         if {c["id"] for c in verdict["criteria"]} != {c["id"] for _, c in criteria}:
@@ -151,6 +178,22 @@ def run_probe(probe, judge_spec, generate=None, *, prepared=None):
         # Retain usage even if parsing fails; let other paid groups complete and
         # persist. Provider failures without usage remain explicitly unknown.
         record["error"] = type(exc).__name__
+        record["failure_stage"] = stage
+        if isinstance(exc, providers.ProviderError):
+            receipt = provider_receipt(exc.receipt)
+            record["provider_receipt"] = receipt
+            record["input_tokens"] = receipt.get("input_tokens")
+            record["output_tokens"] = receipt.get("output_tokens")
+            record["cost_estimate_usd"] = bench.attempt_cost_usd(receipt, judge_spec)
+            # A failed request's partial receipt is evidence, not proof that
+            # all billing has settled. Do not turn it into a free/known call.
+            record["cost_unknown"] = True
+            if exc.failure_kind in {"provider_error", "http_error", "embedded_error",
+                                    "transport_error", "empty_completion"}:
+                record["failure_kind"] = exc.failure_kind
+            if type(exc.status_code) is int and 100 <= exc.status_code <= 599:
+                record["provider_status_code"] = exc.status_code
+    record["elapsed_seconds"] = round(time.monotonic() - started, 3)
     return record
 
 

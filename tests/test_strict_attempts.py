@@ -91,6 +91,36 @@ def test_no_retry_retains_empty_billed_completion_and_returned_identity(monkeypa
     assert receipt["ceiling_retried"] is False
 
 
+@pytest.mark.parametrize('kind', ['http','transport'])
+def test_provider_failure_diagnosis_is_structured_without_parsing_error_text(monkeypatch,kind):
+    import io
+    import urllib.error
+    def fail(*a,**kw):
+        if kind=='http':
+            raise urllib.error.HTTPError('https://example.invalid',429,'rate limited',{},
+                                         io.BytesIO(b'PRIVATE provider body'))
+        raise TimeoutError('PRIVATE transport detail')
+    monkeypatch.setattr(providers.urllib.request,'urlopen',fail)
+    with pytest.raises(providers.ProviderError) as caught:
+        providers._post_json_with_retries('https://example.invalid',{}, {},'openrouter',max_retries=0)
+    assert caught.value.failure_kind == ('http_error' if kind=='http' else 'transport_error')
+    assert caught.value.status_code == (429 if kind=='http' else None)
+    assert caught.value.receipt == {}
+
+
+def test_empty_completion_error_keeps_its_billed_receipt(monkeypatch):
+    monkeypatch.setenv('OPENROUTER_API_KEY','test-only')
+    payload={'id':'gen-empty','model':'google/example','provider':'Example Provider',
+             'choices':[{'message':{'content':''},'finish_reason':'stop'}],
+             'usage':{'prompt_tokens':100,'completion_tokens':20,'cost':.007}}
+    monkeypatch.setattr(providers,'_post_json_with_retries',lambda *a,**kw: payload)
+    with pytest.raises(providers.ProviderError) as caught:
+        providers.generate('openrouter/google/gemini-3.8-flash','prompt',1000)
+    assert caught.value.failure_kind=='empty_completion'
+    assert caught.value.receipt['response_id']=='gen-empty'
+    assert caught.value.receipt['provider_cost_usd']==.007
+
+
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
 def test_invalid_timeout_refused_before_generation(timeout):
     with pytest.raises(SystemExit, match="positive and finite"):

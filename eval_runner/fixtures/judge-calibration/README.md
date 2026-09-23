@@ -34,3 +34,10 @@ delivery-identity pair makes repeated delivery behavior explicit; its positive
 version is strengthened and does not settle the earlier disagreement about an
 answer that implied stability through a deterministic order ID. No rubric or
 judge instruction was changed to match these examples.
+
+Calibration records preserve bounded provider identity, usage, elapsed time and
+structured failure category/status when available. They omit raw error messages,
+bodies and headers. A failed request can have a partial usage receipt while its
+total cost remains unknown; never count it as a free call or a judge disagreement.
+These fields aid future investigation. They cannot reconstruct billing or an
+error category discarded by an older run.

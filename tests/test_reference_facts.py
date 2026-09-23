@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from eval_runner import bench, calibration, reference_facts
+from eval_runner import bench, calibration, providers, reference_facts
 
 
 def ledger_prompt():
@@ -143,6 +143,46 @@ def test_failed_calibration_group_does_not_discard_other_paid_results(tmp_path, 
     assert rows["RESPONSE-BAD"]["error"] == "JSONDecodeError"
     assert rows["RESPONSE-GOOD"]["matched"] is True
     assert all(row["cost_estimate_usd"] > 0 for row in rows.values())
+
+
+def test_failed_calibration_preserves_partial_billing_without_claiming_final_cost():
+    def fail(*a, **kw):
+        raise providers.ProviderError('PRIVATE provider error text',
+            receipt={'input_tokens':100, 'output_tokens':20, 'provider_cost_usd':.007,
+                     'response_id':'gen-example', 'resolved_model':'google/example',
+                     'resolved_provider':'Example Provider', 'finish_reason':'error',
+                     'text':'PRIVATE completion', 'headers':{'Authorization':'PRIVATE token'},
+                     'error':{'message':'PRIVATE details'}},
+            failure_kind='embedded_error', status_code=503)
+    result = calibration.run_probe(
+        ('failure','headline','grounded_claims',True,'response'),
+        bench.load_models()[bench.JUDGE_DEFAULT], generate=fail)
+    assert result['actual'] is None and not result['matched']
+    assert result['failure_stage']=='provider' and result['failure_kind']=='embedded_error'
+    assert result['provider_status_code']==503
+    assert result['cost_estimate_usd']==.007 and result['cost_unknown'] is True
+    assert result['provider_receipt']['response_id']=='gen-example'
+    assert result['input_tokens']==100 and result['output_tokens']==20
+    assert 'PRIVATE' not in json.dumps(result)
+    assert result['elapsed_seconds']>=0
+
+
+def test_calibration_missing_receipt_never_becomes_zero_cost():
+    def fail(*a,**kw):
+        raise providers.ProviderError('PRIVATE connection URL', failure_kind='transport_error')
+    result=calibration.run_probe(('failure','headline','grounded_claims',True,'response'),
+        bench.load_models()[bench.JUDGE_DEFAULT],generate=fail)
+    assert result['cost_estimate_usd'] is None and result['cost_unknown']
+    assert result['provider_receipt']=={} and result['failure_kind']=='transport_error'
+    assert 'PRIVATE' not in json.dumps(result)
+
+
+def test_calibration_receipt_rejects_nonfinite_and_unstructured_fields():
+    result=calibration.provider_receipt({'input_tokens':float('nan'),'output_tokens':True,
+        'provider_cost_usd':-1,'latency_seconds':float('inf'), 'response_id':'line\nbreak',
+        'resolved_model':['wrong type'],'resolved_provider':'x'*161,'finish_reason':'PRIVATE',
+        'body':'PRIVATE','headers':{'secret':'PRIVATE'}})
+    assert result=={}
 
 
 def test_invalid_source_is_rejected_before_any_grading_call(tmp_path, monkeypatch):
