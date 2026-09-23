@@ -764,7 +764,7 @@ def _select_tasks(
 # claiming success in 72-91% of their failures; this is the field that lets a
 # board tell an honest failure from a confident one.
 SELF_REPORTS = ("complete", "partial", "blocked")
-JUDGE_PROTOCOL_VERSION = 3
+JUDGE_PROTOCOL_VERSION = 4
 
 JUDGE_INSTRUCTIONS = """\
 You are grading one model response against a binary rubric. Judge only what is

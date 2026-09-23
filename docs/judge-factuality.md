@@ -67,3 +67,11 @@ regression. Do not label model-assisted review as human verification.
 No production deployment is required for evaluator changes. An independently
 reviewed factual audit remains useful; a finite calibration set cannot prove that
 the judge will catch every error in a new answer.
+
+Protocol 4 corrects two extraction edge cases: literal Markdown and spaces in
+code spans are preserved, and generic worked tables must explicitly identify
+UTF-8 (in the value header or an encoding column). Ambiguous encodings are
+skipped. The version bump prevents partial grading from mixing parser revisions.
+It does not change task rubrics or judge instructions. Keep completed protocol-3
+comparisons intact; verify evidence/prompt hashes before deciding whether a
+parser fix actually requires any paid regrading.

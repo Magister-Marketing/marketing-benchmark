@@ -10,14 +10,17 @@ import re
 
 def _cell(text):
     text = text.strip()
-    for marker in ("**", "`"):
-        if text.startswith(marker) and text.endswith(marker):
-            text = text[len(marker):-len(marker)]
-    return text.strip()
+    if text.startswith("**") and text.endswith("**"):
+        text = text[2:-2].strip()
+    if text.startswith("`") and text.endswith("`"):
+        # Preserve code-span contents exactly, including literal Markdown and
+        # spaces. Unsupported multi-backtick spans are skipped by _literal.
+        return text[1:-1]
+    return text
 
 
 def _literal(text):
-    value = _cell(text)
+    value = text
     if value.startswith('"'):
         try:
             decoded = json.loads(value)
@@ -25,7 +28,7 @@ def _literal(text):
             return None
         return decoded if isinstance(decoded, str) and not re.fullmatch(r"\s*<[^>]+>\s*", decoded) else None
     # Quotes and placeholders are ambiguous; do not guess their intended bytes.
-    if any(c in value for c in "<>\\{}[]\"'") or not value:
+    if any(c in value for c in "<>`\\{}[]\"'") or not value:
         return None
     return value
 
@@ -33,7 +36,7 @@ def _literal(text):
 def sha256_examples(response):
     """Check simple Markdown tables with explicit bytes or normalized emails.
 
-    Support exact normalized-value/SHA-256 columns, or raw email examples in a
+    Support explicitly UTF-8 normalized-value/SHA-256 columns, or raw email examples in a
     SHA-256 table that explicitly documents trim/lowercase normalization. Never
     execute candidate code or infer normalization for other raw PII fields.
     """
@@ -47,7 +50,7 @@ def sha256_examples(response):
         if all(re.fullmatch(r":?-+:?", c) for c in cells):
             continue
         names = [c.lower() for c in cells]
-        if ("normalized value" in names or "raw example" in names):
+        if any(name in names for name in ("normalized value", "normalized utf-8 value", "raw example")):
             headers = names if len(names) == len(set(names)) else None
             continue
         if not headers or len(headers) != len(cells):
@@ -59,8 +62,11 @@ def sha256_examples(response):
             continue
         value = None
         basis = None
-        if "normalized value" in row and ("sha-256" in row or "sha256" in row):
-            value = _literal(row["normalized value"])
+        utf8_value = row.get("normalized utf-8 value")
+        if utf8_value is None and row.get("encoding", "").lower() in {"utf-8", "utf8"}:
+            utf8_value = row.get("normalized value")
+        if utf8_value is not None and ("sha-256" in row or "sha256" in row):
+            value = _literal(utf8_value)
             basis = "explicit normalized UTF-8 value"
         elif (row.get("parameter", "").lower() == "email"
               and row.get("capi key") == "em"
