@@ -56,6 +56,28 @@ def probes():
         for kind, expected in (("errors", False), ("supported", True)):
             yield (f"whole-{name}-{kind}", task, criterion, expected,
                    (FIXTURES / f"{task}-{kind}.md").read_text())
+    for name, task, criterion in (
+        ("landing-page-clarity", "landing-page", "conversion_clarity"),
+        ("landing-page-repair-credential", "landing-page-repair", "credential_removed"),
+    ):
+        for kind, expected in (("errors", False), ("supported", True)):
+            yield (f"whole-{name}-{kind}", task, criterion, expected,
+                   (FIXTURES / f"{name}-{kind}.md").read_text())
+    capi = (FIXTURES / "shopify-meta-capi-errors.md").read_text()
+    anchor = "#### Processing Window and Data Fusion"
+    if capi.count(anchor) != 1:
+        raise ValueError("CAPI stability contrast anchor missing or ambiguous")
+    for kind, expected, policy in (
+        ("supported", True, "read the originally stored identifier instead of creating another one. "
+         "Use it unchanged in both browser eventID and server event_id."),
+        ("errors", False, "append a fresh UUID suffix to the original identifier before sending "
+         "the server event. The browser keeps its original eventID."),
+    ):
+        paragraph = ("For every subsequent delivery of the same commerce event—including duplicate "
+                     "webhook delivery or changes to other order fields—" + policy)
+        response = capi.replace(anchor, paragraph + "\n\n" + anchor)
+        yield (f"whole-capi-delivery-identity-{kind}", "shopify-meta-capi",
+               "event_id_retry_stability", expected, response)
     headline = (FIXTURES / "headline-supported.md").read_text()
     yield "whole-headline-qualified", "headline", "grounded_claims", True, headline
     creative = (FIXTURES / "ad-creatives-supported.md").read_text()

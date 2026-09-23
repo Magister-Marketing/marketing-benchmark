@@ -24,3 +24,13 @@ certified perfect answers to the other criteria. CAPI email hashes are recompute
 by the harness; other raw-field normalization is intentionally left to review.
 The parser is conservative and absence of a parsed example is not evidence that
 hashing is correct. Do not use these development pairs as unseen evaluations.
+
+Boundary controls distinguish a visually clear booking CTA from a hidden one,
+and an outside clinician referral from an invented credential for the service
+provider. The original broken booking target and unrelated answer defects remain
+in both variants. Each answer is graded against the full rubric; only the named
+criterion determines calibration success. The CAPI
+delivery-identity pair makes repeated delivery behavior explicit; its positive
+version is strengthened and does not settle the earlier disagreement about an
+answer that implied stability through a deterministic order ID. No rubric or
+judge instruction was changed to match these examples.
