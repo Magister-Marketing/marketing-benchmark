@@ -91,9 +91,12 @@ RETRY_BASE_DELAY_SECONDS = 10
 class ProviderError(RuntimeError):
     """A provider call failed after retries. Never contains credentials."""
 
-    def __init__(self, message: str, *, receipt: dict | None = None):
+    def __init__(self, message: str, *, receipt: dict | None = None,
+                 failure_kind: str = "provider_error", status_code: int | None = None):
         super().__init__(message)
         self.receipt = receipt or {}
+        self.failure_kind = failure_kind
+        self.status_code = status_code
 
 
 def required_env_key(provider: str) -> str:
@@ -444,7 +447,8 @@ def generate(
         raise ProviderError(
             f"{provider} returned an empty completion for {model} "
             f"(finish_reason={result['finish_reason']!r}, "
-            f"ceiling_retried={ceiling_retried})"
+            f"ceiling_retried={ceiling_retried})",
+            receipt=result, failure_kind="empty_completion",
         )
     result.update(
         {
@@ -478,12 +482,14 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str, 
             if code not in RETRYABLE_STATUSES or attempt == retries:
                 receipt = parse_response(provider, payload)
                 receipt.pop("text", None)
-                raise ProviderError(f"{provider} call failed ({last_error})", receipt=receipt)
+                raise ProviderError(f"{provider} call failed ({last_error})", receipt=receipt,
+                                    failure_kind="embedded_error", status_code=code)
         except urllib.error.HTTPError as exc:
             snippet = _safe_error_snippet(exc)
             last_error = f"HTTP {exc.code}: {snippet}"
             if exc.code not in RETRYABLE_STATUSES or attempt == retries:
-                raise ProviderError(f"{provider} call failed ({last_error})") from None
+                raise ProviderError(f"{provider} call failed ({last_error})",
+                                    failure_kind="http_error", status_code=exc.code) from None
         except (
             urllib.error.URLError,
             TimeoutError,
@@ -495,7 +501,8 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str, 
         ) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             if attempt == retries:
-                raise ProviderError(f"{provider} call failed ({last_error})") from None
+                raise ProviderError(f"{provider} call failed ({last_error})",
+                                    failure_kind="transport_error") from None
         time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
     raise ProviderError(f"{provider} call failed ({last_error})")
 

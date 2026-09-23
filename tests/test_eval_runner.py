@@ -683,9 +683,10 @@ def test_openrouter_embedded_error_in_a_200_body_fails_loudly(monkeypatch, paylo
         return _Resp()
 
     monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
-    with pytest.raises(providers.ProviderError, match="embedded 400: bad prompt"):
+    with pytest.raises(providers.ProviderError, match="embedded 400: bad prompt") as caught:
         providers._post_json_with_retries("https://x", {}, {}, "openrouter")
     assert len(calls) == 1
+    assert caught.value.failure_kind == 'embedded_error' and caught.value.status_code == 400
 
 
 def test_openrouter_embedded_transient_error_is_retried(monkeypatch):
