@@ -123,5 +123,21 @@
       "input_per_mtok": 1.4,
       "output_per_mtok": 4.4
     }
+  },
+  "claude-sonnet-5-5": {
+    "model": "anthropic/claude-sonnet-5-5",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "claude-sonnet-5-5-high": {
+    "model": "anthropic/claude-sonnet-5-5",
+    "reasoning_effort": "high",
+    "max_output_tokens": 32000,
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
   }
 }
