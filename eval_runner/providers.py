@@ -378,6 +378,39 @@ def parse_response(provider: str, payload: dict) -> dict:
     }
 
 
+def _merge_ceiling_retry_receipts(first: dict, last: dict) -> dict:
+    """Keep the final answer, but account for both billed completions.
+
+    Retain individual receipts for audit and per-request pricing. A missing
+    token count or partial provider cost must not become a complete total.
+    """
+    combined = dict(last)
+    combined["provider_calls"] = [
+        {key: value for key, value in call.items() if key != "text"}
+        for call in (first, last)
+    ]
+    for key in ("input_tokens", "output_tokens", "provider_cost_usd"):
+        values = [call.get(key) for call in (first, last)]
+        complete = all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0 for value in values
+        )
+        if complete:
+            combined[key] = sum(values)
+        elif key == "provider_cost_usd":
+            combined.pop(key, None)
+        else:
+            combined[key] = None
+    combined["web_search_calls"] = sum(call.get("web_search_calls", 0) for call in (first, last))
+    tool_calls: dict[str, int] = {}
+    for call in (first, last):
+        for name, count in call.get("tool_calls", {}).items():
+            tool_calls[name] = tool_calls.get(name, 0) + count
+    combined["tool_calls"] = tool_calls
+    combined["ceiling_retried"] = True
+    return combined
+
+
 def generate(
     model_spec: str,
     prompt: str,
@@ -438,8 +471,12 @@ def generate(
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )
-        payload = _post_json_with_retries(url, headers, body, provider, **request_options)
-        result = parse_response(provider, payload)
+        try:
+            payload = _post_json_with_retries(url, headers, body, provider, **request_options)
+        except ProviderError as exc:
+            exc.receipt = _merge_ceiling_retry_receipts(result, exc.receipt)
+            raise
+        result = _merge_ceiling_retry_receipts(result, parse_response(provider, payload))
     latency = time.monotonic() - started
 
     result["ceiling_retried"] = ceiling_retried
