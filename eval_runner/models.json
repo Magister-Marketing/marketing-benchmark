@@ -155,5 +155,32 @@
       "input_per_mtok": 0.1,
       "output_per_mtok": 0.5
     }
+  },
+  "gpt-6.1-sol-high": {
+    "model": "openai/gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "gpt-6-astra-high": {
+    "model": "openai/gpt-6-astra",
+    "reasoning_effort": "high",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 10.0,
+      "output_per_mtok": 50.0
+    }
+  },
+  "claude-opus-5-5-high": {
+    "model": "anthropic/claude-opus-5-5",
+    "reasoning_effort": "high",
+    "max_output_tokens": 32000,
+    "pricing": {
+      "input_per_mtok": 4.0,
+      "output_per_mtok": 20.0
+    }
   }
 }
