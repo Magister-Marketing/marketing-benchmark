@@ -325,6 +325,9 @@ def compute_metrics(record: dict[str, Any]) -> dict[str, Any]:
         "post_approval": [row for row in outcome.get("post_approval") or [] if isinstance(row, dict)],
         "wall_seconds_total": round(end - start, 1),
         "wall_seconds_per_turn": [turn["wall_seconds"] for turn in turns],
+        # Time to the answer: arms whose agent offers a next step get extra
+        # scripted turns, so the total alone compares unequal conversations.
+        "wall_seconds_first_turn": turns[0]["wall_seconds"] if turns else None,
         "turns": turns,
         "user_turns": len(turns),
         "scripted_replies": len(responder.get("replies") or []),
@@ -381,6 +384,7 @@ METRIC_ROWS: list[tuple[str, str, Callable[[dict[str, Any]], str]]] = [
     ("outcome_summary", "Outcome detail", lambda m: str(m.get("outcome_summary") or "—")),
     ("post_approval", "After approval (link · done · refs)", _fmt_post_approval),
     ("wall_seconds_total", "Wall time, total", lambda m: _fmt_seconds(m["wall_seconds_total"])),
+    ("wall_seconds_first_turn", "Wall time, first turn", lambda m: _fmt_seconds(m.get("wall_seconds_first_turn"))),
     ("wall_seconds_per_turn", "Wall time per turn", lambda m: " / ".join(_fmt_seconds(v) for v in m["wall_seconds_per_turn"]) or "—"),
     ("user_turns", "User turns", lambda m: str(m["user_turns"])),
     ("scripted_replies", "Scripted replies", lambda m: str(m["scripted_replies"])),
@@ -404,7 +408,7 @@ METRIC_ROWS: list[tuple[str, str, Callable[[dict[str, Any]], str]]] = [
 ]
 
 NUMERIC_METRICS = [
-    "wall_seconds_total", "llm_calls", "longest_llm_call_seconds", "input_tokens", "cached_tokens",
+    "wall_seconds_total", "wall_seconds_first_turn", "llm_calls", "longest_llm_call_seconds", "input_tokens", "cached_tokens",
     "output_tokens", "reasoning_tokens", "cost_usd", "provider_cost_usd", "tool_calls", "distinct_tools",
     "duplicate_reads", "dead_end_calls", "longest_silent_gap_seconds", "turns_until_first_approval",
     "approvals_requested", "approvals_allowed", "user_turns", "scripted_replies",

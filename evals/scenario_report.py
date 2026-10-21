@@ -72,7 +72,8 @@ def _mean_column(summary: dict[str, Any], replays: list[dict[str, Any]]) -> dict
     """The mean column renders through the same row formatters as a run; the
     publish row shows how many runs published instead of yes/no."""
     column = {
-        key: (round(value["mean"], 1) if isinstance(value, dict) else value) for key, value in summary.items()
+        # Four places: a mean cost of $0.063 must not print as $0.100.
+        key: (round(value["mean"], 4) if isinstance(value, dict) else value) for key, value in summary.items()
     }
     column.update({
         "published": summary["published"] > 0,

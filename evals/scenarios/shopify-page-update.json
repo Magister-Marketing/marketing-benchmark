@@ -127,6 +127,7 @@
     "passed",
     "outcome_summary",
     "wall_seconds_total",
+    "wall_seconds_first_turn",
     "wall_seconds_per_turn",
     "user_turns",
     "scripted_replies",

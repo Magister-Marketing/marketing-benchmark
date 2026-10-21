@@ -212,6 +212,89 @@ def test_entities_in_reads_nested_keys_and_non_json_results() -> None:
     assert entities_in([_call("x", {"source": "google_ads"}, long_rows)], ["dimension"]) == ["/signup", "Organic Search"]
 
 
+GA4_SYNC, ADS_SYNC = "4d5af515-19af-43c7-a40e-29717d3553b2", "9bdd8673-c59e-478e-8b1f-86aff2ebeb4f"
+
+
+def _syncs_call() -> dict:
+    return _call("magister_list_data_syncs", {}, {"ok": True, "receipt": {"syncs": [
+        {"id": GA4_SYNC, "source": "ga4", "display_name": "Magister Website"},
+        {"id": ADS_SYNC, "source": "google_ads", "display_name": "Magister Marketing"},
+    ]}}, call_id="s0")
+
+
+def _asset_call(sync: str, name: str, content: str, *, folder: str = "Google Analytics › Magister Website",
+                call_id: str = "a1", offset: int = 0) -> dict:
+    return _call("magister_read_asset", {"asset_id": f"generated:data:{sync}:{name.removesuffix('.csv')}"}, {
+        "ok": True, "receipt": {"asset": {"id": f"generated:data:{sync}:{name}", "name": name, "contentType": "text/csv",
+                                          "folder": folder}, "content": content, "offset": offset}}, call_id=call_id)
+
+
+def test_library_csv_reads_count_by_their_sync_source() -> None:
+    daily = "date,sessions,users\n2026-10-12,153,120\n2026-10-13,149,118\n2026-10-14,122,101\n"
+    pages = "page,sessions\n/signup,41\n/pricing,18\n"
+    calls = [_syncs_call(), _asset_call(GA4_SYNC, "daily.csv", daily, call_id="a1"),
+             _asset_call(GA4_SYNC, "top-pages-30d.csv", pages, call_id="a2"),
+             _call("magister_read_asset", {"asset_id": "resources/draft.md"}, {"receipt": {"content": "999 visitors"}}, call_id="a3")]
+    reply = "Sessions totalled 424 over Oct 12–14 (153 on the first day); /signup drew 41 of them, so start there."
+    check_in = check_answer_grounded(_grounded_record(reply, calls=calls), _scenario("analytics-weekly-check-in")["outcome"])
+    assert check_in["read_calls"] == 2  # the draft is not an analytics result
+    assert check_in["unsupported_numbers"] == [] and check_in["window_sums"] > 0  # 424 is a sum of the CSV's rows
+    assert check_in["entities_named"] == ["/signup"] and check_in["passed"] is True
+    ads = check_answer_grounded(_grounded_record(reply, calls=calls), _scenario("google-ads-performance-review")["outcome"])
+    assert ads["read_calls"] == 0  # ga4 files never count for the google_ads outcome
+    # Without a list_data_syncs result the asset's Library folder names its source.
+    by_folder = [_asset_call(ADS_SYNC, "daily.csv", "date,cost\n2026-10-12,0\n", folder="Google Ads › Magister Marketing")]
+    assert check_answer_grounded(_grounded_record("Nothing ran.", calls=by_folder), _scenario("google-ads-performance-review")["outcome"])["read_calls"] == 1
+    # A later page of a CSV has no header row and yields no rows.
+    from evals.runner.scenario_outcomes import table_rows
+    assert table_rows(_asset_call(GA4_SYNC, "daily.csv", "2026-10-15,117,99\n", offset=4000)["result_text"]) == []
+
+
+def test_stated_gaps_and_weekly_means_are_supported_and_a_late_value_still_counts() -> None:
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    filler = {"rows": [{"date": f"2026-09-{d:02d}", "metric": "x", "dimension": None, "value": 1000.0 + i}
+                       for i, d in enumerate(range(1, 31))] * 1}
+    noise = _call("magister_read_analytics_snapshots", {"source": "ga4"}, {"blob": list(range(2000, 4000))}, call_id="n1")
+    last = _call("magister_integration_read", {"service": "search_console", "path": "sites/x/searchAnalytics/query"},
+                 {"rows": [{"clicks": 32, "position": 8.659466}, {"clicks": 64, "position": 7.237618}],
+                  "ctr": [0.0203303, 0.0320160]}, call_id="n2")
+    daily = "date,position\n" + "\n".join(f"2026-10-{d:02d},{p}" for d, p in zip(range(5, 12), [7.1, 7.4, 7.9, 7.6, 7.5, 7.8, 7.76]))
+    calls = [noise, _call("magister_read_analytics_snapshots", {"source": "gsc"}, filler, call_id="n0"), last,
+             _call("read", {"path": "/data/.openclaw/workspace/data/gsc/x/daily.csv"}, daily, call_id="n3")]
+    reply = ("Position went from 7.2 to 8.7, weaker by 1.4 positions; CTR fell from 3.2% to 2.0%, "
+             "down 1.2 percentage points. The daily average for Oct 5–11 was 7.58.")
+    result = check_answer_grounded(_grounded_record(reply, calls=calls), spec)
+    how = {n["text"]: n["supported"] for n in result["numbers"]}
+    assert how["7.2"] == "exact"  # read after 2,000 other values
+    assert how["1.4"] == "difference" and how["1.2 percentage points"] in ("difference", "derived")
+    assert how["7.58"] == "sum"  # the 7-day mean of the daily rows
+    assert result["unsupported_numbers"] == []
+    # A gap between values the reply never stated is not supported.
+    assert check_answer_grounded(_grounded_record("Weaker by 1.4 positions.", calls=calls), spec)["unsupported_numbers"] == ["1.4"]
+
+
+def test_homepage_names_the_site_root_and_a_bare_slash_does_not() -> None:
+    from evals.runner.scenario_outcomes import entities_named
+
+    entities = ["/", "https://magistermarketing.com/", "/extension"]
+    assert entities_named("Fix the homepage hero first.", entities) == ["/", "https://magistermarketing.com/"]
+    assert entities_named("Clicks and/or impressions fell.", entities) == []
+    assert entities_named("The /extension page lost clicks.", entities) == ["/extension"]
+
+
+def test_account_ids_are_not_metrics_and_account_names_are_not_campaigns() -> None:
+    spec = _scenario("google-ads-performance-review")["outcome"]
+    assert numbers_in("Client **5596093325** sits under manager 591-291-4441; property 548823363.") == []
+    from evals.runner.scenario_outcomes import result_numbers
+    assert 7.237618809404703 in result_numbers('{"position": 7.237618809404703, "customer": "5596093325"}')
+    assert 5596093325.0 not in result_numbers('{"position": 7.237618809404703, "customer": "5596093325"}')
+    customer = [_call("magister_integration_read", {"service": "google_ads", "path": "v24/customers/5596093325/googleAds:search"},
+                      {"results": [{"customer": {"id": "5596093325", "descriptiveName": "Magister Marketing"}}]}, call_id="g1")]
+    honest = check_answer_grounded(_grounded_record(
+        "The Magister Marketing account (5596093325) ran no campaigns in the last 30 days; nothing to pause.", calls=customer), spec)
+    assert honest["entities_in_results"] == 0 and honest["unsupported_numbers"] == [] and honest["passed"] is True
+
+
 # ── ad_campaign_draft ─────────────────────────────────────────────────────────
 
 DRAFT = """# Google Ads search campaign draft — Emergency Artwork Removal (San Diego)

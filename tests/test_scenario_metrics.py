@@ -149,6 +149,7 @@ def test_compute_metrics_counts_everything(record: dict) -> None:
     assert m["published"] is True and m["has_media"] is True
     assert m["model"] == "openai/gpt-6-luna" and m["model_requested"] == "openai/gpt-6-luna"
     assert m["wall_seconds_total"] == 600.0
+    assert m["wall_seconds_first_turn"] == m["wall_seconds_per_turn"][0]
     assert m["user_turns"] == 2
     # Turn 1 is matched by source_message_id; turn 2 by order and includes the
     # approval continuation queued before the window's end.

@@ -42,7 +42,10 @@ DENY_SUFFIX = "deny"
 EXECUTED_STATES = frozenset({"succeeded", "executed", "completed", "done"})
 # Written files whose content is a draft the person can review.
 DRAFT_FILE_RE = re.compile(r"\.(md|markdown|txt)$", re.IGNORECASE)
-MAX_RESULT_NUMBERS = 1500
+# The pairwise percentage check is quadratic, so it looks at the first
+# values only; exact matches look at every value the agent read.
+MAX_DERIVED_VALUES = 1500
+MAX_RESULT_NUMBERS = 200_000
 
 
 def hosted(name: Any) -> str:
@@ -59,6 +62,12 @@ def transcript_calls(record: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 FILE_TOOLS = frozenset({"read", "exec"})
+# Library › Analytics files: generated:data:<sync id>:<file>. Other assets
+# (drafts, uploads) are not analytics results.
+DATA_ASSET_RE = re.compile(r"^generated:data:(?P<sync>[0-9a-f-]{36}):")
+# The Library folder a data asset sits in names its source when no
+# list_data_syncs result in the chat does.
+SOURCE_FOLDERS = {"google_ads": "google ads", "ga4": "google analytics", "gsc": "search console"}
 
 
 def call_path(call: dict[str, Any]) -> str:
@@ -76,12 +85,16 @@ def calls_for(record: dict[str, Any], tools: list[str], source: str | None = Non
     must have it in its path."""
     wanted = {hosted(tool) for tool in tools}
     path_re = re.compile(paths) if paths else None
+    syncs = sync_sources(record) if "read_asset" in wanted else {}
     found: list[dict[str, Any]] = []
     for call in transcript_calls(record):
         name = hosted(call.get("tool"))
         if name not in wanted:
             continue
-        if name in FILE_TOOLS:
+        if name == "read_asset":
+            if not data_asset_matches(call, source, syncs):
+                continue
+        elif name in FILE_TOOLS:
             touched = call_path(call)
             if path_re is None or not path_re.search(touched):
                 continue
@@ -94,6 +107,40 @@ def calls_for(record: dict[str, Any], tools: list[str], source: str | None = Non
                 continue
         found.append(call)
     return found
+
+
+def sync_sources(record: dict[str, Any]) -> dict[str, str]:
+    """{sync id: source} from every list_data_syncs result in the chat."""
+    out: dict[str, str] = {}
+    for call in transcript_calls(record):
+        if hosted(call.get("tool")) != "list_data_syncs":
+            continue
+        parsed = parse_result(result_text(call))
+        receipt = parsed.get("receipt") if isinstance(parsed, dict) else None
+        for sync in (receipt or {}).get("syncs") or [] if isinstance(receipt, dict) else []:
+            if isinstance(sync, dict) and sync.get("id"):
+                out[str(sync["id"])] = str(sync.get("source") or "").lower()
+    return out
+
+
+def data_asset_matches(call: dict[str, Any], source: str | None, syncs: dict[str, str]) -> bool:
+    """A read_asset call counts when it read a Library data file, and with
+    ``source`` when that file's sync (or, unknown, its folder) is that source."""
+    args = call.get("args") if isinstance(call.get("args"), dict) else {}
+    match = DATA_ASSET_RE.match(str(args.get("asset_id") or ""))
+    if not match:
+        return False
+    if not source:
+        return True
+    known = syncs.get(match.group("sync"))
+    if known is not None:
+        return known == source.lower()
+    parsed = parse_result(result_text(call))
+    receipt = parsed.get("receipt") if isinstance(parsed, dict) else None
+    asset = receipt.get("asset") if isinstance(receipt, dict) and isinstance(receipt.get("asset"), dict) else {}
+    folder = str(asset.get("folder") or "").lower()
+    label = SOURCE_FOLDERS.get(source.lower())
+    return bool(label) and folder.startswith(label)
 
 
 def assistant_text(record: dict[str, Any], *, after: float | None = None) -> str:
@@ -160,6 +207,10 @@ DATE_PATTERNS = [
     re.compile(r"\b\d+\s+(?:day|week|month|year|hour|minute|question|step|page|item|bullet)s?\b", re.IGNORECASE),
     re.compile(r"\b(?:top|last|first|past|next|week|day|q|h|step|phase)\s*\d+\b", re.IGNORECASE),
     re.compile(r"\b(?:gid|id|customers?)[:/ ]\s*\d+\b", re.IGNORECASE),
+    # Account and property ids (a Google Ads customer, a GA4 property) print
+    # as long digit runs or as 123-456-7890; a metric that large has commas.
+    # Never the fraction of a decimal (7.237618809404703).
+    re.compile(r"\b\d{3}-\d{3}-\d{4}\b|(?<![\w.])\d{9,}(?!\.\d)(?!\w)"),
 ]
 NUMBER_RE = re.compile(
     r"(?<![\w./:#-])([$€£])?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s?(%|percent\b|pp\b|pts\b|percentage points\b)?(?![\w/:-])",
@@ -209,6 +260,8 @@ def result_numbers(text: str) -> list[float]:
 
 
 MAX_WINDOW_DAYS = 31
+# Window lengths whose mean an agent reports (a week's average position).
+MEAN_WINDOWS = (7, 14, 28, 30)
 DATE_KEY_RE = re.compile(r"^(date|day|period|period_start|start_date|week)$", re.IGNORECASE)
 
 
@@ -243,20 +296,40 @@ def _rows_in(value: Any) -> list[dict[str, Any]] | None:
     return None
 
 
+def envelope_csv(parsed: Any) -> str | None:
+    """The CSV a Library read returns inside its action envelope
+    (``receipt.content`` of a ``text/csv`` asset, from its first character), else None."""
+    receipt = parsed.get("receipt") if isinstance(parsed, dict) else None
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("content"), str) or receipt.get("offset"):
+        return None
+    asset = receipt.get("asset") if isinstance(receipt.get("asset"), dict) else {}
+    if str(asset.get("contentType") or "").startswith("text/csv") or str(asset.get("name") or "").lower().endswith(".csv"):
+        return receipt["content"]
+    return None
+
+
+def _csv_rows(text: str) -> list[dict[str, Any]]:
+    try:
+        return list(csv.DictReader(io.StringIO(text.strip())))
+    except csv.Error:
+        return []
+
+
 def table_rows(text: str, *, path: str = "") -> list[dict[str, Any]]:
-    """The rows of a result that is a table: a CSV file the agent read, or a
-    JSON object with a ``rows`` list (an analytics read)."""
+    """The rows of a result that is a table: a CSV file the agent read (as a
+    file or a Library asset), or a JSON object with a ``rows`` list (an
+    analytics read)."""
     parsed = parse_result(text)
     nested = _rows_in(parsed)
     if nested is not None:
         return nested
     if isinstance(parsed, list):
         return [row for row in parsed if isinstance(row, dict)]
+    inner = envelope_csv(parsed)
+    if inner is not None:
+        return _csv_rows(inner)
     if path.lower().endswith(".csv") or (text.count("\n") >= 2 and "," in text.split("\n", 1)[0] and not text.lstrip().startswith("{")):
-        try:
-            return list(csv.DictReader(io.StringIO(text.strip())))
-        except csv.Error:
-            return []
+        return _csv_rows(text)
     return []
 
 
@@ -264,7 +337,8 @@ def window_sums(rows: list[dict[str, Any]], *, max_window: int = MAX_WINDOW_DAYS
     """Every sum of a numeric column over a run of up to ``max_window``
     consecutive dated rows, per series (the other text columns, such as a
     page or a channel, group the rows): the weekly and monthly totals an
-    agent adds up from daily rows. Rounded to two decimals."""
+    agent adds up from daily rows; and the means over runs of
+    ``MEAN_WINDOWS`` rows (a week's average position). Rounded to two decimals."""
     if not rows:
         return set()
     keys = list(rows[0].keys())
@@ -287,6 +361,9 @@ def window_sums(rows: list[dict[str, Any]], *, max_window: int = MAX_WINDOW_DAYS
             for i in range(len(series)):
                 for j in range(i + 2, min(len(series), i + max_window) + 1):
                     sums.add(round(prefix[j] - prefix[i], 2))
+                for length in MEAN_WINDOWS:
+                    if i + length <= len(series):
+                        sums.add(round((prefix[i + length] - prefix[i]) / length, 2))
     return sums
 
 
@@ -309,8 +386,9 @@ def number_supported(number: dict[str, Any], values: list[float], *, derived_per
         if 0 <= value <= 1 and round(value * 100, decimals) == target:
             return "fraction"
     if derived_percentages:
-        for a in values:
-            for b in values:
+        pool = values[:MAX_DERIVED_VALUES]
+        for a in pool:
+            for b in pool:
                 if not b:
                     continue
                 if round((a - b) / abs(b) * 100, decimals) in (target, -target):
@@ -326,13 +404,19 @@ PAGE_LIKE_RE = re.compile(r"^(/|https?://)")
 
 
 def _leaf_strings(value: Any, keys: set[str], out: list[str], parent: str | None = None,
-                  path_keys: set[str] = frozenset()) -> None:
+                  path_keys: set[str] = frozenset(), grandparent: str | None = None) -> None:
+    """Strings under the named keys. A dotted key (``campaign.name``) names a
+    field of an object under another key, so a GAQL row's campaign name counts
+    and the account's own ``name`` does not."""
     if isinstance(value, dict):
         for key, child in value.items():
-            _leaf_strings(child, keys, out, str(key), path_keys)
+            _leaf_strings(child, keys, out, str(key), path_keys, parent)
     elif isinstance(value, list):
         for child in value:
-            _leaf_strings(child, keys, out, parent, path_keys)
+            _leaf_strings(child, keys, out, parent, path_keys, grandparent)
+    elif grandparent and f"{grandparent}.{parent}" in keys:
+        if isinstance(value, (str, int)) and not isinstance(value, bool) and 1 <= len(str(value).strip()) <= 200:
+            out.append(str(value).strip())
     elif parent in keys or parent in path_keys:
         if isinstance(value, str):
             text = value.strip()
@@ -352,10 +436,14 @@ def entities_in(calls: list[dict[str, Any]], keys: list[str], path_keys: list[st
         parsed = parse_result(text)
         if parsed is not None:
             _leaf_strings(parsed, wanted, found, None, pages)
-            continue
-        # A CSV the agent read: the columns named like an entity key.
+            if envelope_csv(parsed) is None:
+                continue
+        # A CSV the agent read (a file, or a Library asset in its envelope):
+        # the columns named like an entity key.
         for row in table_rows(text, path=call_path(call)):
             _leaf_strings({k: v for k, v in row.items() if k in wanted or k in pages}, wanted, found, None, pages)
+        if parsed is not None:
+            continue
         for match in re.finditer(r'"(%s)"\s*:\s*"([^"]{3,200})"' % "|".join(re.escape(k) for k in keys), text):
             found.append(match.group(2))
     seen: set[str] = set()
@@ -367,22 +455,58 @@ def entities_in(calls: list[dict[str, Any]], keys: list[str], path_keys: list[st
     return distinct
 
 
+HOMEPAGE_RE = re.compile(r"\bhome\s?page\b", re.IGNORECASE)
+
+
 def entities_named(reply: str, entities: list[str]) -> list[str]:
+    """The entities the reply names. A path or URL is named by its path; the
+    site root ("/") by its path only in a URL, or by "homepage"."""
     lowered = reply.lower()
     named: list[str] = []
     for entity in entities:
         candidate = entity.lower()
+        path = urlparse(candidate).path if candidate.startswith("http") else candidate if candidate.startswith("/") else None
+        if path is not None and path.rstrip("/") == "":
+            if HOMEPAGE_RE.search(reply) or (candidate.startswith("http") and candidate.rstrip("/") in lowered):
+                named.append(entity)
+            continue
         if candidate in lowered:
             named.append(entity)
             continue
-        if candidate.startswith("http"):
-            path = urlparse(candidate).path.rstrip("/")
-            if len(path) > 1 and path in lowered:
-                named.append(entity)
+        if path is not None and len(path.rstrip("/")) > 1 and path.rstrip("/") in lowered:
+            named.append(entity)
     return named
 
 
 # ── answer_grounded ───────────────────────────────────────────────────────────
+
+def anchor_values(checked: list[dict[str, Any]], values: list[float]) -> list[float]:
+    """The result values behind the reply's exactly supported numbers, at full
+    precision: the two sides a stated change is computed from."""
+    anchors: set[float] = set()
+    for number in checked:
+        if number["supported"] in ("exact", "fraction"):
+            scale = 100 if number["supported"] == "fraction" else 1
+            for value in values:
+                if round(value * scale, number["decimals"]) == number["value"]:
+                    anchors.add(value)
+    return sorted(anchors)
+
+
+def difference_of_anchors(number: dict[str, Any], anchors: list[float]) -> bool:
+    """A stated gap ("weaker by 1.4 positions", "down 1.2 percentage points")
+    between two values that back other numbers in the same reply."""
+    target, decimals = number["value"], number["decimals"]
+    scales = (1, 100) if number["kind"] == "percent" else (1,)
+    for a in anchors:
+        for b in anchors:
+            if a <= b:
+                continue
+            for scale in scales:
+                if round((a - b) * scale, decimals) == target:
+                    return True
+    return False
+
 
 def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     reply = assistant_text(record)
@@ -398,6 +522,11 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
     for number in numbers_in(reply):
         how = number_supported(number, values, derived_percentages=derived, sums=sums)
         checked.append({**number, "supported": how})
+    if derived:
+        anchors = anchor_values(checked, values)
+        for number in checked:
+            if not number["supported"] and difference_of_anchors(number, anchors):
+                number["supported"] = "difference"
     unsupported = [n["text"] for n in checked if not n["supported"]]
     supported = [n for n in checked if n["supported"]]
     entities = entities_in(good, list(spec["entity"]["keys"]), list(spec["entity"].get("path_keys") or []))
