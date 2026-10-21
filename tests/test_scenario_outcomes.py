@@ -192,6 +192,9 @@ def test_file_reads_count_only_on_analytics_paths() -> None:
     ]
     result = check_answer_grounded(_grounded_record("Clicks 1,234 last week; /flood-response-guide took 410 of them.", calls=calls), spec)
     assert result["read_calls"] == 2 and result["tools_read"] == ["exec", "read"]
+    # A script that builds its paths from a quoted 'data' directory reads the pulls too.
+    script = _call("exec", {"command": "python3 - <<'PY'\nimport os\nbase='data'\nprint(open(os.path.join(base,'gsc','x','daily.csv')).read())"}, csv, call_id="r5")
+    assert check_answer_grounded(_grounded_record("Clicks 1,234.", calls=[script]), spec)["read_calls"] == 1
     assert result["passed"] is True and result["unsupported_numbers"] == []
     ads = _scenario("google-ads-performance-review")["outcome"]
     assert check_answer_grounded(_grounded_record("Clicks 1,234.", calls=calls), ads)["read_calls"] == 0  # gsc files are not google_ads
@@ -271,6 +274,36 @@ def test_stated_gaps_and_weekly_means_are_supported_and_a_late_value_still_count
     assert result["unsupported_numbers"] == []
     # A gap between values the reply never stated is not supported.
     assert check_answer_grounded(_grounded_record("Weaker by 1.4 positions.", calls=calls), spec)["unsupported_numbers"] == ["1.4"]
+
+
+def test_rows_of_a_cut_off_result_still_back_the_sums() -> None:
+    from evals.runner.scenario_outcomes import table_rows, window_sums
+
+    rows = [{"date": f"2026-10-{d}", "metric": "impressions", "dimension": None, "value": v}
+            for d, v in zip(range(12, 19), [220, 230, 221, 224, 226, 228, 225])]
+    full = json.dumps({"ok": True, "receipt": {"rows": rows + [{"date": "2026-10-18", "metric": "page_clicks", "dimension": "page:/x", "value": 3}]}}, indent=2)
+    cut = full[: full.rindex('"page_clicks"')]  # stops inside the last object
+    assert len(table_rows(cut)) == 7
+    assert 1574.0 in window_sums(table_rows(cut))
+    assert table_rows('{"rows": [') == [] and table_rows("no rows here") == []
+
+
+def test_series_dimensions_name_pages_and_queries_and_the_brand_never_counts() -> None:
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    series = {"receipt": {"rows": [
+        {"date": "2026-10-12", "metric": "page_sessions", "dimension": "page:/", "value": 294.0},
+        {"date": "2026-10-12", "metric": "page_clicks", "dimension": "page:/tools/llms-txt-checker", "value": 3.0},
+        {"date": "2026-10-12", "metric": "query_clicks", "dimension": "query:ai marketing agent", "value": 4.0},
+    ]}}
+    queries = {"rows": [{"keys": ["magister"], "clicks": 12}, {"keys": ["magiste"], "clicks": 2}]}
+    calls = [_call("magister_read_analytics_snapshots", {"source": "ga4"}, series, call_id="s1"),
+             _call("magister_read_analytics_breakdown", {"source": "gsc", "kind": "top_queries"}, queries, call_id="s2")]
+    found = entities_in(calls, spec["entity"]["keys"], spec["entity"]["path_keys"])
+    assert {"/", "/tools/llms-txt-checker", "ai marketing agent", "magister"} <= set(found)
+    brand_only = check_answer_grounded(_grounded_record("Magister drew 12 clicks; keep going.", calls=calls), spec)
+    assert brand_only["entities_named"] == [] and brand_only["passed"] is False
+    homepage = check_answer_grounded(_grounded_record("The homepage held 294 sessions; fix its hero first.", calls=calls), spec)
+    assert homepage["entities_named"] == ["/"] and homepage["passed"] is True
 
 
 def test_homepage_names_the_site_root_and_a_bare_slash_does_not() -> None:

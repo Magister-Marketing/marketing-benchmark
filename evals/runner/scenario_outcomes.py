@@ -296,6 +296,33 @@ def _rows_in(value: Any) -> list[dict[str, Any]] | None:
     return None
 
 
+ROWS_KEY_RE = re.compile(r'"rows"\s*:\s*\[')
+
+
+def truncated_rows(text: str) -> list[dict[str, Any]]:
+    """The complete row objects of a ``rows`` list in a result that was cut
+    off before it ended (records made before 2026-10-21 kept 40,000
+    characters of each result): every object up to the cut."""
+    match = ROWS_KEY_RE.search(text)
+    if not match:
+        return []
+    decoder = json.JSONDecoder()
+    rows: list[dict[str, Any]] = []
+    index = match.end()
+    while True:
+        while index < len(text) and text[index] in " \t\r\n,":
+            index += 1
+        if index >= len(text) or text[index] != "{":
+            break
+        try:
+            value, index = decoder.raw_decode(text, index)
+        except ValueError:
+            break
+        if isinstance(value, dict):
+            rows.append(value)
+    return rows
+
+
 def envelope_csv(parsed: Any) -> str | None:
     """The CSV a Library read returns inside its action envelope
     (``receipt.content`` of a ``text/csv`` asset, from its first character), else None."""
@@ -323,6 +350,10 @@ def table_rows(text: str, *, path: str = "") -> list[dict[str, Any]]:
     nested = _rows_in(parsed)
     if nested is not None:
         return nested
+    if parsed is None:
+        cut = truncated_rows(text)
+        if cut:
+            return cut
     if isinstance(parsed, list):
         return [row for row in parsed if isinstance(row, dict)]
     inner = envelope_csv(parsed)
@@ -401,6 +432,11 @@ def number_supported(number: dict[str, Any], values: list[float], *, derived_per
 # ── Entities ──────────────────────────────────────────────────────────────────
 
 PAGE_LIKE_RE = re.compile(r"^(/|https?://)")
+DIMENSION_PREFIX_RE = re.compile(r"^(page|query|landing_page):")
+
+
+def _normalized(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
 def _leaf_strings(value: Any, keys: set[str], out: list[str], parent: str | None = None,
@@ -420,7 +456,13 @@ def _leaf_strings(value: Any, keys: set[str], out: list[str], parent: str | None
     elif parent in keys or parent in path_keys:
         if isinstance(value, str):
             text = value.strip()
-            if 3 <= len(text) <= 200 and (parent in keys or PAGE_LIKE_RE.match(text)):
+            # A stored series names its dimension "page:/x" or "query:x".
+            prefix = DIMENSION_PREFIX_RE.match(text)
+            if prefix:
+                text = text[prefix.end():]
+            if not (text == "/" or 3 <= len(text) <= 200):
+                return
+            if parent in keys or PAGE_LIKE_RE.match(text) or (prefix and prefix.group(1) == "query"):
                 out.append(text)
         elif isinstance(value, int) and not isinstance(value, bool) and parent in keys:
             out.append(str(value))
@@ -530,6 +572,9 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
     unsupported = [n["text"] for n in checked if not n["supported"]]
     supported = [n for n in checked if n["supported"]]
     entities = entities_in(good, list(spec["entity"]["keys"]), list(spec["entity"].get("path_keys") or []))
+    # The brand's own name is a query too, and every reply says it.
+    ignore = [_normalized(term) for term in spec["entity"].get("ignore") or []]
+    entities = [e for e in entities if not any(_normalized(e) and _normalized(e) in term for term in ignore)]
     named = entities_named(reply, entities)
     # With entities in the rows one must be named. Without any, the verdict
     # depends on the scenario: a check-in that never read page or query rows
