@@ -196,13 +196,14 @@ _MONTHS = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 # Spans that hold digits but are not metrics: dates, times, years, counts of
 # periods and ordinal "top N" phrasing. They are blanked before numbers are
 # read, so "Oct 14" or "last 7 days" never has to be supported by a row.
+YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 DATE_PATTERNS = [
     re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?"),
     re.compile(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b"),
     re.compile(rf"\b{_MONTHS}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:\s*[-–]\s*\d{{1,2}}(?:st|nd|rd|th)?)?(?:,?\s+\d{{4}})?\b", re.IGNORECASE),
     re.compile(rf"\b\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTHS}(?:,?\s+\d{{4}})?\b", re.IGNORECASE),
     re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\b", re.IGNORECASE),
-    re.compile(r"\b(?:19|20)\d{2}\b"),
+    YEAR_RE,
     re.compile(r"\b\d+\s*(?:-|–|to)\s*\d+\s*(?:day|week|month|year|hour|minute)s?\b", re.IGNORECASE),
     re.compile(r"\b\d+\s+(?:day|week|month|year|hour|minute|question|step|page|item|bullet)s?\b", re.IGNORECASE),
     re.compile(r"\b(?:top|last|first|past|next|week|day|q|h|step|phase)\s*\d+\b", re.IGNORECASE),
@@ -219,8 +220,13 @@ NUMBER_RE = re.compile(
 RESULT_NUMBER_RE = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?![\w])")
 
 
-def _blank_dates(text: str) -> str:
+def _blank_dates(text: str, *, years: bool = True) -> str:
+    """Blank the date-like spans. A bare year is blanked in a reply only: in a
+    result the dates are ISO and blanked above, and a 1999 there is a value
+    (1,999 weekly impressions printed by a script)."""
     for pattern in DATE_PATTERNS:
+        if pattern is YEAR_RE and not years:
+            continue
         text = pattern.sub(lambda match: " " * len(match.group(0)), text)
     return text
 
@@ -246,7 +252,7 @@ def numbers_in(text: str) -> list[dict[str, Any]]:
 def result_numbers(text: str) -> list[float]:
     values: list[float] = []
     seen: set[float] = set()
-    for match in RESULT_NUMBER_RE.finditer(_blank_dates(text)):
+    for match in RESULT_NUMBER_RE.finditer(_blank_dates(text, years=False)):
         try:
             value = float(match.group(0))
         except ValueError:

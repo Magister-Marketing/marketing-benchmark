@@ -321,6 +321,8 @@ def test_account_ids_are_not_metrics_and_account_names_are_not_campaigns() -> No
     from evals.runner.scenario_outcomes import result_numbers
     assert 7.237618809404703 in result_numbers('{"position": 7.237618809404703, "customer": "5596093325"}')
     assert 5596093325.0 not in result_numbers('{"position": 7.237618809404703, "customer": "5596093325"}')
+    assert 1999.0 in result_numbers("prior week impressions: 1999\nthis week: 1574")
+    assert numbers_in("Impressions fell 1,999 → 1,574 in 2026.") and [n["text"] for n in numbers_in("In 2026 impressions fell 1,999 → 1,574.")] == ["1,999", "1,574"]
     customer = [_call("magister_integration_read", {"service": "google_ads", "path": "v24/customers/5596093325/googleAds:search"},
                       {"results": [{"customer": {"id": "5596093325", "descriptiveName": "Magister Marketing"}}]}, call_id="g1")]
     honest = check_answer_grounded(_grounded_record(
