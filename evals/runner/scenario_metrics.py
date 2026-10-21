@@ -318,6 +318,11 @@ def compute_metrics(record: dict[str, Any]) -> dict[str, Any]:
         "published": bool(outcome.get("published")),
         "has_media": bool(outcome.get("has_media")) if outcome.get("published") else False,
         "live_url": outcome.get("live_url"),
+        # The scenario's own verdict (evals.runner.scenario_outcomes); a record
+        # from before verdicts existed passes when it published.
+        "passed": bool(outcome["passed"]) if "passed" in outcome else bool(outcome.get("published")),
+        "outcome_summary": outcome.get("summary"),
+        "post_approval": [row for row in outcome.get("post_approval") or [] if isinstance(row, dict)],
         "wall_seconds_total": round(end - start, 1),
         "wall_seconds_per_turn": [turn["wall_seconds"] for turn in turns],
         "turns": turns,
@@ -356,8 +361,25 @@ def compute_metrics(record: dict[str, Any]) -> dict[str, Any]:
 
 # ── Tables ────────────────────────────────────────────────────────────────────
 
+def _fmt_post_approval(metrics: dict[str, Any]) -> str:
+    rows = metrics.get("post_approval") or []
+    if not rows:
+        return "—"
+    marks = []
+    for row in rows:
+        marks.append(
+            f"{'link ✓' if row.get('gave_live_url') else 'link ✗'} · "
+            f"{'done ✓' if row.get('item_completed') else 'done ✗'} · "
+            f"{'refs ✓' if row.get('shipped_refs_has_live_url') else ('refs ' + str(len(row.get('shipped_refs') or [])))}"
+        )
+    return "; ".join(marks)
+
+
 METRIC_ROWS: list[tuple[str, str, Callable[[dict[str, Any]], str]]] = [
     ("published", "Published (with media)", lambda m: m.get("_published_text") or (("yes" if m["published"] else "no") + (" ✓media" if m["has_media"] else ""))),
+    ("passed", "Outcome passed", lambda m: m.get("_passed_text") or ("yes" if m.get("passed") else "no")),
+    ("outcome_summary", "Outcome detail", lambda m: str(m.get("outcome_summary") or "—")),
+    ("post_approval", "After approval (link · done · refs)", _fmt_post_approval),
     ("wall_seconds_total", "Wall time, total", lambda m: _fmt_seconds(m["wall_seconds_total"])),
     ("wall_seconds_per_turn", "Wall time per turn", lambda m: " / ".join(_fmt_seconds(v) for v in m["wall_seconds_per_turn"]) or "—"),
     ("user_turns", "User turns", lambda m: str(m["user_turns"])),
@@ -428,6 +450,8 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "runs": len(runs),
         "published": sum(1 for run in runs if run.get("published")),
         "published_rate": (sum(1 for run in runs if run.get("published")) / len(runs)) if runs else None,
+        "passed": sum(1 for run in runs if run.get("passed")),
+        "passed_rate": (sum(1 for run in runs if run.get("passed")) / len(runs)) if runs else None,
     }
     for key in NUMERIC_METRICS:
         values = [_number(run.get(key)) for run in runs]
@@ -452,20 +476,23 @@ def compare(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> dict[s
                 "delta": a[key]["mean"] - b[key]["mean"],
                 "delta_pct": ((a[key]["mean"] - b[key]["mean"]) / b[key]["mean"] * 100) if b[key]["mean"] else None,
             }
-    deltas["published_rate"] = {
-        "before": b["published_rate"], "after": a["published_rate"],
-        "delta": (a["published_rate"] - b["published_rate"])
-        if a["published_rate"] is not None and b["published_rate"] is not None else None,
-    }
+    for rate in ("published_rate", "passed_rate"):
+        deltas[rate] = {
+            "before": b[rate], "after": a[rate],
+            "delta": (a[rate] - b[rate]) if a[rate] is not None and b[rate] is not None else None,
+        }
     return {"before": b, "after": a, "deltas": deltas}
 
 
 def render_comparison(comparison: dict[str, Any], metric_ids: list[str] | None = None) -> str:
     rows = ["| Metric | before (mean) | after (mean) | Δ |", "|---|---:|---:|---:|"]
-    pub = comparison["deltas"]["published_rate"]
-    pub_delta = "—" if pub["delta"] is None else f"{pub['delta'] * 100:+.0f} pts"
-    rows.append(f"| Published | {_fmt_rate(pub['before'])} | {_fmt_rate(pub['after'])} | {pub_delta} |")
     wanted = set(metric_ids or NUMERIC_METRICS)
+    for key, label in (("published_rate", "Published"), ("passed_rate", "Passed")):
+        rate = comparison["deltas"].get(key)
+        if not rate:
+            continue
+        delta = "—" if rate["delta"] is None else f"{rate['delta'] * 100:+.0f} pts"
+        rows.append(f"| {label} | {_fmt_rate(rate['before'])} | {_fmt_rate(rate['after'])} | {delta} |")
     labels = {key: label for key, label, _ in METRIC_ROWS}
     for key in NUMERIC_METRICS:
         if key not in wanted:

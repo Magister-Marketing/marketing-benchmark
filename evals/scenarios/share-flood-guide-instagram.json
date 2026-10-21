@@ -129,7 +129,7 @@
     "max_replies": 3
   },
   "stop": { "budget_seconds": 1500, "settle_quiet_seconds": 20 },
-  "outcome": { "kind": "social_post_published", "platform": "instagram", "requires_media": true },
+  "outcome": { "kind": "social_post_published", "platform": "instagram", "requires_media": true, "post_approval_reply": true },
   "metrics": [
     "published",
     "wall_seconds_total",
@@ -150,7 +150,8 @@
     "longest_silent_gap_seconds",
     "turns_until_first_approval",
     "approvals_requested",
-    "approvals_allowed"
+    "approvals_allowed",
+    "post_approval"
   ],
   "experience": {
     "status": "stub",

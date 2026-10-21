@@ -78,6 +78,10 @@ def _mean_column(summary: dict[str, Any], replays: list[dict[str, Any]]) -> dict
         "published": summary["published"] > 0,
         "has_media": all(run.get("has_media") for run in replays),
         "_published_text": f"{summary['published']}/{summary['runs']}",
+        "passed": summary["passed"] > 0,
+        "_passed_text": f"{summary['passed']}/{summary['runs']}",
+        "outcome_summary": f"{summary['passed']}/{summary['runs']} passed",
+        "post_approval": [],
         "wall_seconds_per_turn": [],
         "experience": {"status": "not_run"},
     })

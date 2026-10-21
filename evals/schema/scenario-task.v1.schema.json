@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://magistermarketing.com/evals/schema/scenario-task.v1.json",
   "title": "Product scenario task v1",
-  "description": "A real multi-turn product chat replayed against a Magister test lane: ordered user turns (the product's own task brief and Continue re-prompt, then typed messages), a scripted responder for approval cards and questions, a stop rule, an outcome check, and the metrics read back from the lane's database after each run. The scenario tier measures correctness, speed and efficiency of one chat before and after a change; the task tier (scenario.v2) measures a single answer.",
+  "description": "A real multi-turn product chat replayed against a Magister test lane: ordered user turns (the product's own task brief and Continue re-prompt, or a typed message first, then typed messages), a scripted responder for approval cards and questions (allow, or deny by rule), a stop rule, an outcome check computed from rows, receipts and the machine transcript (never from the reply's prose), and the metrics read back from the lane's database after each run. The scenario tier measures correctness, speed and efficiency of one chat before and after a change; the task tier (scenario.v2) measures a single answer.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,7 +11,6 @@
     "title",
     "version",
     "description",
-    "origin",
     "fixture",
     "turns",
     "responder",
@@ -30,7 +29,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "kind": {
-          "description": "task_brief: the brief the lane's own Gateway renders for the plan item (what Work on sends); continue: what the product's Continue button sends now (the Gateway's continue route, or its dispatch text as a plain message when the task is not in a continuable state); message: the literal text.",
+          "description": "task_brief: the brief the lane's own Gateway renders for the plan item (what Work on sends); continue: what the product's Continue button sends now (the Gateway's continue route, or its dispatch text as a plain message when the task is not in a continuable state); message: the literal text. A scenario without a plan item starts with a message in a fresh chat, as the chat page does.",
           "enum": ["task_brief", "continue", "message"]
         },
         "text": { "type": "string", "minLength": 1 },
@@ -59,6 +58,18 @@
         },
         "reply": { "type": "string", "minLength": 1 }
       }
+    },
+    "deny_rule": {
+      "description": "An approval card the scripted person refuses: a pending card whose action is listed (with or without the magister_ prefix) and whose arguments name the service when one is given is denied with the note. Deny rules are checked before approve_approvals, so a scenario can allow everything except spend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "actions", "note"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "actions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "service": { "type": "string", "minLength": 1 },
+        "note": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
     }
   },
   "properties": {
@@ -68,7 +79,7 @@
     "version": { "type": "integer", "minimum": 1 },
     "description": { "type": "string", "minLength": 1 },
     "origin": {
-      "description": "The real chat this scenario reproduces: where it ran and what it cost, so run 0 can be read back from that database.",
+      "description": "The real chat this scenario reproduces, when there is one: where it ran and what it cost, so run 0 can be read back from that database. A scenario written from a brief rather than a chat has none.",
       "type": "object",
       "additionalProperties": false,
       "required": ["lane", "chat_session_id", "plan_item_id", "project_id", "model", "user_turns"],
@@ -89,11 +100,15 @@
     "fixture": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["website", "brand", "project_slug", "owner_email", "model", "connections", "plan_item"],
+      "required": ["website", "brand", "project_slug", "owner_email", "model", "connections"],
       "properties": {
         "website": { "type": "string", "format": "uri" },
         "brand": { "type": "string", "minLength": 1 },
-        "project_slug": { "type": "string", "minLength": 1 },
+        "project_slug": {
+          "description": "The fixture project's slug on the lane. When no project has it, the runner falls back to the owner's one non-destroyed project for the fixture website (a rebuilt lane gives the same site a new slug).",
+          "type": "string",
+          "minLength": 1
+        },
         "owner_email": { "type": "string", "format": "email" },
         "model": {
           "description": "The model the fixture project runs the chat on (set as the project's admin preference before each repetition), so a run measures the same model as its origin unless a run overrides it.",
@@ -114,7 +129,7 @@
           }
         },
         "plan_item": {
-          "description": "The marketing_plan_items row the runner inserts into the fixture's live plan before each repetition: the task's contract, copied from the origin item. Columns the runner owns (id, plan_id, status, chat_session_id, timestamps) are never listed here.",
+          "description": "The marketing_plan_items row the runner inserts into the fixture's live plan before each repetition: the task's contract, copied from the origin item or written for the scenario. Required when the first turn is a task_brief; absent for a scenario that starts with a typed message. Columns the runner owns (id, plan_id, status, chat_session_id, timestamps) are never listed here.",
           "type": "object",
           "required": ["title", "task_prompt", "task_contract", "required_connections", "channel"],
           "properties": {
@@ -151,10 +166,15 @@
       "required": ["approve_approvals", "replies", "default_reply", "max_replies"],
       "properties": {
         "approve_approvals": {
-          "description": "Allow every pending approval card the agent raises for the fixture project during the run.",
+          "description": "Allow every pending approval card the agent raises for the fixture project during the run that no deny rule claims.",
           "type": "boolean"
         },
+        "deny": { "type": "array", "items": { "$ref": "#/$defs/deny_rule" } },
         "replies": { "type": "array", "items": { "$ref": "#/$defs/reply_rule" } },
+        "reply_when": {
+          "description": "always: when nothing else is pending after a turn settles, send the matching or default reply (scenario 1); question: only when the agent's latest words ask something (a question mark in its last message, or an options card), otherwise the run ends at the turn's end.",
+          "enum": ["always", "question"]
+        },
         "default_reply": { "type": "string", "minLength": 1 },
         "max_replies": {
           "description": "Scripted replies allowed after the scenario's own turns are spent.",
@@ -177,14 +197,97 @@
       }
     },
     "outcome": {
+      "description": "What the run must have done, read from rows, receipts, the machine transcript and the provider, never from the agent's prose. social_post_published: a post live on the account (scenario 1). answer_grounded: every number in the reply appears in the recorded results of the listed read tools (rounded, or derivable as a percentage of two of them) and the reply names an entity (a page, a query, a campaign) present in those results. ad_campaign_draft: a complete written draft, a budget-bounded paused approval card the responder denied, and nothing executed. shopify_page_section: the store page gained the section (read back through the lane Gateway) after exactly the expected number of approvals.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "platform", "requires_media"],
+      "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["social_post_published"] },
+        "kind": { "enum": ["social_post_published", "answer_grounded", "ad_campaign_draft", "shopify_page_section"] },
         "platform": { "type": "string", "minLength": 1 },
-        "requires_media": { "type": "boolean" }
-      }
+        "requires_media": { "type": "boolean" },
+        "post_approval_reply": {
+          "description": "Also record whether the agent's turn after each approval decision gave the live URL, and whether the plan item ended completed with that URL in its shipped_refs: extra fields on the record's outcome; the kind's own check stays the primary outcome.",
+          "type": "boolean"
+        },
+        "tools": {
+          "description": "The read tools whose recorded results must support the reply (names with or without the magister_ prefix).",
+          "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 }
+        },
+        "source": {
+          "description": "Only calls whose arguments name this analytics source or integration service count (null: any).",
+          "type": ["string", "null"]
+        },
+        "entity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keys", "label"],
+          "properties": {
+            "keys": {
+              "description": "JSON keys in the tool results whose string values are the entities; the reply must name one of them.",
+              "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }
+            },
+            "label": { "type": "string", "minLength": 1 }
+          }
+        },
+        "numbers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "allow_derived_percentages": { "type": "boolean" } }
+        },
+        "draft": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_keywords", "min_headlines", "min_descriptions", "max_daily_budget_usd"],
+          "properties": {
+            "min_keywords": { "type": "integer", "minimum": 1 },
+            "min_headlines": { "type": "integer", "minimum": 1 },
+            "min_descriptions": { "type": "integer", "minimum": 1 },
+            "max_daily_budget_usd": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "card": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actions", "max_daily_budget_usd"],
+          "properties": {
+            "actions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "service": { "type": "string", "minLength": 1 },
+            "max_daily_budget_usd": { "type": "number", "exclusiveMinimum": 0 },
+            "require_paused": { "type": "boolean" }
+          }
+        },
+        "forbid_executed_actions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "page": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["service", "handle"],
+          "properties": {
+            "service": { "const": "shopify" },
+            "handle": { "type": "string", "minLength": 1 },
+            "title": { "type": "string", "minLength": 1 },
+            "reset_body": {
+              "description": "The page body the runner restores before every repetition (through the lane Gateway as the owner), so each run starts from the same page.",
+              "type": "string", "minLength": 1
+            }
+          }
+        },
+        "section": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_questions", "keywords"],
+          "properties": {
+            "min_questions": { "type": "integer", "minimum": 1 },
+            "keywords": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "approvals_expected": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "social_post_published" } } }, "then": { "required": ["platform", "requires_media"] } },
+        { "if": { "properties": { "kind": { "const": "answer_grounded" } } }, "then": { "required": ["tools", "entity"] } },
+        { "if": { "properties": { "kind": { "const": "ad_campaign_draft" } } }, "then": { "required": ["draft", "card"] } },
+        { "if": { "properties": { "kind": { "const": "shopify_page_section" } } }, "then": { "required": ["page", "section", "approvals_expected"] } }
+      ]
     },
     "metrics": {
       "description": "The metric ids the report prints, in order; every id is one evals.runner.scenario_metrics computes.",
