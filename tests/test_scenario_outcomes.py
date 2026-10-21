@@ -202,6 +202,14 @@ def test_entities_in_reads_nested_keys_and_non_json_results() -> None:
     found = entities_in(calls, ["keys", "page", "query"])
     assert "https://www.artworkssandiego.com/flood-response-guide" in found and "/services/art-storage" in found
     assert "art storage san diego" in found
+    # Long-format rows: a by-page series holds pages under `dimension`, a by-channel one holds channel names.
+    long_rows = {"receipt": {"rows": [
+        {"date": "2026-10-13", "metric": "sessions", "dimension": "/signup", "value": 12.0},
+        {"date": "2026-10-13", "metric": "sessions", "dimension": "Organic Search", "value": 40.0},
+    ]}}
+    found = entities_in([_call("magister_read_analytics_snapshots", {"source": "ga4"}, long_rows)], ["query"], ["dimension"])
+    assert found == ["/signup"]
+    assert entities_in([_call("x", {"source": "google_ads"}, long_rows)], ["dimension"]) == ["/signup", "Organic Search"]
 
 
 # ── ad_campaign_draft ─────────────────────────────────────────────────────────

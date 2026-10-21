@@ -322,35 +322,40 @@ def number_supported(number: dict[str, Any], values: list[float], *, derived_per
 
 # ── Entities ──────────────────────────────────────────────────────────────────
 
-def _leaf_strings(value: Any, keys: set[str], out: list[str], parent: str | None = None) -> None:
+PAGE_LIKE_RE = re.compile(r"^(/|https?://)")
+
+
+def _leaf_strings(value: Any, keys: set[str], out: list[str], parent: str | None = None,
+                  path_keys: set[str] = frozenset()) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
-            _leaf_strings(child, keys, out, str(key))
+            _leaf_strings(child, keys, out, str(key), path_keys)
     elif isinstance(value, list):
         for child in value:
-            _leaf_strings(child, keys, out, parent)
-    elif parent in keys:
+            _leaf_strings(child, keys, out, parent, path_keys)
+    elif parent in keys or parent in path_keys:
         if isinstance(value, str):
             text = value.strip()
-            if 3 <= len(text) <= 200:
+            if 3 <= len(text) <= 200 and (parent in keys or PAGE_LIKE_RE.match(text)):
                 out.append(text)
-        elif isinstance(value, int) and not isinstance(value, bool):
+        elif isinstance(value, int) and not isinstance(value, bool) and parent in keys:
             out.append(str(value))
 
 
-def entities_in(calls: list[dict[str, Any]], keys: list[str]) -> list[str]:
-    """Distinct string values under the named keys across the results."""
-    wanted = set(keys)
+def entities_in(calls: list[dict[str, Any]], keys: list[str], path_keys: list[str] | None = None) -> list[str]:
+    """Distinct string values under the named keys across the results; a
+    value under a path key counts only when it looks like a page."""
+    wanted, pages = set(keys), set(path_keys or [])
     found: list[str] = []
     for call in calls:
         text = result_text(call)
         parsed = parse_result(text)
         if parsed is not None:
-            _leaf_strings(parsed, wanted, found)
+            _leaf_strings(parsed, wanted, found, None, pages)
             continue
         # A CSV the agent read: the columns named like an entity key.
         for row in table_rows(text, path=call_path(call)):
-            _leaf_strings({k: v for k, v in row.items() if k in wanted}, wanted, found)
+            _leaf_strings({k: v for k, v in row.items() if k in wanted or k in pages}, wanted, found, None, pages)
         for match in re.finditer(r'"(%s)"\s*:\s*"([^"]{3,200})"' % "|".join(re.escape(k) for k in keys), text):
             found.append(match.group(2))
     seen: set[str] = set()
@@ -395,7 +400,7 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
         checked.append({**number, "supported": how})
     unsupported = [n["text"] for n in checked if not n["supported"]]
     supported = [n for n in checked if n["supported"]]
-    entities = entities_in(good, list(spec["entity"]["keys"]))
+    entities = entities_in(good, list(spec["entity"]["keys"]), list(spec["entity"].get("path_keys") or []))
     named = entities_named(reply, entities)
     # With entities in the rows one must be named. Without any, the verdict
     # depends on the scenario: a check-in that never read page or query rows

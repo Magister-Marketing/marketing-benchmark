@@ -57,6 +57,18 @@
     "source": null,
     "entity": {
       "keys": [
+        "query",
+        "queries",
+        "keys",
+        "term",
+        "keyword",
+        "search_term",
+        "title"
+      ],
+      "label": "a page or query from the analytics rows",
+      "required": true,
+      "path_keys": [
+        "dimension",
         "page",
         "pagePath",
         "page_path",
@@ -64,17 +76,9 @@
         "url",
         "landing_page",
         "landingPage",
-        "query",
-        "keys",
-        "term",
-        "keyword",
-        "title",
-        "label",
-        "dimension_value",
-        "key"
-      ],
-      "label": "a page or query from the analytics rows",
-      "required": true
+        "key",
+        "label"
+      ]
     },
     "numbers": {
       "allow_derived_percentages": true

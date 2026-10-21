@@ -231,6 +231,10 @@
               "description": "JSON keys in the tool results whose string values are the entities; the reply must name one of them.",
               "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }
             },
+            "path_keys": {
+              "description": "Keys whose string values count only when they look like a page (a path starting with / or a URL): the long-format `dimension` holds pages for a by-page series and channel names for a by-channel one.",
+              "type": "array", "items": { "type": "string", "minLength": 1 }
+            },
             "label": { "type": "string", "minLength": 1 },
             "required": {
               "description": "true: the results must hold at least one entity and the reply must name one (a check-in that never read page or query rows fails); false: an empty account passes when nothing is invented.",
