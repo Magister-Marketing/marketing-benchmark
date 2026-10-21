@@ -73,7 +73,8 @@
         "dimension_value",
         "key"
       ],
-      "label": "a page or query from the analytics rows"
+      "label": "a page or query from the analytics rows",
+      "required": true
     },
     "numbers": {
       "allow_derived_percentages": true

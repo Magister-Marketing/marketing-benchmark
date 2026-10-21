@@ -133,6 +133,13 @@ def test_answer_grounded_filters_calls_by_source_for_the_ads_review() -> None:
     assert grounded["passed"] is True
 
 
+def test_check_in_fails_when_no_page_or_query_rows_were_read() -> None:
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    totals_only = [_call("magister_read_analytics_snapshots", {"source": "gsc", "external_id": "x"}, GSC_RESULT, call_id="c1")]
+    result = check_answer_grounded(_grounded_record("Clicks were 1,234 last week; refresh the top pages.", calls=totals_only), spec)
+    assert result["passed"] is False and result["entities_in_results"] == 0 and "no page or query rows read" in result["summary"]
+
+
 def test_answer_grounded_on_an_empty_account_passes_only_an_honest_reply() -> None:
     spec = _scenario("google-ads-performance-review")["outcome"]
     empty = [_call("magister_integration_read", {"service": "google_ads", "path": "v24/customers/1/googleAds:search"},

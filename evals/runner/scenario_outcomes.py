@@ -393,10 +393,13 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
     supported = [n for n in checked if n["supported"]]
     entities = entities_in(good, list(spec["entity"]["keys"]))
     named = entities_named(reply, entities)
-    # An account with nothing in it (the fixture's Google Ads customer holds no
-    # campaigns) is answered honestly by a reply that reads it, invents no
-    # number and names no entity; with entities in the rows, one must be named.
-    passed = bool(good) and not unsupported and (bool(named) if entities else True)
+    # With entities in the rows one must be named. Without any, the verdict
+    # depends on the scenario: a check-in that never read page or query rows
+    # fails (entity.required), while an account with nothing in it (the
+    # fixture's Google Ads customer holds no campaigns) is answered honestly
+    # by a reply that reads it and invents neither a number nor a name.
+    entity_ok = bool(named) if entities else not bool(spec["entity"].get("required"))
+    passed = bool(good) and not unsupported and entity_ok
     return {
         "passed": passed,
         "terminal": False,
@@ -414,7 +417,8 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
         "entity_label": spec["entity"]["label"],
         "summary": (
             f"{len(supported)}/{len(checked)} numbers supported; "
-            + (f"{spec['entity']['label']} {'named' if named else 'not named'}; " if entities else "no entities in the rows; ")
+            + (f"{spec['entity']['label']} {'named' if named else 'not named'}; " if entities
+               else ("no page or query rows read; " if spec["entity"].get("required") else "no entities in the rows; "))
             + f"{len(good)} read call(s)"
         ),
     }
