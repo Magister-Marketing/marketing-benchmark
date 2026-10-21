@@ -145,6 +145,34 @@ def test_answer_grounded_on_an_empty_account_passes_only_an_honest_reply() -> No
     assert unread["passed"] is False
 
 
+def test_window_sums_back_weekly_totals_the_agent_adds_up() -> None:
+    from evals.runner.scenario_outcomes import table_rows, window_sums
+
+    daily = "date,clicks,impressions\n" + "\n".join(f"2026-10-{d:02d},{c},{i}" for d, c, i in [
+        (5, 10, 300), (6, 9, 280), (7, 8, 290), (8, 9, 310), (9, 10, 270), (10, 9, 260), (11, 9, 289),
+        (12, 5, 220), (13, 4, 230), (14, 5, 221), (15, 4, 224), (16, 5, 226), (17, 4, 228), (18, 5, 225),
+    ])
+    rows = table_rows(daily, path="data/gsc/x/daily.csv")
+    sums = window_sums(rows)
+    assert 64.0 in sums and 1999.0 in sums and 32.0 in sums and 1574.0 in sums  # the two weeks' totals
+    by_page = "date,page,impressions\n2026-10-12,/extension,500\n2026-10-13,/extension,438\n2026-10-12,/,300\n2026-10-13,/,341\n"
+    page_sums = window_sums(table_rows(by_page, path="daily-by-page.csv"))
+    assert 938.0 in page_sums and 641.0 in page_sums and 800.0 not in page_sums  # series never mix
+    json_rows = json.dumps({"rows": [{"date": "2026-10-12", "sessions": 500}, {"date": "2026-10-13", "sessions": 515}]})
+    assert 1015.0 in window_sums(table_rows(json_rows))
+    # A hosted read answers in an action envelope with long-format rows under receipt.
+    envelope = json.dumps({"ok": True, "receipt": {"selection": {"source": "gsc"}, "rows": [
+        {"date": "2026-10-12", "metric": "clicks", "dimension": None, "value": 5.0},
+        {"date": "2026-10-13", "metric": "clicks", "dimension": None, "value": 4.0},
+        {"date": "2026-10-12", "metric": "impressions", "dimension": None, "value": 220.0},
+        {"date": "2026-10-13", "metric": "impressions", "dimension": None, "value": 230.0},
+    ]}})
+    long_sums = window_sums(table_rows(envelope))
+    assert 9.0 in long_sums and 450.0 in long_sums and 225.0 not in long_sums
+    assert number_supported({"value": 1999, "decimals": 0, "kind": "number"}, [10.0], derived_percentages=False, sums=sums) == "sum"
+    assert number_supported({"value": 1999, "decimals": 0, "kind": "number"}, [10.0], derived_percentages=False) is None
+
+
 def test_file_reads_count_only_on_analytics_paths() -> None:
     spec = _scenario("analytics-weekly-check-in")["outcome"]
     csv = "date,clicks,impressions\n2026-10-13,180,6500\n2026-10-19,1234,45678\n"

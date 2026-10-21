@@ -51,7 +51,6 @@
       "get_analytics_view",
       "list_analytics_views",
       "fetch_integration_data",
-      "integration_read",
       "read",
       "exec"
     ],
@@ -79,7 +78,7 @@
     "numbers": {
       "allow_derived_percentages": true
     },
-    "paths": "(^|[\\s/'\"])data/(ga4|gsc|google_ads|paid_social|posthog|stripe)/"
+    "paths": "(^|[\\s/'\"])(data/(ga4|gsc|google_ads|paid_social|posthog|stripe)/|audits/)"
   },
   "metrics": [
     "passed",

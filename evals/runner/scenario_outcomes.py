@@ -17,7 +17,9 @@ re-read of an old record, and the tests run them on fixture rows.
 """
 from __future__ import annotations
 
+import csv
 import html
+import io
 import json
 import re
 from typing import Any
@@ -206,15 +208,101 @@ def result_numbers(text: str) -> list[float]:
     return values
 
 
-def number_supported(number: dict[str, Any], values: list[float], *, derived_percentages: bool) -> str | None:
+MAX_WINDOW_DAYS = 31
+DATE_KEY_RE = re.compile(r"^(date|day|period|period_start|start_date|week)$", re.IGNORECASE)
+
+
+def _float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().replace(",", "")
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+            return float(text)
+    return None
+
+
+def _rows_in(value: Any) -> list[dict[str, Any]] | None:
+    """The first ``rows`` list of objects anywhere in a result (an action
+    envelope keeps an analytics read's rows under ``receipt``)."""
+    if isinstance(value, dict):
+        rows = value.get("rows")
+        if isinstance(rows, list) and rows and all(isinstance(row, dict) for row in rows):
+            return rows
+        for child in value.values():
+            found = _rows_in(child)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _rows_in(child)
+            if found is not None:
+                return found
+    return None
+
+
+def table_rows(text: str, *, path: str = "") -> list[dict[str, Any]]:
+    """The rows of a result that is a table: a CSV file the agent read, or a
+    JSON object with a ``rows`` list (an analytics read)."""
+    parsed = parse_result(text)
+    nested = _rows_in(parsed)
+    if nested is not None:
+        return nested
+    if isinstance(parsed, list):
+        return [row for row in parsed if isinstance(row, dict)]
+    if path.lower().endswith(".csv") or (text.count("\n") >= 2 and "," in text.split("\n", 1)[0] and not text.lstrip().startswith("{")):
+        try:
+            return list(csv.DictReader(io.StringIO(text.strip())))
+        except csv.Error:
+            return []
+    return []
+
+
+def window_sums(rows: list[dict[str, Any]], *, max_window: int = MAX_WINDOW_DAYS) -> set[float]:
+    """Every sum of a numeric column over a run of up to ``max_window``
+    consecutive dated rows, per series (the other text columns, such as a
+    page or a channel, group the rows): the weekly and monthly totals an
+    agent adds up from daily rows. Rounded to two decimals."""
+    if not rows:
+        return set()
+    keys = list(rows[0].keys())
+    date_key = next((k for k in keys if DATE_KEY_RE.match(str(k))), None)
+    if date_key is None:
+        return set()
+    numeric = [k for k in keys if k != date_key and sum(_float(r.get(k)) is not None for r in rows) >= max(1, len(rows) // 2)]
+    group_keys = [k for k in keys if k != date_key and k not in numeric]
+    groups: dict[tuple, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(tuple(str(row.get(k)) for k in group_keys), []).append(row)
+    sums: set[float] = set()
+    for members in groups.values():
+        members.sort(key=lambda r: str(r.get(date_key)))
+        for key in numeric:
+            series = [_float(r.get(key)) or 0.0 for r in members]
+            prefix = [0.0]
+            for value in series:
+                prefix.append(prefix[-1] + value)
+            for i in range(len(series)):
+                for j in range(i + 2, min(len(series), i + max_window) + 1):
+                    sums.add(round(prefix[j] - prefix[i], 2))
+    return sums
+
+
+def number_supported(number: dict[str, Any], values: list[float], *, derived_percentages: bool,
+                     sums: set[float] | None = None) -> str | None:
     """How a stated number is backed by the results: ``exact`` (a result value
-    rounds to it at its stated precision), ``fraction`` (a 0–1 ratio printed as
-    a percentage), ``derived`` (the change or share between two result values,
+    rounds to it at its stated precision), ``sum`` (a total of consecutive
+    dated rows of one series), ``fraction`` (a 0–1 ratio printed as a
+    percentage), ``derived`` (the change or share between two result values,
     when the scenario allows it), or None."""
     target, decimals, kind = number["value"], number["decimals"], number["kind"]
     for value in values:
         if round(value, decimals) == target:
             return "exact"
+    if sums and kind != "percent" and round(target, 2) in sums:
+        return "sum"
     if kind != "percent":
         return None
     for value in values:
@@ -293,10 +381,13 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
     good = [call for call in calls if not call.get("is_error")]
     corpus = "\n".join(result_text(call) for call in good)
     values = result_numbers(corpus)
+    sums: set[float] = set()
+    for call in good:
+        sums |= window_sums(table_rows(result_text(call), path=call_path(call)))
     derived = bool((spec.get("numbers") or {}).get("allow_derived_percentages"))
     checked = []
     for number in numbers_in(reply):
-        how = number_supported(number, values, derived_percentages=derived)
+        how = number_supported(number, values, derived_percentages=derived, sums=sums)
         checked.append({**number, "supported": how})
     unsupported = [n["text"] for n in checked if not n["supported"]]
     supported = [n for n in checked if n["supported"]]
@@ -314,6 +405,7 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
         "read_calls_ok": len(good),
         "tools_read": sorted({hosted(call.get("tool")) for call in good}),
         "numbers_checked": len(checked),
+        "window_sums": len(sums),
         "numbers_supported": len(supported),
         "unsupported_numbers": unsupported,
         "numbers": checked,
