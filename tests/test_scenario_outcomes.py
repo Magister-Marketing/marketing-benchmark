@@ -133,6 +133,18 @@ def test_answer_grounded_filters_calls_by_source_for_the_ads_review() -> None:
     assert grounded["passed"] is True
 
 
+def test_answer_grounded_on_an_empty_account_passes_only_an_honest_reply() -> None:
+    spec = _scenario("google-ads-performance-review")["outcome"]
+    empty = [_call("magister_integration_read", {"service": "google_ads", "path": "v24/customers/1/googleAds:search"},
+                   {"body": {"fieldMask": "campaign.id,campaign.name", "queryResourceConsumption": "1395"}}, call_id="g1")]
+    honest = check_answer_grounded(_grounded_record("The account ran no campaigns in the last 30 days, so there is nothing to pause.", calls=empty), spec)
+    assert honest["passed"] is True and honest["entities_in_results"] == 0 and "no entities" in honest["summary"]
+    invented = check_answer_grounded(_grounded_record("Pause 'Brand - Search': $412.50 spent, 0 conversions.", calls=empty), spec)
+    assert invented["passed"] is False and invented["unsupported_numbers"] == ["$412.50"]
+    unread = check_answer_grounded(_grounded_record("There are no campaigns.", calls=[]), spec)
+    assert unread["passed"] is False
+
+
 def test_entities_in_reads_nested_keys_and_non_json_results() -> None:
     calls = [_call("magister_read_analytics_breakdown", {"source": "gsc"}, GSC_PAGES), _call("x", {}, '"query": "art storage san diego" and more')]
     found = entities_in(calls, ["keys", "page", "query"])

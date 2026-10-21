@@ -281,7 +281,10 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
     supported = [n for n in checked if n["supported"]]
     entities = entities_in(good, list(spec["entity"]["keys"]))
     named = entities_named(reply, entities)
-    passed = bool(good) and bool(supported) and not unsupported and bool(named)
+    # An account with nothing in it (the fixture's Google Ads customer holds no
+    # campaigns) is answered honestly by a reply that reads it, invents no
+    # number and names no entity; with entities in the rows, one must be named.
+    passed = bool(good) and not unsupported and (bool(named) if entities else True)
     return {
         "passed": passed,
         "terminal": False,
@@ -298,8 +301,8 @@ def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[
         "entity_label": spec["entity"]["label"],
         "summary": (
             f"{len(supported)}/{len(checked)} numbers supported; "
-            f"{spec['entity']['label']} {'named' if named else 'not named'}; "
-            f"{len(good)} read call(s)"
+            + (f"{spec['entity']['label']} {'named' if named else 'not named'}; " if entities else "no entities in the rows; ")
+            + f"{len(good)} read call(s)"
         ),
     }
 
