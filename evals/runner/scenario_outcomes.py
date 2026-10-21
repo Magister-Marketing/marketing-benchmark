@@ -343,12 +343,16 @@ def entities_in(calls: list[dict[str, Any]], keys: list[str]) -> list[str]:
     wanted = set(keys)
     found: list[str] = []
     for call in calls:
-        parsed = parse_result(result_text(call))
-        if parsed is None:
-            for match in re.finditer(r'"(%s)"\s*:\s*"([^"]{3,200})"' % "|".join(re.escape(k) for k in keys), result_text(call)):
-                found.append(match.group(2))
+        text = result_text(call)
+        parsed = parse_result(text)
+        if parsed is not None:
+            _leaf_strings(parsed, wanted, found)
             continue
-        _leaf_strings(parsed, wanted, found)
+        # A CSV the agent read: the columns named like an entity key.
+        for row in table_rows(text, path=call_path(call)):
+            _leaf_strings({k: v for k, v in row.items() if k in wanted}, wanted, found)
+        for match in re.finditer(r'"(%s)"\s*:\s*"([^"]{3,200})"' % "|".join(re.escape(k) for k in keys), text):
+            found.append(match.group(2))
     seen: set[str] = set()
     distinct: list[str] = []
     for item in found:
