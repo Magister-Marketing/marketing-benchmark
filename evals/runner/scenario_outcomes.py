@@ -56,15 +56,36 @@ def transcript_calls(record: dict[str, Any]) -> list[dict[str, Any]]:
     return [call for call in rows.get("transcript_tool_calls") or [] if isinstance(call, dict)]
 
 
-def calls_for(record: dict[str, Any], tools: list[str], source: str | None = None) -> list[dict[str, Any]]:
-    """The transcript's calls to any of ``tools``; with ``source``, only the
-    calls whose arguments name it as the analytics source or service."""
+FILE_TOOLS = frozenset({"read", "exec"})
+
+
+def call_path(call: dict[str, Any]) -> str:
+    """What a file read or shell command touched: its path or command text."""
+    args = call.get("args") if isinstance(call.get("args"), dict) else {}
+    return str(args.get("path") or args.get("file_path") or args.get("command") or "")
+
+
+def calls_for(record: dict[str, Any], tools: list[str], source: str | None = None,
+              paths: str | None = None) -> list[dict[str, Any]]:
+    """The transcript's calls to any of ``tools``. A file read or shell
+    command counts only when ``paths`` matches what it touched (the agent
+    reads the analytics pulls as files under ``data/<source>/``). With
+    ``source``, a hosted read must name it in its arguments and a file read
+    must have it in its path."""
     wanted = {hosted(tool) for tool in tools}
+    path_re = re.compile(paths) if paths else None
     found: list[dict[str, Any]] = []
     for call in transcript_calls(record):
-        if hosted(call.get("tool")) not in wanted:
+        name = hosted(call.get("tool"))
+        if name not in wanted:
             continue
-        if source:
+        if name in FILE_TOOLS:
+            touched = call_path(call)
+            if path_re is None or not path_re.search(touched):
+                continue
+            if source and source.lower() not in touched.lower():
+                continue
+        elif source:
             args = call.get("args") if isinstance(call.get("args"), dict) else {}
             named = {str(args.get(key) or "").lower() for key in ("source", "service")}
             if source.lower() not in named:
@@ -268,7 +289,7 @@ def entities_named(reply: str, entities: list[str]) -> list[str]:
 
 def check_answer_grounded(record: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     reply = assistant_text(record)
-    calls = calls_for(record, list(spec["tools"]), spec.get("source"))
+    calls = calls_for(record, list(spec["tools"]), spec.get("source"), spec.get("paths"))
     good = [call for call in calls if not call.get("is_error")]
     corpus = "\n".join(result_text(call) for call in good)
     values = result_numbers(corpus)

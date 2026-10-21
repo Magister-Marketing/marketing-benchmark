@@ -145,6 +145,23 @@ def test_answer_grounded_on_an_empty_account_passes_only_an_honest_reply() -> No
     assert unread["passed"] is False
 
 
+def test_file_reads_count_only_on_analytics_paths() -> None:
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    csv = "date,clicks,impressions\n2026-10-13,180,6500\n2026-10-19,1234,45678\n"
+    pages = "page,clicks\n/flood-response-guide,410\n"
+    calls = [
+        _call("read", {"path": "/data/.openclaw/skills/seo-audit/SKILL.md"}, "a skill: 99 steps", call_id="r1"),
+        _call("read", {"path": "/data/.openclaw/workspace/data/gsc/sc-domain-x/daily.csv"}, csv, call_id="r2"),
+        _call("exec", {"command": "head -5 data/gsc/sc-domain-x/daily-by-page.csv", "workdir": "/data/.openclaw/workspace"}, pages, call_id="r3"),
+        _call("exec", {"command": "find audits -type f"}, "audits/2026-10-21-light-audit.md", call_id="r4"),
+    ]
+    result = check_answer_grounded(_grounded_record("Clicks 1,234 last week; /flood-response-guide took 410 of them.", calls=calls), spec)
+    assert result["read_calls"] == 2 and result["tools_read"] == ["exec", "read"]
+    assert result["passed"] is True and result["unsupported_numbers"] == []
+    ads = _scenario("google-ads-performance-review")["outcome"]
+    assert check_answer_grounded(_grounded_record("Clicks 1,234.", calls=calls), ads)["read_calls"] == 0  # gsc files are not google_ads
+
+
 def test_entities_in_reads_nested_keys_and_non_json_results() -> None:
     calls = [_call("magister_read_analytics_breakdown", {"source": "gsc"}, GSC_PAGES), _call("x", {}, '"query": "art storage san diego" and more')]
     found = entities_in(calls, ["keys", "page", "query"])

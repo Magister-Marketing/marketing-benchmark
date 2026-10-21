@@ -214,8 +214,13 @@
           "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 }
         },
         "source": {
-          "description": "Only calls whose arguments name this analytics source or integration service count (null: any).",
+          "description": "Only calls whose arguments name this analytics source or integration service count (null: any); for a file read or a shell command, the path must contain the source.",
           "type": ["string", "null"]
+        },
+        "paths": {
+          "description": "A regular expression a read tool's path or a shell command must match to count as one of the listed tools' reads (the machine keeps every analytics pull as files under data/<source>/<property>/, which the agent reads like any file).",
+          "type": "string",
+          "minLength": 1
         },
         "entity": {
           "type": "object",

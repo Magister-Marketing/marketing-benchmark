@@ -3,20 +3,33 @@
   "id": "analytics-weekly-check-in",
   "title": "Weekly check-in on organic search and the site",
   "version": 1,
-  "description": "One typed question in a fresh chat: how organic search and the site did last week and what to change. The fixture has Google Analytics and Search Console connected (the internal magistermarketing.com properties, cloned onto the lane by make lane-clone) with their daily pulls in Library › Analytics. The outcome is read from the machine transcript, never from the reply: every number the agent states must appear in the analytics results it actually read (rounded, or a percentage of two of them), and its recommendation must name a page or query present in those rows. The responder answers a question with 'Yes, go ahead.' at most twice; the run ends at the end of the turn after the last reply, or at 15 minutes.",
+  "description": "One typed question in a fresh chat: how organic search and the site did last week and what to change. The fixture is the Magister Marketing project (magistermarketing.com) with its own Google Analytics and Search Console properties cloned onto the lane by make lane-clone and their daily pulls in Library › Analytics and under data/<source>/ on the machine; on an ArtWorks fixture the agent rightly refused to report another brand's properties (hbench smoke, 2026-10-21). The outcome is read from the machine transcript, never from the reply: every number the agent states must appear in the analytics results it actually read (rounded, or a percentage of two of them), and its recommendation must name a page or query present in those rows. The responder answers a question with 'Yes, go ahead.' at most twice; the run ends at the end of the turn after the last reply, or at 15 minutes.",
   "fixture": {
-    "website": "https://www.artworkssandiego.com/",
-    "brand": "ArtWorks San Diego",
-    "project_slug": "artworks-san-diego-2",
-    "owner_email": "bench-s1@magistermarketing.com",
+    "website": "https://magistermarketing.com/",
+    "brand": "Magister Marketing",
+    "project_slug": "magister-marketing",
+    "owner_email": "bench-mm@magistermarketing.com",
     "model": "openai/gpt-6-luna",
     "connections": [
-      { "service": "google_analytics", "platform": "ga4", "account": "magistermarketing.com (internal property, cloned by make lane-clone)" },
-      { "service": "google_search_console", "platform": "gsc", "account": "magistermarketing.com (internal property, cloned by make lane-clone)" }
+      {
+        "service": "google_analytics",
+        "platform": "ga4",
+        "account": "magistermarketing.com (the brand's own property, cloned by make lane-clone)"
+      },
+      {
+        "service": "google_search_console",
+        "platform": "gsc",
+        "account": "magistermarketing.com (the brand's own property, cloned by make lane-clone)"
+      }
     ]
   },
   "turns": [
-    { "id": "check-in", "kind": "message", "text": "How did organic search and the site do last week? What should we change?", "when": "always" }
+    {
+      "id": "check-in",
+      "kind": "message",
+      "text": "How did organic search and the site do last week? What should we change?",
+      "when": "always"
+    }
   ],
   "responder": {
     "approve_approvals": false,
@@ -25,7 +38,10 @@
     "default_reply": "Yes, go ahead.",
     "max_replies": 2
   },
-  "stop": { "budget_seconds": 900, "settle_quiet_seconds": 20 },
+  "stop": {
+    "budget_seconds": 900,
+    "settle_quiet_seconds": 20
+  },
   "outcome": {
     "kind": "answer_grounded",
     "tools": [
@@ -35,14 +51,35 @@
       "get_analytics_view",
       "list_analytics_views",
       "fetch_integration_data",
-      "integration_read"
+      "integration_read",
+      "read",
+      "exec"
     ],
     "source": null,
     "entity": {
-      "keys": ["page", "pagePath", "page_path", "path", "url", "landing_page", "landingPage", "query", "keys", "term", "keyword", "title", "label", "dimension_value", "key"],
+      "keys": [
+        "page",
+        "pagePath",
+        "page_path",
+        "path",
+        "url",
+        "landing_page",
+        "landingPage",
+        "query",
+        "keys",
+        "term",
+        "keyword",
+        "title",
+        "label",
+        "dimension_value",
+        "key"
+      ],
       "label": "a page or query from the analytics rows"
     },
-    "numbers": { "allow_derived_percentages": true }
+    "numbers": {
+      "allow_derived_percentages": true
+    },
+    "paths": "(^|[\\s/'\"])data/(ga4|gsc|google_ads|paid_social|posthog|stripe)/"
   },
   "metrics": [
     "passed",
@@ -68,10 +105,25 @@
   "experience": {
     "status": "stub",
     "criteria": [
-      { "id": "led_with_numbers", "check": "The reply opened with last week's actual numbers and the comparison window before any advice." },
-      { "id": "named_changes", "check": "The agent recommended a small number of concrete changes tied to named pages or queries, not a generic checklist." },
-      { "id": "no_pointless_questions", "check": "The agent did not ask the person for anything the connected data already answers." }
+      {
+        "id": "led_with_numbers",
+        "check": "The reply opened with last week's actual numbers and the comparison window before any advice."
+      },
+      {
+        "id": "named_changes",
+        "check": "The agent recommended a small number of concrete changes tied to named pages or queries, not a generic checklist."
+      },
+      {
+        "id": "no_pointless_questions",
+        "check": "The agent did not ask the person for anything the connected data already answers."
+      }
     ]
   },
-  "tags": ["scenario", "analytics", "read-only", "gsc", "ga4"]
+  "tags": [
+    "scenario",
+    "analytics",
+    "read-only",
+    "gsc",
+    "ga4"
+  ]
 }
