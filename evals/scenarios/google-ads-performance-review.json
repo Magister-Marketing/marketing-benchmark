@@ -7,7 +7,7 @@
   "fixture": {
     "website": "https://www.artworkssandiego.com/",
     "brand": "ArtWorks San Diego",
-    "project_slug": "artworks-san-diego",
+    "project_slug": "artworks-san-diego-2",
     "owner_email": "bench-s1@magistermarketing.com",
     "model": "openai/gpt-6-luna",
     "connections": [
