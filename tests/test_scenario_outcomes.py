@@ -534,3 +534,51 @@ def test_evaluate_dispatches_and_metrics_render_the_verdict() -> None:
     assert social["passed"] and social["terminal"] and social["summary"] == "published with media" and social["post_approval"] == []
     with pytest.raises(ValueError):
         evaluate({"outcome": {"kind": "nope"}}, {"rows": {}})
+
+
+# ── Rendered specs and questions ──────────────────────────────────────────────
+
+def _table_spec(rows: list[dict]) -> dict:
+    return {"id": "spec-1", "role": "ui_spec", "created_at": "2026-10-21T10:03:01+00:00", "turn_id": "t1",
+            "block_index": 6, "metadata": None, "content": json.dumps({"root": "summary", "elements": {"summary": {
+                "type": "Table", "props": {
+                    "columns": [{"key": "metric", "label": "Metric"}, {"key": "oct13_19", "label": "Oct 13–19"}],
+                    "data": rows}}}})}
+
+
+def _result_card(value: str) -> dict:
+    return {"id": "card-1", "role": "ui_spec", "created_at": "2026-10-21T10:02:00+00:00", "turn_id": "t1",
+            "block_index": 4, "metadata": {"kind": "result_card"}, "content": json.dumps({
+                "root": "result-card", "elements": {"result-card": {"type": "ResultCard", "props": {
+                    "headline": {"value": value, "label": "clicks from Google"},
+                    "footer": {"reportUrl": "http://x.localhost:3061/analytics?tab=gsc&project=p"}}}}})}
+
+
+def test_answer_grounded_checks_the_numbers_in_a_table_the_agent_renders() -> None:
+    """2026-10-22: a check-in answered in a table was checked against 0 numbers."""
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    record = _grounded_record("Clicks rose; /services/art-storage held position 3.1. Week over week:")
+    record["rows"]["chat_messages"].append(_table_spec([{"metric": "Search Console clicks", "oct13_19": 1234},
+                                                         {"metric": "Impressions", "oct13_19": 45678}]))
+    result = check_answer_grounded(record, spec)
+    assert {n["text"] for n in result["numbers"]} >= {"1234", "45678"}
+    assert result["passed"] is True
+
+    record["rows"]["chat_messages"][-1] = _table_spec([{"metric": "Search Console clicks", "oct13_19": 5150}])
+    result = check_answer_grounded(record, spec)
+    assert result["passed"] is False and "5150" in result["unsupported_numbers"]
+
+
+def test_gateway_result_cards_are_not_the_agents_words() -> None:
+    spec = _scenario("analytics-weekly-check-in")["outcome"]
+    record = _grounded_record("The flood-response guide (/flood-response-guide) took 410 clicks.")
+    record["rows"]["chat_messages"].append(_result_card("7777"))
+    result = check_answer_grounded(record, spec)
+    assert "7777" not in [n["text"] for n in result["numbers"]]
+    assert result["passed"] is True
+
+
+def test_a_links_query_string_is_not_a_question() -> None:
+    text = ("Open the full report at http://x.localhost:3061/analytics?tab=gsc&project=p for the detail.\n"
+            "Want me to draft the homepage change? I can also pull the query rows.")
+    assert questions_in(text) == ["Want me to draft the homepage change?"]

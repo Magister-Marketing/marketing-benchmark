@@ -143,16 +143,61 @@ def data_asset_matches(call: dict[str, Any], source: str | None, syncs: dict[str
     return bool(label) and folder.startswith(label)
 
 
+# Fields of a rendered spec that are structure, not words the person reads.
+SPEC_STRUCTURE_KEYS = frozenset({
+    "root", "type", "key", "id", "v", "kind", "variant", "tone", "unit", "cardKey",
+    "href", "url", "src", "reportUrl", "children",
+})
+
+
+def spec_text(content: Any) -> str:
+    """The words and numbers a rendered spec shows (a table's cells, a chart's
+    points, its titles), one leaf per line; '' when it is not a spec."""
+    spec = parse_result(content)
+    elements = spec.get("elements") if isinstance(spec, dict) else None
+    if not isinstance(elements, dict):
+        return ""
+    leaves: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key not in SPEC_STRUCTURE_KEYS:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            leaves.append(f"{value:g}" if isinstance(value, float) else str(value))
+        elif isinstance(value, str) and value.strip():
+            leaves.append(value.strip())
+
+    for element in elements.values():
+        if isinstance(element, dict):
+            walk(element.get("props"))
+    return "\n".join(leaves)
+
+
 def assistant_text(record: dict[str, Any], *, after: float | None = None) -> str:
-    """The agent's visible words in chat order (never its thinking)."""
+    """The agent's visible words in chat order (never its thinking), including
+    the tables and charts it renders itself. A rendered spec with no `kind` is
+    the agent's own; the Gateway's result, approval and file cards carry one
+    and are not claims the agent made (2026-10-22: a check-in answered in a
+    table was checked against 0 numbers and passed)."""
     rows = (record.get("rows") or {}).get("chat_messages") or []
     parts: list[str] = []
     for row in _sorted_messages(rows):
-        if row.get("role") != "assistant":
+        role = row.get("role")
+        meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        if role == "assistant":
+            text = str(row.get("content") or "")
+        elif role == "ui_spec" and not meta.get("kind"):
+            text = spec_text(row.get("content"))
+        else:
             continue
         if after is not None and (parse_ts(row.get("created_at")) or 0.0) <= after:
             continue
-        parts.append(str(row.get("content") or ""))
+        parts.append(text)
     return "\n".join(parts)
 
 
@@ -858,10 +903,12 @@ def html_text(markup: str) -> str:
 
 
 def questions_in(text: str) -> list[str]:
-    """Distinct question sentences of three or more words."""
+    """Distinct question sentences of three or more words. A '?' ends one only
+    before a space, a closing mark or the line's end, so a link's query string
+    (`analytics?tab=gsc`) is not a question."""
     found: list[str] = []
     for line in text.splitlines():
-        for part in re.split(r"(?<=\?)", line):
+        for part in re.split(r"(?<=\?)(?=[\s\"'*_)\]]|$)", line):
             part = part.strip(" -*•\t")
             if part.endswith("?") and len(part.split()) >= 3 and part not in found:
                 found.append(part)
