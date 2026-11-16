@@ -279,6 +279,12 @@ python -m eval_runner.claude_code run ... --plugin-dir ~/src/marketingskills --n
 # with MCP servers attached (Claude Code's own mcpServers JSON; its contents stay out of the run)
 python -m eval_runner.claude_code run ... --mcp-config ~/magister-mcp.json
 
+# with the person's own files (exports, a brief) saved into the working folder and named in the prompt
+python -m eval_runner.claude_code run ... --files-dir ~/exports
+
+# a task set kept outside this repository (its answers are someone's real numbers)
+MARKETING_BENCH_TASKS_DIR=~/private-tasks python -m eval_runner.claude_code run ...
+
 python -m eval_runner.bench grade --run eval_runner/results/<run> --env-file ~/keys.env
 python -m eval_runner.bench report --run eval_runner/results/<run>
 python scripts/compare-arms.py --arm "Claude Code=eval_runner/results/<run>" \

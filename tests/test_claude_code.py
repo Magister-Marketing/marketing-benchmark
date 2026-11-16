@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -75,6 +76,52 @@ def test_named_skills_are_the_tasks_own_and_only_installed_ones():
     assert "installed skills" not in plain
     # Naming a skill never pastes it: the model still has to open it.
     assert named.endswith(bench.assemble_prompt(task, include_skills=False))
+
+
+def test_given_files_are_staged_named_in_the_prompt_and_never_kept(tmp_path):
+    files_dir = tmp_path / "exports"
+    files_dir.mkdir()
+    (files_dir / "queries.csv").write_text("query,clicks\nlamp,3\n")
+    (files_dir / "pages.csv").write_text("page,clicks\n/,9\n")
+    (files_dir / ".DS_Store").write_text("")
+    (files_dir / "nested").mkdir()
+    files = claude_code.given_files(files_dir)
+    assert [path.name for path in files] == ["pages.csv", "queries.csv"]
+    assert claude_code.given_files(None) == []
+
+    task = dict(bench.load_tasks()["headline"], fixtures=[])
+    prompt = claude_code.build_prompt(task, files=files)
+    assert "These files are saved in the working folder: pages.csv, queries.csv.\n" in prompt
+    assert "These files" not in claude_code.build_prompt(task)
+
+    workspace = tmp_path / "work"
+    staged = claude_code.stage_workspace(task, workspace, files)
+    assert staged == ["pages.csv", "queries.csv"]
+    assert (workspace / "queries.csv").read_text() == "query,clicks\nlamp,3\n"
+    (workspace / "answer.md").write_text("mine")
+    # What the run gave is not what the agent wrote.
+    assert claude_code.keep_written_files(workspace, staged, tmp_path / "kept") == ["answer.md"]
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(SystemExit, match="no files to give"):
+        claude_code.given_files(empty)
+
+
+def test_a_private_task_folder_replaces_the_repositorys(tmp_path):
+    criterion = {"check": "The reply greets the reader."}
+    task = {
+        "id": "private-task", "title": "A task kept elsewhere", "split": "development",
+        "prompt_version": 1, "rubric_version": 1, "fixtures": [], "skills": [], "prompt": "Say hello.",
+        "rubric": {section: [dict(criterion, id=section)] for section in bench.RUBRIC_SECTIONS},
+    }
+    (tmp_path / "private-task.json").write_text(json.dumps(task))
+    script = "from eval_runner import bench; print(sorted(bench.load_tasks()))"
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True, cwd=bench.REPO_ROOT,
+        env={**os.environ, "MARKETING_BENCH_TASKS_DIR": str(tmp_path)},
+    ).stdout
+    assert out.strip() == "['private-task']"
 
 
 def test_every_runnable_task_stages_its_sources_under_distinct_names(tmp_path):

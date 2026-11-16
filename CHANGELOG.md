@@ -27,6 +27,11 @@
   and records an error if it did not), a sandbox that cannot read the
   operator's home, the shared temp folders or another attempt, its own copy
   of any plugin, and no API key in the shell's environment.
+- Harness: `claude-code --files-dir DIR` saves a folder's files into every
+  attempt's working folder and names them in the prompt: the arm where a
+  person hands the agent their own exports. `MARKETING_BENCH_TASKS_DIR`
+  points `load_tasks` at a task set kept outside the repository, for tasks
+  whose answers are a brand's real numbers.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry
