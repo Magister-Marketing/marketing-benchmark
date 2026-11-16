@@ -18,6 +18,15 @@
   unsupported date, so the shared preamble says to treat the sources as
   current. `scripts/compare-arms.py` puts graded runs side by side per task
   with a paired sign-flip test over tasks.
+- Harness: `claude-code` attempts are isolated from each other. Claude Code
+  gives sandboxed shell commands a temp folder every session on the machine
+  shares whenever the one it is handed has a long path, so parallel attempts
+  were writing their scripts into one folder, and the shell could read other
+  attempts' folders and the API key. Each attempt now has short private
+  folders under `/tmp` (the run checks afterwards that the shell used them
+  and records an error if it did not), a sandbox that cannot read the
+  operator's home, the shared temp folders or another attempt, its own copy
+  of any plugin, and no API key in the shell's environment.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

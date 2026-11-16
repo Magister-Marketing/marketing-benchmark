@@ -287,18 +287,23 @@ python scripts/compare-arms.py --arm "Claude Code=eval_runner/results/<run>" \
 
 What every attempt gets:
 
-- **Its own folders and nothing of yours.** A fresh working folder,
-  configuration folder and home folder per attempt; no CLAUDE.md, memory,
-  settings, plugins, hooks or MCP servers from the machine it runs on. The
-  session's own list of what it loaded is kept as `agent_inventory` in
-  `run.json`.
+- **Its own folders and nothing of yours.** A fresh working, configuration,
+  home and temp folder per attempt, and its own copy of any plugin; no
+  CLAUDE.md, memory, settings, plugins, hooks or MCP servers from the machine
+  it runs on. The session's own list of what it loaded is kept as
+  `agent_inventory` in `run.json`. Attempts cannot see each other: the
+  folders live under a short private path in `/tmp`, because Claude Code
+  falls back to a temp folder every session shares when the one it is given
+  has a long path, and an attempt whose shell did not use its own is recorded
+  as an error.
 - **The sources as files.** Each supplied source is inline in the prompt, as
   for every harness, and also saved in the working folder, with one sentence
   saying so.
 - **Claude Code's shell sandbox, on.** Every shell command runs without
   asking, may write only inside the attempt's folders, may reach the package
-  registries and nothing else, and cannot read your home folder. Web search
-  and web fetch stay on. A file-tool call outside the attempt's folders is
+  registries and nothing else, cannot read your home folder, the shared temp
+  folders or another attempt, and has no API key in its environment. Web
+  search and web fetch stay on. A file-tool call outside the attempt's folders is
   refused; refusals are counted per attempt (`guardrail_kinds`).
 - **The same preamble as the Magister agent harness:** draft only, treat the
   sources as current, deliver the answer in the reply.

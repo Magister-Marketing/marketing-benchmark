@@ -19,18 +19,21 @@ Three things can be added, each the way a user adds it:
 
 What every attempt gets, so runs can be compared and repeated:
 
-- its own empty working folder, its own configuration folder and its own home
-  folder. Nothing of the operator's is loaded: no CLAUDE.md, memory, settings,
-  plugins, hooks or MCP servers. The first event of every session lists what
-  was loaded, and the run keeps it (``agent_inventory`` in run.json).
+- its own empty working folder, configuration folder, home folder and temp
+  folder, and its own copy of any plugin. Nothing of the operator's is loaded:
+  no CLAUDE.md, memory, settings, plugins, hooks or MCP servers. The first
+  event of every session lists what was loaded, and the run keeps it
+  (``agent_inventory`` in run.json).
 - the task's supplied sources saved as files in the working folder, as well
   as inline in the prompt, with one sentence saying so. A person with an ads
   export has the file; an agent that had to retype 800 pasted rows before it
   could compute would be measuring the paste, not the agent.
 - Claude Code's own shell sandbox, on. Every shell command runs without
   asking, may write only inside the attempt's folders, may reach the package
-  registries and nothing else, and cannot read the operator's home folder.
-  Web search and web fetch are Claude Code's own tools and stay on.
+  registries and nothing else, and cannot read the operator's home folder,
+  the shared temp folders or another attempt's folders. The API key is unset
+  in every shell command. Web search and web fetch are Claude Code's own
+  tools and stay on.
 - no one to ask. The file tools work inside the attempt's folders; a call
   that would need approval anywhere else is refused, and refusals are counted
   per attempt.
@@ -53,11 +56,11 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -86,6 +89,17 @@ ALWAYS_ALLOWED_TOOLS = ("Bash", "WebSearch", "WebFetch", "Skill")
 # A fixed search path: the operator's shell may put tools from their home
 # folder first, and the sandbox cannot read them.
 CHILD_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# Where each run's attempt folders are made. Every path below it is kept
+# short on purpose: Claude Code hands sandboxed commands a shared fallback
+# $TMPDIR (/tmp/claude-<uid>) when the temp folder it is given has a long
+# path, and on 2026-11-16 every parallel attempt of three arms was writing
+# its scripts into that one folder. A 28-character temp path was used and a
+# 36-character one was not; these come to 27 on macOS. `sandbox_used_own_temp`
+# checks each attempt rather than trusting the length.
+ATTEMPT_ROOT_PARENT = "/tmp"
+# Temp folders every process of the operator shares. A shell may read its own
+# attempt's folders under them and nothing else there.
+SHARED_TEMP_ROOTS = ("/tmp", "/private/tmp")
 KEPT_FILE_LIMIT = 20
 KEPT_FILE_BYTES = 256 * 1024
 
@@ -113,6 +127,42 @@ SKILLS_NOTE = (
 
 
 # ----------------------------------------------------------- prompt, folder
+
+def make_run_root() -> Path:
+    """A private folder for one run's attempts, with a short real path
+    (/tmp is a link on macOS, and the sandbox's rules name real paths)."""
+    parent = Path(ATTEMPT_ROOT_PARENT).resolve()
+    while True:
+        run_root = parent / f"mb{secrets.token_hex(3)}"
+        try:
+            run_root.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        return run_root
+
+
+def attempt_folders(run_root: Path, job_index: int, attempt_number: int) -> dict[str, Path]:
+    """One attempt's folders: where it works, Claude Code's configuration, its
+    home, its temp folder and its plugin copies. Named by the job's place in
+    the run and the attempt (`7a`, `7b`), not by task, to stay short."""
+    root = run_root / f"{job_index}{'ab'[attempt_number - 1]}"
+    return {
+        "root": root,
+        "work": root / "work",
+        "config": root / "config",
+        "home": root / "home",
+        "tmp": root / "t",
+        "plugins": root / "plugins",
+    }
+
+
+def sandbox_used_own_temp(tmp_dir: Path) -> bool:
+    """Whether the session's shell commands were given a temp folder under
+    this attempt's. Claude Code makes `claude-<uid>` there the first time a
+    sandboxed command runs; its absence after a shell call means the commands
+    shared the machine-wide fallback with every other session."""
+    return (tmp_dir / f"claude-{os.getuid()}").is_dir()
+
 
 def fixture_names(task: dict) -> list[str]:
     """The file name each supplied source is saved under; names must not collide."""
@@ -148,20 +198,13 @@ def stage_workspace(task: dict, workspace: Path) -> list[str]:
 
 # ------------------------------------------------------------- plugins, MCP
 
-def stage_plugin(source: Path, destination: Path) -> dict:
-    """Copy a plugin into the run's own folder, read-only, and describe it.
-
-    The copy keeps an attempt from changing the operator's checkout, and a
-    read-only copy keeps one attempt from changing what the next one reads.
-    """
+def describe_plugin(source: Path) -> dict:
+    """A plugin's name, version, revision and skills, for the run's record."""
     manifest_path = source / ".claude-plugin" / "plugin.json"
     if not manifest_path.is_file():
         raise SystemExit(f"{source}: not a Claude Code plugin (no .claude-plugin/plugin.json)")
     manifest = json.loads(manifest_path.read_text())
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-    skills = sorted(path.parent.name for path in destination.glob("skills/*/SKILL.md"))
-    for path in [destination, *destination.rglob("*")]:
-        path.chmod(path.stat().st_mode & ~0o222)
+    skills = sorted(path.parent.name for path in source.glob("skills/*/SKILL.md"))
     revision = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         capture_output=True, text=True, check=False,
@@ -175,6 +218,12 @@ def stage_plugin(source: Path, destination: Path) -> dict:
     }
 
 
+def copy_plugin(source: Path, destination: Path) -> None:
+    """One attempt's own copy of a plugin. Whatever a session does to its
+    skills reaches neither the operator's checkout nor another attempt."""
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+
+
 def mcp_server_names(config_path: Path) -> list[str]:
     """The servers a config attaches. The config may hold tokens; only names leave it."""
     config = json.loads(config_path.read_text())
@@ -186,9 +235,13 @@ def mcp_server_names(config_path: Path) -> list[str]:
 
 # ------------------------------------------------------- command, environment
 
-def sandbox_settings(deny_read: list[str], home_dir: Path) -> dict:
-    """The shell's limits. The attempt's own home folder is writable so a
-    package install (`pip install --user`) has somewhere to land."""
+def sandbox_settings(attempt_root: Path, home_dir: Path, operator_home: Path) -> dict:
+    """The shell's limits. It reads the system and its own attempt, not the
+    operator's home, the shared temp folders or another attempt. The attempt's
+    own home folder is writable so a package install (`pip install --user`)
+    has somewhere to land. The API key the session is billed to is unset in
+    every command: the shell has no use for it, and a page the agent fetched
+    must not be able to ask for it."""
     return {
         "sandbox": {
             "enabled": True,
@@ -196,7 +249,12 @@ def sandbox_settings(deny_read: list[str], home_dir: Path) -> dict:
             "autoAllowBashIfSandboxed": True,
             "allowUnsandboxedCommands": False,
             "network": {"allowedDomains": list(SANDBOX_ALLOWED_DOMAINS), "strictAllowlist": True},
-            "filesystem": {"denyRead": deny_read, "allowWrite": [str(home_dir)]},
+            "filesystem": {
+                "denyRead": [str(operator_home), *SHARED_TEMP_ROOTS],
+                "allowRead": [str(attempt_root)],
+                "allowWrite": [str(home_dir)],
+            },
+            "credentials": {"envVars": [{"name": "ANTHROPIC_API_KEY", "mode": "deny"}]},
         }
     }
 
@@ -210,9 +268,10 @@ def build_command(
     *,
     model: str,
     effort: str | None,
-    deny_read: list[str],
+    attempt_root: Path,
     home_dir: Path,
     tmp_dir: Path,
+    operator_home: Path,
     plugin_dirs: list[Path],
     mcp_config: Path | None,
     mcp_servers: list[str],
@@ -226,7 +285,7 @@ def build_command(
         "--strict-mcp-config",
         "--permission-mode", "acceptEdits",
         "--permission-prompts", "none",
-        "--settings", json.dumps(sandbox_settings(deny_read, home_dir), sort_keys=True),
+        "--settings", json.dumps(sandbox_settings(attempt_root, home_dir, operator_home), sort_keys=True),
         "--max-budget-usd", f"{max_budget_usd:.2f}",
         "--allowedTools", *allowed_tools(mcp_servers),
     ]
@@ -236,8 +295,8 @@ def build_command(
     # be able to open what it puts there.
     command += ["--add-dir", str(tmp_dir)]
     for plugin in plugin_dirs:
-        # --add-dir lets the file tools read the skill's reference files; the
-        # copy is read-only, so "allowed to write" writes nothing.
+        # --add-dir lets the file tools read the skill's reference files. It
+        # lets them write there too, which reaches only this attempt's copy.
         command += ["--plugin-dir", str(plugin), "--add-dir", str(plugin)]
     if mcp_config is not None:
         command += ["--mcp-config", str(mcp_config)]
@@ -250,6 +309,8 @@ def child_environment(api_key: str, *, config_dir: Path, home_dir: Path, tmp_dir
         "PATH": CHILD_PATH,
         "HOME": str(home_dir),
         "TMPDIR": str(tmp_dir),
+        # What sandboxed commands get as $TMPDIR is made under this one.
+        "CLAUDE_CODE_TMPDIR": str(tmp_dir),
         "LANG": "en_US.UTF-8",
         "ANTHROPIC_API_KEY": api_key,
         "CLAUDE_CONFIG_DIR": str(config_dir),
@@ -400,12 +461,15 @@ def attempt_fields(summary: dict, requested_model: str) -> dict:
 def keep_written_files(workspace: Path, staged: list[str], destination: Path) -> list[str]:
     """Copy what the agent wrote, for a reader of the run. Never graded."""
     kept: list[str] = []
+    root = workspace.resolve()
     for path in sorted(workspace.rglob("*")):
         if len(kept) >= KEPT_FILE_LIMIT:
             break
         relative = path.relative_to(workspace)
         if (
             not path.is_file() or path.is_symlink()
+            # A link in the path would have this copy a file from elsewhere.
+            or not path.resolve().is_relative_to(root)
             or relative.parts[0].startswith(".")
             or str(relative) in staged
             or path.stat().st_size > KEPT_FILE_BYTES
@@ -445,14 +509,6 @@ def _api_key() -> str:
     return key
 
 
-def _remove_run_root(run_root: Path) -> None:
-    # The plugin copies are read-only on purpose; make them removable again.
-    for path in list(run_root.rglob("*")):
-        if not path.is_symlink():
-            path.chmod(path.stat().st_mode | 0o200)
-    shutil.rmtree(run_root, ignore_errors=True)
-
-
 def cmd_run(args: argparse.Namespace) -> int:
     if args.env_file:
         bench._load_env_file(args.env_file)
@@ -472,6 +528,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         raise SystemExit("Claude Code runs Anthropic models only; pick an anthropic/* candidate")
     effort = spec.get("reasoning_effort")
     selected = bench._select_tasks(args.tasks, args.split, tasks, harness=HARNESS_ID)
+    if len(set(selected)) != len(selected):
+        # Two jobs for one task and repetition would share a folder and a file name.
+        raise SystemExit("--tasks names a task more than once")
     if args.repetitions < 1 or args.parallel < 1:
         raise SystemExit("--repetitions and --parallel must be positive")
     mcp_config = Path(args.mcp_config).resolve() if args.mcp_config else None
@@ -479,17 +538,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.name_skills and not args.plugin_dir:
         raise SystemExit("--name-skills needs a --plugin-dir whose skills it can name")
 
-    # The plugin copies and every attempt's folders. Removed however the run
-    # ends, an abort at the prompt included.
-    run_root = Path(tempfile.mkdtemp(prefix="mb-claude-code-"))
+    plugin_sources = [Path(path).resolve() for path in args.plugin_dir or []]
+    plugins = [describe_plugin(source) for source in plugin_sources]
+
+    # Every attempt's folders. Removed however the run ends, an abort at the
+    # prompt included.
+    run_root = make_run_root()
     try:
-        plugins: list[dict] = []
-        plugin_dirs: list[Path] = []
-        for index, source in enumerate(Path(path).resolve() for path in args.plugin_dir or []):
-            destination = run_root / "plugins" / f"{index}-{source.name}"
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            plugins.append(stage_plugin(source, destination))
-            plugin_dirs.append(destination)
         installed_skills = {skill for plugin in plugins for skill in plugin["skills"]}
         arm = (
             "claude-code"
@@ -521,26 +576,34 @@ def cmd_run(args: argparse.Namespace) -> int:
             (run_dir / "prompts" / f"{task_id}.md").write_text(prompts[task_id])
             (run_dir / "tasks" / f"{task_id}.json").write_text(json.dumps(tasks[task_id], indent=2) + "\n")
 
-        deny_read = [str(Path.home())]
+        operator_home = Path.home()
+        job_indexes = {job: index for index, job in enumerate(jobs)}
 
-        def run_session(task_id: str, stem: str, attempt_number: int) -> tuple[dict, dict, int | None, str]:
+        def run_session(
+            task_id: str, job_index: int, stem: str, attempt_number: int,
+        ) -> tuple[dict, dict, int | None, str]:
             """One session in fresh folders, removed afterwards. Returns its stream
             summary, its record fields, its exit code and its redacted stderr.
 
             Its transcript and kept files replace any an earlier attempt left, so the
             run directory shows the attempt that is recorded.
             """
-            attempt_root = run_root / "attempts" / f"{stem}-{attempt_number}"
-            workspace, config_dir, home_dir, tmp_dir = (
-                attempt_root / name for name in ("work", "config", "home", "tmp")
+            folders = attempt_folders(run_root, job_index, attempt_number)
+            attempt_root, workspace, config_dir, home_dir, tmp_dir = (
+                folders[name] for name in ("root", "work", "config", "home", "tmp")
             )
             for folder in (config_dir, home_dir, tmp_dir):
                 folder.mkdir(parents=True)
             staged = stage_workspace(tasks[task_id], workspace)
+            plugin_dirs: list[Path] = []
+            for index, source in enumerate(plugin_sources):
+                destination = folders["plugins"] / f"{index}-{source.name}"
+                copy_plugin(source, destination)
+                plugin_dirs.append(destination)
             command = build_command(
-                cli, model=model, effort=effort, deny_read=deny_read, home_dir=home_dir, tmp_dir=tmp_dir,
-                plugin_dirs=plugin_dirs, mcp_config=mcp_config, mcp_servers=mcp_servers,
-                max_budget_usd=args.max_budget_usd,
+                cli, model=model, effort=effort, attempt_root=attempt_root, home_dir=home_dir,
+                tmp_dir=tmp_dir, operator_home=operator_home, plugin_dirs=plugin_dirs,
+                mcp_config=mcp_config, mcp_servers=mcp_servers, max_budget_usd=args.max_budget_usd,
             )
             started = time.monotonic()
             returncode, stdout, stderr = _run_cli(
@@ -552,6 +615,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             summary = parse_stream(stdout.splitlines())
             fields = attempt_fields(summary, model)
             fields["latency_seconds"] = latency
+            if summary["tool_calls"].get("Bash") and not sandbox_used_own_temp(tmp_dir):
+                fields["error"] = (
+                    "the shell was not given this attempt's temp folder: Claude Code fell back "
+                    "to the one every session shares, so the attempt was not isolated"
+                )
             artifacts = run_dir / "artifacts" / stem
             shutil.rmtree(artifacts, ignore_errors=True)
             fields["files_written"] = keep_written_files(workspace, staged, artifacts)
@@ -563,6 +631,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         def one(job: tuple[str, int]) -> tuple[dict, dict | None]:
             """One attempt's record, and the inventory its session reported."""
             task_id, rep = job
+            job_index = job_indexes[job]
             stem = f"{task_id}--{model_id}--r{rep}"
             record = {
                 "run_id": run_id,
@@ -577,10 +646,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             }
             # Only a session that ended without a result event runs again, once.
             # One that finished is recorded as it ended, error or not.
-            summary, fields, returncode, stderr = run_session(task_id, stem, 1)
+            summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 1)
             if summary["result"] is None:
                 print(f"  retry {task_id} r{rep}: no result (exit {returncode}): {stderr[:200]}")
-                summary, fields, returncode, stderr = run_session(task_id, stem, 2)
+                summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 2)
                 fields["retried"] = True
             if summary["result"] is None:
                 fields["error"] = f"Claude Code ended without a result event (exit {returncode}): {stderr[:300]}"
@@ -601,7 +670,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as pool:
             results = list(pool.map(one, jobs))
     finally:
-        _remove_run_root(run_root)
+        shutil.rmtree(run_root, ignore_errors=True)
 
     records = [record for record, _ in results]
     inventory = next((item for _, item in results if item), None)
@@ -612,9 +681,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         "arm": arm,
         "harness_notes": (
             f"Headless Claude Code ({version}): one fresh session per task attempt in its own "
-            "empty working folder, configuration folder and home folder; nothing of the "
-            "operator's is loaded. Stock tools; the shell runs in Claude Code's sandbox "
-            "(writes inside the attempt's folders, network to the package registries only). "
+            "working, configuration, home and temp folders; nothing of the operator's is "
+            "loaded. Stock tools; the shell runs in Claude Code's sandbox (writes inside the "
+            "attempt's folders, network to the package registries only, no read of the "
+            "operator's home, the shared temp folders or another attempt, API key unset). "
             "Supplied sources are inline in the prompt and saved as files in the working folder. "
             + (f"Skills plugin installed: {', '.join(str(p['name']) for p in plugins)}. " if plugins else "")
             + ("The prompt names the skills each task was written against. " if args.name_skills else "")

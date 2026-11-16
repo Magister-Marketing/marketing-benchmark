@@ -2,7 +2,7 @@
 
 import json
 import os
-import stat
+from pathlib import Path
 import sys
 
 import pytest
@@ -97,9 +97,9 @@ def test_tasks_that_need_a_prior_turn_are_left_out():
 
 def test_command_confines_the_session(tmp_path):
     command = claude_code.build_command(
-        "claude", model="claude-haiku-5-5", effort="high", deny_read=["/Users/someone"],
-        home_dir=tmp_path / "home", tmp_dir=tmp_path / "tmp", plugin_dirs=[], mcp_config=None,
-        mcp_servers=[], max_budget_usd=3.0,
+        "claude", model="claude-haiku-5-5", effort="high", attempt_root=tmp_path,
+        home_dir=tmp_path / "home", tmp_dir=tmp_path / "tmp", operator_home=Path("/Users/someone"),
+        plugin_dirs=[], mcp_config=None, mcp_servers=[], max_budget_usd=3.0,
     )
     assert command[:2] == ["claude", "-p"]
     for flag in ("--strict-mcp-config", "--no-session-persistence"):
@@ -116,7 +116,14 @@ def test_command_confines_the_session(tmp_path):
     sandbox = json.loads(command[command.index("--settings") + 1])["sandbox"]
     assert sandbox["enabled"] and sandbox["failIfUnavailable"]
     assert sandbox["allowUnsandboxedCommands"] is False
-    assert sandbox["filesystem"] == {"denyRead": ["/Users/someone"], "allowWrite": [str(tmp_path / "home")]}
+    # The shell reads its own attempt and the system, not the operator's home,
+    # the shared temp folders, or (under them) another attempt.
+    assert sandbox["filesystem"] == {
+        "denyRead": ["/Users/someone", "/tmp", "/private/tmp"],
+        "allowRead": [str(tmp_path)],
+        "allowWrite": [str(tmp_path / "home")],
+    }
+    assert sandbox["credentials"] == {"envVars": [{"name": "ANTHROPIC_API_KEY", "mode": "deny"}]}
     assert "pypi.org" in sandbox["network"]["allowedDomains"]
     assert sandbox["network"]["strictAllowlist"] is True
 
@@ -125,14 +132,33 @@ def test_command_installs_plugins_and_attaches_mcp_servers(tmp_path):
     plugin = tmp_path / "plugin"
     config = tmp_path / "mcp.json"
     command = claude_code.build_command(
-        "claude", model="claude-haiku-5-5", effort=None, deny_read=[], home_dir=tmp_path,
-        tmp_dir=tmp_path / "tmp", plugin_dirs=[plugin], mcp_config=config, mcp_servers=["magister"], max_budget_usd=1.0,
+        "claude", model="claude-haiku-5-5", effort=None, attempt_root=tmp_path, home_dir=tmp_path,
+        tmp_dir=tmp_path / "tmp", operator_home=tmp_path, plugin_dirs=[plugin], mcp_config=config,
+        mcp_servers=["magister"], max_budget_usd=1.0,
     )
     assert "--effort" not in command
     assert command[command.index("--plugin-dir") + 1] == str(plugin)
     assert command[command.index("--plugin-dir") + 2:command.index("--plugin-dir") + 4] == ["--add-dir", str(plugin)]
     assert command[command.index("--mcp-config") + 1] == str(config)
     assert "mcp__magister" in command
+
+
+def test_attempt_folders_are_private_short_and_checked(tmp_path, monkeypatch):
+    monkeypatch.setattr(claude_code, "ATTEMPT_ROOT_PARENT", str(tmp_path))
+    run_root = claude_code.make_run_root()
+    assert run_root.parent == tmp_path.resolve() and run_root.stat().st_mode & 0o777 == 0o700
+    first, retry, other = (claude_code.attempt_folders(run_root, *key) for key in ((59, 1), (59, 2), (60, 1)))
+    assert {first["root"].name, retry["root"].name, other["root"].name} == {"59a", "59b", "60a"}
+    for name in ("work", "config", "home", "tmp", "plugins"):
+        assert first[name].parent == first["root"]
+    # Claude Code falls back to a temp folder every session shares when the one
+    # it is given has a long path; a 28-character one was measured to be used.
+    assert len(f"/private/tmp/{retry['tmp'].relative_to(run_root.parent)}") <= 28
+
+    first["tmp"].mkdir(parents=True)
+    assert not claude_code.sandbox_used_own_temp(first["tmp"])
+    (first["tmp"] / f"claude-{os.getuid()}").mkdir()
+    assert claude_code.sandbox_used_own_temp(first["tmp"])
 
 
 def test_child_environment_passes_nothing_of_the_operators(tmp_path, monkeypatch):
@@ -142,10 +168,12 @@ def test_child_environment_passes_nothing_of_the_operators(tmp_path, monkeypatch
         "key", config_dir=tmp_path / "c", home_dir=tmp_path / "h", tmp_dir=tmp_path / "t",
     )
     assert set(env) == {
-        "PATH", "HOME", "TMPDIR", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR",
+        "PATH", "HOME", "TMPDIR", "CLAUDE_CODE_TMPDIR", "LANG", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_AUTOUPDATER",
     }
     assert env["HOME"] == str(tmp_path / "h")
+    # Sandboxed commands get their $TMPDIR under this one, not the shared default.
+    assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"] == str(tmp_path / "t")
     assert os.path.expanduser("~") not in env["PATH"]
 
 
@@ -215,7 +243,7 @@ def test_a_dated_model_name_is_the_requested_model():
     assert "error" not in claude_code.attempt_fields(claude_code.parse_stream(lines), "claude-haiku-5-5")
 
 
-def test_plugin_is_copied_read_only_and_described(tmp_path):
+def test_plugin_is_described_once_and_copied_per_attempt(tmp_path):
     source = tmp_path / "pack"
     (source / ".claude-plugin").mkdir(parents=True)
     (source / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "pack", "version": "1.2.3"}))
@@ -224,19 +252,23 @@ def test_plugin_is_copied_read_only_and_described(tmp_path):
         (source / "skills" / name / "SKILL.md").write_text("---\nname: x\n---\n")
     (source / ".git").mkdir()
 
-    destination = tmp_path / "run" / "0-pack"
-    destination.parent.mkdir()
-    described = claude_code.stage_plugin(source, destination)
-
+    described = claude_code.describe_plugin(source)
     assert described["name"] == "pack" and described["version"] == "1.2.3"
     assert described["skills"] == ["analytics", "emails"]
-    assert not (destination / ".git").exists()
-    skill = destination / "skills" / "emails" / "SKILL.md"
-    assert not stat.S_IMODE(skill.stat().st_mode) & 0o222
-    assert (source / "skills" / "emails" / "SKILL.md").stat().st_mode & 0o200  # the checkout is untouched
+
+    # Each attempt gets its own copy: what one session does to a skill reaches
+    # neither the checkout nor the next attempt.
+    first, second = tmp_path / "a1" / "0-pack", tmp_path / "a2" / "0-pack"
+    for destination in (first, second):
+        destination.parent.mkdir()
+        claude_code.copy_plugin(source, destination)
+        assert not (destination / ".git").exists()
+    (first / "skills" / "emails" / "SKILL.md").write_text("poisoned")
+    assert (second / "skills" / "emails" / "SKILL.md").read_text() == "---\nname: x\n---\n"
+    assert (source / "skills" / "emails" / "SKILL.md").read_text() == "---\nname: x\n---\n"
 
     with pytest.raises(SystemExit, match="not a Claude Code plugin"):
-        claude_code.stage_plugin(tmp_path, tmp_path / "other")
+        claude_code.describe_plugin(tmp_path)
 
 
 def test_mcp_config_gives_up_names_only(tmp_path):
@@ -268,8 +300,9 @@ def test_written_files_are_kept_without_the_staged_sources(tmp_path):
 
 # A stand-in for the CLI, so `run` can be driven offline. Every first attempt
 # dies before its result event, after writing a draft; a retry answers, except
-# for the task named in DIES_TWICE. Its stderr puts the key across the cut the
-# error message makes.
+# the retry of job DIES_TWICE_JOB (attempt folders are named by the job's place
+# in the run, then `a` or `b` for the attempt). Its stderr puts the key across
+# the cut the error message makes.
 FAKE_CLI = """#!{python}
 import json, pathlib, sys
 if sys.argv[1:] == ["--version"]:
@@ -278,7 +311,7 @@ if sys.argv[1:] == ["--version"]:
 sys.stdin.read()
 attempt = pathlib.Path.cwd().parent.name
 print(json.dumps({{"type": "system", "subtype": "init", "model": "claude-haiku-5-5"}}))
-if attempt.endswith("-1") or attempt.startswith("{dies_twice}--"):
+if attempt.endswith("a") or attempt == "{dies_twice_job}b":
     pathlib.Path("draft.md").write_text("abandoned")
     print("x" * 290 + " {key}", file=sys.stderr)
     raise SystemExit(9)
@@ -293,7 +326,8 @@ def test_only_a_session_that_never_finished_runs_again(tmp_path, monkeypatch):
     answers, dies_twice = bench._select_tasks(None, "all", tasks, harness=claude_code.HARNESS_ID)[:2]
     key = "sk-test-0123456789"
     cli = tmp_path / "claude"
-    cli.write_text(FAKE_CLI.format(python=sys.executable, dies_twice=dies_twice, key=key))
+    # `dies_twice` is the second task named below, so the run's second job.
+    cli.write_text(FAKE_CLI.format(python=sys.executable, dies_twice_job=1, key=key))
     cli.chmod(0o755)
     monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setenv("ANTHROPIC_API_KEY", key)
