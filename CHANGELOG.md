@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Harness: `claude-code` runs the tasks through headless Claude Code and
+  writes the same run directory as `direct-api`, so the judge and the report
+  are unchanged (`python -m eval_runner.claude_code run`). Three arms: the
+  stock agent; with a skills plugin installed (`--plugin-dir`, the model
+  decides what to open); and with the task's own skills named in the prompt
+  (`--name-skills`, the best case for skills). `--mcp-config` attaches MCP
+  servers. Each attempt gets its own working, configuration and home folder,
+  the supplied sources as files, and Claude Code's shell sandbox (writes
+  inside the attempt, network to the package registries only). Two things
+  the first runs taught, both now handled: with nobody to approve it Claude
+  Code held a script written to `$TMPDIR` and the agent computed by hand, so
+  the sandboxed shell is allowed outright; and an agent that knows the real
+  date called the dated fixtures stale and was marked down for an
+  unsupported date, so the shared preamble says to treat the sources as
+  current. `scripts/compare-arms.py` puts graded runs side by side per task
+  with a paired sign-flip test over tasks.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry
