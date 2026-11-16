@@ -3,7 +3,7 @@
   "title": "Pre-Q4 tracking audit against the documented standards",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 2,
+  "rubric_version": 6,
   "fixtures": [
     "eval_runner/fixtures/tracking-audit/tracking_standards.md",
     "eval_runner/fixtures/tracking-audit/active_links.csv",
@@ -64,7 +64,7 @@
       },
       {
         "id": "finds_http_links",
-        "check": "Flags the two http:// newsletter links as violating the https standard and ties them to newsletter traffic landing in Direct (attribution loss on the redirect)."
+        "check": "Flags the two http:// newsletter links as violating the https standard and identifies possible attribution loss as relevant to newsletter traffic landing in Direct. The actual redirect/query-string behavior is not supplied: a plausible mechanism to verify is sufficient; do not require claiming the redirect cause is proven."
       },
       {
         "id": "finds_event_name_casing",
@@ -83,7 +83,7 @@
       {
         "id": "no_false_positives",
         "negative": true,
-        "check": "No conforming item is reported as a defect (for example the google-brand link, the begin_checkout tag, the TikTok/Pinterest/affiliate links, or the ca-storefront links' UTMs). Describing a correct item as clean is fine; flagging it as broken is not."
+        "check": "No actually conforming item is reported as defective. Examples of clean items are google-brand, begin_checkout, tiktok-prospecting, pinterest-prospecting, the affiliate links, and the ca-storefront UTMs. Assess the specific parameter against the supplied standard, not the platform label: organic-pinterest has campaign 2026q3-boards, which lacks the required line/goal component, so flagging that naming defect is valid. The organic-instagram source is also absent from the documented source list; identifying that inconsistency is not a false positive. Do not penalize additional evidence-supported findings merely because they lack a separate rubric criterion."
       },
       {
         "id": "fix_per_finding",
@@ -91,7 +91,16 @@
       },
       {
         "id": "impact_prioritized",
-        "check": "Findings are ordered or explicitly tiered by measurement/compliance impact, with the purchase-integrity and consent issues ranked above cosmetic UTM issues."
+        "check": "Findings are ordered or tiered by measurement/compliance impact throughout the report: purchase firing, missing transaction IDs/deduplication, currency and consent issues outrank cosmetic campaign naming. Check the actual placement of each high-impact defect, not just the names of priority tiers."
+      },
+      {
+        "id": "clean_findings_supported",
+        "check": "The closing clean-bill list is present and each item certified compliant actually conforms to all relevant supplied standards. A correct check of one parameter does not justify certifying the whole link or tag clean. Organic Instagram has a source outside the documented allowed list; organic Pinterest campaign 2026q3-boards lacks the required third component. Explicitly scoped statements about a conforming parameter are allowed; labeling either entire link fully compliant fails."
+      },
+      {
+        "id": "causal_claims_supported",
+        "negative": true,
+        "check": "Assertions of cause, actual vendor behavior and timing are supported by the supplied evidence. Distinguish known configuration defects and observed symptoms from mechanisms requiring verification. Do not assert an unobserved redirect configuration or trace, the exact cause of every symptom, or a connection between one period's totals and a separately dated outage as proven. A proposed check of possible server/CDN implementations is not by itself an assertion that a named vendor is deployed; conditional examples and verification steps are allowed. Quote an actual unsupported factual assertion to fail this criterion, not merely a vendor mentioned as something to investigate."
       }
     ]
   }

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import math
 import os
 import time
 import urllib.error
@@ -61,6 +62,16 @@ OPENROUTER_MODEL_POLICIES = {
     },
 }
 
+# Response provider labels differ from routing slugs. Unknown labels fail the
+# strict comparison; aliases here never widen the request's provider allowlist.
+OPENROUTER_PROVIDER_LABELS = {
+    "google-vertex": {"Google", "Google Vertex"},
+    "fireworks": {"Fireworks"},
+    "together": {"Together"},
+    "parasail": {"Parasail"},
+    "novita": {"Novita"},
+}
+
 # Server-side web search tool versions. Newer Anthropic models take the
 # dated 2026-02-09 tool; every other model keeps the basic variant.
 ANTHROPIC_WEB_SEARCH_CURRENT = "web_search_20260209"
@@ -79,6 +90,13 @@ RETRY_BASE_DELAY_SECONDS = 10
 
 class ProviderError(RuntimeError):
     """A provider call failed after retries. Never contains credentials."""
+
+    def __init__(self, message: str, *, receipt: dict | None = None,
+                 failure_kind: str = "provider_error", status_code: int | None = None):
+        super().__init__(message)
+        self.receipt = receipt or {}
+        self.failure_kind = failure_kind
+        self.status_code = status_code
 
 
 def required_env_key(provider: str) -> str:
@@ -327,6 +345,11 @@ def parse_response(provider: str, payload: dict) -> dict:
         }
         if usage.get("cost") is not None:
             result["provider_cost_usd"] = usage["cost"]
+        # Keep provider-returned identity separate from the requested catalog id.
+        for source, target in (("id", "response_id"), ("model", "resolved_model"),
+                               ("provider", "resolved_provider")):
+            if isinstance(payload.get(source), str):
+                result[target] = payload[source]
         return result
 
     text_parts = []
@@ -355,18 +378,57 @@ def parse_response(provider: str, payload: dict) -> dict:
     }
 
 
+def _merge_ceiling_retry_receipts(first: dict, last: dict) -> dict:
+    """Keep the final answer, but account for both billed completions.
+
+    Retain individual receipts for audit and per-request pricing. A missing
+    token count or partial provider cost must not become a complete total.
+    """
+    combined = dict(last)
+    combined["provider_calls"] = [
+        {key: value for key, value in call.items() if key != "text"}
+        for call in (first, last)
+    ]
+    for key in ("input_tokens", "output_tokens", "provider_cost_usd"):
+        values = [call.get(key) for call in (first, last)]
+        complete = all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0 for value in values
+        )
+        if complete:
+            combined[key] = sum(values)
+        elif key == "provider_cost_usd":
+            combined.pop(key, None)
+        else:
+            combined[key] = None
+    combined["web_search_calls"] = sum(call.get("web_search_calls", 0) for call in (first, last))
+    tool_calls: dict[str, int] = {}
+    for call in (first, last):
+        for name, count in call.get("tool_calls", {}).items():
+            tool_calls[name] = tool_calls.get(name, 0) + count
+    combined["tool_calls"] = tool_calls
+    combined["ceiling_retried"] = True
+    return combined
+
+
 def generate(
     model_spec: str,
     prompt: str,
     max_output_tokens: int,
     web_search: bool = False,
     settings: dict | None = None,
+    *,
+    retry_empty_completion: bool = True,
+    retry_transport: bool = True,
+    request_timeout_seconds: float | None = None,
 ) -> dict:
     """One prompt in, one text completion out.
 
     Returns {text, input_tokens, output_tokens, web_search_calls,
     finish_reason, latency_seconds, provider, model}. Raises
-    ProviderError on missing keys or exhausted retries.
+    ProviderError on missing keys or exhausted retries. With retry_empty_completion
+    disabled, return even an empty billed completion and its usage without a
+    ceiling retry; callers can retain the receipt before classifying the error.
     """
     provider, model = split_model_spec(model_spec)
     api_key = os.environ.get(required_env_key(provider), "")
@@ -380,7 +442,12 @@ def generate(
     url, headers, body = build_request(
         model_spec, prompt, max_output_tokens, web_search, api_key, settings
     )
-    payload = _post_json_with_retries(url, headers, body, provider)
+    request_options = {} if retry_transport else {"max_retries": 0}
+    if request_timeout_seconds is not None:
+        if not math.isfinite(request_timeout_seconds) or request_timeout_seconds <= 0:
+            raise ProviderError("request timeout must be positive and finite")
+        request_options["timeout_seconds"] = request_timeout_seconds
+    payload = _post_json_with_retries(url, headers, body, provider, **request_options)
     result = parse_response(provider, payload)
 
     # A reasoning model can spend an explicit output cap thinking and emit no
@@ -397,23 +464,28 @@ def generate(
         max_output_tokens if provider in ("anthropic", "openrouter") else None
     )
     truncated = "incomplete" in finish or finish == "max_tokens"
-    if not result["text"].strip() and truncated and effective_cap:
+    if retry_empty_completion and not result["text"].strip() and truncated and effective_cap:
         ceiling_retried = True
         raised = dict(settings or {})
         raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )
-        payload = _post_json_with_retries(url, headers, body, provider)
-        result = parse_response(provider, payload)
+        try:
+            payload = _post_json_with_retries(url, headers, body, provider, **request_options)
+        except ProviderError as exc:
+            exc.receipt = _merge_ceiling_retry_receipts(result, exc.receipt)
+            raise
+        result = _merge_ceiling_retry_receipts(result, parse_response(provider, payload))
     latency = time.monotonic() - started
 
     result["ceiling_retried"] = ceiling_retried
-    if not result["text"].strip():
+    if retry_empty_completion and not result["text"].strip():
         raise ProviderError(
             f"{provider} returned an empty completion for {model} "
             f"(finish_reason={result['finish_reason']!r}, "
-            f"ceiling_retried={ceiling_retried})"
+            f"ceiling_retried={ceiling_retried})",
+            receipt=result, failure_kind="empty_completion",
         )
     result.update(
         {
@@ -425,13 +497,14 @@ def generate(
     return result
 
 
-def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) -> dict:
+def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str, *, max_retries: int | None = None, timeout_seconds: float | None = None) -> dict:
+    retries = MAX_RETRIES if max_retries is None else max_retries
     data = json.dumps(body).encode("utf-8")
     last_error = "unknown error"
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(retries + 1):
         request = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             embedded = _embedded_error(provider, payload)
             if embedded is None:
@@ -443,13 +516,17 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
             # than grading partial text as the model's answer.
             code, message = embedded
             last_error = f"embedded {code}: {message}"
-            if code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
-                raise ProviderError(f"{provider} call failed ({last_error})")
+            if code not in RETRYABLE_STATUSES or attempt == retries:
+                receipt = parse_response(provider, payload)
+                receipt.pop("text", None)
+                raise ProviderError(f"{provider} call failed ({last_error})", receipt=receipt,
+                                    failure_kind="embedded_error", status_code=code)
         except urllib.error.HTTPError as exc:
             snippet = _safe_error_snippet(exc)
             last_error = f"HTTP {exc.code}: {snippet}"
-            if exc.code not in RETRYABLE_STATUSES or attempt == MAX_RETRIES:
-                raise ProviderError(f"{provider} call failed ({last_error})") from None
+            if exc.code not in RETRYABLE_STATUSES or attempt == retries:
+                raise ProviderError(f"{provider} call failed ({last_error})",
+                                    failure_kind="http_error", status_code=exc.code) from None
         except (
             urllib.error.URLError,
             TimeoutError,
@@ -460,8 +537,9 @@ def _post_json_with_retries(url: str, headers: dict, body: dict, provider: str) 
             http.client.HTTPException,
         ) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
-            if attempt == MAX_RETRIES:
-                raise ProviderError(f"{provider} call failed ({last_error})") from None
+            if attempt == retries:
+                raise ProviderError(f"{provider} call failed ({last_error})",
+                                    failure_kind="transport_error") from None
         time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
     raise ProviderError(f"{provider} call failed ({last_error})")
 
