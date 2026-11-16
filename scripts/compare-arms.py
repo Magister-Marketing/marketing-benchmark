@@ -11,6 +11,10 @@ not the same number.
         --arm "Claude Code + skills=eval_runner/results/<run>" \\
         --arm "Magister=eval_runner/results/<run>" [--json out.json]
 
+`--shared-tasks` compares the arms on the tasks they all ran, when one arm
+ran a task the others cannot (a task that needs a prior turn, say); every
+figure is then worked out again over those tasks only.
+
 The last arm is the one the others are measured against. The difference is
 tested per task, not per attempt: the tasks are the sample, and three attempts
 at one task are not three tasks. The test is a paired sign-flip permutation
@@ -38,15 +42,33 @@ def _mean(values: list) -> float | None:
     return round(statistics.mean(values), 1) if values else None
 
 
-def load_arm(label: str, run_dir: Path) -> dict:
+def read_report(label: str, run_dir: Path) -> dict:
     report_path = run_dir / "report.json"
     if not report_path.is_file():
         raise SystemExit(f"{label}: {report_path} is missing; run `bench grade` and `bench report` first")
     report = json.loads(report_path.read_text())
     if len(report["models"]) != 1:
         raise SystemExit(f"{label}: expected one model in the run, found {len(report['models'])}")
+    return report
+
+
+def _costs(attempts: list[dict]) -> list[float]:
+    """The provider cost each attempt recorded, for those that recorded one."""
+    recorded = (attempt.get("gateway_provider_cost_usd") or attempt.get("provider_cost_usd") for attempt in attempts)
+    return [cost for cost in recorded if cost]
+
+
+def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
+    """One arm's figures. With `only`, over those tasks alone: the score is
+    the mean of their task scores, as the report's own is over all of them."""
+    report = read_report(label, run_dir)
     model_id, stats = next(iter(report["models"].items()))
-    attempts = [json.loads(line) for line in (run_dir / "attempts.jsonl").read_text().splitlines() if line.strip()]
+    tasks = [task for task in report["tasks"] if only is None or task in only]
+    attempts = [
+        attempt
+        for attempt in map(json.loads, filter(str.strip, (run_dir / "attempts.jsonl").read_text().splitlines()))
+        if attempt["task_id"] in tasks
+    ]
     grading_path = run_dir / "grading.json"
     grading = json.loads(grading_path.read_text()) if grading_path.is_file() else {}
     runs = {
@@ -55,28 +77,35 @@ def load_arm(label: str, run_dir: Path) -> dict:
         if submission["model_id"] == model_id
     }
     answered = [attempt for attempt in attempts if "error" not in attempt]
+    runs_passed = {task: sum(1 for run in runs[task] if run.get("pass")) for task in tasks}
+    whole = only is None
     return {
         "label": label,
         "run_id": report["run_id"],
         "harness": report.get("harness"),
         "model_id": model_id,
-        "tasks": list(report["tasks"]),
+        "tasks": tasks,
         "repetitions": report["repetitions"],
         "judge": grading.get("judge_model") or grading.get("judge"),
-        "composite": stats["composite_score"],
-        "tasks_passed": stats["tasks_passed"],
-        "tasks_total": stats["tasks_total"],
-        "runs_passed": stats["runs_passed"],
-        "runs_total": stats["runs_total"],
-        "task_scores": stats["task_scores"],
-        "task_runs_passed": {
-            task_id: sum(1 for run in task_runs if run.get("pass")) for task_id, task_runs in runs.items()
-        },
+        "composite": (
+            stats["composite_score"] if whole
+            else round(statistics.mean(stats["task_scores"][task] for task in tasks), 1)
+        ),
+        "tasks_passed": sum(1 for task in tasks if runs_passed[task] == report["repetitions"]),
+        "tasks_total": len(tasks),
+        "runs_passed": sum(runs_passed.values()),
+        "runs_total": report["repetitions"] * len(tasks),
+        "task_scores": {task: stats["task_scores"][task] for task in tasks},
+        "task_runs_passed": runs_passed,
         "errors": len(attempts) - len(answered),
         # The report prices every attempt the same way for every harness: the
         # recorded provider cost when there is one, the rate card otherwise.
-        "cost_usd": stats.get("candidate_cost_usd"),
-        "cost_complete": bool(stats.get("candidate_cost_complete", True)),
+        # It prices the whole run, so over a subset the attempts' own recorded
+        # costs are summed instead, and an attempt without one makes it incomplete.
+        "cost_usd": stats.get("candidate_cost_usd") if whole else round(sum(_costs(attempts)), 4),
+        "cost_complete": (
+            bool(stats.get("candidate_cost_complete", True)) if whole else len(_costs(attempts)) == len(attempts)
+        ),
         "seconds_per_attempt": _mean(
             [a["latency_seconds"] for a in answered if a.get("latency_seconds") is not None]
         ),
@@ -189,17 +218,31 @@ def render(arms: list[dict], comparisons: list[dict]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--arm", action="append", required=True, metavar="LABEL=RUN_DIR")
+    parser.add_argument("--shared-tasks", action="store_true",
+                        help="compare on the tasks every arm ran, instead of refusing arms with different tasks")
     parser.add_argument("--json", help="also write the comparison as JSON")
     args = parser.parse_args(argv)
-    arms = []
+    specs = []
     for spec in args.arm:
         label, separator, path = spec.partition("=")
         if not separator or not label or not path:
             raise SystemExit(f"--arm takes LABEL=RUN_DIR, got {spec!r}")
-        arms.append(load_arm(label, Path(path)))
+        specs.append((label, Path(path)))
+    shared = None
+    left_out: list[str] = []
+    if args.shared_tasks:
+        task_sets = [set(read_report(label, path)["tasks"]) for label, path in specs]
+        common = set.intersection(*task_sets)
+        if not common:
+            raise SystemExit("the arms share no task")
+        shared = sorted(common)
+        left_out = sorted(set.union(*task_sets) - common)
+    arms = [load_arm(label, path, shared) for label, path in specs]
     check_comparable(arms)
     comparisons = [versus(arms[-1], other) for other in arms[:-1]]
     sys.stdout.write(render(arms, comparisons))
+    if left_out:
+        sys.stdout.write(f"\nNot every arm ran, so left out: {', '.join(left_out)}.\n")
     if args.json:
         Path(args.json).write_text(json.dumps({"arms": arms, "comparisons": comparisons}, indent=2) + "\n")
     return 0
