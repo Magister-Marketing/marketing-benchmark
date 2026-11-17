@@ -421,13 +421,30 @@ mode = (here / "mode").read_text().strip()
 attempt = pathlib.Path.cwd().parent.name
 servers = json.loads((here / "servers.json").read_text()) if (here / "servers.json").exists() else []
 print(json.dumps({{"type": "system", "subtype": "init", "model": "claude-haiku-5-5", "mcp_servers": servers}}), flush=True)
-(here / ("started-" + attempt)).write_text(json.dumps({{"pid": os.getpid(), "cwd": os.getcwd()}}))
-if mode == "sleep":
+(here / ("started-" + attempt)).write_text(json.dumps({{"pid": os.getpid(), "cwd": os.getcwd(), "argv": sys.argv}}))
+if mode == "sleep-with-shell":
+    # As the real CLI runs a shell command: in a process group of its own.
+    import subprocess
+    shell = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True)
+    (here / ("shell-" + attempt)).write_text(str(shell.pid))
+if mode.startswith("sleep"):
     time.sleep(120)
 text = "answer"
-if mode == "leak":
+if mode.startswith("leak"):
     config = json.loads(pathlib.Path(sys.argv[sys.argv.index("--mcp-config") + 1]).read_text())
     text = "key " + os.environ["ANTHROPIC_API_KEY"] + " token " + config["mcpServers"]["magister"]["headers"]["Authorization"]
+if mode == "leak-and-die":
+    print(text, file=sys.stderr)
+    raise SystemExit(9)
+if mode == "not-text":
+    sys.stdout.flush()
+    sys.stdout.buffer.write(b"\\xff\\xfe broken \\xc3\\n")
+    sys.stdout.buffer.flush()
+if mode == "locked-folder":
+    pathlib.Path("out").mkdir()
+    pathlib.Path("out/note.md").write_text("kept if readable")
+    pathlib.Path("notes.md").write_text("the key is " + os.environ["ANTHROPIC_API_KEY"])
+    os.chmod("out", 0)
 print(json.dumps({{"type": "assistant", "message": {{"id": "m1", "content": [{{"type": "text", "text": text}}]}}}}))
 print(json.dumps({{"type": "result", "subtype": "success", "is_error": False, "usage": {{}}}}))
 """
@@ -456,12 +473,35 @@ def _records(results):
 
 
 DRIVER = """
-import sys
+import os, sys
 from pathlib import Path
 from eval_runner import bench, claude_code
 bench.RESULTS_DIR = Path(sys.argv[1])
+if os.environ.get("TEST_ATTEMPT_ROOT_PARENT"):
+    claude_code.ATTEMPT_ROOT_PARENT = os.environ["TEST_ATTEMPT_ROOT_PARENT"]
 raise SystemExit(claude_code.main(sys.argv[2:]))
 """
+
+
+def _harness(tmp_path, cli, tasks, *more, **popen):
+    """The harness as its own process, so that it can be signalled."""
+    driver = tmp_path / "driver.py"
+    driver.write_text(DRIVER)
+    popen.setdefault("stdout", subprocess.DEVNULL)
+    popen.setdefault("stderr", subprocess.DEVNULL)
+    env = {**os.environ, "ANTHROPIC_API_KEY": KEY, "PYTHONPATH": str(bench.REPO_ROOT), **popen.pop("env", {})}
+    return subprocess.Popen(
+        [sys.executable, str(driver), str(tmp_path / "results"), "run", "--candidate", "claude-haiku-5-5",
+         "--tasks", ",".join(tasks), "--parallel", "1", "--cli", str(cli), *more],
+        env=env, **popen,
+    )
+
+
+def _wait_for(path, process, what):
+    deadline = time.monotonic() + 30
+    while not path.exists():
+        assert process.poll() is None and time.monotonic() < deadline, what
+        time.sleep(0.02)
 
 
 @pytest.mark.parametrize(("signum", "exit_code"), [(signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)])
@@ -634,10 +674,10 @@ def test_one_attempts_exception_is_its_own_error_not_the_runs(tmp_path, monkeypa
     monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
     keep = claude_code.keep_written_files
 
-    def keep_or_fail(workspace, staged, destination):
+    def keep_or_fail(workspace, staged, destination, redact):
         if second in str(destination):
             raise RuntimeError(f"disk on fire {KEY}")
-        return keep(workspace, staged, destination)
+        return keep(workspace, staged, destination, redact)
 
     monkeypatch.setattr(claude_code, "keep_written_files", keep_or_fail)
 
@@ -754,13 +794,16 @@ def test_mcp_secrets_are_credentials_not_ordinary_values(tmp_path):
     "Authorization", "GITHUB_TOKEN", "apiKey", "--api-key", "X-Api-Key", "PIN_CODE", "sig",
     # Written as one word.
     "ACCESSTOKEN", "DBPASSWORD", "AUTHHEADER", "APIKEY", "ACCESSKEY", "clientsecret", "SESSIONCOOKIE",
+    "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID",
 ])
 def test_names_that_say_their_value_is_a_credential(name):
     assert claude_code.names_a_credential(name)
 
 
 @pytest.mark.parametrize("name", ["AUTHOR", "AUTHORITY", "MONKEY", "SPIN", "COMPASS", "KEYBOARD", "PASSENGER",
-                                  "LOG_LEVEL", "NODE_ENV", "region", "Accept"])
+                                  "LOG_LEVEL", "NODE_ENV", "region", "Accept",
+                                  # A name that describes a credential does not hold one.
+                                  "COOKIE_DOMAIN", "AUTH_MODE", "TOKEN_ENDPOINT", "KEY_FILE", "--auth-type"])
 def test_names_that_only_look_like_one(name):
     assert not claude_code.names_a_credential(name)
 
@@ -775,6 +818,11 @@ def test_a_plain_word_is_left_alone_and_a_passphrase_is_not(tmp_path):
         "API_KEY": "Tr0ub4dor",
     }}}}))
     assert claude_code.mcp_secrets(config) == ["correcthorsebatterystaple", "Tr0ub4dor"]
+
+    # An option that takes no value is followed by another option, not by its value.
+    config.write_text(json.dumps({"mcpServers": {"db": {"command": "server", "args": ["--no-auth", "--verbose"],
+                                                        "env": {"COOKIE_DOMAIN": ".example-site.com"}}}}))
+    assert claude_code.mcp_secrets(config) == []
 
 
 def test_redaction_reaches_a_credential_escaped_inside_json():
@@ -860,3 +908,238 @@ def test_a_plugin_arm_is_not_recorded_as_skill_text_in_the_prompt(tmp_path, monk
     meta = json.loads((run_dir / "run.json").read_text())
     assert meta["skills_included"] is False and records[first]["skills_included"] is False
     assert meta["arm"] == "claude-code+skills" and meta["agent"]["plugins"][0]["name"] == "pack"
+
+
+# ------------------------------------------------- review of 8d12d36 (2026-11-16)
+
+def test_ctrl_c_twice_in_a_row_still_ends_the_sessions_and_records_them(tmp_path):
+    """The second one arrived before the first had been dealt with and raised
+    again inside the stop: the sessions were never ended, the run waited for
+    them to finish on their own, and nothing was recorded."""
+    cli = _fake_agent(tmp_path, "sleep")
+    first, second = _two_tasks()
+    process = _harness(tmp_path, cli, [first, second], "--yes")
+    try:
+        _wait_for(cli.parent / "started-0a", process, "the first session never started")
+        session = json.loads((cli.parent / "started-0a").read_text())
+        process.send_signal(signal.SIGINT)
+        process.send_signal(signal.SIGINT)
+        assert process.wait(timeout=30) == 130
+    finally:
+        process.kill()
+    _assert_stopped(tmp_path, cli, session, first, second)
+
+
+def test_a_signal_at_the_confirmation_prompt_leaves_no_folder_behind(tmp_path):
+    """The handlers were set only once the sessions began: a `kill` at the
+    prompt ended Python where it stood and left the run's folder in /tmp."""
+    cli = _fake_agent(tmp_path, "answer")
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    process = _harness(tmp_path, cli, ["headline"], stdin=subprocess.PIPE,
+                       env={"TEST_ATTEMPT_ROOT_PARENT": str(roots)})
+    try:
+        deadline = time.monotonic() + 30
+        while not list(roots.iterdir()):  # made just before it asks
+            assert process.poll() is None and time.monotonic() < deadline, "the run never reached its prompt"
+            time.sleep(0.02)
+        time.sleep(0.2)
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=30) == 128 + signal.SIGTERM
+    finally:
+        process.kill()
+    assert list(roots.iterdir()) == [] and not list(cli.parent.glob("started-*"))
+
+
+def test_a_hangup_keeps_the_log_of_a_run_whose_output_goes_to_a_file(tmp_path):
+    """Output is sent nowhere after a hangup because a closed terminal refuses
+    it. Sent to a file it is still wanted: the log was left empty, without
+    even the line that says where the run is."""
+    cli = _fake_agent(tmp_path, "sleep")
+    first, second = _two_tasks()
+    log = tmp_path / "run.log"
+    with log.open("w") as stream:
+        process = _harness(tmp_path, cli, [first, second], "--yes", stdout=stream, stderr=stream)
+        try:
+            _wait_for(cli.parent / "started-0a", process, "the first session never started")
+            process.send_signal(signal.SIGHUP)
+            assert process.wait(timeout=30) == 128 + signal.SIGHUP
+        finally:
+            process.kill()
+    said = log.read_text()
+    assert "Run " in said and "Stopping:" in said and "Completed 0/2 attempts" in said
+
+
+def test_a_server_still_connecting_at_the_start_counts_once_one_of_its_tools_answers():
+    """Claude Code can start a session before a slow server has connected and
+    go on connecting in the background. Such an attempt has the server."""
+    def fields(*events):
+        lines = _events(dict(INIT, mcp_servers=[{"name": "magister", "status": "pending"}]), *events,
+                        _assistant("m9", {"type": "text", "text": "x"}), _result())
+        return claude_code.attempt_fields(claude_code.parse_stream(lines), "claude-haiku-5-5", ["magister"])
+
+    call = _assistant("m1", {"type": "tool_use", "id": "t1", "name": "mcp__magister__list_projects", "input": {}})
+    answered = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "[]"}]}}
+    refused = {"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": "401"}]}}
+    other = _assistant("m1", {"type": "tool_use", "id": "t1", "name": "mcp__magisterial__x", "input": {}})
+
+    assert "error" not in fields(call, answered)
+    for events in ((), (call, refused), (other, answered)):
+        assert "none of its tools answered: the attempt ran without it" in fields(*events)["error"]
+
+
+def test_files_the_agent_wrote_are_kept_without_credentials_and_a_locked_folder_is_skipped(tmp_path):
+    workspace = tmp_path / "work"
+    (workspace / "out").mkdir(parents=True)
+    (workspace / "notes.md").write_text(f"the key is {KEY}")
+    (workspace / "blob.bin").write_bytes(b"\xff\xfe" + KEY.encode())
+    (workspace / "logo.bin").write_bytes(b"\xff\xfe\x00binary")
+    (workspace / "out" / "note.md").write_text("unreachable")
+    os.chmod(workspace / "out", 0)
+    try:
+        kept = claude_code.keep_written_files(workspace, [], tmp_path / "kept", claude_code.redactor(KEY))
+    finally:
+        os.chmod(workspace / "out", 0o700)
+
+    assert kept == ["logo.bin", "notes.md"]
+    assert (tmp_path / "kept" / "notes.md").read_text() == "the key is <api-key>"
+    assert (tmp_path / "kept" / "logo.bin").read_bytes() == b"\xff\xfe\x00binary"
+
+    os.chmod(workspace / "out", 0)
+    # A link the agent left points outside the attempt: what it points to is
+    # neither removed nor has its permissions touched.
+    outside = tmp_path / "someone-elses"
+    outside.mkdir(mode=0o755)
+    (outside / "theirs.txt").write_text("theirs")
+    (workspace / "link").symlink_to(outside)
+    claude_code.remove_tree(workspace)
+    assert not workspace.exists()
+    assert (outside / "theirs.txt").read_text() == "theirs" and outside.stat().st_mode & 0o777 == 0o755
+
+
+def _run_in_process(tmp_path, monkeypatch, mode, tasks, *more):
+    cli = _fake_agent(tmp_path, mode)
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+    code = claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", ",".join(tasks),
+                             "--parallel", "1", "--cli", str(cli), "--yes", *more])
+    run_dir, records = _records(tmp_path / "results")
+    return code, cli, run_dir, records
+
+
+def _mcp_config(tmp_path):
+    config = tmp_path / "mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"magister": {
+        "type": "http", "url": "https://example.test/mcp", "headers": {"Authorization": "Bearer tok-0123456789"},
+    }}}))
+    return config
+
+
+def test_a_run_denies_the_shell_its_own_config_and_key_file(tmp_path, monkeypatch):
+    """The key file holds every provider's key, and nothing redacts those."""
+    keys = tmp_path / "keys.env"
+    keys.write_text(f"ANTHROPIC_API_KEY={KEY}\nOPENAI_API_KEY=sk-other-0123456789\n")
+    config = _mcp_config(tmp_path)
+    (tmp_path / "cli").mkdir()
+    (tmp_path / "cli" / "servers.json").write_text(json.dumps([{"name": "magister", "status": "connected"}]))
+    cli = tmp_path / "cli" / "claude"
+    cli.write_text(FAKE_AGENT.format(python=sys.executable))
+    cli.chmod(0o755)
+    (tmp_path / "cli" / "mode").write_text("answer")
+    (first, _) = _two_tasks()
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", first, "--mcp-config", str(config),
+                             "--env-file", str(keys), "--cli", str(cli), "--yes"]) == 0
+
+    argv = json.loads((cli.parent / "started-0a").read_text())["argv"]
+    denied = json.loads(argv[argv.index("--settings") + 1])["sandbox"]["filesystem"]["denyRead"]
+    assert str(config.resolve()) in denied and str(keys.resolve()) in denied
+
+
+def test_a_run_records_an_attempt_without_its_server_as_an_error(tmp_path, monkeypatch):
+    (first, _) = _two_tasks()
+    code, _, _, records = _run_in_process(tmp_path, monkeypatch, "answer", [first],
+                                          "--mcp-config", str(_mcp_config(tmp_path)))
+    assert code == 1 and "MCP server magister was 'not listed'" in records[first]["error"]
+    assert "response_path" not in records[first]
+
+
+def test_what_a_dead_session_printed_is_recorded_without_its_credentials(tmp_path, monkeypatch):
+    (first, _) = _two_tasks()
+    code, _, run_dir, records = _run_in_process(tmp_path, monkeypatch, "leak-and-die", [first],
+                                                "--mcp-config", str(_mcp_config(tmp_path)))
+    assert code == 1
+    assert records[first]["error"].endswith("(exit 9): key <api-key> token <mcp-secret>")
+    assert KEY not in (run_dir / "attempts.jsonl").read_text() and "tok-0123456789" not in (run_dir / "attempts.jsonl").read_text()
+
+
+def test_output_that_is_not_text_does_not_end_the_run(tmp_path, monkeypatch):
+    """A timeout can cut the stream inside a character."""
+    (first, _) = _two_tasks()
+    code, _, run_dir, records = _run_in_process(tmp_path, monkeypatch, "not-text", [first])
+    assert code == 0 and (run_dir / records[first]["response_path"]).read_text() == "answer"
+
+
+def test_a_folder_the_agent_locked_neither_fails_the_attempt_nor_stays_behind(tmp_path, monkeypatch):
+    (first, _) = _two_tasks()
+    code, cli, run_dir, records = _run_in_process(tmp_path, monkeypatch, "locked-folder", [first])
+    assert code == 0 and "error" not in records[first]
+    assert records[first]["files_written"] == ["notes.md"]
+    assert KEY not in (run_dir / "artifacts" / f"{first}--claude-code-claude-haiku-5-5--r1" / "notes.md").read_text()
+    assert not Path(json.loads((cli.parent / "started-0a").read_text())["cwd"]).exists()
+
+
+def test_an_attempt_that_could_not_be_set_up_is_not_recorded_as_a_paid_session(tmp_path, monkeypatch):
+    """A plugin that cannot be copied stops the attempt before any session:
+    marked as dispatched with an unknown cost, it made the whole run's cost
+    read as incomplete."""
+    plugin = tmp_path / "pack"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "pack", "version": "1.0.0"}))
+    (plugin / "dangling").symlink_to(tmp_path / "nowhere")
+    (first, _) = _two_tasks()
+    code, cli, _, records = _run_in_process(tmp_path, monkeypatch, "answer", [first], "--plugin-dir", str(plugin))
+    assert code == 1 and not list(cli.parent.glob("started-*"))
+    assert (records[first]["dispatched"], records[first]["cost_unknown"]) == (False, False)
+    assert "dangling" in records[first]["error"]
+
+
+@pytest.mark.parametrize("refusal", [OSError(5, "Input/output error"),
+                                     UnicodeEncodeError("ascii", "×", 0, 1, "ordinal not in range")])
+def test_a_progress_line_that_cannot_be_printed_is_dropped(monkeypatch, refusal):
+    def refuse(*args, **kwargs):
+        raise refusal
+
+    monkeypatch.setattr("builtins.print", refuse)
+    claude_code._say("  done headline r1 (Bash×2)")
+
+
+def test_a_shell_command_the_session_started_ends_with_it(tmp_path):
+    """The CLI runs each shell command in a process group of its own (measured
+    2026-11-16: two processes of a command outlived their session). Ending the
+    session's group left it running, in a folder that was then removed."""
+    cli = _fake_agent(tmp_path, "sleep-with-shell")
+    first, second = _two_tasks()
+    process = _harness(tmp_path, cli, [first, second], "--yes")
+    try:
+        _wait_for(cli.parent / "shell-0a", process, "the session never started its shell command")
+        shell = int((cli.parent / "shell-0a").read_text())
+        os.kill(shell, 0)  # running
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=30) == 128 + signal.SIGTERM
+    finally:
+        process.kill()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(shell, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(shell, signal.SIGKILL)
+        pytest.fail("the shell command outlived its session")
+

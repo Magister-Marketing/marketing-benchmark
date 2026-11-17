@@ -129,6 +129,14 @@ SECRET_WORDS = frozenset({"pin", "pass", "passphrase", "sig", "signature"})
 ORDINARY_WORDS = re.compile(
     r"monkey|donkey|turkey|hotkey|hockey|jockey|whiskey|author(s|ed|ing|ship|ity|ities|itative)?"
 )
+# A name that ends in one of these describes a credential, it does not hold
+# one: COOKIE_DOMAIN, AUTH_MODE, TOKEN_ENDPOINT, KEY_FILE.
+DESCRIBES = frozenset({
+    "domain", "name", "mode", "type", "path", "file", "dir", "url", "uri", "endpoint", "host", "port",
+    "enabled", "disabled", "required", "prefix", "suffix", "algorithm", "alg", "ttl", "expiry", "expires",
+    "format", "length", "version", "scope", "scopes", "method", "strategy", "provider", "issuer",
+    "audience", "realm", "region", "timeout", "count", "size",
+})
 # Nothing shorter is ever taken out of a run: a credential that short is not
 # one, and `true` or `1234` replaced everywhere would wreck the event stream.
 SECRET_MIN_CHARS = 8
@@ -315,10 +323,12 @@ def mcp_server_names(config_path: Path) -> list[str]:
 def names_a_credential(name: str) -> bool:
     """Whether a name says its value is a credential: `GITHUB_TOKEN`, `apiKey`,
     `--api-key`, `DBPASSWORD` and `AUTHHEADER` do; `AUTHOR` and `MONKEY` do not."""
+    words = [word.lower() for word in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+", name)]
+    if not words or words[-1] in DESCRIBES:
+        return False
     if any(stem in name.lower() for stem in SECRET_STEMS):
         return True
-    for word in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+", name):
-        word = word.lower()
+    for word in words:
         if word in SECRET_WORDS:
             return True
         if (word.endswith("key") or word.startswith("auth")) and not ORDINARY_WORDS.fullmatch(word):
@@ -401,8 +411,9 @@ def mcp_secrets(config_path: Path) -> list[str]:
                 if joined:
                     keep_named(name, value.strip())
             if arg.startswith("-"):
-                if "=" not in arg and names_a_credential(arg):
-                    keep(following, named=True)  # `--token x`
+                # `--token x`; another option after it is not its value (`--no-auth --verbose`).
+                if "=" not in arg and names_a_credential(arg) and not following.startswith("-"):
+                    keep(following, named=True)
             elif "=" not in arg and ":" not in arg:
                 keep(arg)  # a token on its own
     return sorted(found, key=lambda value: (-len(value), value))
@@ -559,8 +570,11 @@ def parse_stream(lines: list[str]) -> dict:
         "skill_reads": [],
         "llm_calls": 0,
         "result": None,
+        # MCP tools that returned a result, not an error.
+        "mcp_tools_answered": set(),
     }
     seen_messages: set[str] = set()
+    tool_names: dict[str, str] = {}
     for line in lines:
         line = line.strip()
         if not line:
@@ -596,6 +610,8 @@ def parse_stream(lines: list[str]) -> dict:
                 elif block.get("type") == "tool_use":
                     name = str(block.get("name") or "unknown_tool")
                     summary["tool_calls"][name] = summary["tool_calls"].get(name, 0) + 1
+                    if isinstance(block.get("id"), str):
+                        tool_names[block["id"]] = name
                     tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
                     skill = _skill_name(name, tool_input)
                     if skill and skill not in summary["skill_reads"]:
@@ -604,8 +620,11 @@ def parse_stream(lines: list[str]) -> dict:
             content = (event.get("message") or {}).get("content")
             for block in content if isinstance(content, list) else []:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
+                    tool = tool_names.get(str(block.get("tool_use_id")), "")
                     if block.get("is_error"):
                         summary["tool_errors"] += 1
+                    elif tool.startswith("mcp__"):
+                        summary["mcp_tools_answered"].add(tool)
                     if "<sandbox_violations>" in json.dumps(block.get("content")):
                         summary["sandbox_denials"] += 1
         elif kind == "result":
@@ -666,13 +685,18 @@ def attempt_fields(summary: dict, requested_model: str, mcp_servers: list[str] |
     actual = summary.get("actual_model")
     # What each attached server's first event said of it. A token that expired
     # or was refused leaves the session without the server, and its answer
-    # would be graded as the arm that has one.
+    # would be graded as the arm that has one. A server still connecting when
+    # the session started counts once one of its tools has answered.
     reported = {
         server.get("name"): server.get("status")
         for server in (summary.get("inventory") or {}).get("mcp_servers") or []
         if isinstance(server, dict)
     }
-    unattached = next((name for name in mcp_servers if reported.get(name) != "connected"), None)
+    answered = summary.get("mcp_tools_answered") or ()
+    unattached = next((
+        name for name in mcp_servers
+        if reported.get(name) != "connected" and not any(tool.startswith(f"mcp__{name}__") for tool in answered)
+    ), None)
     # The requested id, or that id with a release date. A bare prefix test took
     # `claude-opus-5-5` for `claude-opus-5`.
     if not isinstance(actual, str) or not re.fullmatch(re.escape(requested_model) + r"(-\d{8})?", actual):
@@ -680,7 +704,7 @@ def attempt_fields(summary: dict, requested_model: str, mcp_servers: list[str] |
     elif unattached is not None:
         fields["error"] = (
             f"MCP server {unattached} was {reported.get(unattached) or 'not listed'!r}, not connected, "
-            "when the session started: the attempt ran without it"
+            "when the session started and none of its tools answered: the attempt ran without it"
         )
     elif result.get("is_error") or result.get("subtype") != "success":
         fields["error"] = f"session ended {result.get('subtype')!r}"
@@ -689,31 +713,62 @@ def attempt_fields(summary: dict, requested_model: str, mcp_servers: list[str] |
     return fields
 
 
-def keep_written_files(workspace: Path, staged: list[str], destination: Path) -> list[str]:
-    """Copy what the agent wrote, for a reader of the run. Never graded."""
+def keep_written_files(
+    workspace: Path, staged: list[str], destination: Path, redact: Callable[[str], str] = lambda text: text,
+) -> list[str]:
+    """Copy what the agent wrote, for a reader of the run. Never graded.
+
+    Text is copied with credentials taken out, as the transcript is; a file
+    that is not text and holds one is left behind. A folder or file the agent
+    made unreadable is skipped: it must not turn a finished attempt into an
+    error."""
     kept: list[str] = []
     root = workspace.resolve()
-    for path in sorted(workspace.rglob("*")):
+    # os.walk passes over a folder it cannot read.
+    found = sorted(Path(folder) / name for folder, _, names in os.walk(workspace) for name in names)
+    for path in found:
         if len(kept) >= KEPT_FILE_LIMIT:
             break
         relative = path.relative_to(workspace)
-        if (
-            not path.is_file() or path.is_symlink()
-            # A link in the path would have this copy a file from elsewhere.
-            or not path.resolve().is_relative_to(root)
-            or relative.parts[0].startswith(".")
-            or str(relative) in staged
-            or path.stat().st_size > KEPT_FILE_BYTES
-        ):
+        try:
+            if (
+                not path.is_file() or path.is_symlink()
+                # A link in the path would have this copy a file from elsewhere.
+                or not path.resolve().is_relative_to(root)
+                or relative.parts[0].startswith(".")
+                or str(relative) in staged
+                or path.stat().st_size > KEPT_FILE_BYTES
+            ):
+                continue
+            data = path.read_bytes()
+        except OSError:
             continue
+        try:
+            data = redact(data.decode()).encode()
+        except UnicodeDecodeError:
+            as_text = data.decode("latin-1")  # one character a byte: a credential in it is still found
+            if redact(as_text) != as_text:
+                continue
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copyfile(path, target)
-        except OSError:
-            continue  # a file the agent left unreadable is not kept
+        target.write_bytes(data)
         kept.append(str(relative))
     return kept
+
+
+def remove_tree(folder: Path) -> None:
+    """Remove a folder even where the agent took its own permissions away
+    (`chmod 000 out`), which would otherwise leave it, and the sources beside
+    it, in /tmp."""
+    for parent, names, _ in os.walk(folder):
+        for name in names:
+            path = os.path.join(parent, name)
+            # Before the walk goes into it. Never through a link: what it
+            # points to lies outside the attempt and is not ours to change.
+            if not os.path.islink(path):
+                with contextlib.suppress(OSError):
+                    os.chmod(path, 0o700)
+    shutil.rmtree(folder, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------- run
@@ -722,18 +777,49 @@ class Stopped(Exception):
     """The run was stopped: no further session starts."""
 
 
+class SetupFailed(Exception):
+    """An attempt's folders could not be made ready: no session was started."""
+
+
+def _groups_under(pid: int) -> set[int]:
+    """The process groups of everything started under `pid`, however deep."""
+    listing = subprocess.run(
+        ["ps", "-axo", "pid=,ppid=,pgid="], capture_output=True, text=True, check=False,
+    ).stdout
+    children: dict[int, list[tuple[int, int]]] = {}
+    for line in listing.splitlines():
+        try:
+            child, parent, group = (int(part) for part in line.split())
+        except ValueError:
+            continue
+        children.setdefault(parent, []).append((child, group))
+    groups: set[int] = set()
+    queue = [pid]
+    while queue:
+        for child, group in children.get(queue.pop(), []):
+            groups.add(group)
+            queue.append(child)
+    return groups
+
+
 def _kill_group(process: subprocess.Popen) -> None:
-    # Gone already, or (macOS) exited and not yet reaped, which is refused as
-    # not permitted. Raised inside a stop, either would leave the sessions
-    # after it running.
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(process.pid, signal.SIGKILL)
+    """End a session and everything it started. The session leads a process
+    group, but the CLI runs each shell command in a group of its own
+    (measured 2026-11-16: two processes of a command outlived their session),
+    so those are found first, while they still hang under it."""
+    groups = {process.pid, *_groups_under(process.pid)} - {os.getpgrp()}
+    for group in groups:
+        # Gone already, or (macOS) exited and not yet reaped, which is refused
+        # as not permitted. Raised inside a stop, either would leave the
+        # sessions after it running.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(group, signal.SIGKILL)
 
 
 def _say(text: str) -> None:
     """A progress line. A terminal that has closed or a pipe nobody reads
     refuses it, and that must never be what stops a run from recording."""
-    with contextlib.suppress(OSError):
+    with contextlib.suppress(OSError, ValueError):  # ValueError: a stdout that cannot encode the line
         print(text, flush=True)
 
 
@@ -778,33 +864,40 @@ def stopping_on_signals():
     """SIGTERM and SIGHUP (a `kill`, a closed terminal) end Python where it
     stands: no `finally`, so the sessions kept running and the attempts'
     folders, sources included, stayed in /tmp. Here they stop the run the way
-    Ctrl-C does.
+    Ctrl-C does, and Ctrl-C goes through the same door.
 
     A signal the run was started ignoring stays ignored (`nohup … &` is how a
-    long run outlives its terminal). Yields `hold`, to call once the run is
-    stopping: from then on SIGTERM, SIGHUP and Ctrl-C are ignored, so a second
-    one (a second `kill`, an impatient Ctrl-C, a bridge above passing the stop
-    on) cannot land between ending the sessions and recording what they did."""
+    long run outlives its terminal). The first signal is the only one acted
+    on: its handler ignores all three before it raises, so a second (a second
+    `kill`, Ctrl-C pressed again, the two hangups zsh sends a closing
+    terminal's job, a bridge above passing the stop on) cannot land between
+    ending the sessions and recording what they did. Yields `hold`, which
+    does the same once the sessions are over, for the record itself."""
     if threading.current_thread() is not threading.main_thread():
         yield lambda: None  # only the main thread may set a signal handler
         return
-    ours = [signum for signum in (signal.SIGTERM, signal.SIGHUP) if signal.getsignal(signum) is not signal.SIG_IGN]
-    previous = {signum: signal.getsignal(signum) for signum in (*ours, signal.SIGINT)}
+    watched = (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)
+    previous = {signum: signal.getsignal(signum) for signum in watched}
+    ours = [signum for signum in watched if previous[signum] is not signal.SIG_IGN]
 
     def hold() -> None:
-        for signum in previous:
+        for signum in ours:
             signal.signal(signum, signal.SIG_IGN)
 
     def stop(signum, _frame):
         hold()
+        if signum == signal.SIGINT:
+            raise KeyboardInterrupt
         if signum == signal.SIGHUP:
             # The terminal is gone and every write to it now fails, the last
-            # one at exit (which would turn the exit code into 120).
-            with contextlib.suppress(OSError):
-                nowhere = os.open(os.devnull, os.O_WRONLY)
-                os.dup2(nowhere, 1)
-                os.dup2(nowhere, 2)
-                os.close(nowhere)
+            # one at exit (which would turn the exit code into 120). Output
+            # that goes to a file or a pipe is left where it is.
+            for descriptor in (1, 2):
+                with contextlib.suppress(OSError):
+                    if os.isatty(descriptor):
+                        nowhere = os.open(os.devnull, os.O_WRONLY)
+                        os.dup2(nowhere, descriptor)
+                        os.close(nowhere)
         raise SystemExit(128 + signum)
 
     for signum in ours:
@@ -813,8 +906,8 @@ def stopping_on_signals():
         yield hold
     finally:
         hold()  # ours can no longer run while the callers' own are put back
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
+        for signum in ours:
+            signal.signal(signum, previous[signum])
 
 
 def _run_cli(
@@ -841,6 +934,14 @@ def _api_key() -> str:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    # From the first folder to the last record: a signal at the confirmation
+    # prompt removes the run's folder, and one after the sessions are over
+    # cannot keep the record of them from being written.
+    with stopping_on_signals() as hold:
+        return _run(args, hold)
+
+
+def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
     if args.env_file:
         bench._load_env_file(args.env_file)
     api_key = _api_key()
@@ -887,8 +988,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
     # What the run keeps and no attempt's shell may read, wherever it lives.
     private_paths = sorted({
-        path.resolve() for path in (bench.REPO_ROOT, bench.TASKS_DIR, *plugin_sources,
-                                    *filter(None, (mcp_config, files_dir)))
+        path.resolve() for path in (
+            bench.REPO_ROOT, bench.TASKS_DIR, *plugin_sources,
+            # The key file holds every provider's key, not only the one a session is billed to.
+            *filter(None, (mcp_config, files_dir, Path(args.env_file) if args.env_file else None)),
+        )
     })
     redact = redactor(api_key, mcp_secrets(mcp_config) if mcp_config else [])
     sessions = Sessions()
@@ -946,14 +1050,17 @@ def cmd_run(args: argparse.Namespace) -> int:
             attempt_root, workspace, config_dir, home_dir, tmp_dir = (
                 folders[name] for name in ("root", "work", "config", "home", "tmp")
             )
-            for folder in (config_dir, home_dir, tmp_dir):
-                folder.mkdir(parents=True)
-            staged = stage_workspace(tasks[task_id], workspace, files)
-            plugin_dirs: list[Path] = []
-            for index, source in enumerate(plugin_sources):
-                destination = folders["plugins"] / f"{index}-{source.name}"
-                copy_plugin(source, destination)
-                plugin_dirs.append(destination)
+            try:
+                for folder in (config_dir, home_dir, tmp_dir):
+                    folder.mkdir(parents=True)
+                staged = stage_workspace(tasks[task_id], workspace, files)
+                plugin_dirs: list[Path] = []
+                for index, source in enumerate(plugin_sources):
+                    destination = folders["plugins"] / f"{index}-{source.name}"
+                    copy_plugin(source, destination)
+                    plugin_dirs.append(destination)
+            except Exception as exc:
+                raise SetupFailed(f"{type(exc).__name__}: {exc}") from exc
             command = build_command(
                 cli, model=model, effort=effort, attempt_root=attempt_root, home_dir=home_dir,
                 tmp_dir=tmp_dir, operator_home=operator_home, plugin_dirs=plugin_dirs,
@@ -981,8 +1088,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 )
             artifacts = run_dir / "artifacts" / stem
             shutil.rmtree(artifacts, ignore_errors=True)
-            fields["files_written"] = keep_written_files(workspace, staged, artifacts)
-            shutil.rmtree(attempt_root, ignore_errors=True)
+            fields["files_written"] = keep_written_files(workspace, staged, artifacts, redact)
+            remove_tree(attempt_root)
             return summary, fields, returncode, redact(stderr).strip()
 
         def one(job: tuple[str, int]) -> tuple[dict, dict | None]:
@@ -1039,6 +1146,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                     else "not dispatched: the run was stopped",
                 )
                 return record, None
+            except SetupFailed as exc:
+                # No session of this attempt started after the last one counted.
+                record.update(dispatched=dispatched, cost_unknown=dispatched, error=redact(str(exc))[:300])
             except Exception as exc:
                 # A session may have been paid for with its receipt lost: never
                 # recorded as free.
@@ -1051,25 +1161,24 @@ def cmd_run(args: argparse.Namespace) -> int:
                  f"{', skills: ' + ','.join(record['skill_reads']) if record.get('skill_reads') else ''})")
             return record, inventory
 
-        print(f"Run {run_id} -> {run_dir}")
+        _say(f"Run {run_id} -> {run_dir}")
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel)
-        with stopping_on_signals() as hold:
-            futures = [pool.submit(one, job) for job in jobs]
-            try:
-                for future in futures:
-                    future.result()
-            except (KeyboardInterrupt, SystemExit) as exc:
-                hold()
-                stopped = exc
-                sessions.stop()
-                _say("Stopping: the sessions in flight are ended; recording what finished.")
-            finally:
-                pool.shutdown(wait=True)
-            results = [future.result() for future in futures]
+        futures = [pool.submit(one, job) for job in jobs]
+        try:
+            for future in futures:
+                future.result()
+        except (KeyboardInterrupt, SystemExit) as exc:
+            stopped = exc
+            sessions.stop()
+            _say("Stopping: the sessions in flight are ended; recording what finished.")
+        finally:
+            pool.shutdown(wait=True)
+        results = [future.result() for future in futures]
+        hold()  # the sessions are over: nothing now interrupts the record of them
     finally:
         # Nothing is left running in them: a stop has ended every session.
         sessions.stop()
-        shutil.rmtree(run_root, ignore_errors=True)
+        remove_tree(run_root)
 
     records = [record for record, _ in results]
     inventory = next((item for _, item in results if item), None)

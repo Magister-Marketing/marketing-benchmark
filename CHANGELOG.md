@@ -44,7 +44,11 @@
   plugins, skills, tools and sandbox a session reports are the same either
   way. A given file that would replace a supplied source, in any case, stops
   the run before the first session. A run started with `nohup` survives its
-  terminal closing. A
+  terminal closing, and a stop also ends the shell commands a session
+  started (each runs in a process group of its own and outlived it). Files
+  the agent wrote are kept with credentials taken out; a folder it locked
+  no longer fails the attempt or stays behind in `/tmp`. A server still
+  connecting when a session started counts once one of its tools answers. A
   retried attempt's cost is marked a lower bound. Plugin arms record
   `skills_included: false` (the report printed "Skills in prompt: yes" for
   an installed plugin). `compare-arms.py` averages as the grader does.

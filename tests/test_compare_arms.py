@@ -97,3 +97,14 @@ def test_the_difference_is_tested_over_tasks(compare):
     )
     assert (result["tasks_ahead"], result["tasks_level"], result["tasks_behind"]) == (1, 1, 1)
     assert result["mean_difference"] == 0.0 and result["p_value"] == 1.0
+
+
+def test_a_recomputed_score_is_the_one_the_grader_would_print(compare, tmp_path):
+    """The grader rounds sum/len. An exact mean of these six is 56.55, which
+    rounds down; the grader's own arithmetic gives 56.6."""
+    scores = {f"t{index}": value for index, value in enumerate([29.5, 96.1, 11.3, 91.9, 22.9, 87.6])}
+    assert round(sum(scores.values()) / len(scores), 1) == 56.6
+    ours = _run(tmp_path, "ours", {**scores, "extra": 0.0}, passes={**dict.fromkeys(scores, 2), "extra": 0})
+    arm = compare.load_arm("Ours", ours, only=sorted(scores))
+    assert arm["composite"] == 56.6
+

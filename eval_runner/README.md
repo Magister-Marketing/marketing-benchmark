@@ -310,8 +310,9 @@ What every attempt gets:
   registries and nothing else, cannot read your home folder, the shared temp
   folders or another attempt, and has no API key in its environment. Nor can
   it read what the run keeps, wherever that lives: this checkout and its
-  tasks (which hold the expected answers), an MCP config, the given files'
-  folder and the plugins' sources. Web search and web fetch stay on. A
+  tasks (which hold the expected answers), an MCP config, the key file, the
+  given files' folder and the plugins' sources. Web search and web fetch
+  stay on. A
   file-tool call outside the attempt's folders is refused; refusals are
   counted per attempt (`guardrail_kinds`).
 - **The same preamble as the Magister agent harness:** draft only, treat the
@@ -326,7 +327,8 @@ in order, as the Magister harness records its agent's reply.
 What a run refuses or records instead of guessing:
 
 - **Stopping it stops its sessions.** Ctrl-C, `kill` or a closed terminal
-  ends every session in flight (each leads its own process group, so nothing
+  ends every session in flight and every shell command it started (a session
+  leads its own process group and each of its commands another, so nothing
   else would), removes the attempts' folders, and still writes `run.json` and
   `attempts.jsonl`: finished attempts as they ended, the rest as errors
   (`the run was stopped during this attempt`, `not dispatched: the run was
@@ -335,13 +337,15 @@ What a run refuses or records instead of guessing:
 - **One attempt's failure is its own.** An exception in one job is that
   attempt's `error`; the other attempts are recorded as usual.
 - **An MCP arm needs its server.** An attempt whose `--mcp-config` server did
-  not report `connected` when the session started is an error, not an answer:
+  not report `connected` when the session started, and none of whose tools
+  then answered, is an error, not an answer:
   an expired or refused token would otherwise be graded as the arm that has
   the server. The config's credentials are taken out of everything the run
   keeps, as the API key is: a value whose name says it is one
   (`Authorization`, `GITHUB_TOKEN`, `--api-key`, `?token=`) or that is shaped
   like a token, in a server's headers, environment, address and arguments.
-  Ordinary values stay, so a reply reaches the judge as written: nothing
+  Files the agent wrote are kept with the same values taken out. Ordinary
+  values stay, so a reply reaches the judge as written: nothing
   under eight characters is touched, nor a short lowercase word even under a
   credential's name ("password", a mode called "production"). This is a
   backstop that has to guess; what protects a config is that it never enters
