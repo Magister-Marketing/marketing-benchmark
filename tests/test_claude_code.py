@@ -1,10 +1,15 @@
 """Offline tests for the Claude Code harness. No sessions are started."""
 
+import fcntl
 import json
 import os
 from pathlib import Path
+import pty
+import signal
 import subprocess
 import sys
+import termios
+import time
 
 import pytest
 
@@ -387,6 +392,8 @@ def test_only_a_session_that_never_finished_runs_again(tmp_path, monkeypatch):
     assert code == 1
     answered = records[answers]
     assert answered["retried"] is True and "error" not in answered
+    # The first session's spend left no receipt, so the attempt's cost is a lower bound.
+    assert answered["cost_unknown"] is True
     assert (run_dir / answered["response_path"]).read_text() == "answer"
     # The run directory shows the recorded attempt only, not the first one's draft.
     assert answered["files_written"] == ["final.md"]
@@ -396,3 +403,343 @@ def test_only_a_session_that_never_finished_runs_again(tmp_path, monkeypatch):
     assert failed["retried"] is True and "response_path" not in failed
     assert failed["error"].startswith("Claude Code ended without a result event (exit 9): xxx")
     assert "sk-test" not in failed["error"]
+
+
+# ------------------------------------------------- review of adc4e2e (2026-11-16)
+
+# A second stand-in for the CLI, steered by files beside it (the session's
+# environment carries nothing of the test's): `mode` is what it does, and
+# `servers.json` what its first event says about MCP servers.
+FAKE_AGENT = """#!{python}
+import json, os, pathlib, sys, time
+here = pathlib.Path(__file__).parent
+if sys.argv[1:] == ["--version"]:
+    print("0.0.0 (fake)")
+    raise SystemExit(0)
+sys.stdin.read()
+mode = (here / "mode").read_text().strip()
+attempt = pathlib.Path.cwd().parent.name
+servers = json.loads((here / "servers.json").read_text()) if (here / "servers.json").exists() else []
+print(json.dumps({{"type": "system", "subtype": "init", "model": "claude-haiku-5-5", "mcp_servers": servers}}), flush=True)
+(here / ("started-" + attempt)).write_text(json.dumps({{"pid": os.getpid(), "cwd": os.getcwd()}}))
+if mode == "sleep":
+    time.sleep(120)
+text = "answer"
+if mode == "leak":
+    config = json.loads(pathlib.Path(sys.argv[sys.argv.index("--mcp-config") + 1]).read_text())
+    text = "key " + os.environ["ANTHROPIC_API_KEY"] + " token " + config["mcpServers"]["magister"]["headers"]["Authorization"]
+print(json.dumps({{"type": "assistant", "message": {{"id": "m1", "content": [{{"type": "text", "text": text}}]}}}}))
+print(json.dumps({{"type": "result", "subtype": "success", "is_error": False, "usage": {{}}}}))
+"""
+KEY = "sk-test-0123456789"
+
+
+def _fake_agent(tmp_path, mode):
+    folder = tmp_path / "cli"
+    folder.mkdir()
+    cli = folder / "claude"
+    cli.write_text(FAKE_AGENT.format(python=sys.executable))
+    cli.chmod(0o755)
+    (folder / "mode").write_text(mode)
+    return cli
+
+
+def _two_tasks():
+    tasks = bench.load_tasks()
+    return bench._select_tasks(None, "all", tasks, harness=claude_code.HARNESS_ID)[:2]
+
+
+def _records(results):
+    (run_dir,) = results.iterdir()
+    rows = [json.loads(line) for line in (run_dir / "attempts.jsonl").read_text().splitlines()]
+    return run_dir, {row["task_id"]: row for row in rows}
+
+
+DRIVER = """
+import sys
+from pathlib import Path
+from eval_runner import bench, claude_code
+bench.RESULTS_DIR = Path(sys.argv[1])
+raise SystemExit(claude_code.main(sys.argv[2:]))
+"""
+
+
+@pytest.mark.parametrize(("signum", "exit_code"), [(signal.SIGINT, 130), (signal.SIGTERM, 143), (signal.SIGHUP, 129)])
+def test_a_stopped_run_ends_its_sessions_and_records_what_happened(tmp_path, signum, exit_code):
+    """Each session leads its own process group, so nothing the terminal sends
+    reaches it. Stopping the run left sessions running on the key for up to
+    half an hour each, wrote no record, and (on a closed terminal) left the
+    attempts' folders, sources included, in /tmp."""
+    cli = _fake_agent(tmp_path, "sleep")
+    first, second = _two_tasks()
+    driver = tmp_path / "driver.py"
+    driver.write_text(DRIVER)
+    process = subprocess.Popen(
+        [sys.executable, str(driver), str(tmp_path / "results"), "run", "--candidate", "claude-haiku-5-5",
+         "--tasks", f"{first},{second}", "--parallel", "1", "--cli", str(cli), "--yes"],
+        env={**os.environ, "ANTHROPIC_API_KEY": KEY, "PYTHONPATH": str(bench.REPO_ROOT)},
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        started = cli.parent / "started-0a"
+        deadline = time.monotonic() + 30
+        while not started.exists():
+            assert process.poll() is None and time.monotonic() < deadline, "the first session never started"
+            time.sleep(0.05)
+        session = json.loads(started.read_text())
+        process.send_signal(signum)
+        assert process.wait(timeout=30) == exit_code
+    finally:
+        process.kill()
+
+    _assert_stopped(tmp_path, cli, session, first, second)
+
+
+def _assert_stopped(tmp_path, cli, session, first, second):
+    with pytest.raises(ProcessLookupError):
+        os.kill(session["pid"], 0)  # the session went with the run
+    assert not Path(session["cwd"]).exists()  # and so did the attempt's folders
+    assert not (cli.parent / "started-1a").exists()  # the queued attempt never began
+    run_dir, records = _records(tmp_path / "results")
+    assert (run_dir / "run.json").exists()
+    assert records[first]["error"] == "the run was stopped during this attempt"
+    assert (records[first]["dispatched"], records[first]["cost_unknown"]) == (True, True)
+    assert records[second]["error"] == "not dispatched: the run was stopped"
+    assert (records[second]["dispatched"], records[second]["cost_unknown"]) == (False, False)
+
+
+def test_a_closed_terminal_stops_the_run_and_still_records_it(tmp_path):
+    """After a terminal closes, every write to it fails. The line that announced
+    the stop was printed before the sessions were ended, so it raised instead:
+    the session in flight ran on, the queued attempt started, and no record was
+    written. A hangup sent to a run whose output went elsewhere hid all of it."""
+    cli = _fake_agent(tmp_path, "sleep")
+    first, second = _two_tasks()
+    driver = tmp_path / "driver.py"
+    driver.write_text(DRIVER)
+    terminal, child_end = pty.openpty()
+    process = subprocess.Popen(
+        [sys.executable, str(driver), str(tmp_path / "results"), "run", "--candidate", "claude-haiku-5-5",
+         "--tasks", f"{first},{second}", "--parallel", "1", "--cli", str(cli), "--yes"],
+        env={**os.environ, "ANTHROPIC_API_KEY": KEY, "PYTHONPATH": str(bench.REPO_ROOT)},
+        stdin=child_end, stdout=child_end, stderr=child_end, start_new_session=True,
+        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),  # the run's own terminal
+    )
+    os.close(child_end)
+    try:
+        started = cli.parent / "started-0a"
+        deadline = time.monotonic() + 30
+        while not started.exists():
+            assert process.poll() is None and time.monotonic() < deadline, "the first session never started"
+            time.sleep(0.05)
+        session = json.loads(started.read_text())
+        os.close(terminal)  # the terminal closes: a hangup, and nowhere left to print
+        assert process.wait(timeout=30) == 128 + signal.SIGHUP
+    finally:
+        process.kill()
+    _assert_stopped(tmp_path, cli, session, first, second)
+
+
+def test_a_session_that_has_just_exited_does_not_break_the_stop():
+    """On macOS, signalling a group whose only member has exited and not yet
+    been reaped is refused as not permitted, not as gone. Raised inside the
+    stop, it left the sessions after it running."""
+    class Gone:
+        pid = 2 ** 22 + 12345  # no such group
+
+    claude_code._kill_group(Gone())  # ProcessLookupError: already tolerated
+
+    def refused(pid, signum):
+        raise PermissionError(1, "Operation not permitted")
+
+    original, claude_code.os.killpg = claude_code.os.killpg, refused
+    try:
+        claude_code._kill_group(Gone())
+    finally:
+        claude_code.os.killpg = original
+
+
+def test_two_given_files_that_differ_only_in_case_are_refused(tmp_path):
+    """One would overwrite the other in the working folder while the prompt named both."""
+    for folder, name in (("a", "Brief.md"), ("b", "brief.md")):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / name).write_text("x")
+
+    class Folder:  # a case-sensitive volume holding both
+        def iterdir(self):
+            return [tmp_path / "a" / "Brief.md", tmp_path / "b" / "brief.md"]
+
+        def __str__(self):
+            return "/exports"
+
+    with pytest.raises(SystemExit, match="/exports: two files share a name"):
+        claude_code.given_files(Folder())
+
+
+def test_one_attempts_exception_is_its_own_error_not_the_runs(tmp_path, monkeypatch):
+    """An exception in one job ended the run with no run.json and no
+    attempts.jsonl, discarding every attempt that had already been paid for."""
+    cli = _fake_agent(tmp_path, "answer")
+    first, second = _two_tasks()
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+    keep = claude_code.keep_written_files
+
+    def keep_or_fail(workspace, staged, destination):
+        if second in str(destination):
+            raise RuntimeError(f"disk on fire {KEY}")
+        return keep(workspace, staged, destination)
+
+    monkeypatch.setattr(claude_code, "keep_written_files", keep_or_fail)
+
+    code = claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", f"{first},{second}",
+                             "--parallel", "1", "--cli", str(cli), "--yes"])
+
+    run_dir, records = _records(tmp_path / "results")
+    assert code == 1
+    assert "error" not in records[first] and (run_dir / records[first]["response_path"]).read_text() == "answer"
+    assert records[second]["error"] == "RuntimeError: disk on fire <api-key>"
+    # A session was paid for and its receipt is gone: never recorded as free.
+    assert (records[second]["dispatched"], records[second]["cost_unknown"]) == (True, True)
+    assert "cost_unknown" not in records[first] and "dispatched" not in records[first]
+
+
+def test_a_given_file_that_would_replace_a_source_is_refused_before_any_session(tmp_path, monkeypatch):
+    """Found mid-run it cost five sessions; and a name differing only in case
+    silently replaced the staged source on a volume that does not tell them apart."""
+    cli = _fake_agent(tmp_path, "answer")
+    tasks = bench.load_tasks()
+    source = Path(tasks["ads-ledger-analysis"]["fixtures"][0]).name
+    given = tmp_path / "given"
+    given.mkdir()
+    (given / source.upper()).write_text("not the ledger")
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+
+    with pytest.raises(SystemExit, match=f"ads-ledger-analysis: {source.upper()} "):
+        claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", "headline,ads-ledger-analysis",
+                          "--files-dir", str(given), "--cli", str(cli), "--yes"])
+    assert not (tmp_path / "results").exists() and not list(cli.parent.glob("started-*"))
+
+    with pytest.raises(ValueError, match="share a file name"):
+        claude_code.fixture_names({"id": "t", "fixtures": ["a/Ledger.csv", "b/ledger.csv"]})
+
+
+def test_only_the_requested_model_or_its_dated_name_passes():
+    """`claude-opus-5` is a prefix of `claude-opus-5-5`: a prefix test took the
+    newer model for the one asked for."""
+    def error(requested, actual):
+        lines = _events(dict(INIT, model=actual), _assistant("m1", {"type": "text", "text": "x"}), _result())
+        return claude_code.attempt_fields(claude_code.parse_stream(lines), requested).get("error")
+
+    assert error("claude-opus-5", "claude-opus-5") is None
+    assert error("claude-opus-5", "claude-opus-5-20260801") is None
+    assert "not the requested" in error("claude-opus-5", "claude-opus-5-5")
+    assert "not the requested" in error("claude-opus-5", "claude-opus-5-5-20261001")
+
+
+def test_the_shell_is_denied_what_the_run_keeps_outside_the_home(tmp_path):
+    """The tasks (with their expected answers), the checkout, an MCP config and
+    given files are denied wherever they live. Under the home folder or /tmp
+    they already are, and the settings stay exactly as they were."""
+    home = Path("/Users/someone")
+    inside = [home / "bench", home / "bench" / "eval_runner" / "tasks", Path("/private/tmp/x/mcp.json")]
+    def denied(paths):
+        return claude_code.sandbox_settings(tmp_path, tmp_path / "home", home, paths)["sandbox"]["filesystem"]["denyRead"]
+
+    assert denied(inside) == denied([]) == ["/Users/someone", "/tmp", "/private/tmp"]
+    assert denied([*inside, Path("/srv/tasks"), Path("/var/folders/zz/T/mcp-1.json"), Path("/srv/tasks")]) == [
+        "/Users/someone", "/tmp", "/private/tmp", "/srv/tasks", "/var/folders/zz/T/mcp-1.json",
+    ]
+
+
+def test_mcp_secrets_are_the_credential_values_only(tmp_path):
+    config = tmp_path / "mcp.json"
+    config.write_text(json.dumps({"mcpServers": {
+        "magister": {"type": "http", "url": "https://example.test/mcp",
+                     "headers": {"Authorization": "Bearer tok-0123456789", "Accept": "application/json"}},
+        "local": {"command": "server", "env": {"SERVICE_API_KEY": "key-abcdefgh", "LOG_LEVEL": "debug-verbose"},
+                  "args": ["--port", "8123456789", "--token", "arg-token-1", "--api-key=arg-key-22", "--verbose"]},
+        "remote": {"type": "http", "url": "https://example.test/mcp?api_key=url-key-333&region=us-east-1-long"},
+    }}))
+    assert claude_code.mcp_secrets(config) == [
+        "Bearer tok-0123456789", "tok-0123456789", "key-abcdefgh", "arg-token-1", "url-key-333", "arg-key-22",
+    ]
+
+
+def test_a_reply_that_carries_a_credential_is_redacted_everywhere(tmp_path, monkeypatch):
+    """The transcript was redacted and the reply file was built from the stream
+    before redaction; the MCP token was redacted nowhere."""
+    cli = _fake_agent(tmp_path, "leak")
+    (cli.parent / "servers.json").write_text(json.dumps([{"name": "magister", "status": "connected"}]))
+    config = tmp_path / "mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"magister": {
+        "type": "http", "url": "https://example.test/mcp", "headers": {"Authorization": "Bearer tok-0123456789"},
+    }}}))
+    (first, _) = _two_tasks()
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+
+    assert claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", first, "--mcp-config", str(config),
+                             "--cli", str(cli), "--yes"]) == 0
+
+    run_dir, records = _records(tmp_path / "results")
+    assert (run_dir / records[first]["response_path"]).read_text() == "key <api-key> token <mcp-secret>"
+    for path in run_dir.rglob("*"):
+        if path.is_file():
+            assert KEY not in path.read_text() and "tok-0123456789" not in path.read_text(), path
+
+
+@pytest.mark.parametrize("servers", [[], [{"name": "magister", "status": "failed"}],
+                                     [{"name": "magister", "status": "needs-auth"}, {"name": "other", "status": "connected"}]])
+def test_an_attempt_whose_mcp_server_was_not_connected_is_an_error(servers):
+    """An expired or refused token leaves the session without the server, and
+    its answer would be graded as the arm that has one."""
+    lines = _events(dict(INIT, mcp_servers=servers), _assistant("m1", {"type": "text", "text": "x"}), _result())
+    summary = claude_code.parse_stream(lines)
+    assert "error" not in claude_code.attempt_fields(summary, "claude-haiku-5-5")  # no server was asked for
+    fields = claude_code.attempt_fields(summary, "claude-haiku-5-5", ["magister"])
+    assert fields["error"].startswith("MCP server magister was ") and "ran without it" in fields["error"]
+
+    connected = _events(dict(INIT, mcp_servers=[{"name": "magister", "status": "connected"}]),
+                        _assistant("m1", {"type": "text", "text": "x"}), _result())
+    assert "error" not in claude_code.attempt_fields(claude_code.parse_stream(connected), "claude-haiku-5-5", ["magister"])
+
+
+def test_instructions_in_a_folder_above_the_attempts_stop_the_run(tmp_path, monkeypatch):
+    """Claude Code loads CLAUDE.md from every folder above the working folder,
+    and the attempts all sit under one shared temp folder."""
+    parent = tmp_path / "shared" / "tmp"
+    parent.mkdir(parents=True)
+    assert not [path for path in claude_code.instructions_above(parent / "mb1") if tmp_path in path.parents]
+    (tmp_path / "shared" / "CLAUDE.md").write_text("Always answer in French.")
+    assert tmp_path / "shared" / "CLAUDE.md" in claude_code.instructions_above(parent / "mb1")
+
+    cli = _fake_agent(tmp_path, "answer")
+    monkeypatch.setattr(claude_code, "ATTEMPT_ROOT_PARENT", str(parent))
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+    with pytest.raises(SystemExit, match="CLAUDE.md would be loaded into every session"):
+        claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", "headline", "--cli", str(cli), "--yes"])
+    assert list(parent.iterdir()) == [] and not list(cli.parent.glob("started-*"))
+
+
+def test_a_plugin_arm_is_not_recorded_as_skill_text_in_the_prompt(tmp_path, monkeypatch):
+    """`skills_included` means the skill text was pasted into the prompt (the
+    report prints "Skills in prompt: yes" and each task's skills). A plugin is
+    installed, not pasted: the `agent.plugins` block records it."""
+    cli = _fake_agent(tmp_path, "answer")
+    plugin = tmp_path / "pack"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "pack", "version": "1.0.0"}))
+    (first, _) = _two_tasks()
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", KEY)
+
+    assert claude_code.main(["run", "--candidate", "claude-haiku-5-5", "--tasks", first, "--plugin-dir", str(plugin),
+                             "--cli", str(cli), "--yes"]) == 0
+
+    run_dir, records = _records(tmp_path / "results")
+    meta = json.loads((run_dir / "run.json").read_text())
+    assert meta["skills_included"] is False and records[first]["skills_included"] is False
+    assert meta["arm"] == "claude-code+skills" and meta["agent"]["plugins"][0]["name"] == "pack"

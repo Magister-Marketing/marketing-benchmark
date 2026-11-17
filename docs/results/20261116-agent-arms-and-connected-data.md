@@ -134,6 +134,11 @@ What this shows:
   the same fixture between these runs; a lease keeps runs on a fixture from
   overlapping, and the stack's code did not change.
 - `scripts/compare-arms.py` produced the tables and the paired test.
+- An independent review of the runner afterwards read all 535 saved Claude
+  Code sessions. Nothing it found changes a figure here: no attempt was
+  retried, every session ran the requested model, all 24 attempts of the MCP
+  arm reported the server connected when the session started, and no key or
+  token is in any run file. Its findings are fixed in the runner.
 
 Limits: one model; 20 tasks and 8 tasks; a judge from the candidate's own
 family; the connected tasks cover one brand and grade the figures more firmly

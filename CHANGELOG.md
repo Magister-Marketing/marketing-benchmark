@@ -27,6 +27,22 @@
   and records an error if it did not), a sandbox that cannot read the
   operator's home, the shared temp folders or another attempt, its own copy
   of any plugin, and no API key in the shell's environment.
+- Harness: `claude-code` fixes from an independent review, none of which
+  changes a recorded score. Stopping a run (Ctrl-C, `kill`, a closed
+  terminal) now ends its sessions, removes the attempts' folders and writes
+  the records; before, sessions ran on for up to the timeout each and
+  nothing was recorded. An exception in one job is that attempt's error
+  instead of the loss of every attempt. An attempt whose MCP server was not
+  connected at session start is an error. The model check accepts the
+  requested id or its dated name only (`claude-opus-5-5` passed as
+  `claude-opus-5`). The shell is denied what the run keeps outside the home
+  folder (the checkout, the tasks, an MCP config, given files), and MCP
+  credentials are redacted like the API key, in the reply file too. A given
+  file that would replace a supplied source, in any case, and a `CLAUDE.md`
+  above the attempts' folders stop the run before the first session. A
+  retried attempt's cost is marked a lower bound. Plugin arms record
+  `skills_included: false` (the report printed "Skills in prompt: yes" for
+  an installed plugin). `compare-arms.py` averages as the grader does.
 - Harness: `claude-code --files-dir DIR` saves a folder's files into every
   attempt's working folder and names them in the prompt: the arm where a
   person hands the agent their own exports. `MARKETING_BENCH_TASKS_DIR`

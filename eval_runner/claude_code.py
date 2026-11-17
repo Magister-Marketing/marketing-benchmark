@@ -33,12 +33,17 @@ What every attempt gets, so runs can be compared and repeated:
 - Claude Code's own shell sandbox, on. Every shell command runs without
   asking, may write only inside the attempt's folders, may reach the package
   registries and nothing else, and cannot read the operator's home folder,
-  the shared temp folders or another attempt's folders. The API key is unset
-  in every shell command. Web search and web fetch are Claude Code's own
-  tools and stay on.
+  the shared temp folders, another attempt's folders, or what the run keeps
+  (this checkout and its tasks, an MCP config, given files). The API key is
+  unset in every shell command. Web search and web fetch are Claude Code's
+  own tools and stay on.
 - no one to ask. The file tools work inside the attempt's folders; a call
   that would need approval anywhere else is refused, and refusals are counted
   per attempt.
+
+Stopping a run (Ctrl-C, `kill`, a closed terminal) ends its sessions, removes
+the attempts' folders and still writes the records: finished attempts as they
+ended, the rest as errors.
 
 The prompt is the task wrapped in the same short preamble the Magister agent
 harness uses (draft only, deliver the answer in the reply, treat the sources
@@ -54,16 +59,20 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import datetime as _dt
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -104,6 +113,12 @@ ATTEMPT_ROOT_PARENT = "/tmp"
 SHARED_TEMP_ROOTS = ("/tmp", "/private/tmp")
 KEPT_FILE_LIMIT = 20
 KEPT_FILE_BYTES = 256 * 1024
+# What Claude Code loads into a session from every folder above its working
+# folder. The attempts all sit under one shared temp folder, so one of these
+# there would reach every session of every run.
+INHERITED_INSTRUCTIONS = ("CLAUDE.md", "CLAUDE.local.md", ".claude")
+# Header and environment names in an MCP config whose values are credentials.
+SECRET_NAME = re.compile(r"auth|key|token|secret|cookie|password", re.IGNORECASE)
 
 PREAMBLE_TEMPLATE = """\
 This is an internal, synthetic, draft-only evaluation on fixture data.
@@ -169,11 +184,34 @@ def sandbox_used_own_temp(tmp_dir: Path) -> bool:
     return (tmp_dir / f"claude-{os.getuid()}").is_dir()
 
 
+def instructions_above(folder: Path) -> list[Path]:
+    """The instruction files and folders Claude Code would load from the
+    folders above `folder`, nearest first."""
+    return [
+        parent / name for parent in folder.parents for name in INHERITED_INSTRUCTIONS
+        if (parent / name).exists()
+    ]
+
+
 def fixture_names(task: dict) -> list[str]:
-    """The file name each supplied source is saved under; names must not collide."""
+    """The file name each supplied source is saved under. Names must not
+    collide, whatever their case: many volumes do not tell `A.csv` from `a.csv`."""
     names = [Path(fixture).name for fixture in task.get("fixtures", [])]
-    if len(set(names)) != len(names):
+    if len({name.casefold() for name in names}) != len(names):
         raise ValueError(f"{task['id']}: two supplied sources share a file name")
+    return names
+
+
+def staged_names(task: dict, files: list[Path] | None = None) -> list[str]:
+    """Every file an attempt at this task starts with: its supplied sources,
+    then the files the run gives every attempt. A given file may not take a
+    source's place."""
+    names = fixture_names(task)
+    taken = {name.casefold() for name in names}
+    for path in files or []:
+        if path.name.casefold() in taken:
+            raise ValueError(f"{task['id']}: {path.name} is both a supplied source and a given file")
+        names.append(path.name)
     return names
 
 
@@ -190,6 +228,9 @@ def given_files(files_dir: Path | None) -> list[Path]:
     files = sorted(path for path in files_dir.iterdir() if path.is_file() and not path.name.startswith("."))
     if not files:
         raise SystemExit(f"{files_dir}: no files to give")
+    if len({path.name.casefold() for path in files}) != len(files):
+        # One would overwrite the other in the working folder, with both named in the prompt.
+        raise SystemExit(f"{files_dir}: two files share a name, or differ only in its case")
     return files
 
 
@@ -206,15 +247,12 @@ def build_prompt(task: dict, named_skills: list[str] | None = None, files: list[
 def stage_workspace(task: dict, workspace: Path, files: list[Path] | None = None) -> list[str]:
     """Save the task's supplied sources, and any files the run gives every
     attempt, into the working folder. Returns their names."""
+    names = staged_names(task, files)
     workspace.mkdir(parents=True, exist_ok=True)
-    names = fixture_names(task)
-    for fixture, name in zip(task.get("fixtures", []), names):
-        shutil.copyfile(bench.REPO_ROOT / fixture, workspace / name)
+    for fixture in task.get("fixtures", []):
+        shutil.copyfile(bench.REPO_ROOT / fixture, workspace / Path(fixture).name)
     for path in files or []:
-        if path.name in names:
-            raise ValueError(f"{task['id']}: {path.name} is both a supplied source and a given file")
         shutil.copyfile(path, workspace / path.name)
-        names.append(path.name)
     return names
 
 
@@ -255,15 +293,58 @@ def mcp_server_names(config_path: Path) -> list[str]:
     return sorted(servers)
 
 
+def mcp_secrets(config_path: Path) -> list[str]:
+    """The credentials a config holds, longest first: each header, environment
+    value, address parameter or command-line option whose name says it is one,
+    and the token inside a `Bearer` value. They are taken out of everything a
+    run keeps, as the API key is."""
+    found: set[str] = set()
+
+    def keep(name: object, value: object) -> None:
+        if isinstance(name, str) and isinstance(value, str) and SECRET_NAME.search(name):
+            found.update(part for part in (value, value.split(" ", 1)[-1]) if len(part) >= 8)
+
+    for server in (json.loads(config_path.read_text()).get("mcpServers") or {}).values():
+        if not isinstance(server, dict):
+            continue
+        for group in ("headers", "env"):
+            for name, value in (server.get(group) or {}).items():
+                keep(name, value)
+        # `?api_key=…` in the address, and `--token …` or `--token=…` on a command line.
+        for name, value in urllib.parse.parse_qsl(urllib.parse.urlsplit(str(server.get("url") or "")).query):
+            keep(name, value)
+        args = [arg for arg in server.get("args") or [] if isinstance(arg, str)]
+        for arg, following in zip(args, [*args[1:], ""]):
+            name, joined, value = arg.partition("=")
+            if name.startswith("-"):
+                keep(name, value if joined else following)
+    return sorted(found, key=lambda value: (-len(value), value))
+
+
 # ------------------------------------------------------- command, environment
 
-def sandbox_settings(attempt_root: Path, home_dir: Path, operator_home: Path) -> dict:
+def sandbox_settings(
+    attempt_root: Path, home_dir: Path, operator_home: Path, private_paths: list[Path] | tuple = (),
+) -> dict:
     """The shell's limits. It reads the system and its own attempt, not the
     operator's home, the shared temp folders or another attempt. The attempt's
     own home folder is writable so a package install (`pip install --user`)
     has somewhere to land. The API key the session is billed to is unset in
     every command: the shell has no use for it, and a page the agent fetched
-    must not be able to ask for it."""
+    must not be able to ask for it.
+
+    `private_paths` are what the run itself keeps and no attempt may read: the
+    checkout and its tasks (which hold the expected answers), an MCP config
+    (which may hold a token), the given files' folder and the plugins'
+    sources. Most sit under the home folder and are denied already; one that
+    does not (a checkout in /app, a config in the system temp folder) is
+    denied by name."""
+    denied = [str(operator_home), *SHARED_TEMP_ROOTS]
+    roots = {Path(root) for root in denied} | {Path(root).resolve() for root in denied}
+    denied += sorted({
+        str(path) for path in private_paths
+        if not any(path.is_relative_to(root) for root in roots)
+    })
     return {
         "sandbox": {
             "enabled": True,
@@ -272,7 +353,7 @@ def sandbox_settings(attempt_root: Path, home_dir: Path, operator_home: Path) ->
             "allowUnsandboxedCommands": False,
             "network": {"allowedDomains": list(SANDBOX_ALLOWED_DOMAINS), "strictAllowlist": True},
             "filesystem": {
-                "denyRead": [str(operator_home), *SHARED_TEMP_ROOTS],
+                "denyRead": denied,
                 "allowRead": [str(attempt_root)],
                 "allowWrite": [str(home_dir)],
             },
@@ -298,6 +379,7 @@ def build_command(
     mcp_config: Path | None,
     mcp_servers: list[str],
     max_budget_usd: float,
+    private_paths: list[Path] | tuple = (),
 ) -> list[str]:
     command = [
         cli, "-p",
@@ -307,7 +389,9 @@ def build_command(
         "--strict-mcp-config",
         "--permission-mode", "acceptEdits",
         "--permission-prompts", "none",
-        "--settings", json.dumps(sandbox_settings(attempt_root, home_dir, operator_home), sort_keys=True),
+        "--settings", json.dumps(
+            sandbox_settings(attempt_root, home_dir, operator_home, private_paths), sort_keys=True,
+        ),
         "--max-budget-usd", f"{max_budget_usd:.2f}",
         "--allowedTools", *allowed_tools(mcp_servers),
     ]
@@ -434,8 +518,9 @@ def response_text(summary: dict) -> str:
     return str(result.get("result") or "").strip()
 
 
-def attempt_fields(summary: dict, requested_model: str) -> dict:
-    """The attempt record's fields, or an `error` when the session did not finish."""
+def attempt_fields(summary: dict, requested_model: str, mcp_servers: list[str] | tuple = ()) -> dict:
+    """The attempt record's fields, with an `error` when the session did not
+    finish, ran another model, or started without an MCP server the arm attaches."""
     result = summary.get("result")
     if not isinstance(result, dict):
         return {"error": "Claude Code ended without a result event"}
@@ -471,8 +556,24 @@ def attempt_fields(summary: dict, requested_model: str) -> dict:
         "finish_reason": result.get("stop_reason") if result.get("subtype") == "success" else result.get("subtype"),
     }
     actual = summary.get("actual_model")
-    if not isinstance(actual, str) or not (actual == requested_model or actual.startswith(requested_model + "-")):
+    # What each attached server's first event said of it. A token that expired
+    # or was refused leaves the session without the server, and its answer
+    # would be graded as the arm that has one.
+    reported = {
+        server.get("name"): server.get("status")
+        for server in (summary.get("inventory") or {}).get("mcp_servers") or []
+        if isinstance(server, dict)
+    }
+    unattached = next((name for name in mcp_servers if reported.get(name) != "connected"), None)
+    # The requested id, or that id with a release date. A bare prefix test took
+    # `claude-opus-5-5` for `claude-opus-5`.
+    if not isinstance(actual, str) or not re.fullmatch(re.escape(requested_model) + r"(-\d{8})?", actual):
         fields["error"] = f"session ran {actual!r}, not the requested {requested_model!r}"
+    elif unattached is not None:
+        fields["error"] = (
+            f"MCP server {unattached} was {reported.get(unattached) or 'not listed'!r}, not connected, "
+            "when the session started: the attempt ran without it"
+        )
     elif result.get("is_error") or result.get("subtype") != "success":
         fields["error"] = f"session ended {result.get('subtype')!r}"
     elif not response:
@@ -499,29 +600,114 @@ def keep_written_files(workspace: Path, staged: list[str], destination: Path) ->
             continue
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, target)
+        try:
+            shutil.copyfile(path, target)
+        except OSError:
+            continue  # a file the agent left unreadable is not kept
         kept.append(str(relative))
     return kept
 
 
 # ---------------------------------------------------------------------- run
 
-def _run_cli(command: list[str], *, cwd: Path, env: dict, prompt: str, timeout: float) -> tuple[int | None, str, str]:
+class Stopped(Exception):
+    """The run was stopped: no further session starts."""
+
+
+def _kill_group(process: subprocess.Popen) -> None:
+    # Gone already, or (macOS) exited and not yet reaped, which is refused as
+    # not permitted. Raised inside a stop, either would leave the sessions
+    # after it running.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(process.pid, signal.SIGKILL)
+
+
+def _say(text: str) -> None:
+    """A progress line. A terminal that has closed or a pipe nobody reads
+    refuses it, and that must never be what stops a run from recording."""
+    with contextlib.suppress(OSError):
+        print(text, flush=True)
+
+
+class Sessions:
+    """The sessions a run has in flight, so that stopping the run ends them.
+
+    Each session leads its own process group, because a timeout has to end
+    everything the session started. The same thing keeps the terminal's Ctrl-C
+    and a closing terminal's hangup from ever reaching it: left alone, a
+    stopped run's sessions ran on for up to the timeout each, on the key."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._live: set[subprocess.Popen] = set()
+        self.stopped = False
+
+    def start(self, command: list[str], *, cwd: Path, env: dict) -> subprocess.Popen:
+        with self._lock:
+            if self.stopped:
+                raise Stopped
+            process = subprocess.Popen(
+                # A timeout can cut the output inside a character: replace it, never raise.
+                command, cwd=cwd, env=env, text=True, errors="replace", start_new_session=True,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            self._live.add(process)
+            return process
+
+    def finished(self, process: subprocess.Popen) -> None:
+        with self._lock:
+            self._live.discard(process)
+
+    def stop(self) -> None:
+        with self._lock:
+            self.stopped = True
+            for process in self._live:
+                _kill_group(process)
+
+
+@contextlib.contextmanager
+def stopping_on_signals():
+    """SIGTERM and SIGHUP (a `kill`, a closed terminal) end Python where it
+    stands: no `finally`, so the sessions kept running and the attempts'
+    folders, sources included, stayed in /tmp. Here they stop the run the way
+    Ctrl-C does."""
+    if threading.current_thread() is not threading.main_thread():
+        yield  # only the main thread may set a signal handler
+        return
+
+    def stop(signum, _frame):
+        if signum == signal.SIGHUP:
+            # The terminal is gone and every write to it now fails, the last
+            # one at exit (which would turn the exit code into 120).
+            with contextlib.suppress(OSError):
+                nowhere = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(nowhere, 1)
+                os.dup2(nowhere, 2)
+                os.close(nowhere)
+        raise SystemExit(128 + signum)
+
+    previous = {signum: signal.signal(signum, stop) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def _run_cli(
+    sessions: Sessions, command: list[str], *, cwd: Path, env: dict, prompt: str, timeout: float,
+) -> tuple[int | None, str, str]:
     """Run one session. A timeout ends the whole process group and returns what it printed."""
-    process = subprocess.Popen(
-        command, cwd=cwd, env=env, text=True, start_new_session=True,
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+    process = sessions.start(command, cwd=cwd, env=env)
     try:
         stdout, stderr = process.communicate(prompt, timeout=timeout)
         return process.returncode, stdout, stderr
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _kill_group(process)
         stdout, stderr = process.communicate()
         return None, stdout or "", f"timed out after {timeout:.0f}s\n{stderr or ''}"
+    finally:
+        sessions.finished(process)
 
 
 def _api_key() -> str:
@@ -560,12 +746,39 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.name_skills and not args.plugin_dir:
         raise SystemExit("--name-skills needs a --plugin-dir whose skills it can name")
 
-    files = given_files(Path(args.files_dir).resolve() if args.files_dir else None)
+    files_dir = Path(args.files_dir).resolve() if args.files_dir else None
+    files = given_files(files_dir)
     plugin_sources = [Path(path).resolve() for path in args.plugin_dir or []]
     plugins = [describe_plugin(source) for source in plugin_sources]
+    try:
+        # Found in the middle of a run, a name that collides cost the sessions before it.
+        for task_id in selected:
+            staged_names(tasks[task_id], files)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    inherited = instructions_above(Path(ATTEMPT_ROOT_PARENT).resolve() / "run")
+    if inherited:
+        raise SystemExit(
+            f"{inherited[0]} would be loaded into every session: Claude Code reads it from each folder "
+            "above an attempt's working folder. Move it away and run again."
+        )
+    # What the run keeps and no attempt's shell may read, wherever it lives.
+    private_paths = sorted({
+        path.resolve() for path in (bench.REPO_ROOT, bench.TASKS_DIR, *plugin_sources,
+                                    *filter(None, (mcp_config, files_dir)))
+    })
+    secret_values = mcp_secrets(mcp_config) if mcp_config else []
 
-    # Every attempt's folders. Removed however the run ends, an abort at the
-    # prompt included.
+    def redact(text: str) -> str:
+        text = text.replace(api_key, "<api-key>")
+        for value in secret_values:
+            text = text.replace(value, "<mcp-secret>")
+        return text
+
+    sessions = Sessions()
+    stopped: BaseException | None = None
+    # Every attempt's folders. Removed however the run ends: an abort at the
+    # prompt, Ctrl-C, a `kill` or a closed terminal.
     run_root = make_run_root()
     try:
         installed_skills = {skill for plugin in plugins for skill in plugin["skills"]}
@@ -629,16 +842,21 @@ def cmd_run(args: argparse.Namespace) -> int:
                 cli, model=model, effort=effort, attempt_root=attempt_root, home_dir=home_dir,
                 tmp_dir=tmp_dir, operator_home=operator_home, plugin_dirs=plugin_dirs,
                 mcp_config=mcp_config, mcp_servers=mcp_servers, max_budget_usd=args.max_budget_usd,
+                private_paths=private_paths,
             )
             started = time.monotonic()
             returncode, stdout, stderr = _run_cli(
-                command, cwd=workspace, prompt=prompts[task_id], timeout=args.timeout_seconds,
+                sessions, command, cwd=workspace, prompt=prompts[task_id], timeout=args.timeout_seconds,
                 env=child_environment(api_key, config_dir=config_dir, home_dir=home_dir, tmp_dir=tmp_dir),
             )
             latency = round(time.monotonic() - started, 2)
-            (run_dir / "transcripts" / f"{stem}.jsonl").write_text(stdout.replace(api_key, "<api-key>"))
+            # Redacted once, before anything reads it: the reply file is built
+            # from this stream too, and a cut through a credential (stderr,
+            # below) would leave its first characters behind.
+            stdout = redact(stdout)
+            (run_dir / "transcripts" / f"{stem}.jsonl").write_text(stdout)
             summary = parse_stream(stdout.splitlines())
-            fields = attempt_fields(summary, model)
+            fields = attempt_fields(summary, model, mcp_servers)
             fields["latency_seconds"] = latency
             if summary["tool_calls"].get("Bash") and not sandbox_used_own_temp(tmp_dir):
                 fields["error"] = (
@@ -649,12 +867,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             shutil.rmtree(artifacts, ignore_errors=True)
             fields["files_written"] = keep_written_files(workspace, staged, artifacts)
             shutil.rmtree(attempt_root, ignore_errors=True)
-            # Redacted before any caller cuts it short: a cut through the key
-            # would leave its first characters unredacted.
-            return summary, fields, returncode, stderr.replace(api_key, "<api-key>").strip()
+            return summary, fields, returncode, redact(stderr).strip()
 
         def one(job: tuple[str, int]) -> tuple[dict, dict | None]:
-            """One attempt's record, and the inventory its session reported."""
+            """One attempt's record, and the inventory its session reported.
+
+            Whatever happens to it is that attempt's record, never the end of
+            the run: the other attempts were paid for too."""
             task_id, rep = job
             job_index = job_indexes[job]
             stem = f"{task_id}--{model_id}--r{rep}"
@@ -665,36 +884,74 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "task_id": task_id,
                 "model_id": model_id,
                 "repetition": rep,
-                "skills_included": bool(plugins),
+                # Skill text in the prompt, which no arm here has: a plugin is
+                # installed (`agent.plugins`), and the model opens what it chooses.
+                "skills_included": False,
                 "tools_enabled": True,
                 "prompt_sha256": hashlib.sha256(prompts[task_id].encode()).hexdigest(),
             }
-            # Only a session that ended without a result event runs again, once.
-            # One that finished is recorded as it ended, error or not.
-            summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 1)
-            if summary["result"] is None:
-                print(f"  retry {task_id} r{rep}: no result (exit {returncode}): {stderr[:200]}")
-                summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 2)
-                fields["retried"] = True
-            if summary["result"] is None:
-                fields["error"] = f"Claude Code ended without a result event (exit {returncode}): {stderr[:300]}"
-            record.update(fields)
-            if "error" not in record:
-                response_name = f"{stem}.md"
-                (run_dir / "responses" / response_name).write_text(response_text(summary))
-                record["response_path"] = f"responses/{response_name}"
+            inventory = None
+            dispatched = False
+            try:
+                if sessions.stopped:
+                    raise Stopped  # before its folders are made and its plugins copied
+                # Only a session that ended without a result event runs again, once.
+                # One that finished is recorded as it ended, error or not.
+                summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 1)
+                dispatched = True
+                if summary["result"] is None:
+                    if sessions.stopped:
+                        raise Stopped
+                    _say(f"  retry {task_id} r{rep}: no result (exit {returncode}): {stderr[:200]}")
+                    summary, fields, returncode, stderr = run_session(task_id, job_index, stem, 2)
+                    # The first session's spend left no receipt: the cost is a lower bound.
+                    fields.update(retried=True, cost_unknown=True)
+                if summary["result"] is None:
+                    if sessions.stopped:
+                        raise Stopped
+                    fields["error"] = f"Claude Code ended without a result event (exit {returncode}): {stderr[:300]}"
+                record.update(fields)
+                inventory = summary["inventory"]
+                if "error" not in record:
+                    response_name = f"{stem}.md"
+                    (run_dir / "responses" / response_name).write_text(response_text(summary))
+                    record["response_path"] = f"responses/{response_name}"
+            except Stopped:
+                record.update(
+                    dispatched=dispatched, cost_unknown=dispatched,
+                    error="the run was stopped during this attempt" if dispatched
+                    else "not dispatched: the run was stopped",
+                )
+                return record, None
+            except Exception as exc:
+                # A session may have been paid for with its receipt lost: never
+                # recorded as free.
+                record.update(dispatched=True, cost_unknown=True, error=redact(f"{type(exc).__name__}: {exc}")[:300])
             tools = " ".join(f"{name}×{count}" for name, count in sorted(record.get("tool_calls", {}).items()))
             status = f"FAIL ({record['error']})" if "error" in record else "done"
-            print(f"  {status} {task_id} r{rep} ({record.get('latency_seconds')}s, "
-                  f"${record.get('provider_cost_usd', 0):.3f}, {record.get('llm_calls', 0)} calls"
-                  f"{', ' + tools if tools else ''}"
-                  f"{', skills: ' + ','.join(record['skill_reads']) if record.get('skill_reads') else ''})")
-            return record, summary["inventory"]
+            _say(f"  {status} {task_id} r{rep} ({record.get('latency_seconds')}s, "
+                 f"${record.get('provider_cost_usd', 0):.3f}, {record.get('llm_calls', 0)} calls"
+                 f"{', ' + tools if tools else ''}"
+                 f"{', skills: ' + ','.join(record['skill_reads']) if record.get('skill_reads') else ''})")
+            return record, inventory
 
         print(f"Run {run_id} -> {run_dir}")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as pool:
-            results = list(pool.map(one, jobs))
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel)
+        with stopping_on_signals():
+            futures = [pool.submit(one, job) for job in jobs]
+            try:
+                for future in futures:
+                    future.result()
+            except (KeyboardInterrupt, SystemExit) as exc:
+                stopped = exc
+                sessions.stop()
+                _say("Stopping: the sessions in flight are ended; recording what finished.")
+            finally:
+                pool.shutdown(wait=True)
+            results = [future.result() for future in futures]
     finally:
+        # Nothing is left running in them: a stop has ended every session.
+        sessions.stop()
         shutil.rmtree(run_root, ignore_errors=True)
 
     records = [record for record, _ in results]
@@ -746,7 +1003,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             for task_id in selected
         },
         "repetitions": args.repetitions,
-        "skills_included": bool(plugins),
+        # As in each attempt: skill text in the prompt, which no arm here has.
+        "skills_included": False,
         "tools_enabled": True,
         "max_output_tokens": None,
         "temperature": "omitted (provider default)",
@@ -755,8 +1013,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     bench._write_jsonl(run_dir / "attempts.jsonl", records)
     errors = sum(1 for record in records if "error" in record)
     cost = sum(record.get("provider_cost_usd") or 0.0 for record in records)
-    print(f"Completed {len(records) - errors}/{len(records)} attempts ({errors} errors), ${cost:.2f}. "
-          f"Next: python3 -m eval_runner.bench grade --run {run_dir}")
+    _say(f"Completed {len(records) - errors}/{len(records)} attempts ({errors} errors), ${cost:.2f}. "
+         f"Next: python3 -m eval_runner.bench grade --run {run_dir}")
+    if isinstance(stopped, SystemExit):
+        raise stopped
+    if stopped is not None:
+        return 130  # Ctrl-C
     return 0 if errors == 0 else 1
 
 

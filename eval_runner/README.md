@@ -308,9 +308,12 @@ What every attempt gets:
 - **Claude Code's shell sandbox, on.** Every shell command runs without
   asking, may write only inside the attempt's folders, may reach the package
   registries and nothing else, cannot read your home folder, the shared temp
-  folders or another attempt, and has no API key in its environment. Web
-  search and web fetch stay on. A file-tool call outside the attempt's folders is
-  refused; refusals are counted per attempt (`guardrail_kinds`).
+  folders or another attempt, and has no API key in its environment. Nor can
+  it read what the run keeps, wherever that lives: this checkout and its
+  tasks (which hold the expected answers), an MCP config, the given files'
+  folder and the plugins' sources. Web search and web fetch stay on. A
+  file-tool call outside the attempt's folders is refused; refusals are
+  counted per attempt (`guardrail_kinds`).
 - **The same preamble as the Magister agent harness:** draft only, treat the
   sources as current, deliver the answer in the reply.
 
@@ -319,6 +322,32 @@ opened (`skill_reads`), tokens, the cost Claude Code reports, the raw event
 stream (`transcripts/`) and any files the agent wrote (`artifacts/`, never
 graded). The reply that is graded is everything the agent said to the person,
 in order, as the Magister harness records its agent's reply.
+
+What a run refuses or records instead of guessing:
+
+- **Stopping it stops its sessions.** Ctrl-C, `kill` or a closed terminal
+  ends every session in flight (each leads its own process group, so nothing
+  else would), removes the attempts' folders, and still writes `run.json` and
+  `attempts.jsonl`: finished attempts as they ended, the rest as errors
+  (`the run was stopped during this attempt`, `not dispatched: the run was
+  stopped`).
+- **One attempt's failure is its own.** An exception in one job is that
+  attempt's `error`; the other attempts are recorded as usual.
+- **An MCP arm needs its server.** An attempt whose `--mcp-config` server did
+  not report `connected` when the session started is an error, not an answer:
+  an expired or refused token would otherwise be graded as the arm that has
+  the server. Credentials in the config are taken out of everything the run
+  keeps, as the API key is.
+- **The model is the one asked for:** the requested id, or that id with a
+  release date, and nothing that merely starts with it.
+- **A retried attempt's cost is a lower bound** (`cost_unknown`): the first
+  session left no receipt.
+- **Before the first session:** a given file that would take a supplied
+  source's place (whatever its case) and a `CLAUDE.md` or `.claude` in a
+  folder above the attempts (Claude Code would load it into every session)
+  both stop the run.
+- **`skills_included` is false on every arm.** It means skill text pasted
+  into the prompt; a plugin is installed, and `agent.plugins` records it.
 
 It needs the `claude` CLI on the PATH and an `ANTHROPIC_API_KEY`; sessions
 are billed to that key, about one to three cents a task on Haiku 5.5. Tasks

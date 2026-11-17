@@ -89,7 +89,8 @@ def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
         "judge": grading.get("judge_model") or grading.get("judge"),
         "composite": (
             stats["composite_score"] if whole
-            else round(statistics.mean(stats["task_scores"][task] for task in tasks), 1)
+            # The grader's own arithmetic, so a recomputed score is the one it would print.
+            else round(sum(stats["task_scores"][task] for task in tasks) / len(tasks), 1)
         ),
         "tasks_passed": sum(1 for task in tasks if runs_passed[task] == report["repetitions"]),
         "tasks_total": len(tasks),
