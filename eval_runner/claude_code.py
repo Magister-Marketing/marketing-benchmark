@@ -129,14 +129,11 @@ SECRET_WORDS = frozenset({"pin", "pass", "passphrase", "sig", "signature"})
 ORDINARY_WORDS = re.compile(
     r"monkey|donkey|turkey|hotkey|hockey|jockey|whiskey|author(s|ed|ing|ship|ity|ities|itative)?"
 )
-# A name that ends in one of these describes a credential, it does not hold
-# one: COOKIE_DOMAIN, AUTH_MODE, TOKEN_ENDPOINT, KEY_FILE.
-DESCRIBES = frozenset({
-    "domain", "name", "mode", "type", "path", "file", "dir", "url", "uri", "endpoint", "host", "port",
-    "enabled", "disabled", "required", "prefix", "suffix", "algorithm", "alg", "ttl", "expiry", "expires",
-    "format", "length", "version", "scope", "scopes", "method", "strategy", "provider", "issuer",
-    "audience", "realm", "region", "timeout", "count", "size",
-})
+# A name that ends in one of these says where a credential lives, and its
+# value is that place, never the credential: COOKIE_DOMAIN, TOKEN_ENDPOINT,
+# KEY_FILE. Only places are listed: a name such as DB_PASSWORD_NAME could
+# still hold one.
+DESCRIBES = frozenset({"domain", "endpoint", "url", "uri", "host", "port", "file", "path", "dir"})
 # Nothing shorter is ever taken out of a run: a credential that short is not
 # one, and `true` or `1234` replaced everywhere would wreck the event stream.
 SECRET_MIN_CHARS = 8
@@ -411,8 +408,10 @@ def mcp_secrets(config_path: Path) -> list[str]:
                 if joined:
                     keep_named(name, value.strip())
             if arg.startswith("-"):
-                # `--token x`; another option after it is not its value (`--no-auth --verbose`).
-                if "=" not in arg and names_a_credential(arg) and not following.startswith("-"):
+                # `--token x`. Another option after it is not its value (`--no-auth
+                # --verbose`, `--no-auth -v`); a value may itself begin with a dash.
+                another_option = following.startswith("--") or re.fullmatch(r"-[A-Za-z]", following)
+                if "=" not in arg and names_a_credential(arg) and not another_option:
                     keep(following, named=True)
             elif "=" not in arg and ":" not in arg:
                 keep(arg)  # a token on its own
@@ -760,13 +759,18 @@ def remove_tree(folder: Path) -> None:
     """Remove a folder even where the agent took its own permissions away
     (`chmod 000 out`), which would otherwise leave it, and the sources beside
     it, in /tmp."""
+    no_follow = os.chmod in os.supports_follow_symlinks
     for parent, names, _ in os.walk(folder):
         for name in names:
             path = os.path.join(parent, name)
             # Before the walk goes into it. Never through a link: what it
             # points to lies outside the attempt and is not ours to change.
-            if not os.path.islink(path):
-                with contextlib.suppress(OSError):
+            # Where the system can change a link's own permissions it is
+            # asked to, which leaves no moment between looking and changing.
+            with contextlib.suppress(OSError):
+                if no_follow:
+                    os.chmod(path, 0o700, follow_symlinks=False)
+                elif not os.path.islink(path):
                     os.chmod(path, 0o700)
     shutil.rmtree(folder, ignore_errors=True)
 

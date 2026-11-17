@@ -333,7 +333,9 @@ What a run refuses or records instead of guessing:
   `attempts.jsonl`: finished attempts as they ended, the rest as errors
   (`the run was stopped during this attempt`, `not dispatched: the run was
   stopped`). A run started with `nohup` keeps running when its terminal
-  closes, and once a run is stopping nothing interrupts the record of it.
+  closes, and once a run is stopping nothing interrupts the record of it. A
+  session that ends by itself leaves nothing running: in headless mode
+  Claude Code waits for a command it put in the background (measured).
 - **One attempt's failure is its own.** An exception in one job is that
   attempt's `error`; the other attempts are recorded as usual.
 - **An MCP arm needs its server.** An attempt whose `--mcp-config` server did

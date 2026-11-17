@@ -795,6 +795,8 @@ def test_mcp_secrets_are_credentials_not_ordinary_values(tmp_path):
     # Written as one word.
     "ACCESSTOKEN", "DBPASSWORD", "AUTHHEADER", "APIKEY", "ACCESSKEY", "clientsecret", "SESSIONCOOKIE",
     "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID",
+    # Only a place (a domain, an address, a file) rules a name out: these could still hold one.
+    "DB_PASSWORD_NAME", "CLIENT_SECRET_VERSION", "AUTH_MODE", "--auth-type",
 ])
 def test_names_that_say_their_value_is_a_credential(name):
     assert claude_code.names_a_credential(name)
@@ -802,8 +804,8 @@ def test_names_that_say_their_value_is_a_credential(name):
 
 @pytest.mark.parametrize("name", ["AUTHOR", "AUTHORITY", "MONKEY", "SPIN", "COMPASS", "KEYBOARD", "PASSENGER",
                                   "LOG_LEVEL", "NODE_ENV", "region", "Accept",
-                                  # A name that describes a credential does not hold one.
-                                  "COOKIE_DOMAIN", "AUTH_MODE", "TOKEN_ENDPOINT", "KEY_FILE", "--auth-type"])
+                                  # A name that says where a credential lives does not hold one.
+                                  "COOKIE_DOMAIN", "TOKEN_ENDPOINT", "KEY_FILE", "SECRET_PATH", "AUTH_HOST"])
 def test_names_that_only_look_like_one(name):
     assert not claude_code.names_a_credential(name)
 
@@ -823,6 +825,11 @@ def test_a_plain_word_is_left_alone_and_a_passphrase_is_not(tmp_path):
     config.write_text(json.dumps({"mcpServers": {"db": {"command": "server", "args": ["--no-auth", "--verbose"],
                                                         "env": {"COOKIE_DOMAIN": ".example-site.com"}}}}))
     assert claude_code.mcp_secrets(config) == []
+
+    # A value may begin with a dash; only another option (`--x`, `-v`) is not one.
+    config.write_text(json.dumps({"mcpServers": {"db": {"command": "server", "args": [
+        "--token", "-AbC123xyz9", "--no-auth", "-v", "--api-key", "--verbose"]}}}))
+    assert claude_code.mcp_secrets(config) == ["-AbC123xyz9"]
 
 
 def test_redaction_reaches_a_credential_escaped_inside_json():
