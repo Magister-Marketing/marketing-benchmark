@@ -37,9 +37,14 @@
   requested id or its dated name only (`claude-opus-5-5` passed as
   `claude-opus-5`). The shell is denied what the run keeps outside the home
   folder (the checkout, the tasks, an MCP config, given files), and MCP
-  credentials are redacted like the API key, in the reply file too. A given
-  file that would replace a supplied source, in any case, and a `CLAUDE.md`
-  above the attempts' folders stop the run before the first session. A
+  credentials are redacted like the API key, in the reply file too. Sessions
+  load their own (empty) user settings only (`--setting-sources user`): a
+  `CLAUDE.md` in a folder above an attempt was loaded and obeyed, and the
+  attempts sit under a temp folder anyone on the machine can write to; the
+  plugins, skills, tools and sandbox a session reports are the same either
+  way. A given file that would replace a supplied source, in any case, stops
+  the run before the first session. A run started with `nohup` survives its
+  terminal closing. A
   retried attempt's cost is marked a lower bound. Plugin arms record
   `skills_included: false` (the report printed "Skills in prompt: yes" for
   an installed plugin). `compare-arms.py` averages as the grader does.

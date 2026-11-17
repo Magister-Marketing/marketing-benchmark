@@ -133,6 +133,9 @@ What this shows:
 - The Magister arm ran on a test stack at `7f6aa08`. Another evaluation used
   the same fixture between these runs; a lease keeps runs on a fixture from
   overlapping, and the stack's code did not change.
+- Claude Code was 2.1.325 for the three closed-book arms and 2.1.326 for the
+  three connected-data arms (it updated between the two experiments); every
+  arm within an experiment ran the same version.
 - `scripts/compare-arms.py` produced the tables and the paired test.
 - An independent review of the runner afterwards read all 535 saved Claude
   Code sessions. Nothing it found changes a figure here: no attempt was

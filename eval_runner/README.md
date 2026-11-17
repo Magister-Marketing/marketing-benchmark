@@ -330,22 +330,31 @@ What a run refuses or records instead of guessing:
   else would), removes the attempts' folders, and still writes `run.json` and
   `attempts.jsonl`: finished attempts as they ended, the rest as errors
   (`the run was stopped during this attempt`, `not dispatched: the run was
-  stopped`).
+  stopped`). A run started with `nohup` keeps running when its terminal
+  closes, and once a run is stopping nothing interrupts the record of it.
 - **One attempt's failure is its own.** An exception in one job is that
   attempt's `error`; the other attempts are recorded as usual.
 - **An MCP arm needs its server.** An attempt whose `--mcp-config` server did
   not report `connected` when the session started is an error, not an answer:
   an expired or refused token would otherwise be graded as the arm that has
-  the server. Credentials in the config are taken out of everything the run
-  keeps, as the API key is.
+  the server. The config's credentials are taken out of everything the run
+  keeps, as the API key is: a value whose name says it is one
+  (`Authorization`, `GITHUB_TOKEN`, `--api-key`, `?token=`) or that is shaped
+  like a token, in a server's headers, environment, address and arguments.
+  Ordinary values stay, so a reply reaches the judge as written; nothing
+  under eight characters is touched.
 - **The model is the one asked for:** the requested id, or that id with a
   release date, and nothing that merely starts with it.
 - **A retried attempt's cost is a lower bound** (`cost_unknown`): the first
   session left no receipt.
+- **No instructions from the folders above an attempt.** Claude Code loads
+  `CLAUDE.md` and `.claude` from every folder above the working folder, and
+  the attempts sit under a temp folder anyone on the machine can write to.
+  Sessions run with `--setting-sources user` (the attempt's own, empty), so
+  such a file is not read; one that is there when the run starts also stops
+  it, so you hear about it.
 - **Before the first session:** a given file that would take a supplied
-  source's place (whatever its case) and a `CLAUDE.md` or `.claude` in a
-  folder above the attempts (Claude Code would load it into every session)
-  both stop the run.
+  source's place, or another given file's, whatever its case, stops the run.
 - **`skills_included` is false on every arm.** It means skill text pasted
   into the prompt; a plugin is installed, and `agent.plugins` records it.
 

@@ -559,6 +559,55 @@ def test_a_session_that_has_just_exited_does_not_break_the_stop():
         claude_code.os.killpg = original
 
 
+def test_an_ignored_hangup_stays_ignored_and_only_the_first_signal_stops_the_run():
+    """`nohup … &` is how a long run is started: taking the hangup over would
+    end it when the terminal closed. And a second signal (`kill` twice, the two
+    hangups a closing terminal can send) must not land in the middle of
+    recording what the first one stopped."""
+    before = signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    try:
+        with claude_code.stopping_on_signals():
+            assert signal.getsignal(signal.SIGHUP) is signal.SIG_IGN
+            with pytest.raises(SystemExit) as stopped:
+                os.kill(os.getpid(), signal.SIGTERM)
+                time.sleep(1)  # the handler raises here
+            assert stopped.value.code == 128 + signal.SIGTERM
+            os.kill(os.getpid(), signal.SIGTERM)  # ignored: the run is already stopping
+            time.sleep(0.1)
+        assert signal.getsignal(signal.SIGHUP) is signal.SIG_IGN
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+    finally:
+        signal.signal(signal.SIGHUP, before)
+
+
+def test_once_a_run_is_stopping_nothing_interrupts_the_record_of_it():
+    """A bridge above the run passes the stop on as SIGTERM while Ctrl-C is
+    already being handled, and people press Ctrl-C twice. Either used to be
+    able to land between ending the sessions and writing what they did."""
+    interrupt = signal.getsignal(signal.SIGINT)
+    with claude_code.stopping_on_signals() as hold:
+        hold()
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            os.kill(os.getpid(), signum)
+        time.sleep(0.1)  # nothing is raised
+    assert signal.getsignal(signal.SIGINT) is interrupt
+    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL and signal.getsignal(signal.SIGHUP) is signal.SIG_DFL
+
+
+def test_a_session_loads_no_instructions_from_the_folders_above_it(tmp_path):
+    """Checked once at the start, a CLAUDE.md could still appear in the shared
+    temp folder afterwards: anyone on the machine can write there. Measured
+    2026-11-16: one in the run's own folder was obeyed with the default
+    sources and not loaded with `user`, with the same plugins, skills, tools
+    and sandbox either way."""
+    command = claude_code.build_command(
+        "claude", model="claude-haiku-5-5", effort=None, attempt_root=tmp_path, home_dir=tmp_path / "home",
+        tmp_dir=tmp_path / "tmp", operator_home=Path("/Users/someone"), plugin_dirs=[], mcp_config=None,
+        mcp_servers=[], max_budget_usd=1.0,
+    )
+    assert command[command.index("--setting-sources") + 1] == "user"
+
+
 def test_two_given_files_that_differ_only_in_case_are_refused(tmp_path):
     """One would overwrite the other in the working folder while the prompt named both."""
     for folder, name in (("a", "Brief.md"), ("b", "brief.md")):
@@ -653,18 +702,59 @@ def test_the_shell_is_denied_what_the_run_keeps_outside_the_home(tmp_path):
     ]
 
 
-def test_mcp_secrets_are_the_credential_values_only(tmp_path):
+def test_mcp_secrets_are_credentials_not_ordinary_values(tmp_path):
+    """Two kinds of value are a config's credentials: one under a name that says
+    so, and one shaped like a token, wherever it sits, including inside an
+    address or a block of headers given as one value. Nothing under eight
+    characters and no plain word: a reply that says "production" or "password"
+    must reach the judge as written, and `true` taken out of the event stream
+    would leave lines that no longer parse."""
     config = tmp_path / "mcp.json"
     config.write_text(json.dumps({"mcpServers": {
         "magister": {"type": "http", "url": "https://example.test/mcp",
                      "headers": {"Authorization": "Bearer tok-0123456789", "Accept": "application/json"}},
-        "local": {"command": "server", "env": {"SERVICE_API_KEY": "key-abcdefgh", "LOG_LEVEL": "debug-verbose"},
-                  "args": ["--port", "8123456789", "--token", "arg-token-1", "--api-key=arg-key-22", "--verbose"]},
-        "remote": {"type": "http", "url": "https://example.test/mcp?api_key=url-key-333&region=us-east-1-long"},
+        "local": {"command": "docker",
+                  "env": {"SERVICE_API_KEY": "key-abcdefgh", "LOG_LEVEL": "debug", "PIN_CODE": "4321",
+                          "AUTH_REQUIRED": "true", "AUTH_MODE": "production", "NODE_ENV": "production",
+                          "AUTHOR": "Jane Smith-Jones", "MONKEY": "banana-bread",
+                          "SESSION": "s3ssion0123456789abcdefgh",
+                          "DATABASE_URL": "postgresql://app:Sup3rS3cretPw@db.example.com/app",
+                          "DEV_DATABASE_URL": "postgresql://postgres:password@localhost:5432/db",
+                          "OPENAPI_MCP_HEADERS": json.dumps({"Authorization": "Bearer ntn_0123456789abcdef",
+                                                             "Notion-Version": "2022-06-28"})},
+                  "args": ["--port", "8123456789", "--token", "arg-token-1", "--api-key=arg-key-22", "--verbose",
+                           "-e", "GITHUB_TOKEN=ghp_abcdefgh1234", "--header", "Authorization: Bearer hdr-token-555",
+                           "-e", "REPLICA_URL=postgres://reader:An0therS3cret@replica.example.com/app"]},
+        "remote": {"type": "http", "headers": {"X-Tenant": "tenant-7f3a9c", "apiKey": "camel-key-77"},
+                   "url": "https://deploy:pw-secret-9@example.test/mcp/v1/abcdefghijklmnopqrstuvwxyz012345"
+                          "?api_key=url%2Bkey%2F333&region=us-east-1"},
+        "token-as-user": {"type": "http", "url": "https://ghp_tokenAsUser99@h.example/mcp"},
+        "proxied": {"command": "npx",
+                    "args": ["mcp-remote", "https://h.example/token-service/mcp?token=abcd1234efgh&env=production"]},
     }}))
-    assert claude_code.mcp_secrets(config) == [
-        "Bearer tok-0123456789", "tok-0123456789", "key-abcdefgh", "arg-token-1", "url-key-333", "arg-key-22",
-    ]
+    found = claude_code.mcp_secrets(config)
+    assert set(found) == {
+        # Under a credential's name, in a header, the environment or an option; and the token inside `Bearer`.
+        "Bearer tok-0123456789", "tok-0123456789", "key-abcdefgh", "camel-key-77",
+        "arg-token-1", "arg-key-22", "ghp_abcdefgh1234", "Bearer hdr-token-555", "hdr-token-555",
+        # Shaped like a token, under a name that says nothing.
+        "s3ssion0123456789abcdefgh",
+        # Inside a longer value: an address in the environment or after NAME=, and headers given as JSON.
+        "Sup3rS3cretPw", "An0therS3cret", "Bearer ntn_0123456789abcdef", "ntn_0123456789abcdef",
+        # In an address, the server's own or one passed as an argument: the password (or a token given
+        # as the user when there is none), a named parameter as written and decoded, and a path segment
+        # shaped like a token.
+        "pw-secret-9", "ghp_tokenAsUser99", "url%2Bkey%2F333", "url+key/333",
+        "abcdefghijklmnopqrstuvwxyz012345", "abcd1234efgh",
+    }
+    assert found == sorted(found, key=lambda value: (-len(value), value))
+
+
+def test_redaction_reaches_a_credential_escaped_inside_json():
+    redact = claude_code.redactor("sk-test-0123456789", ['p"q\\r-secret-value'])
+    # In the event stream a credential is inside a JSON string, quotes and backslashes escaped.
+    stream = json.dumps({"text": 'the header was p"q\\r-secret-value, key sk-test-0123456789', "is_error": True})
+    assert redact(stream) == json.dumps({"text": "the header was <mcp-secret>, key <api-key>", "is_error": True})
 
 
 def test_a_reply_that_carries_a_credential_is_redacted_everywhere(tmp_path, monkeypatch):

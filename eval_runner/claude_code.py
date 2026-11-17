@@ -23,7 +23,8 @@ What every attempt gets, so runs can be compared and repeated:
 
 - its own empty working folder, configuration folder, home folder and temp
   folder, and its own copy of any plugin. Nothing of the operator's is loaded:
-  no CLAUDE.md, memory, settings, plugins, hooks or MCP servers. The first
+  no CLAUDE.md, memory, settings, plugins, hooks or MCP servers, and nothing
+  from the folders above the attempt (``--setting-sources user``). The first
   event of every session lists what was loaded, and the run keeps it
   (``agent_inventory`` in run.json).
 - the task's supplied sources saved as files in the working folder, as well
@@ -74,6 +75,7 @@ import threading
 import time
 import urllib.parse
 import uuid
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/claude_code.py`
@@ -117,8 +119,19 @@ KEPT_FILE_BYTES = 256 * 1024
 # folder. The attempts all sit under one shared temp folder, so one of these
 # there would reach every session of every run.
 INHERITED_INSTRUCTIONS = ("CLAUDE.md", "CLAUDE.local.md", ".claude")
-# Header and environment names in an MCP config whose values are credentials.
-SECRET_NAME = re.compile(r"auth|key|token|secret|cookie|password", re.IGNORECASE)
+# Words in a name (a header, an environment variable, an address parameter, a
+# command-line option) that say its value is a credential. Whole words: AUTHOR
+# and MONKEY are not `auth` and `key`.
+SECRET_WORDS = frozenset({
+    "auth", "authorization", "key", "apikey", "token", "secret", "cookie", "password", "passwd", "pwd",
+    "pin", "credential", "credentials", "bearer",
+})
+# Nothing shorter is ever taken out of a run: a credential that short is not
+# one, and `true` or `1234` replaced everywhere would wreck the event stream.
+SECRET_MIN_CHARS = 8
+# A string this long with letters and digits and no spaces is shaped like a
+# token, whatever it is called.
+TOKEN_SHAPED = re.compile(r"(?=\S*[A-Za-z])(?=\S*\d)[A-Za-z0-9_\-.~+/=%]{20,}")
 
 PREAMBLE_TEMPLATE = """\
 This is an internal, synthetic, draft-only evaluation on fixture data.
@@ -293,32 +306,106 @@ def mcp_server_names(config_path: Path) -> list[str]:
     return sorted(servers)
 
 
+def names_a_credential(name: str) -> bool:
+    """Whether one of a name's words is a credential word: `GITHUB_TOKEN`,
+    `apiKey` and `--api-key` all split to one."""
+    words = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+", name)
+    return any(word.lower() in SECRET_WORDS for word in words)
+
+
 def mcp_secrets(config_path: Path) -> list[str]:
-    """The credentials a config holds, longest first: each header, environment
-    value, address parameter or command-line option whose name says it is one,
-    and the token inside a `Bearer` value. They are taken out of everything a
-    run keeps, as the API key is."""
+    """The credentials a config holds, longest first, to be taken out of
+    everything a run keeps as the API key is.
+
+    A value is one when its name says so (`Authorization`, `GITHUB_TOKEN`,
+    `--api-key`, `?token=`) or when it is shaped like a token. Looked for in
+    each server's headers and environment, in its address, and in its
+    arguments (`--token x`, `--token=x`, `NAME=x`, `Name: x`, a token on its
+    own), and inside those values: an address (`DATABASE_URL`) gives up its
+    password and parameters, and headers given as one JSON value are read
+    one by one. Ordinary values stay, a plain lowercase word even under a
+    credential's name: taking "production" or "password" out of every reply
+    would change what the judge reads."""
     found: set[str] = set()
 
-    def keep(name: object, value: object) -> None:
-        if isinstance(name, str) and isinstance(value, str) and SECRET_NAME.search(name):
-            found.update(part for part in (value, value.split(" ", 1)[-1]) if len(part) >= 8)
+    def keep(value: object, named: bool = False) -> None:
+        if not isinstance(value, str):
+            return
+        for part in (value, value.split(" ", 1)[-1]):  # `Bearer <token>`
+            if len(part) < SECRET_MIN_CHARS:
+                continue
+            plain_word = part.isalpha() and part.islower()
+            if TOKEN_SHAPED.fullmatch(part) or (named and not plain_word):
+                found.add(part)
+
+    def keep_address(text: str) -> bool:
+        """Whether `text` is an address; if so, what it carries is kept."""
+        address = urllib.parse.urlsplit(text)
+        if not (address.scheme and address.netloc):
+            return False
+        keep(address.password, named=True)
+        if address.password is None:
+            keep(address.username, named=True)  # a token given as the user: https://<token>@host
+        for part in address.path.split("/"):
+            keep(part)
+        for pair in address.query.split("&"):
+            name, _, written = pair.partition("=")
+            # As written and as decoded: a transcript may carry either.
+            for value in (written, urllib.parse.unquote_plus(written)):
+                keep(value, named=names_a_credential(name))
+        return True
+
+    def keep_named(name: str, value: object) -> None:
+        """A value with a name: an address, a JSON object of named values
+        (`OPENAPI_MCP_HEADERS`), or the value itself."""
+        if not isinstance(value, str) or keep_address(value):
+            return
+        if value.lstrip().startswith("{"):
+            with contextlib.suppress(ValueError):
+                inner = json.loads(value)
+                if isinstance(inner, dict):
+                    for key, item in inner.items():
+                        keep_named(str(key), item)
+                    return
+        keep(value, named=names_a_credential(name))
 
     for server in (json.loads(config_path.read_text()).get("mcpServers") or {}).values():
         if not isinstance(server, dict):
             continue
         for group in ("headers", "env"):
             for name, value in (server.get(group) or {}).items():
-                keep(name, value)
-        # `?api_key=…` in the address, and `--token …` or `--token=…` on a command line.
-        for name, value in urllib.parse.parse_qsl(urllib.parse.urlsplit(str(server.get("url") or "")).query):
-            keep(name, value)
+                keep_named(str(name), value)
+        keep_address(str(server.get("url") or ""))
         args = [arg for arg in server.get("args") or [] if isinstance(arg, str)]
         for arg, following in zip(args, [*args[1:], ""]):
-            name, joined, value = arg.partition("=")
-            if name.startswith("-"):
-                keep(name, value if joined else following)
+            if keep_address(arg):
+                continue
+            for separator in ("=", ":"):  # `--token=x`, `NAME=x`, `Name: x`
+                name, joined, value = arg.partition(separator)
+                if joined:
+                    keep_named(name, value.strip())
+            if arg.startswith("-"):
+                if "=" not in arg and names_a_credential(arg):
+                    keep(following, named=True)  # `--token x`
+            elif "=" not in arg and ":" not in arg:
+                keep(arg)  # a token on its own
     return sorted(found, key=lambda value: (-len(value), value))
+
+
+def redactor(api_key: str, mcp_values: Iterable[str] = ()) -> Callable[[str], str]:
+    """A function that takes the API key and an MCP config's credentials out of
+    a text. Each is matched as written and as it appears inside a JSON string
+    (the event stream is JSON: a quote or backslash in it is escaped there)."""
+    forms = sorted({form for value in mcp_values for form in (value, json.dumps(value)[1:-1])},
+                   key=len, reverse=True)
+
+    def redact(text: str) -> str:
+        text = text.replace(api_key, "<api-key>")
+        for form in forms:
+            text = text.replace(form, "<mcp-secret>")
+        return text
+
+    return redact
 
 
 # ------------------------------------------------------- command, environment
@@ -387,6 +474,11 @@ def build_command(
         "--output-format", "stream-json", "--verbose",
         "--no-session-persistence",
         "--strict-mcp-config",
+        # The attempt's own (empty) user settings and nothing found on disk:
+        # Claude Code otherwise loads CLAUDE.md and .claude from every folder
+        # above the working folder, and the attempts sit under a temp folder
+        # anyone on the machine can write to.
+        "--setting-sources", "user",
         "--permission-mode", "acceptEdits",
         "--permission-prompts", "none",
         "--settings", json.dumps(
@@ -670,12 +762,25 @@ def stopping_on_signals():
     """SIGTERM and SIGHUP (a `kill`, a closed terminal) end Python where it
     stands: no `finally`, so the sessions kept running and the attempts'
     folders, sources included, stayed in /tmp. Here they stop the run the way
-    Ctrl-C does."""
+    Ctrl-C does.
+
+    A signal the run was started ignoring stays ignored (`nohup … &` is how a
+    long run outlives its terminal). Yields `hold`, to call once the run is
+    stopping: from then on SIGTERM, SIGHUP and Ctrl-C are ignored, so a second
+    one (a second `kill`, an impatient Ctrl-C, a bridge above passing the stop
+    on) cannot land between ending the sessions and recording what they did."""
     if threading.current_thread() is not threading.main_thread():
-        yield  # only the main thread may set a signal handler
+        yield lambda: None  # only the main thread may set a signal handler
         return
+    ours = [signum for signum in (signal.SIGTERM, signal.SIGHUP) if signal.getsignal(signum) is not signal.SIG_IGN]
+    previous = {signum: signal.getsignal(signum) for signum in (*ours, signal.SIGINT)}
+
+    def hold() -> None:
+        for signum in previous:
+            signal.signal(signum, signal.SIG_IGN)
 
     def stop(signum, _frame):
+        hold()
         if signum == signal.SIGHUP:
             # The terminal is gone and every write to it now fails, the last
             # one at exit (which would turn the exit code into 120).
@@ -686,10 +791,12 @@ def stopping_on_signals():
                 os.close(nowhere)
         raise SystemExit(128 + signum)
 
-    previous = {signum: signal.signal(signum, stop) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    for signum in ours:
+        signal.signal(signum, stop)
     try:
-        yield
+        yield hold
     finally:
+        hold()  # ours can no longer run while the callers' own are put back
         for signum, handler in previous.items():
             signal.signal(signum, handler)
 
@@ -767,14 +874,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         path.resolve() for path in (bench.REPO_ROOT, bench.TASKS_DIR, *plugin_sources,
                                     *filter(None, (mcp_config, files_dir)))
     })
-    secret_values = mcp_secrets(mcp_config) if mcp_config else []
-
-    def redact(text: str) -> str:
-        text = text.replace(api_key, "<api-key>")
-        for value in secret_values:
-            text = text.replace(value, "<mcp-secret>")
-        return text
-
+    redact = redactor(api_key, mcp_secrets(mcp_config) if mcp_config else [])
     sessions = Sessions()
     stopped: BaseException | None = None
     # Every attempt's folders. Removed however the run ends: an abort at the
@@ -937,12 +1037,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         print(f"Run {run_id} -> {run_dir}")
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel)
-        with stopping_on_signals():
+        with stopping_on_signals() as hold:
             futures = [pool.submit(one, job) for job in jobs]
             try:
                 for future in futures:
                     future.result()
             except (KeyboardInterrupt, SystemExit) as exc:
+                hold()
                 stopped = exc
                 sessions.stop()
                 _say("Stopping: the sessions in flight are ended; recording what finished.")
@@ -981,6 +1082,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             "permission_mode": "acceptEdits, no approval surface; the shell is allowed outright inside the sandbox",
             "allowed_tools": allowed_tools(mcp_servers),
             "sandbox_allowed_domains": list(SANDBOX_ALLOWED_DOMAINS),
+            "setting_sources": "user (the attempt's own, empty); nothing from the folders above it",
             "plugins": plugins,
             "skills_named_in_prompt": bool(args.name_skills),
             # Only when given, so a run without --files-dir records what it always did.
