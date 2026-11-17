@@ -750,6 +750,33 @@ def test_mcp_secrets_are_credentials_not_ordinary_values(tmp_path):
     assert found == sorted(found, key=lambda value: (-len(value), value))
 
 
+@pytest.mark.parametrize("name", [
+    "Authorization", "GITHUB_TOKEN", "apiKey", "--api-key", "X-Api-Key", "PIN_CODE", "sig",
+    # Written as one word.
+    "ACCESSTOKEN", "DBPASSWORD", "AUTHHEADER", "APIKEY", "ACCESSKEY", "clientsecret", "SESSIONCOOKIE",
+])
+def test_names_that_say_their_value_is_a_credential(name):
+    assert claude_code.names_a_credential(name)
+
+
+@pytest.mark.parametrize("name", ["AUTHOR", "AUTHORITY", "MONKEY", "SPIN", "COMPASS", "KEYBOARD", "PASSENGER",
+                                  "LOG_LEVEL", "NODE_ENV", "region", "Accept"])
+def test_names_that_only_look_like_one(name):
+    assert not claude_code.names_a_credential(name)
+
+
+def test_a_plain_word_is_left_alone_and_a_passphrase_is_not(tmp_path):
+    """Under a credential's name, a short lowercase word ("password", a mode
+    called "production") stays: taken out of every reply, it would change what
+    the judge reads. A long run of lowercase letters is a passphrase."""
+    config = tmp_path / "mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"db": {"command": "server", "env": {
+        "DB_PASSWORD": "password", "AUTH_MODE": "production", "ADMIN_PASSWORD": "correcthorsebatterystaple",
+        "API_KEY": "Tr0ub4dor",
+    }}}}))
+    assert claude_code.mcp_secrets(config) == ["correcthorsebatterystaple", "Tr0ub4dor"]
+
+
 def test_redaction_reaches_a_credential_escaped_inside_json():
     redact = claude_code.redactor("sk-test-0123456789", ['p"q\\r-secret-value'])
     # In the event stream a credential is inside a JSON string, quotes and backslashes escaped.

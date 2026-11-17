@@ -341,8 +341,12 @@ What a run refuses or records instead of guessing:
   keeps, as the API key is: a value whose name says it is one
   (`Authorization`, `GITHUB_TOKEN`, `--api-key`, `?token=`) or that is shaped
   like a token, in a server's headers, environment, address and arguments.
-  Ordinary values stay, so a reply reaches the judge as written; nothing
-  under eight characters is touched.
+  Ordinary values stay, so a reply reaches the judge as written: nothing
+  under eight characters is touched, nor a short lowercase word even under a
+  credential's name ("password", a mode called "production"). This is a
+  backstop that has to guess; what protects a config is that it never enters
+  the run directory and the shell cannot read it. Do not put a real
+  credential that is a plain short word in a config you benchmark with.
 - **The model is the one asked for:** the requested id, or that id with a
   release date, and nothing that merely starts with it.
 - **A retried attempt's cost is a lower bound** (`cost_unknown`): the first

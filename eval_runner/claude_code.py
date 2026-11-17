@@ -119,16 +119,22 @@ KEPT_FILE_BYTES = 256 * 1024
 # folder. The attempts all sit under one shared temp folder, so one of these
 # there would reach every session of every run.
 INHERITED_INSTRUCTIONS = ("CLAUDE.md", "CLAUDE.local.md", ".claude")
-# Words in a name (a header, an environment variable, an address parameter, a
-# command-line option) that say its value is a credential. Whole words: AUTHOR
-# and MONKEY are not `auth` and `key`.
-SECRET_WORDS = frozenset({
-    "auth", "authorization", "key", "apikey", "token", "secret", "cookie", "password", "passwd", "pwd",
-    "pin", "credential", "credentials", "bearer",
-})
+# What in a name (a header, an environment variable, an address parameter, a
+# command-line option) says its value is a credential. A stem does wherever
+# it sits (ACCESSTOKEN, DBPASSWORD); these words only whole (SPIN and COMPASS
+# are not `pin` and `pass`); and a word that ends in `key` or begins with
+# `auth`, unless it is one of the ordinary words that do.
+SECRET_STEMS = ("token", "secret", "passw", "pwd", "credential", "cookie", "bearer")
+SECRET_WORDS = frozenset({"pin", "pass", "passphrase", "sig", "signature"})
+ORDINARY_WORDS = re.compile(
+    r"monkey|donkey|turkey|hotkey|hockey|jockey|whiskey|author(s|ed|ing|ship|ity|ities|itative)?"
+)
 # Nothing shorter is ever taken out of a run: a credential that short is not
 # one, and `true` or `1234` replaced everywhere would wreck the event stream.
 SECRET_MIN_CHARS = 8
+# Under a credential's name, a run of lowercase letters shorter than this is
+# taken for a word ("password", a mode called "production"), not a passphrase.
+PASSPHRASE_CHARS = 16
 # A string this long with letters and digits and no spaces is shaped like a
 # token, whatever it is called.
 TOKEN_SHAPED = re.compile(r"(?=\S*[A-Za-z])(?=\S*\d)[A-Za-z0-9_\-.~+/=%]{20,}")
@@ -307,10 +313,17 @@ def mcp_server_names(config_path: Path) -> list[str]:
 
 
 def names_a_credential(name: str) -> bool:
-    """Whether one of a name's words is a credential word: `GITHUB_TOKEN`,
-    `apiKey` and `--api-key` all split to one."""
-    words = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+", name)
-    return any(word.lower() in SECRET_WORDS for word in words)
+    """Whether a name says its value is a credential: `GITHUB_TOKEN`, `apiKey`,
+    `--api-key`, `DBPASSWORD` and `AUTHHEADER` do; `AUTHOR` and `MONKEY` do not."""
+    if any(stem in name.lower() for stem in SECRET_STEMS):
+        return True
+    for word in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+", name):
+        word = word.lower()
+        if word in SECRET_WORDS:
+            return True
+        if (word.endswith("key") or word.startswith("auth")) and not ORDINARY_WORDS.fullmatch(word):
+            return True
+    return False
 
 
 def mcp_secrets(config_path: Path) -> list[str]:
@@ -323,9 +336,12 @@ def mcp_secrets(config_path: Path) -> list[str]:
     arguments (`--token x`, `--token=x`, `NAME=x`, `Name: x`, a token on its
     own), and inside those values: an address (`DATABASE_URL`) gives up its
     password and parameters, and headers given as one JSON value are read
-    one by one. Ordinary values stay, a plain lowercase word even under a
-    credential's name: taking "production" or "password" out of every reply
-    would change what the judge reads."""
+    one by one. Ordinary values stay, a short plain lowercase word even under
+    a credential's name: taking "production" or "password" out of every reply
+    would change what the judge reads.
+
+    This is the last of three protections, and the only one that guesses: the
+    config never enters the run directory, and the shell cannot read it."""
     found: set[str] = set()
 
     def keep(value: object, named: bool = False) -> None:
@@ -334,7 +350,7 @@ def mcp_secrets(config_path: Path) -> list[str]:
         for part in (value, value.split(" ", 1)[-1]):  # `Bearer <token>`
             if len(part) < SECRET_MIN_CHARS:
                 continue
-            plain_word = part.isalpha() and part.islower()
+            plain_word = part.isalpha() and part.islower() and len(part) < PASSPHRASE_CHARS
             if TOKEN_SHAPED.fullmatch(part) or (named and not plain_word):
                 found.add(part)
 
