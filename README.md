@@ -107,6 +107,14 @@ Magister agent on an internal test project, so it cannot be reproduced from
 this repository alone — its prompts, answers, and verdicts are published on
 the board like every other configuration.
 
+### Agent arms
+
+`eval.py` asks a model one question. To give the same tasks to an agent with
+a shell, files and web search, run them through Claude Code
+(`python -m eval_runner.claude_code run`), with or without a skills plugin or
+MCP servers attached. Setup, what each attempt is given, and how to compare
+runs are in the [runner reference](eval_runner/README.md#the-claude-code-harness).
+
 ## Eval options
 
 | Option | Meaning |

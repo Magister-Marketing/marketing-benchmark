@@ -344,7 +344,8 @@ generates the response, so results remain comparable:
 | Harness | Generator | Status |
 |---|---|---|
 | `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
-| Coding agents | Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
+| `claude-code` | Headless Claude Code: stock tools, optionally a skills plugin and MCP servers (`eval_runner/claude_code.py`) | available |
+| Other coding agents | Codex CLI | planned; adapt from `evals/runner/adapters/` |
 | `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; the only harness that runs `decoy` tasks |
 
 Rules that keep the ladder honest:
@@ -355,6 +356,120 @@ Rules that keep the ladder honest:
 - The judge, rubric, and configured run count are identical for every harness.
 - Every run records its harness and arms (`run.json`), so any two runs can
   be compared attempt-for-attempt.
+
+## The Claude Code harness
+
+`direct-api` asks a model one question. `claude-code` gives the same task to
+the Claude Code agent as a person would use it, and writes the same run
+directory, so `grade` and `report` read it unchanged.
+
+```sh
+# the stock agent: a shell, file tools, web search
+python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high \
+    --repetitions 3 --env-file ~/keys.env --yes
+
+# with a skills plugin installed, as a user installs one; the model decides what to open
+python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high --repetitions 3 \
+    --plugin-dir ~/src/marketingskills --env-file ~/keys.env --yes
+
+# the best case for skills: installed, and the prompt names the ones the task was written against
+python -m eval_runner.claude_code run ... --plugin-dir ~/src/marketingskills --name-skills
+
+# with MCP servers attached (Claude Code's own mcpServers JSON; its contents stay out of the run)
+python -m eval_runner.claude_code run ... --mcp-config ~/magister-mcp.json
+
+# with the person's own files (exports, a brief) saved into the working folder and named in the prompt
+python -m eval_runner.claude_code run ... --files-dir ~/exports
+
+# a task set kept outside this repository (its answers are someone's real numbers)
+MARKETING_BENCH_TASKS_DIR=~/private-tasks python -m eval_runner.claude_code run ...
+
+python -m eval_runner.bench grade --run eval_runner/results/<run> --env-file ~/keys.env
+python -m eval_runner.bench report --run eval_runner/results/<run>
+python scripts/compare-arms.py --arm "Claude Code=eval_runner/results/<run>" \
+    --arm "Claude Code + skills=eval_runner/results/<run>" --arm "Magister=<run>"
+```
+
+What every attempt gets:
+
+- **Its own folders and nothing of yours.** A fresh working, configuration,
+  home and temp folder per attempt, and its own copy of any plugin; no
+  CLAUDE.md, memory, settings, plugins, hooks or MCP servers from the machine
+  it runs on. The session's own list of what it loaded is kept as
+  `agent_inventory` in `run.json`. Attempts cannot see each other: the
+  folders live under a short private path in `/tmp`, because Claude Code
+  falls back to a temp folder every session shares when the one it is given
+  has a long path, and an attempt whose shell did not use its own is recorded
+  as an error.
+- **The sources as files.** Each supplied source is inline in the prompt, as
+  for every harness, and also saved in the working folder, with one sentence
+  saying so.
+- **Claude Code's shell sandbox, on.** Every shell command runs without
+  asking, may write only inside the attempt's folders, may reach the package
+  registries and nothing else, cannot read your home folder, the shared temp
+  folders or another attempt, and has no API key in its environment. Nor can
+  it read what the run keeps, wherever that lives: this checkout and its
+  tasks (which hold the expected answers), an MCP config, the key file, the
+  given files' folder and the plugins' sources. Web search and web fetch
+  stay on. A
+  file-tool call outside the attempt's folders is refused; refusals are
+  counted per attempt (`guardrail_kinds`).
+- **The same preamble as the Magister agent harness:** draft only, treat the
+  sources as current, deliver the answer in the reply.
+
+Per attempt the run records the model calls, the tools called, the skills
+opened (`skill_reads`), tokens, the cost Claude Code reports, the raw event
+stream (`transcripts/`) and any files the agent wrote (`artifacts/`, never
+graded). The reply that is graded is everything the agent said to the person,
+in order, as the Magister harness records its agent's reply.
+
+What a run refuses or records instead of guessing:
+
+- **Stopping it stops its sessions.** Ctrl-C, `kill` or a closed terminal
+  ends every session in flight and every shell command it started (a session
+  leads its own process group and each of its commands another, so nothing
+  else would), removes the attempts' folders, and still writes `run.json` and
+  `attempts.jsonl`: finished attempts as they ended, the rest as errors
+  (`the run was stopped during this attempt`, `not dispatched: the run was
+  stopped`). A run started with `nohup` keeps running when its terminal
+  closes, and once a run is stopping nothing interrupts the record of it. A
+  session that ends by itself leaves nothing running: in headless mode
+  Claude Code waits for a command it put in the background (measured).
+- **One attempt's failure is its own.** An exception in one job is that
+  attempt's `error`; the other attempts are recorded as usual.
+- **An MCP arm needs its server.** An attempt whose `--mcp-config` server did
+  not report `connected` when the session started, and none of whose tools
+  then answered, is an error, not an answer:
+  an expired or refused token would otherwise be graded as the arm that has
+  the server. The config's credentials are taken out of everything the run
+  keeps, as the API key is: a value whose name says it is one
+  (`Authorization`, `GITHUB_TOKEN`, `--api-key`, `?token=`) or that is shaped
+  like a token, in a server's headers, environment, address and arguments.
+  Files the agent wrote are kept with the same values taken out. Ordinary
+  values stay, so a reply reaches the judge as written: nothing
+  under eight characters is touched, nor a short lowercase word even under a
+  credential's name ("password", a mode called "production"). This is a
+  backstop that has to guess; what protects a config is that it never enters
+  the run directory and the shell cannot read it. Do not put a real
+  credential that is a plain short word in a config you benchmark with.
+- **The model is the one asked for:** the requested id, or that id with a
+  release date, and nothing that merely starts with it.
+- **A retried attempt's cost is a lower bound** (`cost_unknown`): the first
+  session left no receipt.
+- **No instructions from the folders above an attempt.** Claude Code loads
+  `CLAUDE.md` and `.claude` from every folder above the working folder, and
+  the attempts sit under a temp folder anyone on the machine can write to.
+  Sessions run with `--setting-sources user` (the attempt's own, empty), so
+  such a file is not read; one that is there when the run starts also stops
+  it, so you hear about it.
+- **Before the first session:** a given file that would take a supplied
+  source's place, or another given file's, whatever its case, stops the run.
+- **`skills_included` is false on every arm.** It means skill text pasted
+  into the prompt; a plugin is installed, and `agent.plugins` records it.
+
+It needs the `claude` CLI on the PATH and an `ANTHROPIC_API_KEY`; sessions
+are billed to that key, about one to three cents a task on Haiku 5.5. Tasks
+that need a prior turn (`decoy`) are left out, as on `direct-api`.
 
 ## Deliberately deferred
 

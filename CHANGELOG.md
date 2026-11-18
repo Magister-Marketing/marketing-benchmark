@@ -80,6 +80,61 @@
   shown as held out. The report, `README.md` and `eval.py` now say of the
   holdout split what is true: it is kept out of tuning, and `docs/TASKS.md`
   records which holdout tasks have had results read.
+- Harness: `claude-code` runs the tasks through headless Claude Code and
+  writes the same run directory as `direct-api`, so the judge and the report
+  are unchanged (`python -m eval_runner.claude_code run`). Three arms: the
+  stock agent; with a skills plugin installed (`--plugin-dir`, the model
+  decides what to open); and with the task's own skills named in the prompt
+  (`--name-skills`, the best case for skills). `--mcp-config` attaches MCP
+  servers. Each attempt gets its own working, configuration and home folder,
+  the supplied sources as files, and Claude Code's shell sandbox (writes
+  inside the attempt, network to the package registries only). Two things
+  the first runs taught, both now handled: with nobody to approve it Claude
+  Code held a script written to `$TMPDIR` and the agent computed by hand, so
+  the sandboxed shell is allowed outright; and an agent that knows the real
+  date called the dated fixtures stale and was marked down for an
+  unsupported date, so the shared preamble says to treat the sources as
+  current. `scripts/compare-arms.py` puts graded runs side by side per task
+  with a paired sign-flip test over tasks.
+- Harness: `claude-code` attempts are isolated from each other. Claude Code
+  gives sandboxed shell commands a temp folder every session on the machine
+  shares whenever the one it is handed has a long path, so parallel attempts
+  were writing their scripts into one folder, and the shell could read other
+  attempts' folders and the API key. Each attempt now has short private
+  folders under `/tmp` (the run checks afterwards that the shell used them
+  and records an error if it did not), a sandbox that cannot read the
+  operator's home, the shared temp folders or another attempt, its own copy
+  of any plugin, and no API key in the shell's environment.
+- Harness: `claude-code` fixes from an independent review, none of which
+  changes a recorded score. Stopping a run (Ctrl-C, `kill`, a closed
+  terminal) now ends its sessions, removes the attempts' folders and writes
+  the records; before, sessions ran on for up to the timeout each and
+  nothing was recorded. An exception in one job is that attempt's error
+  instead of the loss of every attempt. An attempt whose MCP server was not
+  connected at session start is an error. The model check accepts the
+  requested id or its dated name only (`claude-opus-5-5` passed as
+  `claude-opus-5`). The shell is denied what the run keeps outside the home
+  folder (the checkout, the tasks, an MCP config, given files), and MCP
+  credentials are redacted like the API key, in the reply file too. Sessions
+  load their own (empty) user settings only (`--setting-sources user`): a
+  `CLAUDE.md` in a folder above an attempt was loaded and obeyed, and the
+  attempts sit under a temp folder anyone on the machine can write to; the
+  plugins, skills, tools and sandbox a session reports are the same either
+  way. A given file that would replace a supplied source, in any case, stops
+  the run before the first session. A run started with `nohup` survives its
+  terminal closing, and a stop also ends the shell commands a session
+  started (each runs in a process group of its own and outlived it). Files
+  the agent wrote are kept with credentials taken out; a folder it locked
+  no longer fails the attempt or stays behind in `/tmp`. A server still
+  connecting when a session started counts once one of its tools answers. A
+  retried attempt's cost is marked a lower bound. Plugin arms record
+  `skills_included: false` (the report printed "Skills in prompt: yes" for
+  an installed plugin). `compare-arms.py` averages as the grader does.
+- Harness: `claude-code --files-dir DIR` saves a folder's files into every
+  attempt's working folder and names them in the prompt: the arm where a
+  person hands the agent their own exports. `MARKETING_BENCH_TASKS_DIR`
+  points `load_tasks` at a task set kept outside the repository, for tasks
+  whose answers are a brand's real numbers.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

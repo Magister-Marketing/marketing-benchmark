@@ -48,7 +48,9 @@ else:
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
-TASKS_DIR = EVAL_RUNNER_DIR / "tasks"
+# A task set that cannot live in this repository (one whose answers are a
+# brand's real numbers, say) is read from wherever this names instead.
+TASKS_DIR = Path(os.environ.get("MARKETING_BENCH_TASKS_DIR") or EVAL_RUNNER_DIR / "tasks")
 MODELS_FILE = EVAL_RUNNER_DIR / "models.json"
 RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
