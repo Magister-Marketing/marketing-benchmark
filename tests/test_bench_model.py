@@ -271,6 +271,21 @@ def test_the_draft_says_when_the_model_is_also_the_judge(site, tmp_path):
     assert "It is also the judge." in text and len(text) <= 280
 
 
+def test_a_model_at_several_efforts_is_named_with_its_effort(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(bm, "search_dirs", lambda: [tmp_path / "results"])
+    # With GPT-6.2 Sol at high only, the reference reads "GPT-6.2 Sol".
+    luna = report("20260103-000000-a1a1a1a1", "gpt-6-luna-xhigh", scores={"alpha": 95.0, "beta": 95.0})
+    bm.export_run(write_run(tmp_path / "results", luna), site)
+    assert "vs GPT-6.2 Sol 97.0" in bm.tweet_for(site, luna["run_id"])
+    # Once Sol is on the board at low effort too, the site names each Sol run
+    # with its effort, and so does the draft.
+    low = report("20260103-000000-b2b2b2b2", "gpt-6.2-sol-low", scores={"alpha": 96.0, "beta": 96.0})
+    bm.export_run(write_run(tmp_path / "results", low), site)
+    text = bm.tweet_for(site, luna["run_id"])
+    assert "vs GPT-6.2 Sol (high effort) 97.0" in text
+    assert bm.tweet_for(site, low["run_id"]).startswith("GPT-6.2 Sol (low effort) scored 96.0/100")
+
+
 def test_numbers_round_as_the_page_does():
     assert bm.fmt_score(96.25) == "96.3"  # JavaScript's toFixed rounds this tie up
     assert bm.fmt_score(97.866) == "97.9"
