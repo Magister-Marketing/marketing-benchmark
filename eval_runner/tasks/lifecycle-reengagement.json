@@ -1,0 +1,42 @@
+{
+  "id": "lifecycle-reengagement",
+  "title": "Re-engagement programme from a subscriber export",
+  "split": "development",
+  "prompt_version": 2,
+  "rubric_version": 2,
+  "fixtures": [
+    "eval_runner/fixtures/lifecycle/email_policy.md",
+    "eval_runner/fixtures/lifecycle/subscribers.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md"
+  ],
+  "answers": {
+    "count": 5,
+    "single_number": true
+  },
+  "prompt": "Sorrel Kitchen is a weekly meal-kit subscription. Email engagement has slipped and the lifecycle manager wants a re-engagement programme for subscribers who have stopped opening. You are supplied the company's email policy and the subscriber export as CSV. Today is 2026-06-01. Every figure you cite must come from the supplied files.\n\nUse these definitions exactly:\n- Mailable: `consent_status` is subscribed, `hard_bounce` is no and `spam_complaint` is no.\n- Lapsed: mailable, and `last_open_date` is earlier than 2026-03-03 or blank.\n- Lapsed buyers are lapsed subscribers with an `orders_count` of 1 or more; lapsed non-buyers have 0.\n- Long-dormant: lapsed, and `last_open_date` is earlier than 2025-06-01 or blank.\n\nDeliver the programme. First, who is in the audience and who is left out, with the count and the reason for each exclusion. Then the re-engagement flow, which has exactly three emails. Write each of the three in two versions, one for lapsed buyers and one for lapsed non-buyers; give each version its own subject line and its own summary of the body, and give each email its send timing and the one thing it asks the reader to do. Then say what long-dormant subscribers receive, and what happens to people who respond and to people who do not. Follow the email policy.\n\nEnd the programme with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. A currency sign, thousands separators and a percent sign are fine.\n\nA1: <number of mailable subscribers>\nA2: <number of lapsed subscribers>\nA3: <number of lapsed buyers>\nA4: <number of lapsed non-buyers>\nA5: <number of long-dormant subscribers>\n\nThis is a plan for review. Send nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 5 labeled answers A1-A5 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 5}},
+      {"id": "q1_mailable", "check": "A1 states the number of mailable subscribers; full credit for the exact figure, zero credit 20 or more off.", "programmatic": {"fact": "answer_q1", "near": 193, "tolerance": {"kind": "absolute", "full": 0, "zero": 20}}},
+      {"id": "q2_lapsed", "check": "A2 states the number of lapsed subscribers; full credit for the exact figure, zero credit 10 or more off.", "programmatic": {"fact": "answer_q2", "near": 97, "tolerance": {"kind": "absolute", "full": 0, "zero": 10}}},
+      {"id": "q3_lapsed_buyers", "check": "A3 states the number of lapsed buyers; full credit for the exact figure, zero credit 6 or more off.", "programmatic": {"fact": "answer_q3", "near": 50, "tolerance": {"kind": "absolute", "full": 0, "zero": 6}}},
+      {"id": "q4_lapsed_non_buyers", "check": "A4 states the number of lapsed non-buyers; full credit for the exact figure, zero credit 6 or more off.", "programmatic": {"fact": "answer_q4", "near": 47, "tolerance": {"kind": "absolute", "full": 0, "zero": 6}}},
+      {"id": "q5_long_dormant", "check": "A5 states the number of long-dormant subscribers; full credit for the exact figure, zero credit 5 or more off.", "programmatic": {"fact": "answer_q5", "near": 23, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "flow_three_emails", "check": "The re-engagement flow has exactly three emails, each with a send timing and a single ask. Two emails or four fails."}
+    ],
+    "skill_adherence": [
+      {"id": "exclusions_stated", "check": "The plan explicitly leaves out all five groups the policy excludes: unsubscribed, never consented (imported), pending confirmation, hard bounces, and spam complaints. One group not mentioned as excluded fails."},
+      {"id": "no_consent_buyers_not_mailed", "negative": true, "check": "The plan does not propose emailing unsubscribed or never-consented people, including those with past orders, in this programme or as a separate win-back send."},
+      {"id": "offer_rules_followed", "check": "The only incentive is 10% off with code COMEBACK10, valid for 14 days, offered to lapsed buyers only; lapsed non-buyers are offered the 'Five 20-Minute Dinners' recipe pack and no discount. Any other discount, gift or free box fails, and so does the discount offered to non-buyers."},
+      {"id": "cadence_follows_policy", "check": "The stated send timings put the three emails at least 5 days apart, and no subject line starts with 'Re:' or 'Fwd:'. Emails less than 5 days apart, or such a subject line, fails."},
+      {"id": "long_dormant_single_email", "check": "Long-dormant subscribers receive one last-chance email only, not the three-email flow. Putting them through the three emails, or not saying what they receive, fails."},
+      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every count and rate presented as a fact is derivable from the subscriber export under the stated definitions. The plan states no open-rate, revenue or win-back forecast as if it were data; any target or benchmark is labelled as an assumption.", "fails_if_zero": ["q1_mailable"]}
+    ],
+    "best_practices": [
+      {"id": "exit_and_sunset", "check": "The plan says that people who open, click or order leave the flow at once, and that people who have not opened or clicked 7 days after their final email are suppressed from marketing. Missing either fails."},
+      {"id": "segment_versions_present", "check": "Each of the three emails has a version for lapsed buyers and a version for lapsed non-buyers, each with its own subject line and body summary. It fails if any email has one shared version, or if the two versions of an email are the same text with only the offer line changed."}
+    ]
+  }
+}

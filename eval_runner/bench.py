@@ -40,9 +40,11 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from eval_runner import brand_assets, providers, reference_facts, response_facts  # type: ignore
+    from eval_runner import (  # type: ignore
+        brand_assets, providers, reference_facts, response_facts, task_references,
+    )
 else:
-    from . import brand_assets, providers, reference_facts, response_facts
+    from . import brand_assets, providers, reference_facts, response_facts, task_references
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
@@ -54,6 +56,11 @@ RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
 REPETITIONS_DEFAULT = 1
 HARNESS_ID = "direct-api"
+# Harnesses that hand the task to an agent wrapped in a preamble of their own.
+# The wrapped prompt ends with this marker and then the task's direct assembly
+# without skill files; nothing follows it.
+AGENT_HARNESSES = ("claude-code", "magister-agent")
+AGENT_TASK_MARKER = "\n\nTask:\n"
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -276,6 +283,8 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         or answers["count"] < 1
     ):
         raise ValueError(f"{path.name}: answers needs a positive integer count")
+    if answers is not None and not isinstance(answers.get("single_number", False), bool):
+        raise ValueError(f"{path.name}: answers.single_number must be a boolean")
     harnesses = task.get("harnesses")
     if harnesses is not None and (
         not isinstance(harnesses, list)
@@ -859,8 +868,11 @@ def build_judge_prompt(
 
 
 def judge_source_reference(task: dict, exact_prompt: str) -> dict:
-    return (reference_facts.ledger_reference(exact_prompt)
-            if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy") else {})
+    if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy"):
+        return reference_facts.ledger_reference(exact_prompt)
+    # The data tasks of November 2026: totals from the recorded sources, or
+    # {} for every other task and for a prompt that cannot be read.
+    return task_references.task_reference(task.get("id"), exact_prompt)
 
 
 class _ResponseHTMLParser(HTMLParser):
@@ -1196,6 +1208,109 @@ def _unsupportable_claims_facts(response_text: str) -> dict:
     }
 
 
+_SINGLE_ANSWER_LABEL = re.compile(
+    r"^[ \t>]*(?:#{1,6}[ \t]*)?(?:[-*][ \t]*|\d{1,3}[.)][ \t]*)?[*_`]*A(\d{1,3})[*_`]*[ \t]*[:：][*_]*[ \t]*(.*)$",
+    re.IGNORECASE,
+)
+_SINGLE_ANSWER_NUMBER = re.compile(r"-?(?:\d(?:[\d,]*\d)?(?:\.\d+)?|\.\d+)")
+# U+2212 minus sign, U+2010 hyphen, U+2011 non-breaking hyphen, U+FE63 small and U+FF0D full-width hyphen-minus.
+_MINUS_SIGNS = {ord(sign): "-" for sign in "\u2212\u2010\u2011\ufe63\uff0d"}
+
+
+def _single_number(value: str) -> float | None:
+    """The one number on an answer line, or None when the line is not that.
+
+    Read as a number: a currency sign, thousands separators, a percent sign,
+    a unit word, and a minus sign directly before the number (a hyphen, the
+    minus sign U+2212, or an en dash that opens the value). Left unparsed, on
+    purpose: a line with a second number on it (working, a range, a ratio
+    such as 3.14:1, a bracketed footnote, scientific notation), a number in
+    words, a rounded "11.4k" or "11.4 million", a decimal comma, and the
+    `[...]` or `<...>` placeholder idiom.
+    """
+    value = value.strip()
+    # `A5: [blocked -- final-28-day spend unavailable]` is a placeholder in
+    # the prompt's own `<...>` idiom, not an answer.
+    if not value or value[0] in "[<":
+        return None
+    # A minus sign, however it is typed: the minus sign itself and the other
+    # hyphens anywhere, an en dash only where the value starts (after a word
+    # or between two numbers it is punctuation). "-$12" is minus twelve dollars.
+    value = value.translate(_MINUS_SIGNS)
+    value = re.sub(r"^([^\w–—-]*)–(?=[$€£]?\.?\d)", r"\1-", value)
+    value = re.sub(r"-([$€£])[ \t]?(?=\.?\d)", r"\1-", value)
+    numbers = list(_SINGLE_ANSWER_NUMBER.finditer(value))
+    if len(numbers) != 1:
+        return None
+    token = numbers[0].group(0)
+    if re.match(r"[ \t]?(?:[kKmMbB]\b|thousand|million|billion)", value[numbers[0].end():]):
+        return None
+    if not re.fullmatch(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?", token):
+        return None
+    try:
+        return float(token.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _number_alone(value: str) -> bool:
+    """Whether an answer line is the number and nothing but symbols around it.
+
+    `$1,234.50`, `6.00%` and `**7**` are; `7 URLs` and `total cost of the 70
+    search terms` are not: a letter or a digit is left once the number is
+    taken out.
+    """
+    return not re.search(r"[^\W_]", _SINGLE_ANSWER_NUMBER.sub("", value.translate(_MINUS_SIGNS), count=1))
+
+
+def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
+    """The answer block of a task that sets `answers.single_number`.
+
+    A run is a sequence of answer lines in rising label order (A1, A2, ...)
+    with nothing but blank lines between them. The block is the run with the
+    most answer lines. Between runs of the same length it is a run most of
+    whose lines are the number alone, as the prompt asks, over one that is
+    not; then the one with more lines that read as a number; then the later
+    one.
+
+    So a stray labelled line ("A1: sum of 8 rows" in a note) is a run of one
+    that cannot override a block. A list of method notes that repeats every
+    label, before the block or after it, loses to a block written as asked,
+    even one with a line the parser cannot read: a note carries working, or
+    words around its one number. A draft loses to the final block after it,
+    also when the final block marks a line ("A3: $1,636.90 (corrected)").
+
+    What is left: a block with words on half its lines or more ("A1: 7 URLs"
+    throughout) is not written as asked. A clean draft before it, or a notes
+    list after it with one number on every line, is read in its place. A
+    label with nothing after it is a blank answer: it never borrows the next
+    line.
+    """
+    runs: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] | None = None
+    for line in response_text.splitlines():
+        match = _SINGLE_ANSWER_LABEL.match(line)
+        if match:
+            index = int(match.group(1))
+            if not 1 <= index <= count:
+                continue  # some other label: not an answer, and not a break either
+            if current is None or index <= current[-1][0]:
+                current = []
+                runs.append(current)
+            current.append((index, match.group(2)))
+        elif line.strip():
+            current = None
+    block: dict[int, float] = {}
+    best = (0, False, 0)
+    for run in runs:
+        read = {index: number for index, value in run if (number := _single_number(value)) is not None}
+        alone = sum(1 for index, value in run if index in read and _number_alone(value))
+        key = (len(run), 2 * alone > len(run), len(read))
+        if key >= best:  # the later run wins a tie
+            block, best = read, key
+    return block
+
+
 def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # Backward-compatible one-argument form for callers that only need generic facts.
     if response_text is None:
@@ -1217,24 +1332,28 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         # line is absent or carries no number, and `near` conditions score a
         # None fact as 0 rather than erroring.
         count = answers["count"]
-        parsed: dict[int, float] = {}
-        for match in re.finditer(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
-            response_text,
-        ):
-            index = int(match.group(1))
-            if not 1 <= index <= count:
-                continue
-            value = match.group(2).strip()
-            # `A5: [blocked -- final-28-day spend unavailable]` is a
-            # placeholder in the prompt's own `<...>` idiom, not an answer.
-            # The 2026-09-02 honest-abstention run parsed `-28` out of one
-            # and counted it as a parsed answer.
-            if value[:1] in "[<":
-                continue
-            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
-            if number:
-                parsed[index] = float(number.group(0).replace(",", ""))
+        if answers.get("single_number"):
+            # The task's prompt asks for the number alone on each answer line.
+            parsed = _single_number_answers(response_text, count)
+        else:
+            parsed: dict[int, float] = {}
+            for match in re.finditer(
+                r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
+                response_text,
+            ):
+                index = int(match.group(1))
+                if not 1 <= index <= count:
+                    continue
+                value = match.group(2).strip()
+                # `A5: [blocked -- final-28-day spend unavailable]` is a
+                # placeholder in the prompt's own `<...>` idiom, not an answer.
+                # The 2026-09-02 honest-abstention run parsed `-28` out of one
+                # and counted it as a parsed answer.
+                if value[:1] in "[<":
+                    continue
+                number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
+                if number:
+                    parsed[index] = float(number.group(0).replace(",", ""))
         facts["answer_count"] = len(parsed)
         for index in range(1, count + 1):
             facts[f"answer_q{index}"] = parsed.get(index)
@@ -1685,6 +1804,19 @@ def _resolve_recorded_prompt(
         assembled = _prompt_candidate(task, prompt_text, run_meta["skills_included"])
         if hashlib.sha256(assembled.encode()).hexdigest() == recorded_hash:
             return saved_prompt or assembled, version
+    # An agent harness (Claude Code, the Magister bridge) wraps the task in its
+    # own preamble, so its recorded prompt never hashes to the direct assembly.
+    # Its saved prompt is tied to the attempt evidence above; the task is this
+    # one when that prompt ends with the harness's task marker and then a
+    # candidate's whole direct assembly (the task text and every supplied
+    # source), with nothing after it. Containing the assembly is not enough: a
+    # task that has since lost its opening, the end of its last source, or a
+    # whole source is still contained in what the run recorded. Any other
+    # harness, named or not, keeps the hash rule above.
+    if saved_prompt is not None and run_meta.get("harness") in AGENT_HARNESSES:
+        for version, prompt_text in candidates:
+            if saved_prompt.endswith(AGENT_TASK_MARKER + _prompt_candidate(task, prompt_text, False)):
+                return saved_prompt, version
     raise SystemExit(
         f"{task['id']}: recorded prompt is not the current or an explicitly "
         "rubric-compatible historical version; a changed prompt requires a new task id"
@@ -1969,6 +2101,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
         "judge_protocol_version": JUDGE_PROTOCOL_VERSION,
         "judge_instructions": JUDGE_INSTRUCTIONS,
         "source_reference_version": reference_facts.VERSION,
+        "task_reference_version": task_references.VERSION,
         "label": label,
         "task_source": task_source,
         "judge_usage": judge_usage,
@@ -3818,9 +3951,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         for model_id in model_ids
     }
     repetitions_per_model = repetitions * len(task_ids)
+    # A grading made with the current task files takes each task's split from
+    # them too: a task moved out of holdout since the run must not be reported
+    # as held out. Any other grading keeps the split the run recorded.
+    current_splits = (
+        {task_id: task.get("split") for task_id, task in report_tasks.items()}
+        if grading_meta.get("task_source") == "current"
+        else {}
+    )
     task_splits = {
         task_id: (
-            run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
+            current_splits.get(task_id)
+            or run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
             or report_tasks.get(task_id, {}).get("split")
             or "development"
         )
@@ -3964,8 +4106,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             "",
             "### Score by task split",
             "",
-            "Development scores are calibration evidence. Holdout scores are the",
-            "unseen-task check and should not be tuned after inspecting outputs.",
+            "Development scores are calibration evidence. The holdout split is kept",
+            "out of tuning; docs/TASKS.md records which holdout tasks have had",
+            "results read.",
             "",
             "| Model | Development | Holdout |",
             "|---|---|---|",

@@ -1,0 +1,39 @@
+{
+  "id": "search-terms-negatives",
+  "title": "Search terms review: negatives, keepers and promotions",
+  "split": "development",
+  "prompt_version": 3,
+  "rubric_version": 4,
+  "fixtures": [
+    "eval_runner/fixtures/search-terms/business_facts.md",
+    "eval_runner/fixtures/search-terms/search_terms_report.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "answers": {
+    "count": 4,
+    "single_number": true
+  },
+  "prompt": "Sablewood Blinds runs Google search ads. The owner has asked you to review April's search terms report and say which searches to block, which to keep, and which to promote to keywords. You are supplied a short sheet of business facts and the report as CSV. Every figure you cite must come from the supplied files.\n\nUse these definitions exactly:\n- Zero-conversion spend is the total `cost_usd` of search terms with 0 conversions.\n- An irrelevant search term is one the business facts rule out: the searcher wants something Sablewood does not sell or do, or is looking for a job.\n- A promote candidate is a search term that is not yet a keyword (`added_as_keyword` is no), has at least 3 conversions, and has a cost per conversion at or below the account's target.\n\nWrite the review in three lists. First, the negative keywords that will block the irrelevant search terms: group them by theme, give each a match type, and write each as the shortest word or phrase that blocks its whole theme, not as a list of the exact searches in the report. Second, the promote candidates. Third, the search terms you considered blocking and are keeping, with the reason for each.\n\nEnd the review with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. A currency sign, thousands separators and a percent sign are fine.\n\nA1: <zero-conversion spend, in dollars>\nA2: <number of promote candidates>\nA3: <total cost of the irrelevant search terms, in dollars>\nA4: <combined conversions of the promote candidates>\n\nThis is a recommendation for review. Change nothing in the account and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 4 labeled answers A1-A4 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 4}},
+      {"id": "q1_zero_conversion_spend", "check": "A1 states the total cost of search terms with 0 conversions; full credit within 0.5%, zero credit beyond 25% off.", "programmatic": {"fact": "answer_q1", "near": 2380.36, "tolerance": {"kind": "relative", "full": 0.005, "zero": 0.25}}},
+      {"id": "q2_promote_count", "check": "A2 states the number of promote candidates as defined; full credit for the exact figure, zero credit 3 or more off.", "programmatic": {"fact": "answer_q2", "near": 5, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "q3_irrelevant_spend", "check": "A3 states the total cost of the irrelevant search terms as defined; full credit within 0.5, zero credit 400 or more off.", "programmatic": {"fact": "answer_q3", "near": 1636.9, "tolerance": {"kind": "absolute", "full": 0.5, "zero": 400}}},
+      {"id": "q4_promote_conversions", "check": "A4 states the combined conversions of the promote candidates; full credit for the exact figure, zero credit 8 or more off.", "programmatic": {"fact": "answer_q4", "near": 30, "tolerance": {"kind": "absolute", "full": 0, "zero": 8}}},
+      {"id": "three_lists_present", "check": "The review contains a list of negative keywords to add, a list of promote candidates, and a list of search terms kept. One missing list fails."}
+    ],
+    "skill_adherence": [
+      {"id": "negative_themes_complete", "check": "The negative keywords cover all six things the business facts rule out: repairs, restringing or parts; curtains, drapes or curtain rods; shutters; trade or wholesale; jobs or careers; and making your own (DIY or kits). One theme with no negative fails."},
+      {"id": "brand_not_negated", "negative": true, "check": "No negative keyword would block a search for the brand name ('sablewood', 'sablewood blinds' and 'sablewood blinds reviews'). Blocking 'careers' or 'jobs' is fine; a negative such as 'sablewood' or 'reviews' fails."},
+      {"id": "relevant_terms_kept", "negative": true, "check": "No negative keyword would block a search for a product Sablewood sells: no negative such as 'cheap' or 'free' is proposed (they would block 'cheap blackout blinds' and 'free blind samples'), and no roller, Roman, Venetian, blackout or day-night blind search is blocked. One such negative fails."},
+      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every cost, click, conversion and cost-per-conversion figure presented as a fact is derivable from the report for the named search term or group. The review gives no forecast of savings, conversions or revenue as if it were data; an estimate labelled as such, with its arithmetic from report figures, is acceptable.", "fails_if_zero": ["q1_zero_conversion_spend"]}
+    ],
+    "best_practices": [
+      {"id": "promotions_named", "check": "All 5 promote candidates are named: 'cheap blackout blinds', 'day night blinds made to measure', 'wooden venetian blinds 2 inch', 'roman blinds for bay window' and 'free blind samples'. It fails if one is missing, or if a search term with fewer than 3 conversions, or 'faux wood blinds white' (above the target cost per conversion), is presented as meeting the definition."},
+      {"id": "match_types_fit", "check": "Every negative keyword has a match type, and every theme has at least one negative of one to three words. It fails if a negative has no match type, or if a theme is covered only by full search terms copied from the report."}
+    ]
+  }
+}

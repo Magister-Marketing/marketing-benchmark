@@ -1,0 +1,43 @@
+{
+  "id": "monthly-report-reconcile",
+  "title": "Monthly report from three exports that disagree",
+  "split": "development",
+  "prompt_version": 2,
+  "rubric_version": 3,
+  "fixtures": [
+    "eval_runner/fixtures/monthly-report/ads_platforms.csv",
+    "eval_runner/fixtures/monthly-report/analytics_purchases.csv",
+    "eval_runner/fixtures/monthly-report/order_system.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "answers": {
+    "count": 6,
+    "single_number": true
+  },
+  "prompt": "Oakline Pet Supply's founder wants the May 2026 marketing report and has noticed that the ad platforms, the analytics tool and the order system each tell a different story. You are supplied three exports: weekly figures from the ad platforms, purchase events from the analytics tool, and the order system. Every figure you cite must come from the supplied files.\n\nUse these definitions exactly:\n- The order system is the record of what was sold. A real order has an `order_date` in May 2026 and a `status` other than cancelled or test.\n- Net revenue = `gross_usd` minus `refund_usd`, summed over real orders.\n- Ad spend = total `spend_usd` in the ad platform export.\n- Blended return on ad spend (ROAS) = net revenue ÷ ad spend.\n- A duplicate analytics row is any purchase row beyond the first for the same `order_id`.\n\nWrite the report. Open with an executive summary for the founder, before any table: the month's real orders, net revenue, ad spend and blended return on ad spend, in plain words, with any abbreviation spelled out the first time it appears. Then explain why the three sources disagree, with the size of each difference. Then say what to fix so that next month's numbers agree. Show enough method that a colleague could re-derive each headline figure.\n\nEnd the report with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. A currency sign, thousands separators and a percent sign are fine.\n\nA1: <ad spend, in dollars>\nA2: <number of real orders>\nA3: <net revenue, in dollars>\nA4: <number of duplicate analytics rows>\nA5: <blended ROAS, to two decimals>\nA6: <total conversions the ad platforms report, all platforms combined>\n\nThis is an internal report. Fetch nothing external and do not invent benchmarks.",
+  "rubric": {
+    "completion": [
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 6 labeled answers A1-A6 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 6}},
+      {"id": "q1_ad_spend", "check": "A1 states total ad spend; full credit within 0.5%, zero credit beyond 10% off.", "programmatic": {"fact": "answer_q1", "near": 11435.94, "tolerance": {"kind": "relative", "full": 0.005, "zero": 0.1}}},
+      {"id": "q2_real_orders", "check": "A2 states the number of real orders as defined; full credit for the exact figure, zero credit 8 or more off.", "programmatic": {"fact": "answer_q2", "near": 282, "tolerance": {"kind": "absolute", "full": 0, "zero": 8}}},
+      {"id": "q3_net_revenue", "check": "A3 states net revenue as defined (revenue with the refunds left in is outside the band); full credit within 0.5%, zero credit beyond 3% off.", "programmatic": {"fact": "answer_q3", "near": 35901.46, "tolerance": {"kind": "relative", "full": 0.005, "zero": 0.03}}},
+      {"id": "q4_duplicate_rows", "check": "A4 states the number of duplicate analytics rows as defined; full credit for the exact figure, zero credit 8 or more off.", "programmatic": {"fact": "answer_q4", "near": 39, "tolerance": {"kind": "absolute", "full": 0, "zero": 8}}},
+      {"id": "q5_blended_roas", "check": "A5 states blended return on ad spend as defined; full credit within 1%, zero credit beyond 4% off.", "programmatic": {"fact": "answer_q5", "near": 3.14, "tolerance": {"kind": "relative", "full": 0.01, "zero": 0.04}}},
+      {"id": "q6_platform_conversions", "check": "A6 states the conversions the ad platforms report, all platforms combined; full credit for the exact figure, zero credit 50 or more off.", "programmatic": {"fact": "answer_q6", "near": 454, "tolerance": {"kind": "absolute", "full": 0, "zero": 50}}},
+      {"id": "summary_first", "check": "The report opens with the executive summary: it comes before any table, method or source-by-source detail."}
+    ],
+    "skill_adherence": [
+      {"id": "summary_headline_figures", "check": "The executive summary states all four reconciled results: real orders, net revenue, ad spend and blended return on ad spend. One of the four missing from the summary fails. Whether another source's figure is also presented as a result is judged separately."},
+      {"id": "other_sources_not_the_result", "negative": true, "check": "Nowhere in the report are the ad platforms' reported conversions presented as the orders the business received, and neither platform-reported revenue nor analytics revenue is presented as the month's revenue. Quoting them as what each tool reports is fine."},
+      {"id": "differences_quantified", "check": "The report explains the differences between the sources with their sizes: the duplicate analytics rows, the orders excluded as cancelled or test, the refunds deducted, the orders dated outside May, and the gap between platform-reported conversions and real orders. At least four of these five are given with a number; fewer fails."},
+      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every figure presented as a result is derivable from the three exports under the stated definitions. No benchmark, forecast, margin or customer figure is stated as if it were data.", "fails_if_zero": ["q1_ad_spend", "q6_platform_conversions"]}
+    ],
+    "best_practices": [
+      {"id": "summary_plain_words", "check": "Every abbreviation used in the executive summary (for example ROAS) is spelled out or explained in the summary where it first appears. A summary with no abbreviation passes; one unexplained abbreviation fails."},
+      {"id": "fixes_concrete", "check": "The fixes address the causes found: stop the purchase event firing more than once per order or deduplicate it by order id; keep test orders out of reporting; bring refunds and cancellations into the revenue figure; and label platform conversions as platform-reported. At least three of these four are present; fewer fails."},
+      {"id": "method_auditable", "check": "The report says how each headline figure was reached: for real orders and net revenue, which rows were counted and which were left out; for ad spend, that it is the total of the ad platform export; and for blended return on ad spend, the two figures divided. One of the four with no stated basis fails."}
+    ]
+  }
+}

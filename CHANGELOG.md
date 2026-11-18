@@ -2,6 +2,84 @@
 
 ## Unreleased
 
+- Tasks: six closed-book tasks in kinds of marketing work the set lacked,
+  all in the development split: `seo-technical-triage`,
+  `search-terms-negatives`, `ab-test-readout`, `seo-content-brief`,
+  `lifecycle-reengagement`, `monthly-report-reconcile`. The last three were
+  drafted as holdout tasks; their recorded answers were read and one rubric
+  was changed because of them, so they are development tasks and no
+  held-out claim rests on them. The holdout split is the four tasks it held
+  before. Each of the six ends in a labeled answer block of banded
+  figures and has one critical no-invention criterion backed by an oracle
+  that lists only plain aggregates: a plain sum, count or rate under an
+  explicit filter, with a zero band at least a tenth of its value. A planted
+  trap therefore costs its own criterion. A listed figure beyond its zero
+  band still scores the whole attempt zero, as for every oracle-backed
+  critical; a figure on an unparsed answer line is absence and does not.
+  `eval_runner/task_references.py` computes the tasks' figures from the
+  recorded prompt and gives them to the judge as reference totals; its
+  version is recorded in `grading.json` as `task_reference_version`, and a
+  prompt whose sources cannot be read grades without a reference and warns.
+  `scripts/gen_more_tasks.py` writes the fixtures from seeded generators and
+  pins, in the task files, every programmatic condition, tolerance, oracle
+  list and definition line, and the wording of every check that states a
+  band or a figure from the data (`--write`, `--sync`, `--check`).
+  `tests/test_more_tasks.py` recomputes every target and every reference
+  figure independently, writes out the bands and oracle lists a second time,
+  and proves that the careless answer each task is built to catch scores zero
+  on the criterion meant to catch it. All brands and data are invented.
+  Version 1 was a local draft, run once by one agent and discarded after
+  review. In the versions here the program-checked figures are verified by
+  that independent recomputation; the judged criteria are not calibrated (no
+  judge has been tested on them against responses with known errors). Two
+  more drafts, `social-calendar-limits` and `positioning-from-competitors`,
+  read free text by pattern and are not in the set.
+- Tasks: rubric version 4 of `ab-test-readout`, `search-terms-negatives` and
+  `seo-content-brief`, after a review of recorded answers; prompts and
+  fixtures are unchanged, so recorded responses stay valid and can be
+  regraded. A/B test: the critical criterion now says that the expected
+  count per variant under the planned 50/50 split (half of the visitors
+  received, 11,750) is derived from the results and is not an invented or
+  misquoted plan figure; a judge had failed one readout and passed two on
+  the same sentence. The judge's reference carries that count
+  (`task_references.VERSION` 3). Search terms: the band on A3, the cost of
+  the irrelevant search terms, is now absolute, full credit within $0.50
+  and none from $400 off, in place of 2% to 25%. At 2% (about $33) full
+  credit went to an answer that left out the cheapest irrelevant search
+  term ($26.80), and to one that counted any one of 94 relevant terms; the
+  cheapest row in the report costs $1.03, so no single-row error now earns
+  full credit. Content
+  brief: a URL the brief proposes for the new article itself is exempt from
+  the rule that every internal URL must be in the page list.
+- Answers: a task may set `"single_number": true` in `answers`. Its answer
+  block is then the run of answer lines with the most answers; between runs
+  of the same length, a run most of whose lines are the number alone over
+  one that is not, then the one with more lines that read as a number, then
+  the later one. So a labelled line in a note, or a notes list that repeats
+  every label, cannot override a block written as asked, and a final block
+  that marks its corrected line still replaces the draft before it. A line
+  is an answer only when it carries exactly one number, so a line with
+  working on it (`A1: 749 / 12,480 = 6.00%`) is left unparsed instead of
+  being read as its first number; a label with nothing after it stays blank;
+  and a minus sign is read whether typed as a hyphen, U+2212 or a leading en
+  dash. `eval_runner/README.md` lists what is left unparsed on purpose, and
+  the one shape the block rule still misreads. The 21 earlier tasks do not
+  set it and parse exactly as before.
+- Judge: `judge_source_reference` now also returns reference totals for the
+  six new tasks, computed from the sources in the recorded prompt.
+- Grade: `grade --current-rubric` can apply a rubric fix to a run made
+  through an agent harness (`claude-code`, `magister-agent`), whose recorded
+  prompt wraps the task in a preamble and so never hashes to the direct
+  assembly. The saved prompt, tied to the attempts by its hash, is accepted
+  when it ends with `Task:` and then the whole direct assembly of the
+  current task, text and every source, with nothing after it. A task that
+  has since been changed or cut down, and every other harness, is refused as
+  before.
+- Report: a run graded with the current task files is reported with each
+  task's current split, so a task moved out of holdout since the run is not
+  shown as held out. The report, `README.md` and `eval.py` now say of the
+  holdout split what is true: it is kept out of tuning, and `docs/TASKS.md`
+  records which holdout tasks have had results read.
 - Harness: `claude-code` runs the tasks through headless Claude Code and
   writes the same run directory as `direct-api`, so the judge and the report
   are unchanged (`python -m eval_runner.claude_code run`). Three arms: the
