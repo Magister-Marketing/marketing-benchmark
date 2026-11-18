@@ -40,9 +40,11 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from eval_runner import brand_assets, providers, reference_facts, response_facts, task_facts  # type: ignore
+    from eval_runner import (  # type: ignore
+        brand_assets, providers, reference_facts, response_facts, task_facts, task_references,
+    )
 else:
-    from . import brand_assets, providers, reference_facts, response_facts, task_facts
+    from . import brand_assets, providers, reference_facts, response_facts, task_facts, task_references
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
@@ -274,6 +276,8 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         or answers["count"] < 1
     ):
         raise ValueError(f"{path.name}: answers needs a positive integer count")
+    if answers is not None and not isinstance(answers.get("single_number", False), bool):
+        raise ValueError(f"{path.name}: answers.single_number must be a boolean")
     harnesses = task.get("harnesses")
     if harnesses is not None and (
         not isinstance(harnesses, list)
@@ -857,8 +861,11 @@ def build_judge_prompt(
 
 
 def judge_source_reference(task: dict, exact_prompt: str) -> dict:
-    return (reference_facts.ledger_reference(exact_prompt)
-            if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy") else {})
+    if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy"):
+        return reference_facts.ledger_reference(exact_prompt)
+    # The data tasks of November 2026: totals from the recorded sources, or
+    # {} for every other task and for a prompt that cannot be read.
+    return task_references.task_reference(task.get("id"), exact_prompt)
 
 
 class _ResponseHTMLParser(HTMLParser):
@@ -1215,11 +1222,22 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         # line is absent or carries no number, and `near` conditions score a
         # None fact as 0 rather than erroring.
         count = answers["count"]
+        # `single_number` is a task's opt-in to a stricter reading of its
+        # answer lines. Without it the first number on the line is the
+        # answer, so `A1: 749 / 12,480 = 6.00%` reads 749 and a banded check
+        # scores the slip as a wrong figure. With it a line is an answer only
+        # when it carries exactly one number: a line with working on it is
+        # left unparsed, which is absence (the criterion fails) and never a
+        # figure the oracle can call invented. Such a task's prompt tells the
+        # candidate to write the number alone.
+        single = bool(answers.get("single_number"))
+        label_line = (
+            r"(?im)^[ \t>]*(?:#{1,6}\s*)?(?:[-*]\s*|\d+[.)]\s*)?[*_`]*A(\d+)[*_`]*\s*:[*_]*\s*(.+)$"
+            if single else
+            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$"
+        )
         parsed: dict[int, float] = {}
-        for match in re.finditer(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
-            response_text,
-        ):
+        for match in re.finditer(label_line, response_text):
             index = int(match.group(1))
             if not 1 <= index <= count:
                 continue
@@ -1229,6 +1247,22 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
             # The 2026-09-02 honest-abstention run parsed `-28` out of one
             # and counted it as a parsed answer.
             if value[:1] in "[<":
+                continue
+            if single:
+                numbers = list(re.finditer(r"-?(?:\d[\d,]*(?:\.\d+)?|\.\d+)", value))
+                # More than one number, a number in words, a rounded "11.4k"
+                # or a decimal comma ("3,14") is not "the number alone".
+                if (
+                    len(numbers) != 1
+                    or re.match(r"\s?[kKmMbB]\b", value[numbers[0].end():])
+                    or not re.fullmatch(
+                        r"-?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?", numbers[0].group(0))
+                ):
+                    continue
+                try:
+                    parsed[index] = float(numbers[0].group(0).replace(",", ""))
+                except ValueError:
+                    continue
                 continue
             number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
             if number:

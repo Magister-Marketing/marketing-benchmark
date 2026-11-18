@@ -7,7 +7,7 @@
 - Sablewood does not sell curtains, drapes, curtain rods or shutters.
 - Sablewood does not sell to trade or wholesale buyers.
 - Sablewood does not sell fabric, kits or instructions for making your own blinds.
-- Recruitment is handled on a separate careers site; search ads are not meant to reach job seekers.
+- Sablewood does not hire through search ads. People searching for jobs or careers are not customers; recruitment is handled on a separate careers site.
 - Brand terms are "Sablewood" and "Sablewood Blinds".
 - The account's target cost per conversion is $45. A conversion is a completed order.
 - The report covers 2026-04-01 through 2026-04-30. `added_as_keyword` says whether the search term already exists as a keyword in the account.

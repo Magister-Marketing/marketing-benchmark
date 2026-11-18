@@ -6,18 +6,29 @@
   Development: `seo-technical-triage`, `search-terms-negatives`,
   `ab-test-readout`, `social-calendar-limits`. Holdout: `seo-content-brief`,
   `lifecycle-reengagement`, `monthly-report-reconcile`,
-  `positioning-from-competitors`. Six end in a labeled answer block whose
-  figures are banded oracle checks; the calendar and positioning tasks are
-  checked by `eval_runner/task_facts.py` (character, hashtag, spacing and
-  embargo-date rules; citations and figures against the sources). Each has
-  one critical no-invention criterion backed by its oracle.
-  `scripts/gen_more_tasks.py` writes the fixtures from seeded generators and
-  computes every target from the fixture text (`--write`, `--sync`,
-  `--check`); `tests/test_more_tasks.py` recomputes them independently and
-  proves that the careless answer each task is built to catch fails the
-  criterion meant to catch it. All brands and data are invented. None of
-  the eight has been run or calibrated: their rubrics come from the prompt
-  and fixtures alone.
+  `positioning-from-competitors`. Six end in a labeled answer block of
+  banded figures; the calendar and positioning tasks are checked by
+  `eval_runner/task_facts.py` (character, hashtag, spacing and embargo-date
+  rules; citations, prices and percentages against the sources). Each has one
+  critical no-invention criterion backed by an oracle that lists only plain
+  aggregates, so a trap or a miscount costs its own criterion and never the
+  whole attempt. `eval_runner/task_references.py` computes the data tasks'
+  figures from the recorded prompt and gives them to the judge as reference
+  totals. `scripts/gen_more_tasks.py` writes the fixtures from seeded
+  generators and pins every programmatic condition, tolerance, oracle list
+  and definition line in the task files (`--write`, `--sync`, `--check`);
+  `tests/test_more_tasks.py` recomputes the figures independently and proves
+  that the careless answer each task is built to catch scores zero on the
+  criterion meant to catch it. All brands and data are invented. The tasks
+  are at version 2: version 1 was a local draft, run once by one agent and
+  discarded after review. Version 2 is not calibrated.
+- Answers: a task may set `"single_number": true` in `answers`. A line is
+  then an answer only when it carries exactly one number, so a line with
+  working on it (`A1: 749 / 12,480 = 6.00%`) is left unparsed instead of
+  being read as its first number. The 21 earlier tasks do not set it and
+  parse exactly as before.
+- Judge: `judge_source_reference` now also returns reference totals for the
+  six new data tasks, computed from the sources in the recorded prompt.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

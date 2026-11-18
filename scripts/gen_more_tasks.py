@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
-"""Generate the fixtures and ground truth of the eight tasks added in November 2026.
+"""Generate the fixtures of the eight tasks added in November 2026, and pin their targets.
 
 Tasks: seo-content-brief, seo-technical-triage, search-terms-negatives,
 lifecycle-reengagement, ab-test-readout, social-calendar-limits,
 monthly-report-reconcile, positioning-from-competitors.
 
 Deterministic: every table is either written out below or drawn from a seeded
-generator, so re-running reproduces identical files. Each task's expected
-figures are computed by a `solve_*` function that reads only the fixture text,
-never the generator's own state, and `--sync` writes them into the task JSON's
-`near` targets. `--check` (and tests/test_more_tasks.py) fail when a committed
-fixture or target drifts from what this script produces.
+generator, so re-running reproduces identical files. The figures come from
+`eval_runner/task_references.py`, which reads only fixture text and is the same
+code that gives the judge its reference totals; the limits and dates of the
+social brief come from `eval_runner/task_facts.py`, which also checks them.
+
+A task file's prose (its prompt and the wording of each check) is written by
+hand. Everything a program decides is pinned here: each programmatic
+condition with its target and tolerance, the `answers` field, the oracle list
+of each critical criterion, and the definition and answer lines the prompt
+must carry. `--sync` writes those into the task files; `--check` (and
+tests/test_more_tasks.py) reports every difference and never raises on a task
+file it can parse.
 
 All brands, people, URLs and figures here are invented.
 
 Usage:
     python3 scripts/gen_more_tasks.py --write   # (re)write the fixtures
-    python3 scripts/gen_more_tasks.py --sync    # copy computed figures into the task files
-    python3 scripts/gen_more_tasks.py --check   # verify both, change nothing
+    python3 scripts/gen_more_tasks.py --sync    # write the pinned values into the task files
+    python3 scripts/gen_more_tasks.py --check   # report drift, change nothing
 """
 from __future__ import annotations
 
@@ -25,7 +32,7 @@ import argparse
 import csv
 import datetime as dt
 import io
-import math
+import json
 import random
 import re
 import sys
@@ -33,6 +40,9 @@ from decimal import Decimal
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from eval_runner import task_facts, task_references  # noqa: E402
+
 FIXTURES = REPO_ROOT / "eval_runner" / "fixtures"
 TASKS = REPO_ROOT / "eval_runner" / "tasks"
 
@@ -170,39 +180,6 @@ def build_seo_brief() -> dict[str, str]:
     }
 
 
-def seo_qualifies(row: dict) -> bool:
-    """Informational, difficulty at or under 45, and not already in the top 10."""
-    ranked_top_ten = row["current_rank"] != "" and int(row["current_rank"]) <= 10
-    return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and not ranked_top_ten
-
-
-def solve_seo_brief(files: dict[str, str]) -> dict:
-    rows = _rows(files["seo-brief/keyword_export.csv"])
-    totals: dict[str, int] = {}
-    for row in rows:
-        if seo_qualifies(row):
-            totals[row["topic"]] = totals.get(row["topic"], 0) + int(row["monthly_searches"])
-    ranked = sorted(totals.items(), key=lambda item: -item[1])
-    target = ranked[0][0]
-    qualifying = [row for row in rows if row["topic"] == target and seo_qualifies(row)]
-    primary = max(qualifying, key=lambda row: int(row["monthly_searches"]))
-    return {
-        "q1_already_ranking": sum(
-            1 for row in rows if row["current_rank"] != "" and int(row["current_rank"]) <= 10
-        ),
-        "q2_qualifying_count": len(qualifying),
-        "q3_topic_volume": totals[target],
-        "q4_primary_volume": int(primary["monthly_searches"]),
-        "_target_topic": target,
-        "_primary_keyword": primary["keyword"],
-        "_runner_up_volume": ranked[1][1],
-        "_raw_volume_leader": max(
-            {row["topic"] for row in rows},
-            key=lambda topic: sum(int(r["monthly_searches"]) for r in rows if r["topic"] == topic),
-        ),
-    }
-
-
 # ------------------------------------------------------------ seo-technical-triage
 
 CRAWL_BASE = "https://www.pinecrestoutfitters.example"
@@ -251,6 +228,10 @@ CRAWL_INFO = [
     ("about", "About Us"), ("shipping", "Shipping"), ("returns", "Returns"), ("contact", "Contact"),
     ("size-guide", "Size Guide"), ("warranty", "Warranty"), ("gift-cards", "Gift Cards"), ("stores", "Our Stores"),
 ]
+CRAWL_UTILITY = [
+    ("/cart", "Your Cart"), ("/checkout", "Checkout"), ("/account/login", "Sign In"),
+    ("/account/register", "Create Account"), ("/search", "Search"), ("/wishlist", "Wishlist"),
+]
 CRAWL_TOP_PAGE = "/collections/rain-jackets"
 CRAWL_NOINDEX_BLOG = [("waterproof-ratings-explained", 310), ("breaking-in-boots", 95), ("leave-no-trace-basics", 40)]
 
@@ -292,17 +273,24 @@ def build_seo_crawl() -> dict[str, str]:
         add(f"/pages/{slug}", title=title + CRAWL_SUFFIX, inlinks=rng.randint(20, 160), sessions=rng.randint(10, 400))
 
     slugs = list(CRAWL_COLLECTIONS)
-    # Conforming decoys: filtered and paginated listings are noindex, out of the
-    # sitemap, and share their collection's title on purpose.
-    for slug in slugs[:6]:
+    # Correctly configured look-alikes, none of which is a defect. Filtered
+    # listings stay indexable and point their canonical at a live, indexable
+    # collection. Second pages have their own title. Cart, checkout, account,
+    # search and wishlist pages are noindex and out of the sitemap, as such
+    # pages should be.
+    for slug in slugs[1:7]:
         for colour in ("black", "blue", "green"):
             add(f"/collections/{slug}?color={colour}", canonical=url(f"/collections/{slug}"),
-                robots="noindex,follow", sitemap="no", title=CRAWL_COLLECTIONS[slug][0] + CRAWL_SUFFIX,
+                sitemap="no", title=CRAWL_COLLECTIONS[slug][0] + CRAWL_SUFFIX,
                 inlinks=rng.randint(1, 6), sessions=rng.randint(0, 15))
     for slug in slugs[6:]:
-        add(f"/collections/{slug}?page=2", robots="noindex,follow", sitemap="no",
-            title=CRAWL_COLLECTIONS[slug][0] + CRAWL_SUFFIX, inlinks=rng.randint(1, 4), sessions=rng.randint(0, 25))
-    # Conforming decoys: one-hop redirects from retired collection URLs.
+        add(f"/collections/{slug}?page=2", sitemap="no",
+            title=CRAWL_COLLECTIONS[slug][0] + " - Page 2" + CRAWL_SUFFIX,
+            inlinks=rng.randint(1, 4), sessions=rng.randint(0, 25))
+    for path, title in CRAWL_UTILITY:
+        add(path, robots="noindex,follow", sitemap="no", title=title + CRAWL_SUFFIX,
+            inlinks=rng.randint(60, 160), sessions=rng.randint(0, 6))
+    # Correctly configured: one-hop redirects from retired collection URLs.
     single_hops = []
     for slug in slugs[:8]:
         path = f"/collections/old-{slug}"
@@ -341,7 +329,7 @@ def build_seo_crawl() -> dict[str, str]:
         inlinks=rng.randint(2, 9), sessions=rng.randint(30, 400))
     for slug in ("shipping", "returns"):
         row(f"/pages/{slug}")["title"] = "Shipping & Returns" + CRAWL_SUFFIX
-    # Conforming decoys: old product URLs that share a title but canonicalise to the live page.
+    # Correctly configured: old product URLs that share a title but canonicalise to the live page.
     for path in (products[7], products[22], products[41]):
         add(path + "-old", canonical=url(path), sitemap="no", title=row(path)["title"],
             inlinks=rng.randint(0, 3), sessions=rng.randint(0, 20))
@@ -350,72 +338,32 @@ def build_seo_crawl() -> dict[str, str]:
     return {"seo-crawl/crawl_export.csv": _csv_text(CRAWL_HEADER, [[item[key] for key in CRAWL_HEADER] for item in rows])}
 
 
-def solve_seo_crawl(files: dict[str, str]) -> dict:
-    rows = _rows(files["seo-crawl/crawl_export.csv"])
-    status = {row["url"]: int(row["status_code"]) for row in rows}
-
-    def redirects(code: int) -> bool:
-        return 300 <= code < 400
-
-    def indexable(row: dict) -> bool:
-        return (
-            int(row["status_code"]) == 200
-            and "noindex" not in row["meta_robots"]
-            and row["canonical"] in ("", row["url"])
-        )
-
-    noindex_in_sitemap = [row for row in rows if "noindex" in row["meta_robots"] and row["in_sitemap"] == "yes"]
-    titles: dict[str, list[str]] = {}
-    for row in rows:
-        if indexable(row):
-            titles.setdefault(row["title"], []).append(row["url"])
-    duplicate_groups = {title: urls for title, urls in titles.items() if len(urls) > 1}
-    return {
-        "q1_broken_linked": sum(1 for row in rows if int(row["status_code"]) == 404 and int(row["inlinks"]) > 0),
-        "q2_redirect_chains": sum(
-            1 for row in rows
-            if redirects(int(row["status_code"])) and redirects(status.get(row["redirect_target"], 0))
-        ),
-        "q3_noindex_in_sitemap": len(noindex_in_sitemap),
-        "q4_bad_canonicals": sum(
-            1 for row in rows
-            if int(row["status_code"]) == 200
-            and row["canonical"] not in ("", row["url"])
-            and status.get(row["canonical"]) != 200
-        ),
-        "q5_duplicate_title_groups": len(duplicate_groups),
-        "q6_sessions_at_risk": sum(int(row["organic_sessions_30d"]) for row in noindex_in_sitemap),
-        "_top_sessions_url": max(rows, key=lambda row: int(row["organic_sessions_30d"]))["url"],
-        "_noindex_in_sitemap_urls": sorted(row["url"] for row in noindex_in_sitemap),
-        "_duplicate_title_urls": sum(len(urls) for urls in duplicate_groups.values()),
-    }
-
-
 # ----------------------------------------------------------- search-terms-negatives
 
 SEARCH_HEADER = [
     "search_term", "campaign", "match_type", "impressions", "clicks", "cost_usd",
     "conversions", "conversion_value_usd", "added_as_keyword",
 ]
-SEARCH_TARGET_CPA = Decimal("45")
-# Searches for things the business facts say Sablewood does not sell or do.
+# Searches the business facts rule out, each in the campaign whose broad
+# keywords would have matched it: the answer is not one campaign's total.
+# term, campaign, impressions, clicks, cost
 SEARCH_IRRELEVANT = [
-    ("blinds repair near me", 2140, 151, "212.40"),
-    ("how to restring blinds", 890, 52, "64.10"),
-    ("blind repair kit", 1020, 71, "88.75"),
-    ("fix broken blind slats", 610, 33, "41.30"),
-    ("blackout curtains", 5230, 218, "305.20"),
-    ("made to measure curtains", 1980, 104, "154.60"),
-    ("curtain rods", 720, 31, "38.90"),
-    ("drapes for living room", 1150, 49, "72.15"),
-    ("plantation shutters cost", 2260, 118, "190.05"),
-    ("window shutters interior", 1410, 77, "121.80"),
-    ("blinds wholesale supplier", 930, 58, "97.45"),
-    ("trade blinds bulk order", 540, 36, "58.20"),
-    ("blinds installer jobs", 780, 41, "44.35"),
-    ("sablewood blinds careers", 310, 24, "26.80"),
-    ("how to make roman blinds", 1690, 66, "83.60"),
-    ("roman blind kit diy", 470, 29, "37.25"),
+    ("blinds repair near me", "NB - Venetian", 2140, 151, "212.40"),
+    ("how to restring blinds", "NB - Venetian", 890, 52, "64.10"),
+    ("blind repair kit", "NB - Roller", 1020, 71, "88.75"),
+    ("fix broken blind slats", "NB - Venetian", 610, 33, "41.30"),
+    ("blackout curtains", "NB - Blackout", 5230, 218, "305.20"),
+    ("made to measure curtains", "NB - Blackout", 1980, 104, "154.60"),
+    ("curtain rods", "NB - Broad Discovery", 720, 31, "38.90"),
+    ("drapes for living room", "NB - Broad Discovery", 1150, 49, "72.15"),
+    ("plantation shutters cost", "NB - Venetian", 2260, 118, "190.05"),
+    ("window shutters interior", "NB - Day Night", 1410, 77, "121.80"),
+    ("blinds wholesale supplier", "NB - Roller", 930, 58, "97.45"),
+    ("trade blinds bulk order", "NB - Roller", 540, 36, "58.20"),
+    ("blinds installer jobs", "NB - Broad Discovery", 780, 41, "44.35"),
+    ("sablewood blinds careers", "Brand", 310, 24, "26.80"),
+    ("how to make roman blinds", "NB - Roman", 1690, 66, "83.60"),
+    ("roman blind kit diy", "NB - Roman", 470, 29, "37.25"),
 ]
 # term, campaign, match type, impressions, clicks, cost, conversions, value, added as keyword
 SEARCH_PLANTED = [
@@ -434,6 +382,7 @@ SEARCH_PLANTED = [
 SEARCH_TYPES = {
     "roller blinds": "NB - Roller", "roman blinds": "NB - Roman", "venetian blinds": "NB - Venetian",
     "blackout blinds": "NB - Blackout", "day night blinds": "NB - Day Night",
+    "made to measure blinds": "NB - Broad Discovery",
 }
 SEARCH_MODIFIERS = [
     "white", "grey", "navy", "cream", "for bedroom", "for kitchen", "for bathroom", "for living room",
@@ -441,9 +390,6 @@ SEARCH_MODIFIERS = [
     "thermal", "cordless", "child safe", "no drill", "online", "custom size", "next day delivery",
     "price", "measuring guide", "fitting instructions",
 ]
-SEARCH_THEME_WORDS = re.compile(
-    r"\b(repair|restring|fix|curtains?|drapes|shutters|wholesale|trade|jobs|careers|diy|how to make)\b"
-)
 
 SEARCH_FACTS_MD = """\
 # Sablewood Blinds: business facts for the paid-search review
@@ -455,7 +401,7 @@ SEARCH_FACTS_MD = """\
 - Sablewood does not sell curtains, drapes, curtain rods or shutters.
 - Sablewood does not sell to trade or wholesale buyers.
 - Sablewood does not sell fabric, kits or instructions for making your own blinds.
-- Recruitment is handled on a separate careers site; search ads are not meant to reach job seekers.
+- Sablewood does not hire through search ads. People searching for jobs or careers are not customers; recruitment is handled on a separate careers site.
 - Brand terms are "Sablewood" and "Sablewood Blinds".
 - The account's target cost per conversion is $45. A conversion is a completed order.
 - The report covers 2026-04-01 through 2026-04-30. `added_as_keyword` says whether the search term already exists as a keyword in the account.
@@ -465,8 +411,8 @@ SEARCH_FACTS_MD = """\
 def build_search_terms() -> dict[str, str]:
     rng = random.Random(3319)
     rows: list[list] = []
-    for term, impressions, clicks, cost in SEARCH_IRRELEVANT:
-        rows.append([term, "NB - Broad Discovery", rng.choice(["broad", "phrase"]), impressions, clicks, cost, 0, "0.00", "no"])
+    for term, campaign, impressions, clicks, cost in SEARCH_IRRELEVANT:
+        rows.append([term, campaign, rng.choice(["broad", "phrase"]), impressions, clicks, cost, 0, "0.00", "no"])
     rows.extend(list(row) for row in SEARCH_PLANTED)
     taken = {row[0] for row in rows}
     combos = [
@@ -495,30 +441,6 @@ def build_search_terms() -> dict[str, str]:
     }
 
 
-def search_promote_candidate(row: dict) -> bool:
-    conversions = int(row["conversions"])
-    return (
-        row["added_as_keyword"] == "no"
-        and conversions >= 3
-        and Decimal(row["cost_usd"]) / conversions <= SEARCH_TARGET_CPA
-    )
-
-
-def solve_search_terms(files: dict[str, str]) -> dict:
-    rows = _rows(files["search-terms/search_terms_report.csv"])
-    irrelevant = {term for term, *_ in SEARCH_IRRELEVANT}
-    promote = [row for row in rows if search_promote_candidate(row)]
-    return {
-        "q1_zero_conversion_spend": float(sum(Decimal(row["cost_usd"]) for row in rows if int(row["conversions"]) == 0)),
-        "q2_promote_count": len(promote),
-        "q3_irrelevant_spend": float(sum(Decimal(row["cost_usd"]) for row in rows if row["search_term"] in irrelevant)),
-        "q4_promote_conversions": sum(int(row["conversions"]) for row in promote),
-        "_promote_terms": sorted(row["search_term"] for row in promote),
-        "_theme_word_terms": sorted(row["search_term"] for row in rows if SEARCH_THEME_WORDS.search(row["search_term"])),
-        "_irrelevant_terms": sorted(irrelevant),
-    }
-
-
 # ----------------------------------------------------------- lifecycle-reengagement
 
 LIFECYCLE_HEADER = [
@@ -526,8 +448,8 @@ LIFECYCLE_HEADER = [
     "last_click_date", "orders_count", "last_order_date", "hard_bounce", "spam_complaint",
 ]
 LIFECYCLE_TODAY = dt.date(2026, 6, 1)
-LIFECYCLE_LAPSED_BEFORE = dt.date(2026, 3, 3)    # 90 days before today
-LIFECYCLE_DORMANT_BEFORE = dt.date(2025, 6, 1)   # 12 months before today
+LIFECYCLE_LAPSED_BEFORE = task_references.LIFECYCLE_LAPSED_BEFORE    # 90 days before today
+LIFECYCLE_DORMANT_BEFORE = task_references.LIFECYCLE_DORMANT_BEFORE  # 12 months before today
 
 LIFECYCLE_POLICY_MD = """\
 # Sorrel Kitchen: email policy (marketing sends)
@@ -635,39 +557,9 @@ def build_lifecycle() -> dict[str, str]:
     }
 
 
-def solve_lifecycle(files: dict[str, str]) -> dict:
-    rows = _rows(files["lifecycle/subscribers.csv"])
-
-    def opened_before(row: dict, cutoff: dt.date) -> bool:
-        return row["last_open_date"] == "" or dt.date.fromisoformat(row["last_open_date"]) < cutoff
-
-    mailable = [
-        row for row in rows
-        if row["consent_status"] == "subscribed" and row["hard_bounce"] == "no" and row["spam_complaint"] == "no"
-    ]
-    lapsed = [row for row in mailable if opened_before(row, LIFECYCLE_LAPSED_BEFORE)]
-    return {
-        "q1_mailable": len(mailable),
-        "q2_lapsed": len(lapsed),
-        "q3_lapsed_buyers": sum(1 for row in lapsed if int(row["orders_count"]) >= 1),
-        "q4_lapsed_non_buyers": sum(1 for row in lapsed if int(row["orders_count"]) == 0),
-        "q5_long_dormant": sum(1 for row in lapsed if opened_before(row, LIFECYCLE_DORMANT_BEFORE)),
-        "_total": len(rows),
-        "_lapsed_ignoring_consent": sum(
-            1 for row in rows
-            if row["consent_status"] != "pending_confirmation" and opened_before(row, LIFECYCLE_LAPSED_BEFORE)
-        ),
-        "_no_consent_buyers": sum(
-            1 for row in rows
-            if row["consent_status"] in ("unsubscribed", "never_consented") and int(row["orders_count"]) >= 1
-        ),
-    }
-
-
 # ------------------------------------------------------------------ ab-test-readout
 
 AB_HEADER = ["week", "week_start", "variant", "device", "visitors", "signups", "paid_conversions"]
-AB_REQUIRED_PER_ARM = 18000
 # variant, device -> four weekly (visitors, signups, paid conversions)
 AB_WEEKS = {
     ("control", "desktop"): [(1380, 99, 21), (1410, 102, 22), (1395, 101, 20), (1395, 100, 21)],
@@ -706,79 +598,79 @@ def build_ab_test() -> dict[str, str]:
     }
 
 
-def two_proportion_p_value(x1: int, n1: int, x2: int, n2: int) -> float:
-    """Two-sided p-value of a pooled two-proportion z-test."""
-    pooled = (x1 + x2) / (n1 + n2)
-    z = (x2 / n2 - x1 / n1) / math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
-    return math.erfc(abs(z) / math.sqrt(2))
-
-
-def solve_ab_test(files: dict[str, str]) -> dict:
-    rows = _rows(files["ab-test/experiment_results.csv"])
-
-    def total(variant: str, field: str, device: str | None = None) -> int:
-        return sum(
-            int(row[field]) for row in rows
-            if row["variant"] == variant and (device is None or row["device"] == device)
-        )
-
-    n_control, n_variant = total("control", "visitors"), total("variant_b", "visitors")
-    rate_control = total("control", "signups") / n_control
-    rate_variant = total("variant_b", "signups") / n_variant
-    expected = (n_control + n_variant) / 2
-    return {
-        "q1_control_rate": round(rate_control * 100, 2),
-        "q2_variant_rate": round(rate_variant * 100, 2),
-        "q3_relative_lift": round((rate_variant / rate_control - 1) * 100, 1),
-        "q4_srm_chi_square": round(((n_control - expected) ** 2 + (n_variant - expected) ** 2) / expected, 1),
-        "q5_p_value": round(two_proportion_p_value(
-            total("control", "signups"), n_control, total("variant_b", "signups"), n_variant), 3),
-        "_visitors": (n_control, n_variant),
-        "_secondary_p_value": round(two_proportion_p_value(
-            total("control", "paid_conversions"), n_control, total("variant_b", "paid_conversions"), n_variant), 3),
-        "_mobile_visitors": (total("control", "visitors", "mobile"), total("variant_b", "visitors", "mobile")),
-        "_desktop_visitors": (total("control", "visitors", "desktop"), total("variant_b", "visitors", "desktop")),
-    }
-
-
 # ------------------------------------------------------------- social-calendar-limits
 
-SOCIAL_BRIEF_MD = """\
+_NUMBER_WORDS = {3: "three", 4: "four", 5: "five", 6: "six", 12: "twelve"}
+
+
+def _day(date: dt.date, *, weekday: bool = False, year: bool = False) -> str:
+    text = f"{date.day} {date:%B}"
+    if weekday:
+        text = f"{date:%A} {text}"
+    return f"{text} {date.year}" if year else text
+
+
+def _days(dates: list[dt.date], joiner: str) -> str:
+    """'7, 8, 14 and 15 March' for dates in one month."""
+    numbers = [str(date.day) for date in dates]
+    listed = numbers[0] if len(numbers) == 1 else ", ".join(numbers[:-1]) + f" {joiner} " + numbers[-1]
+    return f"{listed} {dates[0]:%B}"
+
+
+def social_brief() -> str:
+    """The campaign brief, with every limit and date taken from task_facts."""
+    f = task_facts
+    start, end = f.SOCIAL_WINDOW
+    window = [start + dt.timedelta(days=offset) for offset in range((end - start).days + 1)]
+    weekend = [day for day in window if day.weekday() >= 5]
+    after_close = [day for day in window if day > f.SOCIAL_BOOKING_CLOSES]
+    reminder_days = [day for day in window if f.SOCIAL_BOOKING_OPENS < day <= f.SOCIAL_BOOKING_CLOSES]
+    platforms = list(f.SOCIAL_LIMITS)
+    each = _NUMBER_WORDS[f.SOCIAL_POSTS // len(platforms)]
+    limits = ", ".join(f"{name} {limit}" for name, limit in f.SOCIAL_LIMITS.items())
+    hashtags = ", ".join(f"{name} at most {limit}" for name, limit in f.SOCIAL_HASHTAG_LIMITS.items())
+    split = f"{each} on {platforms[0]}, {each} on {platforms[1]} and {each} on {platforms[2]}"
+    return f"""\
 # Marlow Cycle Works: Spring Tune-Up Week campaign brief
 
 Marlow Cycle Works is a neighbourhood bike shop and repair workshop.
 
 ## The facts you may use
 - Spring Tune-Up Week runs Monday 16 March to Sunday 22 March 2026 at the workshop.
-- A standard tune-up costs $79 during the week. The regular price is $99. Parts are extra.
+- A standard tune-up costs ${f.SOCIAL_PRICE} during the week. The regular price is ${f.SOCIAL_REGULAR_PRICE}, a saving of ${f.SOCIAL_SAVING}. Parts are extra.
 - A standard tune-up covers a brake adjustment, gear indexing, a chain clean and lube, a tyre check and a safety check. It takes about 45 minutes.
 - There are 120 slots across the week.
-- Booking opens Monday 9 March 2026 at 9:00 am and closes Friday 13 March 2026 at 6:00 pm.
-- Booking link: marlowcycle.example/tune-up
+- Booking opens {_day(f.SOCIAL_BOOKING_OPENS, weekday=True, year=True)} at 9:00 am and closes {_day(f.SOCIAL_BOOKING_CLOSES, weekday=True, year=True)} at 6:00 pm.
+- Booking link: {f.SOCIAL_BOOKING_LINK}
 - Bikes are dropped off and collected at the workshop. There is no collection service.
 
 ## Dates that constrain the calendar
-- The price, the saving and the booking link are under embargo until booking opens. No post dated before 9 March may mention the $79 price, the $99 regular price, the $20 saving, or the booking link.
-- After booking closes, do not invite people to book. Posts dated 14 or 15 March may not carry the booking link.
+- The price, the saving and the booking link are under embargo until booking opens. No post dated before {_day(f.SOCIAL_BOOKING_OPENS)} may mention the ${f.SOCIAL_PRICE} price, the ${f.SOCIAL_REGULAR_PRICE} regular price, the ${f.SOCIAL_SAVING} saving, or the booking link.
+- At least one post dated {_day(f.SOCIAL_BOOKING_OPENS)} carries the booking link, and at least one post dated {reminder_days[0].day} to {_day(reminder_days[-1])} carries it again as a reminder.
+- After booking closes, do not invite people to book. Posts dated {_days(after_close, "or")} may not carry the booking link.
 
 ## Calendar rules
-- Twelve posts dated from 2 March to 15 March 2026 inclusive: exactly four on X, four on LinkedIn and four on Instagram.
-- No more than one post per platform per day. No LinkedIn posts on a Saturday or Sunday (7, 8, 14 and 15 March).
-- Length, counted in characters including spaces, hashtags and links: X 280, LinkedIn 600, Instagram 400.
-- Every post carries the campaign hashtag #TuneUpWeek. Total hashtags per post, including that one: X at most 2, LinkedIn at most 3, Instagram at most 5.
-- Any post that states the $79 price also carries the exact sentence "Parts extra."
-- Never use these words: guaranteed, cheapest, best, #1.
+- {_NUMBER_WORDS[f.SOCIAL_POSTS].capitalize()} posts dated from {_day(start)} to {_day(end, year=True)} inclusive: exactly {split}.
+- No more than one post per platform per day. No LinkedIn posts on a Saturday or Sunday ({_days(weekend, "and")}).
+- Length, counted in characters including spaces, hashtags and links: {limits}.
+- Every post carries the campaign hashtag {f.SOCIAL_CAMPAIGN_HASHTAG}. Total hashtags per post, including that one: {hashtags}.
+- Any post that states the ${f.SOCIAL_PRICE} price also carries the exact sentence "{f.SOCIAL_PRICE_NOTE}"
+- Never use these words: {", ".join(f.SOCIAL_BANNED_WORDS)}.
 - State nothing about the shop, the mechanics, demand or results that is not in the facts above.
+
+## How to write the posts
+- Write every post fresh. No post may be a copy of another or a shortened version of another, on the same platform or a different one. The required elements (the dates, the price sentence, "{f.SOCIAL_PRICE_NOTE}", the link and the hashtag) may repeat.
+- One ask per post: a post may invite the reader to do one thing (for example to save the date, or to book), not two.
 
 ## Format
 One line per post, in date order, exactly like this:
 
-POST 1: 2026-03-02 | X | <post text>
+POST 1: {start.isoformat()} | {platforms[0]} | <post text>
 """
 
 
 def build_social() -> dict[str, str]:
-    return {"social-calendar/campaign_brief.md": SOCIAL_BRIEF_MD}
+    return {"social-calendar/campaign_brief.md": social_brief()}
 
 
 # ------------------------------------------------------------ monthly-report-reconcile
@@ -847,31 +739,6 @@ def build_monthly() -> dict[str, str]:
     }
 
 
-def solve_monthly(files: dict[str, str]) -> dict:
-    ads = _rows(files["monthly-report/ads_platforms.csv"])
-    events = _rows(files["monthly-report/analytics_purchases.csv"])
-    orders = _rows(files["monthly-report/order_system.csv"])
-    real = [
-        row for row in orders
-        if row["order_date"].startswith("2026-05") and row["status"] not in ("cancelled", "test")
-    ]
-    spend = sum(Decimal(row["spend_usd"]) for row in ads)
-    net = sum(Decimal(row["gross_usd"]) - Decimal(row["refund_usd"]) for row in real)
-    analytics_revenue = sum(Decimal(row["revenue_usd"]) for row in events)
-    return {
-        "q1_ad_spend": float(spend),
-        "q2_real_orders": len(real),
-        "q3_net_revenue": float(net),
-        "q4_duplicate_rows": len(events) - len({row["order_id"] for row in events}),
-        "q5_blended_roas": round(float(net / spend), 2),
-        "q6_platform_conversions": sum(int(row["platform_conversions"]) for row in ads),
-        "_analytics_revenue": float(analytics_revenue),
-        "_analytics_roas": round(float(analytics_revenue / spend), 2),
-        "_order_rows": len(orders),
-        "_gross_all_rows": float(sum(Decimal(row["gross_usd"]) for row in orders)),
-    }
-
-
 # -------------------------------------------------------- positioning-from-competitors
 
 POSITIONING_FACTS_MD = """\
@@ -904,21 +771,23 @@ POSITIONING_COMPETITORS_MD = """\
 - Automatic payment reminders.
 - $15 per month plus a 1% fee on each paid invoice.
 - 135 currencies. Built-in time tracking. iOS and Android apps.
+- 14-day free trial; a card is required to start it.
 - "Trusted by 400,000 businesses."
 
 ## PaidUp (home page)
 - "The #1 rated invoicing app."
-- Free plan; card payments at 2.9% + 60¢.
+- Free to start, with no monthly price. PaidUp keeps 1.5% of every invoice paid; card payments cost 2.9% + 60¢ on top.
 - Automatic payment reminders on every plan.
 - Time tracking available as a paid add-on.
 - "For freelancers, contractors and small teams."
 
-## Invoxa (features page)
+## Invoxa (features and pricing page)
 - "Billing for agencies and consultancies."
-- $19 per month.
+- $19 per month, plus 50¢ for each invoice sent.
 - Payment reminders on a schedule you set.
 - SOC 2 Type II certified.
 - 24/7 live chat support. Client portal.
+- 7-day free trial; a card is required to start it.
 """
 
 POSITIONING_FOUNDER_MD = """\
@@ -945,13 +814,13 @@ def build_positioning() -> dict[str, str]:
     }
 
 
-def source_numbers(*texts: str) -> set[float]:
-    """Every figure written in the supplied sources, fact labels excluded."""
-    numbers = set()
+def source_prices_and_percents(*texts: str) -> tuple[set[float], set[float]]:
+    """The dollar amounts and the percentages written in the supplied sources."""
+    dollars, percents = set(), set()
     for text in texts:
-        for token in re.findall(r"\d[\d,]*(?:\.\d+)?", re.sub(r"\bF\d{1,2}\.", " ", text)):
-            numbers.add(float(token.replace(",", "")))
-    return numbers
+        dollars.update(float(raw.replace(",", "")) for raw in re.findall(r"\$\s*(\d[\d,]*(?:\.\d+)?)", text))
+        percents.update(float(raw.replace(",", "")) for raw in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*%", text))
+    return dollars, percents
 
 
 # ------------------------------------------------------------------------- driver
@@ -960,16 +829,174 @@ BUILDERS = (
     build_seo_brief, build_seo_crawl, build_search_terms, build_lifecycle,
     build_ab_test, build_social, build_monthly, build_positioning,
 )
-# task id -> solver. Keys of the solver's result that do not start with "_" are
-# the ids of that task's banded criteria.
-SOLVERS = {
-    "seo-content-brief": solve_seo_brief,
-    "seo-technical-triage": solve_seo_crawl,
-    "search-terms-negatives": solve_search_terms,
-    "lifecycle-reengagement": solve_lifecycle,
-    "ab-test-readout": solve_ab_test,
-    "monthly-report-reconcile": solve_monthly,
+# task id -> the fixture folder its sources live in
+FOLDERS = {
+    "seo-content-brief": "seo-brief",
+    "seo-technical-triage": "seo-crawl",
+    "search-terms-negatives": "search-terms",
+    "lifecycle-reengagement": "lifecycle",
+    "ab-test-readout": "ab-test",
+    "social-calendar-limits": "social-calendar",
+    "monthly-report-reconcile": "monthly-report",
+    "positioning-from-competitors": "positioning",
 }
+DATA_TASKS = tuple(task_references.REFERENCES)
+
+ANSWER_RULE = (
+    "Each line is the label, a colon, and the number alone: no words, no working and no second "
+    "number. A currency sign, thousands separators and a percent sign are fine."
+)
+# The tolerance band of every banded answer: kind, full credit within, zero credit from.
+BANDS = {
+    "seo-content-brief": {
+        "q1_already_ranking": ("absolute", 0, 3),
+        "q2_qualifying_count": ("absolute", 0, 3),
+        "q3_topic_volume": ("relative", 0.005, 0.25),
+        "q4_primary_volume": ("relative", 0.005, 0.25),
+        "q5_ranking_volume": ("relative", 0.005, 0.25),
+    },
+    "seo-technical-triage": {
+        "q1_broken_linked": ("absolute", 0, 3),
+        "q2_redirect_chains": ("absolute", 0, 3),
+        "q3_noindex_in_sitemap": ("absolute", 0, 3),
+        "q4_bad_canonicals": ("absolute", 0, 3),
+        "q5_duplicate_title_groups": ("absolute", 0, 3),
+        "q6_sessions_at_risk": ("relative", 0.005, 0.25),
+    },
+    "search-terms-negatives": {
+        "q1_zero_conversion_spend": ("relative", 0.005, 0.25),
+        "q2_promote_count": ("absolute", 0, 3),
+        "q3_irrelevant_spend": ("relative", 0.02, 0.25),
+        "q4_promote_conversions": ("absolute", 0, 8),
+    },
+    "lifecycle-reengagement": {
+        "q1_mailable": ("absolute", 0, 20),
+        "q2_lapsed": ("absolute", 0, 10),
+        "q3_lapsed_buyers": ("absolute", 0, 6),
+        "q4_lapsed_non_buyers": ("absolute", 0, 6),
+        "q5_long_dormant": ("absolute", 0, 5),
+    },
+    "ab-test-readout": {
+        "q1_control_visitors": ("relative", 0.001, 0.1),
+        "q2_variant_visitors": ("relative", 0.001, 0.1),
+        "q3_control_rate": ("absolute", 0.02, 0.5),
+        "q4_variant_rate": ("absolute", 0.02, 0.5),
+        "q5_relative_lift": ("absolute", 0.15, 3.0),
+        "q6_srm_chi_square": ("relative", 0.02, 0.3),
+        "q7_p_value": ("absolute", 0.015, 0.1),
+    },
+    "monthly-report-reconcile": {
+        "q1_ad_spend": ("relative", 0.005, 0.1),
+        "q2_real_orders": ("absolute", 0, 8),
+        "q3_net_revenue": ("relative", 0.005, 0.03),
+        "q4_duplicate_rows": ("absolute", 0, 8),
+        "q5_blended_roas": ("relative", 0.01, 0.04),
+        "q6_platform_conversions": ("absolute", 0, 50),
+    },
+}
+# The banded checks that prove each task's critical criterion. An answer is
+# listed only when it is a plain sum, count or rate under an explicit filter,
+# with no planted trap inside it and a zero band at least 10% wide: a trap
+# then costs its own criterion, and only a figure no reading of the data
+# supports fails the critical one.
+ORACLE = {
+    "seo-content-brief": {"no_invented_data": ["q5_ranking_volume"]},
+    "seo-technical-triage": {"no_invented_data": ["q6_sessions_at_risk"]},
+    "search-terms-negatives": {"no_invented_data": ["q1_zero_conversion_spend"]},
+    "lifecycle-reengagement": {"no_invented_data": ["q1_mailable"]},
+    "ab-test-readout": {"no_invented_data": ["q1_control_visitors", "q2_variant_visitors"]},
+    "monthly-report-reconcile": {"no_invented_data": ["q1_ad_spend", "q6_platform_conversions"]},
+    "social-calendar-limits": {"no_invented_facts": ["prices_exact"]},
+    "positioning-from-competitors": {"no_invented_facts": ["figures_from_sources"]},
+}
+# Lines each prompt must carry word for word: the definitions the figures are
+# computed under, and the answer lines. A changed definition without a changed
+# computation is exactly the drift --check exists to catch.
+PROMPT_LINES = {
+    "seo-content-brief": [
+        "- A keyword already belongs to an existing page when its `current_rank` is 10 or better. Those keywords are not targets for a new article.",
+        "- A qualifying keyword has informational intent, a difficulty of 45 or lower, and is not one the site already ranks in the top 10 for.",
+        "- The target topic is the `topic` whose qualifying keywords have the highest combined `monthly_searches`.",
+        "- The primary keyword is the qualifying keyword in the target topic with the most monthly searches.",
+        "A1: <how many keywords in the export the site already ranks in the top 10 for>",
+        "A2: <how many qualifying keywords the target topic has>",
+        "A3: <combined monthly searches of the target topic's qualifying keywords>",
+        "A4: <monthly searches of the primary keyword>",
+        "A5: <combined monthly searches of the keywords the site already ranks in the top 10 for>",
+    ],
+    "seo-technical-triage": [
+        "- A broken linked page is a URL with status 404 and at least one inlink.",
+        "- A redirect chain starts at a URL with a 3xx status whose `redirect_target` is itself a URL with a 3xx status in this export.",
+        "- A page is indexable when its status is 200, its `meta_robots` does not contain noindex, and its `canonical` is blank or equal to its own URL.",
+        "- A bad canonical is a status-200 URL whose `canonical` points to a different URL that does not return 200.",
+        "- A duplicate-title group is a set of two or more indexable pages that share exactly the same `title`.",
+        "A1: <number of broken linked pages>",
+        "A2: <number of redirect chains>",
+        "A3: <number of URLs that are noindex but listed in the sitemap>",
+        "A4: <number of bad canonicals>",
+        "A5: <number of duplicate-title groups>",
+        "A6: <total organic_sessions_30d of the URLs counted in A3>",
+    ],
+    "search-terms-negatives": [
+        "- Zero-conversion spend is the total `cost_usd` of search terms with 0 conversions.",
+        "- An irrelevant search term is one the business facts rule out: the searcher wants something Sablewood does not sell or do, or is looking for a job.",
+        "- A promote candidate is a search term that is not yet a keyword (`added_as_keyword` is no), has at least 3 conversions, and has a cost per conversion at or below the account's target.",
+        "A1: <zero-conversion spend, in dollars>",
+        "A2: <number of promote candidates>",
+        "A3: <total cost of the irrelevant search terms, in dollars>",
+        "A4: <combined conversions of the promote candidates>",
+    ],
+    "lifecycle-reengagement": [
+        "- Mailable: `consent_status` is subscribed, `hard_bounce` is no and `spam_complaint` is no.",
+        "- Lapsed: mailable, and `last_open_date` is earlier than 2026-03-03 or blank.",
+        "- Lapsed buyers are lapsed subscribers with an `orders_count` of 1 or more; lapsed non-buyers have 0.",
+        "- Long-dormant: lapsed, and `last_open_date` is earlier than 2025-06-01 or blank.",
+        "A1: <number of mailable subscribers>",
+        "A2: <number of lapsed subscribers>",
+        "A3: <number of lapsed buyers>",
+        "A4: <number of lapsed non-buyers>",
+        "A5: <number of long-dormant subscribers>",
+    ],
+    "ab-test-readout": [
+        "- Signup rate = signups ÷ visitors, per variant, over all four weeks and both devices.",
+        "- Relative lift = variant B's signup rate ÷ control's signup rate − 1.",
+        "- The sample-ratio check compares the visitors each variant actually received with the 50/50 split the plan called for, using a chi-square statistic: the sum over both variants of (observed − expected)² ÷ expected.",
+        "- The significance test for the primary metric is a two-sided, pooled two-proportion z-test.",
+        "A1: <total visitors in control>",
+        "A2: <total visitors in variant B>",
+        "A3: <control signup rate, as a percentage to two decimals>",
+        "A4: <variant B signup rate, as a percentage to two decimals>",
+        "A5: <relative lift of variant B over control, as a percentage to one decimal>",
+        "A6: <chi-square statistic of the sample-ratio check, to one decimal>",
+        "A7: <two-sided p-value of the primary-metric test, to three decimals>",
+    ],
+    "monthly-report-reconcile": [
+        "- The order system is the record of what was sold. A real order has an `order_date` in May 2026 and a `status` other than cancelled or test.",
+        "- Net revenue = `gross_usd` minus `refund_usd`, summed over real orders.",
+        "- Ad spend = total `spend_usd` in the ad platform export.",
+        "- Blended return on ad spend (ROAS) = net revenue ÷ ad spend.",
+        "- A duplicate analytics row is any purchase row beyond the first for the same `order_id`.",
+        "A1: <ad spend, in dollars>",
+        "A2: <number of real orders>",
+        "A3: <net revenue, in dollars>",
+        "A4: <number of duplicate analytics rows>",
+        "A5: <blended ROAS, to two decimals>",
+        "A6: <total conversions the ad platforms report, all platforms combined>",
+    ],
+    "social-calendar-limits": [
+        "POST <n>: <YYYY-MM-DD> | <X, LinkedIn or Instagram> | <post text>",
+        f"Number the posts 1 to {task_facts.SOCIAL_POSTS}.",
+    ],
+    "positioning-from-competitors": [
+        f"POSITIONING: <one sentence of {task_facts.POSITIONING_WORD_LIMIT} words or fewer saying who Tallyhand is for, what it is, and why they would choose it>",
+        "CLAIM-1: <a supporting claim> [fact ids]",
+        "CLAIM-2: <a supporting claim> [fact ids]",
+        "CLAIM-3: <a supporting claim> [fact ids]",
+        "(facts numbered F1 to F14)",
+    ],
+}
+for _task_id in DATA_TASKS:
+    PROMPT_LINES[_task_id].append(ANSWER_RULE)
 
 
 def build_all() -> dict[str, str]:
@@ -983,51 +1010,138 @@ def read_fixtures() -> dict[str, str]:
     return {name: (FIXTURES / name).read_text() for name in build_all()}
 
 
+def reference(task_id: str, files: dict[str, str] | None = None) -> dict:
+    """The judge's reference for a data task, computed from its fixture files."""
+    files = files if files is not None else read_fixtures()
+    prefix = FOLDERS[task_id] + "/"
+    sources = {name[len(prefix):]: text for name, text in files.items() if name.startswith(prefix)}
+    return task_references.REFERENCES[task_id](sources)
+
+
 def answers(files: dict[str, str] | None = None) -> dict[str, dict]:
     files = files if files is not None else read_fixtures()
-    return {
-        task_id: {key: value for key, value in solver(files).items() if not key.startswith("_")}
-        for task_id, solver in SOLVERS.items()
-    }
+    return {task_id: reference(task_id, files)["answers"] for task_id in DATA_TASKS}
 
 
-def _near_pattern(criterion_id: str) -> re.Pattern:
-    return re.compile(r'("id": "' + re.escape(criterion_id) + r'".*?"near": )(-?[\d.]+)')
+def expected_answers_field(task_id: str) -> dict | None:
+    return {"count": len(BANDS[task_id]), "single_number": True} if task_id in BANDS else None
 
 
-def task_targets(task_id: str) -> dict[str, float]:
-    """The `near` targets written in a task file, keyed by criterion id."""
-    text = (TASKS / f"{task_id}.json").read_text()
-    targets = {}
-    for criterion_id in SOLVERS[task_id](read_fixtures()):
-        if criterion_id.startswith("_"):
+def expected_programmatic(task_id: str, files: dict[str, str] | None = None) -> dict:
+    """Every programmatic condition a task file must carry, by criterion id."""
+    if task_id in BANDS:
+        values = reference(task_id, files)["answers"]
+        conditions: dict = {"answer_block_complete": {"fact": "answer_count", "equals": len(BANDS[task_id])}}
+        for criterion_id, (kind, full, zero) in BANDS[task_id].items():
+            conditions[criterion_id] = {
+                "fact": "answer_q" + re.match(r"q(\d+)_", criterion_id).group(1),
+                "near": values[criterion_id],
+                "tolerance": {"kind": kind, "full": full, "zero": zero},
+            }
+        return conditions
+    exact = {"kind": "absolute", "full": 0, "zero": 1}
+    if task_id == "social-calendar-limits":
+        posts = task_facts.SOCIAL_POSTS
+        return {
+            "all_posts_present": {"fact": "social_post_count", "equals": posts},
+            "platform_split": {"fact": "social_platform_split_ok", "equals": True},
+            "dates_in_window": {"fact": "social_in_window_post_count", "equals": posts},
+            "within_char_limits": {"fact": "social_within_limit_post_count", "equals": posts},
+            "spacing_rules": [{"fact": "social_same_platform_same_day_count", "equals": 0},
+                              {"fact": "social_linkedin_weekend_count", "equals": 0}],
+            "hashtag_rules": [{"fact": "social_campaign_hashtag_post_count", "equals": posts},
+                              {"fact": "social_hashtag_limit_violation_count", "equals": 0}],
+            "booking_posts_present": [{"fact": "social_opening_day_link_post_count", "gte": 1},
+                                      {"fact": "social_reminder_link_post_count", "gte": 1}],
+            "embargo_kept": {"fact": "social_embargo_violation_count", "equals": 0},
+            "no_booking_link_after_close": {"fact": "social_late_booking_link_count", "equals": 0},
+            "price_note_present": {"fact": "social_price_without_note_count", "equals": 0},
+            "banned_words_absent": {"fact": "social_banned_word_post_count", "equals": 0},
+            "prices_exact": {"fact": "social_wrong_dollar_amount_count", "near": 0, "tolerance": exact},
+        }
+    if task_id == "positioning-from-competitors":
+        return {
+            "all_lines_present": {"fact": "positioning_missing_label_count", "equals": 0},
+            "positioning_length": {"fact": "positioning_within_word_limit", "equals": True},
+            "claims_cited": [{"fact": "positioning_cited_claim_count", "equals": 3},
+                             {"fact": "positioning_invalid_citation_count", "equals": 0}],
+            "figures_from_sources": {"fact": "positioning_unsupported_figure_count", "near": 0, "tolerance": exact},
+        }
+    raise KeyError(task_id)
+
+
+def dump_task(task: dict) -> str:
+    """A task in the repository's layout: one criterion per line."""
+    lines = ["{"]
+    for key, value in task.items():
+        if key == "rubric":
             continue
-        match = _near_pattern(criterion_id).search(text)
-        if not match:
-            raise ValueError(f"{task_id}: no banded criterion {criterion_id!r}")
-        targets[criterion_id] = float(match.group(2))
-    return targets
+        text = json.dumps(value, indent=2, ensure_ascii=False).replace("\n", "\n  ")
+        lines.append(f"  {json.dumps(key)}: {text},")
+    lines.append('  "rubric": {')
+    sections = list(task["rubric"].items())
+    for section_index, (section, items) in enumerate(sections):
+        lines.append(f"    {json.dumps(section)}: [")
+        for index, criterion in enumerate(items):
+            comma = "," if index < len(items) - 1 else ""
+            lines.append("      " + json.dumps(criterion, ensure_ascii=False) + comma)
+        lines.append("    ]" + ("," if section_index < len(sections) - 1 else ""))
+    lines.extend(["  }", "}"])
+    return "\n".join(lines) + "\n"
 
 
-def sync_tasks() -> list[str]:
-    changed = []
-    for task_id, expected in answers().items():
-        path = TASKS / f"{task_id}.json"
-        text = path.read_text()
-        updated = text
-        for criterion_id, value in expected.items():
-            updated, count = _near_pattern(criterion_id).subn(
-                lambda match: match.group(1) + repr(value), updated, count=1
-            )
-            if count != 1:
-                raise ValueError(f"{task_id}: no banded criterion {criterion_id!r}")
-        if updated != text:
-            path.write_text(updated)
-            changed.append(task_id)
-    return changed
+def _criteria(task: dict) -> dict[str, dict]:
+    rubric = task.get("rubric") if isinstance(task, dict) else None
+    found: dict[str, dict] = {}
+    for items in (rubric or {}).values() if isinstance(rubric, dict) else ():
+        for criterion in items if isinstance(items, list) else ():
+            if isinstance(criterion, dict) and isinstance(criterion.get("id"), str):
+                found[criterion["id"]] = criterion
+    return found
 
 
-def check() -> list[str]:
+def _load(path: Path) -> tuple[dict | None, str | None]:
+    if not path.exists():
+        return None, f"missing task file {path.name}"
+    try:
+        task = json.loads(path.read_text())
+    except ValueError as error:
+        return None, f"{path.name} is not valid JSON: {error}"
+    return (task, None) if isinstance(task, dict) else (None, f"{path.name} is not a JSON object")
+
+
+def task_problems(task_id: str, task: dict, files: dict[str, str] | None = None) -> list[str]:
+    """Where one parsed task file differs from what this script pins."""
+    problems = []
+    criteria = _criteria(task)
+    expected = expected_programmatic(task_id, files)
+    for criterion_id, condition in expected.items():
+        actual = criteria.get(criterion_id, {}).get("programmatic")
+        if criterion_id not in criteria:
+            problems.append(f"{task_id}: criterion {criterion_id} is missing")
+        elif actual != condition:
+            problems.append(f"{task_id}: {criterion_id} is {json.dumps(actual)}, pinned {json.dumps(condition)}")
+    for criterion_id, criterion in criteria.items():
+        if criterion.get("programmatic") and criterion_id not in expected:
+            problems.append(f"{task_id}: {criterion_id} has a programmatic condition this script does not pin")
+        wanted = ORACLE[task_id].get(criterion_id)
+        if criterion.get("fails_if_zero") != wanted:
+            problems.append(
+                f"{task_id}: {criterion_id} fails_if_zero is {criterion.get('fails_if_zero')}, pinned {wanted}")
+    for criterion_id in ORACLE[task_id]:
+        if criterion_id not in criteria:
+            problems.append(f"{task_id}: criterion {criterion_id} is missing")
+    if task.get("answers") != expected_answers_field(task_id):
+        problems.append(
+            f"{task_id}: answers is {json.dumps(task.get('answers'))}, pinned {json.dumps(expected_answers_field(task_id))}")
+    prompt = task.get("prompt") if isinstance(task.get("prompt"), str) else ""
+    for line in PROMPT_LINES[task_id]:
+        if line not in prompt:
+            problems.append(f"{task_id}: the prompt no longer carries the line {line!r}")
+    return problems
+
+
+def check(tasks_dir: Path = TASKS) -> list[str]:
     problems = []
     for name, text in build_all().items():
         path = FIXTURES / name
@@ -1037,23 +1151,48 @@ def check() -> list[str]:
             problems.append(f"fixture {name} differs from the generator's output")
     if problems:
         return problems
-    for task_id, expected in answers().items():
-        if not (TASKS / f"{task_id}.json").exists():
-            problems.append(f"missing task file {task_id}.json")
-            continue
-        targets = task_targets(task_id)
-        for criterion_id, value in expected.items():
-            if targets[criterion_id] != float(value):
-                problems.append(f"{task_id}: {criterion_id} is {targets[criterion_id]}, computed {value}")
+    files = read_fixtures()
+    for task_id in FOLDERS:
+        task, problem = _load(tasks_dir / f"{task_id}.json")
+        problems.extend([problem] if problem else task_problems(task_id, task, files))
     return problems
+
+
+def sync_tasks(tasks_dir: Path = TASKS) -> tuple[list[str], list[str]]:
+    """Write the pinned values into the task files. Returns (changed, problems)."""
+    changed, problems = [], []
+    files = read_fixtures()
+    for task_id in FOLDERS:
+        path = tasks_dir / f"{task_id}.json"
+        task, problem = _load(path)
+        if problem:
+            problems.append(problem)
+            continue
+        criteria = _criteria(task)
+        for criterion_id, condition in expected_programmatic(task_id, files).items():
+            if criterion_id in criteria:
+                criteria[criterion_id]["programmatic"] = condition
+        for criterion_id, rules in ORACLE[task_id].items():
+            if criterion_id in criteria:
+                criteria[criterion_id]["fails_if_zero"] = rules
+        field = expected_answers_field(task_id)
+        if field is not None:
+            task["answers"] = field
+        text = dump_task(task)
+        if text != path.read_text():
+            path.write_text(text)
+            changed.append(task_id)
+        # What sync cannot write (a missing criterion, a rewritten definition) stays a problem.
+        problems.extend(task_problems(task_id, task, files))
+    return changed, problems
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--write", action="store_true", help="write the fixtures")
-    group.add_argument("--sync", action="store_true", help="copy computed figures into the task files")
-    group.add_argument("--check", action="store_true", help="verify fixtures and task targets")
+    group.add_argument("--sync", action="store_true", help="write the pinned values into the task files")
+    group.add_argument("--check", action="store_true", help="report drift in fixtures and task files")
     args = parser.parse_args(argv)
     if args.write:
         for name, text in build_all().items():
@@ -1063,14 +1202,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {len(build_all())} fixture files under {FIXTURES.relative_to(REPO_ROOT)}")
         return 0
     if args.sync:
-        changed = sync_tasks()
+        changed, problems = sync_tasks()
         print("updated: " + (", ".join(changed) if changed else "nothing (already in step)"))
-        return 0
-    problems = check()
+    else:
+        problems = check()
     for problem in problems:
         print("DRIFT: " + problem, file=sys.stderr)
-    if not problems:
-        print("OK: fixtures and task targets match the generator")
+    if not problems and args.check:
+        print("OK: fixtures and task files match what this script pins")
     return 1 if problems else 0
 
 

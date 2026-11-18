@@ -4,7 +4,7 @@ Marlow Cycle Works is a neighbourhood bike shop and repair workshop.
 
 ## The facts you may use
 - Spring Tune-Up Week runs Monday 16 March to Sunday 22 March 2026 at the workshop.
-- A standard tune-up costs $79 during the week. The regular price is $99. Parts are extra.
+- A standard tune-up costs $79 during the week. The regular price is $99, a saving of $20. Parts are extra.
 - A standard tune-up covers a brake adjustment, gear indexing, a chain clean and lube, a tyre check and a safety check. It takes about 45 minutes.
 - There are 120 slots across the week.
 - Booking opens Monday 9 March 2026 at 9:00 am and closes Friday 13 March 2026 at 6:00 pm.
@@ -13,6 +13,7 @@ Marlow Cycle Works is a neighbourhood bike shop and repair workshop.
 
 ## Dates that constrain the calendar
 - The price, the saving and the booking link are under embargo until booking opens. No post dated before 9 March may mention the $79 price, the $99 regular price, the $20 saving, or the booking link.
+- At least one post dated 9 March carries the booking link, and at least one post dated 10 to 13 March carries it again as a reminder.
 - After booking closes, do not invite people to book. Posts dated 14 or 15 March may not carry the booking link.
 
 ## Calendar rules
@@ -23,6 +24,10 @@ Marlow Cycle Works is a neighbourhood bike shop and repair workshop.
 - Any post that states the $79 price also carries the exact sentence "Parts extra."
 - Never use these words: guaranteed, cheapest, best, #1.
 - State nothing about the shop, the mechanics, demand or results that is not in the facts above.
+
+## How to write the posts
+- Write every post fresh. No post may be a copy of another or a shortened version of another, on the same platform or a different one. The required elements (the dates, the price sentence, "Parts extra.", the link and the hashtag) may repeat.
+- One ask per post: a post may invite the reader to do one thing (for example to save the date, or to book), not two.
 
 ## Format
 One line per post, in date order, exactly like this:

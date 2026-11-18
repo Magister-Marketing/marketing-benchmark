@@ -100,6 +100,16 @@ clarification may retain the task id only when the exact older prompt is
 archived with a reason and the new rubric intentionally supports both; a
 change to graded behavior or fixture contract requires a new task id.
 
+`answers` may carry `"single_number": true`. Without it the first number on an
+answer line is the answer, so `A1: 749 / 12,480 = 6.00%` reads 749 and a
+banded check scores the slip as a wrong figure. With it a line is an answer
+only when it carries exactly one number (a currency sign, thousands
+separators, a percent sign and a unit word are fine): a line with working on
+it is left unparsed, which fails the criterion as absence and can never be
+called an invented figure by the oracle. A task that sets it tells the
+candidate to write the number alone. The tasks that do not set it parse as
+they always have.
+
 Three optional fields cover a task whose input a harness must *deliver*
 rather than inline:
 
@@ -149,14 +159,14 @@ rather than inline:
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
 | development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
-| development | `seo-technical-triage` | 159-URL crawl: six oracle counts across five issue types, with correctly configured look-alikes (noindex filter pages, one-hop redirects) that must not be flagged |
-| development | `search-terms-negatives` | 123 search terms: negatives by theme, with a brand search and two converting terms a blunt rule would block; oracle-backed spend figures |
-| development | `ab-test-readout` | a test read early, with a sample-ratio mismatch and a secondary metric that just clears 5%; five oracle statistics |
+| development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
+| development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
+| development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
 | development | `social-calendar-limits` | twelve posts under character, hashtag, spacing and embargo-date rules, checked by program |
 | holdout | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks |
 | holdout | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out |
-| holdout | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six oracle figures |
-| holdout | `positioning-from-competitors` | three cited claims against competitor extracts; the founder's unsupported superlatives declined; figures checked against the sources |
+| holdout | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures |
+| holdout | `positioning-from-competitors` | three cited claims against competitor extracts; the founder's unsupported superlatives declined; prices and percentages checked against the sources |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
@@ -164,14 +174,37 @@ stable winner, and one week of missing conversions that must be treated
 as missing, not zero), so the analysis task is graded against oracle
 numbers, not vibes.
 
-The last eight tasks were added on 2026-11-17 and have not been run or
-calibrated yet. `scripts/gen_more_tasks.py` writes their fixtures (seeded, so
-a rerun reproduces the same bytes) and computes every banded target from the
-fixture text; `--sync` copies the figures into the task files and `--check`
-fails on drift, as does `tests/test_more_tasks.py`, which recomputes each
-figure independently. The mechanical checks of `social-calendar-limits` and
-`positioning-from-competitors` live in `task_facts.py`. All brands and data
-in them are invented.
+The last eight tasks were added on 2026-11-17 (version 2 of each; version 1
+was a local draft, run once and discarded) and are not calibrated yet. All
+brands and data in them are invented. Three files keep them honest:
+
+- `task_references.py` computes each data task's figures from the sources in
+  a recorded prompt. The judge receives them as its reference totals, and the
+  task files' `near` targets are the same numbers.
+- `task_facts.py` holds the mechanical checks of `social-calendar-limits` and
+  `positioning-from-competitors`. Its constants are also what the campaign
+  brief is rendered from, so the brief and the checks cannot disagree.
+- `scripts/gen_more_tasks.py` writes the fixtures (seeded, so a rerun
+  reproduces the same bytes) and pins everything a program decides in a task
+  file: each programmatic condition with its target and tolerance, the
+  `answers` field, each critical criterion's oracle list, and the definition
+  and answer lines the prompt must carry. `--sync` writes those values;
+  `--check` reports every difference, as does `tests/test_more_tasks.py`,
+  which recomputes each figure with separate code.
+
+Three rules these tasks follow, each learned from a review of version 1:
+
+- A judged criterion asks only for what the prompt or a fixture asks for.
+  A professional standard that is wanted (one ask per post, a summary in plain
+  words) is stated in the prompt or the brief, never in the rubric alone.
+- An answer is in a critical criterion's oracle list only when it is a plain
+  sum, count or rate under an explicit filter, with no planted trap inside it
+  and a zero band at least a tenth of its value. A trap or a miscount costs
+  its own criterion; only a figure no reading of the data supports fails the
+  critical one.
+- Nothing is credited until the whole deliverable is there: with eleven posts
+  or three of four labelled lines, every rule check fails and none trips the
+  oracle.
 
 ### Calibration discipline
 

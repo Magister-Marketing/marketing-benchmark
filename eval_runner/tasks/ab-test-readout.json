@@ -2,8 +2,8 @@
   "id": "ab-test-readout",
   "title": "A/B test readout for a pricing page",
   "split": "development",
-  "prompt_version": 1,
-  "rubric_version": 1,
+  "prompt_version": 2,
+  "rubric_version": 2,
   "fixtures": [
     "eval_runner/fixtures/ab-test/test_plan.md",
     "eval_runner/fixtures/ab-test/experiment_results.csv"
@@ -13,30 +13,33 @@
     "evals/fixtures/public/skills/analytics/SKILL.md"
   ],
   "answers": {
-    "count": 5
+    "count": 7,
+    "single_number": true
   },
-  "prompt": "Kestrel Notes tested a new pricing page for four weeks. The product manager wants to ship variant B on Monday and has asked you for the readout. You are supplied the test plan written before launch and the weekly results as CSV. Every figure you cite must come from the results.\n\nUse these definitions exactly:\n- Signup rate = signups ÷ visitors, per variant, over all four weeks and both devices.\n- Relative lift = variant B's signup rate ÷ control's signup rate − 1.\n- The sample-ratio check compares the visitors each variant actually received with the 50/50 split the plan called for, using a chi-square statistic: the sum over both variants of (observed − expected)² ÷ expected.\n- The significance test for the primary metric is a two-sided, pooled two-proportion z-test.\n\nWrite the readout: the result on the primary metric, whether the test can be trusted and why, what the test does and does not show, and a clear recommendation with the next step. Write it for a product manager who wants a decision.\n\nEnd the readout with an answer block in exactly this format, one line per answer, each line starting with the label:\n\nA1: <control signup rate, as a percentage to two decimals>\nA2: <variant B signup rate, as a percentage to two decimals>\nA3: <relative lift of variant B over control, as a percentage to one decimal>\nA4: <chi-square statistic of the sample-ratio check, to one decimal>\nA5: <two-sided p-value of the primary-metric test, to three decimals>\n\nThis is an internal readout. Fetch nothing external and do not invent benchmarks.",
+  "prompt": "Kestrel Notes tested a new pricing page for four weeks. The product manager wants to ship variant B on Monday and has asked you for the readout. You are supplied the test plan written before launch and the weekly results as CSV. Every figure you cite must come from the supplied files.\n\nUse these definitions exactly:\n- Signup rate = signups ÷ visitors, per variant, over all four weeks and both devices.\n- Relative lift = variant B's signup rate ÷ control's signup rate − 1.\n- The sample-ratio check compares the visitors each variant actually received with the 50/50 split the plan called for, using a chi-square statistic: the sum over both variants of (observed − expected)² ÷ expected.\n- The significance test for the primary metric is a two-sided, pooled two-proportion z-test.\n\nWrite the readout: the result on the primary metric, whether the test can be trusted and why, what the test does and does not show, and a clear recommendation with the next step. If the split of visitors between the variants is not what the plan called for, say where the difference is: which device, or which week. Write it for a product manager who wants a decision.\n\nEnd the readout with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. A currency sign, thousands separators and a percent sign are fine.\n\nA1: <total visitors in control>\nA2: <total visitors in variant B>\nA3: <control signup rate, as a percentage to two decimals>\nA4: <variant B signup rate, as a percentage to two decimals>\nA5: <relative lift of variant B over control, as a percentage to one decimal>\nA6: <chi-square statistic of the sample-ratio check, to one decimal>\nA7: <two-sided p-value of the primary-metric test, to three decimals>\n\nThis is an internal readout. Fetch nothing external and do not invent benchmarks.",
   "rubric": {
     "completion": [
-      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 5 labeled answers A1-A5 are present and parseable.", "programmatic": {"fact": "answer_count", "equals": 5}},
-      {"id": "q1_control_rate", "check": "A1 states control's signup rate as a percentage; full credit within 0.02 percentage points, zero credit half a point or more off.", "programmatic": {"fact": "answer_q1", "near": 6.0, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.5}}},
-      {"id": "q2_variant_rate", "check": "A2 states variant B's signup rate as a percentage; full credit within 0.02 percentage points, zero credit half a point or more off.", "programmatic": {"fact": "answer_q2", "near": 6.4, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.5}}},
-      {"id": "q3_relative_lift", "check": "A3 states variant B's relative lift over control as a percentage; full credit within 0.15, zero credit three or more off.", "programmatic": {"fact": "answer_q3", "near": 6.6, "tolerance": {"kind": "absolute", "full": 0.15, "zero": 3.0}}},
-      {"id": "q4_srm_chi_square", "check": "A4 states the chi-square statistic of observed visitors against the planned 50/50 split; full credit within 2%, zero credit beyond 30% off.", "programmatic": {"fact": "answer_q4", "near": 90.7, "tolerance": {"kind": "relative", "full": 0.02, "zero": 0.3}}},
-      {"id": "q5_p_value", "check": "A5 states the two-sided p-value of the pooled two-proportion test on signup rate; full credit within 0.015 (a continuity-corrected test lands inside it), zero credit 0.1 or more off.", "programmatic": {"fact": "answer_q5", "near": 0.209, "tolerance": {"kind": "absolute", "full": 0.015, "zero": 0.1}}},
-      {"id": "recommendation_stated", "check": "The readout gives one clear recommendation on whether to ship variant B now."}
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 7 labeled answers A1-A7 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 7}},
+      {"id": "q1_control_visitors", "check": "A1 states the total visitors in control over the four weeks; full credit within 0.1%, zero credit beyond 10% off.", "programmatic": {"fact": "answer_q1", "near": 12480, "tolerance": {"kind": "relative", "full": 0.001, "zero": 0.1}}},
+      {"id": "q2_variant_visitors", "check": "A2 states the total visitors in variant B over the four weeks; full credit within 0.1%, zero credit beyond 10% off.", "programmatic": {"fact": "answer_q2", "near": 11020, "tolerance": {"kind": "relative", "full": 0.001, "zero": 0.1}}},
+      {"id": "q3_control_rate", "check": "A3 states control's signup rate as a percentage; full credit within 0.02, zero credit 0.5 or more off.", "programmatic": {"fact": "answer_q3", "near": 6.0, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.5}}},
+      {"id": "q4_variant_rate", "check": "A4 states variant B's signup rate as a percentage; full credit within 0.02, zero credit 0.5 or more off.", "programmatic": {"fact": "answer_q4", "near": 6.4, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.5}}},
+      {"id": "q5_relative_lift", "check": "A5 states variant B's relative lift over control as a percentage; full credit within 0.15, zero credit 3 or more off.", "programmatic": {"fact": "answer_q5", "near": 6.6, "tolerance": {"kind": "absolute", "full": 0.15, "zero": 3.0}}},
+      {"id": "q6_srm_chi_square", "check": "A6 states the chi-square statistic of observed visitors against the planned 50/50 split; full credit within 2%, zero credit beyond 30% off.", "programmatic": {"fact": "answer_q6", "near": 90.7, "tolerance": {"kind": "relative", "full": 0.02, "zero": 0.3}}},
+      {"id": "q7_p_value", "check": "A7 states the two-sided p-value of the pooled two-proportion test on signup rate (a continuity-corrected test lands inside the full-credit band); full credit within 0.015, zero credit 0.1 or more off.", "programmatic": {"fact": "answer_q7", "near": 0.209, "tolerance": {"kind": "absolute", "full": 0.015, "zero": 0.1}}},
+      {"id": "recommendation_stated", "check": "The readout gives one clear recommendation on whether to ship variant B now. No recommendation, or one that leaves the decision open, fails."}
     ],
     "skill_adherence": [
-      {"id": "srm_flagged", "check": "The readout says the split of visitors (12,480 control against 11,020 variant B) departs from the planned 50/50 by far more than chance allows, and that the comparison between the variants cannot be trusted until that is explained."},
+      {"id": "srm_flagged", "check": "The readout says the split of visitors (12,480 control against 11,020 variant B) departs from the planned 50/50 by more than chance allows, and that the comparison between the variants cannot be trusted until that is explained. Reporting the two totals without saying the comparison is unreliable fails."},
       {"id": "not_significant_stated", "check": "The readout states that the difference in signup rate is not statistically significant at the plan's 5% level."},
       {"id": "stop_rule_respected", "check": "The readout notes that neither variant reached the 18,000 visitors the plan required before the result is read."},
-      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every rate, count, statistic and p-value presented as a result is derivable from the results file. The readout states no projected revenue, annualised gain or industry benchmark as if it were data.", "fails_if_zero": ["q1_control_rate", "q2_variant_rate", "q3_relative_lift"]}
+      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every rate, count, statistic and p-value presented as a result is derivable from the results file, and every figure about the plan matches the test plan. The readout states no projected revenue, annualised gain or industry benchmark as if it were data.", "fails_if_zero": ["q1_control_visitors", "q2_variant_visitors"]}
     ],
     "best_practices": [
       {"id": "no_winner_declared", "negative": true, "check": "The readout does not call variant B the winner and does not recommend shipping it on the strength of this test."},
       {"id": "secondary_not_decisive", "negative": true, "check": "The paid-conversion difference is not used to justify shipping variant B or to claim an effect. If it is mentioned, it is described as the secondary metric the plan said is not a decision metric."},
-      {"id": "imbalance_located", "check": "The readout shows that the missing variant B visitors are on mobile (5,400 against 6,900) while desktop is balanced (5,620 against 5,580)."},
-      {"id": "next_step_concrete", "check": "The recommendation names a concrete next step: check how variant B is assigned and served on mobile, fix what is found, and rerun to the planned sample. 'Run it longer' with the imbalance left unaddressed fails."}
+      {"id": "imbalance_located", "check": "The readout shows that the missing variant B visitors are on mobile (5,400 against 6,900) while desktop is balanced (5,620 against 5,580). Not saying which device fails."},
+      {"id": "next_step_concrete", "check": "The next step includes checking how visitors are assigned to or served variant B and correcting what is found before the test is rerun or read again. It fails if the only next step is to keep the test running, collect more data, or ship."}
     ]
   }
 }
