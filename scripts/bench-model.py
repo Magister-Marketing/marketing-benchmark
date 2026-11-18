@@ -286,20 +286,36 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     }.get(entry["setup"], "models")
     lost = entry["cost_missing"]
     lost_note = f" ({lost} lost to a run error)" if lost else ""
+    # A run ranked against runs with more attempts per task says so, as the
+    # card's dagger does: one draw per task moves more than the mean of three.
+    most = max(e["repetitions"] for e in peers)
+    fewer = entry["repetitions"] < most
+    reps = entry["repetitions"]
+    fewer_note = (
+        f" {reps} attempt{'' if reps == 1 else 's'} per task; others ranked made {most}."
+        if fewer else ""
+    )
     head = (
         f"{name} scored {fmt_score(entry['score'])}/100 on the Marketing Benchmark, "
         f"{'tied ' if tied else ''}#{rank} of {len(peers)} {peers_word}: "
         f"{entry['passed']}/{entry['attempts']} attempts met every requirement"
-        f"{lost_note}, at {fmt_cents(entry['cost_per_attempt'])} an attempt. {how}"
+        f"{lost_note}, at {fmt_cents(entry['cost_per_attempt'])} an attempt. {how}{fewer_note}"
     )
     # As the model's page and card say it (board.ts gradesItself).
     effortless = entry["model"][: -len(effort) - 1] if effort else entry["model"]
     if effortless == meta["judge_model"]:
         head += " It is also the judge."
-    # A long name with every note can run over: the effort goes first, unless
-    # the board has this model at another effort too, when the name needs it.
-    if len(head) + 1 + len(url) > TWEET_LIMIT and effort and board_label(entry["model"], entries) == label:
-        head = head.replace(name, label, 1)
+    # A long name with every note can run over. The effort goes first, unless
+    # the board has this model at another effort too, when the name needs it;
+    # then the prose shortens, one phrase at a time. The notes (a lost
+    # attempt, fewer attempts, the judge) always stay.
+    shortenings = [(" on the Marketing Benchmark", ""), ("attempts met every requirement", "attempts passed")]
+    if effort and board_label(entry["model"], entries) == label:
+        shortenings.insert(0, (name, label))
+    for long, short in shortenings:
+        if len(head) + 1 + len(url) <= TWEET_LIMIT:
+            break
+        head = head.replace(long, short, 1)
     # The reference models that have a run in the same setup, best first,
     # as many as fit.
     refs = sorted(

@@ -286,6 +286,36 @@ def test_a_model_at_several_efforts_is_named_with_its_effort(site, tmp_path, mon
     assert bm.tweet_for(site, low["run_id"]).startswith("GPT-6.2 Sol (low effort) scored 96.0/100")
 
 
+def test_a_run_with_fewer_attempts_than_its_peers_says_so(site, tmp_path):
+    # The board's run made 3 attempts per task; this one made 1.
+    old = json.loads((site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").read_text())
+    old["repetitions"] = 3
+    (site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").write_text(json.dumps(old))
+    rep = report("20260103-000000-c3c3c3c3", "gpt-6-luna-high", scores={"alpha": 99.0, "beta": 99.0})
+    bm.export_run(write_run(tmp_path / "results", rep), site)
+    text = bm.tweet_for(site, rep["run_id"])
+    assert "#1 of 2 models" in text
+    assert "1 attempt per task; others ranked made 3." in text and len(text) <= 280
+    # The run with the most attempts says nothing of it.
+    assert "per task;" not in bm.tweet_for(site, "20260101-000000-aaaaaaaa")
+
+
+def test_a_long_draft_shortens_its_prose_and_keeps_every_note(site, tmp_path):
+    # A one-attempt run of the judge's own model (no effort to drop) inside
+    # Magister, beside a three-attempt run: the fewer-attempts note and the
+    # judge note together run long.
+    peer = report("20260103-000000-d4d4d4d4", "magister-gpt-6.1-sol-high", harness="magister-agent",
+                  skills=False, reps=3, scores={"alpha": 80.0, "beta": 80.0})
+    bm.export_run(write_run(tmp_path / "results", peer, identity={"eval_target": "lane:bench", "gateway_sha": "abc"}), site)
+    rep = report("20260103-000000-e5e5e5e5", "magister-claude-sonnet-5-5", harness="magister-agent",
+                 skills=False, scores={"alpha": 90.0, "beta": 90.0}, cost=0.05)
+    bm.export_run(write_run(tmp_path / "results", rep, identity={"eval_target": "lane:bench", "gateway_sha": "abc"}), site)
+    text = bm.tweet_for(site, rep["run_id"])
+    assert len(text) <= 280
+    assert "1 attempt per task; others ranked made 3." in text and "It is also the judge." in text
+    assert "on the Marketing Benchmark" not in text
+
+
 def test_numbers_round_as_the_page_does():
     assert bm.fmt_score(96.25) == "96.3"  # JavaScript's toFixed rounds this tie up
     assert bm.fmt_score(97.866) == "97.9"
