@@ -193,6 +193,30 @@ def test_tweet_reads_the_site_and_stays_under_280(site, tmp_path):
     assert text.endswith("https://marketingbenchmark.ai/models/gpt-6.1-sol-high")
 
 
+def test_an_export_refreshes_every_runs_draft(site, tmp_path, monkeypatch, capsys):
+    results, copy = tmp_path / "results", tmp_path / "other-checkout"
+    monkeypatch.setattr(bm, "search_dirs", lambda: [results, copy])
+    # The board's run has a folder in two checkouts, each with the draft
+    # written when it was the only model: "#1 of 1".
+    old_id = "20260101-000000-aaaaaaaa"
+    old = json.loads((site / "data" / "runs" / f"{old_id}.json").read_text())
+    stale = [write_run(results, old) / "tweet.txt", write_run(copy, old) / "tweet.txt"]
+    for draft in stale:
+        draft.write_text("GPT-6.2 Sol (high effort) scored 97.0/100 ..., #1 of 1 models: ...\n")
+    new = report("20260103-000000-78787878", "gpt-6-luna-xhigh", scores={"alpha": 99.0, "beta": 99.0})
+    run = write_run(results, new)
+    bm.main(["--web", str(site), "--export", str(run)])
+    assert "#1 of 2 models" in (run / "tweet.txt").read_text()
+    assert (run / "tweet.txt").read_text().startswith("GPT-6 Luna (xhigh effort) scored 99.0/100")
+    for draft in stale:
+        assert draft.read_text() == bm.tweet_for(site, old_id) + "\n"
+        assert "#2 of 2 models" in draft.read_text()
+    assert "2 changed" in capsys.readouterr().out
+    # A second export of the same run finds nothing stale.
+    bm.main(["--web", str(site), "--export", str(run)])
+    assert "0 changed" in capsys.readouterr().out
+
+
 def test_a_claude_code_run_exports_and_gets_a_draft(site, tmp_path):
     rep = report("20260103-000000-cdcdcdcd", "claude-code-claude-haiku-5-5-high", harness="claude-code", skills=False)
     run = write_run(tmp_path / "results", rep)

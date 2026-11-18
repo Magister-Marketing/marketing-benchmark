@@ -27,7 +27,9 @@ What it does, in order:
    on). The site's build checks every number and claim against these files.
 5. Writes a tweet draft, tweet.txt, next to the run: plain text under 280
    characters, every number read from the site's data the same way the
-   model's page reads it, with the page's URL.
+   model's page reads it, with the page's URL. Then rewrites the draft of
+   every other run on the board that is on disk, since a new run moves their
+   ranks and counts.
 
 Keys are read from --env-file (only the three provider keys eval.py reads).
 """
@@ -443,11 +445,14 @@ def search_dirs() -> list[Path]:
     return out
 
 
+def find_runs(run_id: str) -> list[Path]:
+    """Every folder of this run on disk, in search_dirs() order."""
+    return [d / run_id for d in search_dirs() if (d / run_id / "attempts.jsonl").is_file()]
+
+
 def find_run(run_id: str) -> Path | None:
-    for d in search_dirs():
-        if (d / run_id / "attempts.jsonl").is_file():
-            return d / run_id
-    return None
+    found = find_runs(run_id)
+    return found[0] if found else None
 
 
 def comparable_run(meta: dict, setup: str, like: Path | None) -> Path | None:
@@ -569,6 +574,40 @@ def export_and_draft(run_dir: Path, web: Path, ran_on: str | None, site_url: str
     print(f"\nExported {entry['run_id']} to {web} ({entry['setup']}).")
     print(f"Tweet draft ({len(tweet)} characters), saved to {run_dir / 'tweet.txt'}:\n")
     print(tweet)
+    refresh_drafts(web, site_url)
+
+
+def refresh_drafts(web: Path, site_url: str) -> list[Path]:
+    """Rewrite the tweet draft of every run on the board. A new run moves the
+    others' ranks and counts ("#4 of 6"), so a draft written at an earlier
+    export goes stale; each is rewritten from the site's data as it stands,
+    in every folder of that run on disk. Returns the drafts changed."""
+    meta = read_meta(web)
+    changed, missing = [], []
+    for r in meta["runs"]:
+        folders = find_runs(r["run_id"])
+        if not folders:
+            missing.append(r["run_id"])
+            continue
+        try:
+            text = tweet_for(web, r["run_id"], site_url) + "\n"
+        except Refusal as refusal:
+            print(f"  {r['run_id']}: no draft: {refusal}", file=sys.stderr)
+            continue
+        for folder in folders:
+            draft = folder / "tweet.txt"
+            if not draft.is_file() or draft.read_text() != text:
+                draft.write_text(text)
+                changed.append(draft)
+    print(f"\nRefreshed every run's draft against the board: {len(changed)} changed.")
+    for draft in changed:
+        print(f"  {draft}")
+    if missing:
+        print(
+            f"  Not on disk here, so not refreshed ({len(missing)}): {', '.join(missing)}. "
+            "Point BENCH_RESULTS_DIRS at their results folders to refresh them too."
+        )
+    return changed
 
 
 def setups_of(args: argparse.Namespace) -> list[str]:
