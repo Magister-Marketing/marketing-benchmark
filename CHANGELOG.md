@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Tasks: eight closed-book tasks in kinds of marketing work the set lacked.
+  Development: `seo-technical-triage`, `search-terms-negatives`,
+  `ab-test-readout`, `social-calendar-limits`. Holdout: `seo-content-brief`,
+  `lifecycle-reengagement`, `monthly-report-reconcile`,
+  `positioning-from-competitors`. Six end in a labeled answer block whose
+  figures are banded oracle checks; the calendar and positioning tasks are
+  checked by `eval_runner/task_facts.py` (character, hashtag, spacing and
+  embargo-date rules; citations and figures against the sources). Each has
+  one critical no-invention criterion backed by its oracle.
+  `scripts/gen_more_tasks.py` writes the fixtures from seeded generators and
+  computes every target from the fixture text (`--write`, `--sync`,
+  `--check`); `tests/test_more_tasks.py` recomputes them independently and
+  proves that the careless answer each task is built to catch fails the
+  criterion meant to catch it. All brands and data are invented. None of
+  the eight has been run or calibrated: their rubrics come from the prompt
+  and fixtures alone.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

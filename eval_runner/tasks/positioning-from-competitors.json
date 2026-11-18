@@ -1,0 +1,35 @@
+{
+  "id": "positioning-from-competitors",
+  "title": "Positioning and claims against three competitors",
+  "split": "holdout",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/positioning/founder_note.md",
+    "eval_runner/fixtures/positioning/product_fact_sheet.md",
+    "eval_runner/fixtures/positioning/competitor_pages.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "Tallyhand makes invoicing software for solo freelancers and relaunches its home page next week. The founder has sent a note with the claims they would like to make. You are supplied that note, the approved product fact sheet (facts numbered F1 to F14), and extracts from three competitors' pages.\n\nWrite the positioning. Output these four lines first, each on its own line starting with the exact label:\n\nPOSITIONING: <one sentence of 35 words or fewer saying who Tallyhand is for, what it is, and why they would choose it>\nCLAIM-1: <a supporting claim> [fact ids]\nCLAIM-2: <a supporting claim> [fact ids]\nCLAIM-3: <a supporting claim> [fact ids]\n\nEnd each claim with the fact-sheet ids that support it in square brackets, for example [F3, F12]. Every figure in those four lines must appear in the supplied sources as written; do not derive new figures. Each claim should be something the competitor extracts show Tallyhand can say and those competitors cannot.\n\nAfter the four lines, tell the founder which of their requested claims you did not use and why, and what can be said instead. Use only the supplied material.",
+  "rubric": {
+    "completion": [
+      {"id": "all_lines_present", "check": "The POSITIONING line and the three CLAIM lines are all present, each on its own labeled line; the first line bearing each label is the graded line.", "programmatic": {"fact": "positioning_missing_label_count", "equals": 0}},
+      {"id": "positioning_length", "check": "The POSITIONING sentence is present and 35 words or fewer.", "programmatic": {"fact": "positioning_within_word_limit", "equals": true}},
+      {"id": "claims_cited", "check": "Each of the three claims cites at least one fact id in square brackets, and every cited id is one of F1 to F14.", "programmatic": [{"fact": "positioning_cited_claim_count", "equals": 3}, {"fact": "positioning_invalid_citation_count", "equals": 0}]},
+      {"id": "figures_from_sources", "check": "Every figure in the POSITIONING and CLAIM lines appears in the fact sheet or the competitor extracts as written.", "programmatic": {"fact": "positioning_unsupported_figure_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "positioning_complete", "check": "The POSITIONING sentence says who Tallyhand is for (solo freelancers), what it is (invoicing or getting-paid software), and a reason to choose it."}
+    ],
+    "skill_adherence": [
+      {"id": "claims_match_cited_facts", "check": "Each claim says no more than the facts it cites. The 9-days-sooner figure is an observed median among customers who turned reminders on, not a promise; the survey result is 2nd of 11 for ease of use or 4.6 out of 5, not first place; the 4 minutes is a median from onboarding tests."},
+      {"id": "no_unsupported_superlatives", "negative": true, "check": "None of the four lines calls Tallyhand the fastest, the #1, the most trusted, the best, the cheapest or bank-grade, and none says customers get paid 2x faster or that Tallyhand holds a SOC 2 Type II report."},
+      {"id": "no_invented_facts", "negative": true, "critical": true, "check": "Nothing in the response states a product capability, customer number, award, security certification, price or result that the fact sheet does not contain.", "fails_if_zero": ["figures_from_sources"]}
+    ],
+    "best_practices": [
+      {"id": "differentiators_real", "check": "At least two of the three claims rest on something the competitor extracts show the others do not offer: a flat price with no per-invoice fee, being built only for solo freelancers, a measured time to first invoice or measured days-sooner with its source, or a 30-day trial that needs no card."},
+      {"id": "shared_features_not_unique", "negative": true, "check": "No claim presents as a Tallyhand advantage something the competitor extracts show the others also offer or do better: automatic payment reminders on their own, the number of currencies, time tracking, mobile apps, support hours, or security certification."},
+      {"id": "declined_requests_explained", "check": "The response tells the founder that at least four of the five requested claims (fastest, #1 and most trusted, paid 2x faster, bank-grade security, cheapest) cannot be made, each with a reason from the sources, and offers a supportable alternative for at least two of them."}
+    ]
+  }
+}

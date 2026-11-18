@@ -47,9 +47,9 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 21
-    assert sum(task["split"] == "development" for task in tasks.values()) == 17
-    assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
+    assert len(tasks) == 29
+    assert sum(task["split"] == "development" for task in tasks.values()) == 21
+    assert sum(task["split"] == "holdout" for task in tasks.values()) == 8
     # One task needs a harness that can send a prior turn; the direct arms never see it.
     assert [t for t in tasks if not bench.task_supports_harness(tasks[t], bench.HARNESS_ID)] == [
         "ads-ledger-analysis-decoy"
@@ -410,9 +410,9 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 16
-    assert len(bench._select_tasks(None, "holdout", tasks)) == 4
-    assert len(bench._select_tasks(None, "all", tasks)) == 20
+    assert len(bench._select_tasks(None, "development", tasks)) == 20
+    assert len(bench._select_tasks(None, "holdout", tasks)) == 8
+    assert len(bench._select_tasks(None, "all", tasks)) == 28
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
@@ -429,7 +429,7 @@ def test_harness_only_tasks_are_excluded_from_direct_arms_and_refused_by_name():
         bench._select_tasks("headline,ads-ledger-analysis-decoy", "all", tasks)
     # The Magister bridge's harness id lists it alongside the rest.
     agent = bench._select_tasks(None, "development", tasks, harness="magister-agent")
-    assert "ads-ledger-analysis-decoy" in agent and len(agent) == 17
+    assert "ads-ledger-analysis-decoy" in agent and len(agent) == 21
     assert bench._select_tasks(
         "ads-ledger-analysis-decoy", "all", tasks, harness="magister-agent"
     ) == ["ads-ledger-analysis-decoy"]

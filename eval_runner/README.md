@@ -149,12 +149,29 @@ rather than inline:
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
 | development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
+| development | `seo-technical-triage` | 159-URL crawl: six oracle counts across five issue types, with correctly configured look-alikes (noindex filter pages, one-hop redirects) that must not be flagged |
+| development | `search-terms-negatives` | 123 search terms: negatives by theme, with a brand search and two converting terms a blunt rule would block; oracle-backed spend figures |
+| development | `ab-test-readout` | a test read early, with a sample-ratio mismatch and a secondary metric that just clears 5%; five oracle statistics |
+| development | `social-calendar-limits` | twelve posts under character, hashtag, spacing and embargo-date rules, checked by program |
+| holdout | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks |
+| holdout | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out |
+| holdout | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six oracle figures |
+| holdout | `positioning-from-competitors` | three cited claims against competitor extracts; the founder's unsupported superlatives declined; figures checked against the sources |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
 stable winner, and one week of missing conversions that must be treated
 as missing, not zero), so the analysis task is graded against oracle
 numbers, not vibes.
+
+The last eight tasks were added on 2026-11-17 and have not been run or
+calibrated yet. `scripts/gen_more_tasks.py` writes their fixtures (seeded, so
+a rerun reproduces the same bytes) and computes every banded target from the
+fixture text; `--sync` copies the figures into the task files and `--check`
+fails on drift, as does `tests/test_more_tasks.py`, which recomputes each
+figure independently. The mechanical checks of `social-calendar-limits` and
+`positioning-from-competitors` live in `task_facts.py`. All brands and data
+in them are invented.
 
 ### Calibration discipline
 

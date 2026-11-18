@@ -1,0 +1,17 @@
+week,week_start,variant,device,visitors,signups,paid_conversions
+1,2026-04-06,control,desktop,1380,99,21
+1,2026-04-06,control,mobile,1700,86,16
+1,2026-04-06,variant_b,desktop,1400,105,24
+1,2026-04-06,variant_b,mobile,1340,70,16
+2,2026-04-13,control,desktop,1410,102,22
+2,2026-04-13,control,mobile,1730,87,17
+2,2026-04-13,variant_b,desktop,1415,107,25
+2,2026-04-13,variant_b,mobile,1360,72,17
+3,2026-04-20,control,desktop,1395,101,20
+3,2026-04-20,control,mobile,1720,86,16
+3,2026-04-20,variant_b,desktop,1400,104,24
+3,2026-04-20,variant_b,mobile,1345,70,17
+4,2026-04-27,control,desktop,1395,100,21
+4,2026-04-27,control,mobile,1750,88,17
+4,2026-04-27,variant_b,desktop,1405,106,25
+4,2026-04-27,variant_b,mobile,1355,71,17

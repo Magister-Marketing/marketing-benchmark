@@ -40,9 +40,9 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from eval_runner import brand_assets, providers, reference_facts, response_facts  # type: ignore
+    from eval_runner import brand_assets, providers, reference_facts, response_facts, task_facts  # type: ignore
 else:
-    from . import brand_assets, providers, reference_facts, response_facts
+    from . import brand_assets, providers, reference_facts, response_facts, task_facts
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
@@ -1279,6 +1279,10 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         facts.update(_platform_gauntlet_facts(response_text))
     elif task_id == "unsupportable-claims-brief":
         facts.update(_unsupportable_claims_facts(response_text))
+    elif task_id == "social-calendar-limits":
+        facts.update(task_facts.social_calendar_facts(response_text))
+    elif task_id == "positioning-from-competitors":
+        facts.update(task_facts.positioning_facts(response_text))
     return facts
 
 
