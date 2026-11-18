@@ -369,11 +369,9 @@ python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high \
     --repetitions 3 --env-file ~/keys.env --yes
 
 # with a skills plugin installed, as a user installs one; the model decides what to open
+# (choosing the skill is part of the task, so the prompt never names one)
 python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high --repetitions 3 \
     --plugin-dir ~/src/marketingskills --env-file ~/keys.env --yes
-
-# the best case for skills: installed, and the prompt names the ones the task was written against
-python -m eval_runner.claude_code run ... --plugin-dir ~/src/marketingskills --name-skills
 
 # with MCP servers attached (Claude Code's own mcpServers JSON; its contents stay out of the run)
 python -m eval_runner.claude_code run ... --mcp-config ~/magister-mcp.json

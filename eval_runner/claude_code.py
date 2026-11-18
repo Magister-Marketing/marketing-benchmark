@@ -12,8 +12,7 @@ Three things can be added, each the way a user adds it:
 - ``--plugin-dir DIR``   a skills plugin (for example a checkout of
   coreyhaines31/marketingskills), installed for the session. Claude Code lists
   the skills by name and description and the model decides which to open.
-  With ``--name-skills`` the prompt also names the skills the task was written
-  against, as a person who knows the pack would: the best case for skills.
+  Choosing the skill is part of the task, so the prompt never names one.
 - ``--mcp-config FILE``  MCP servers, in Claude Code's own ``mcpServers`` JSON.
 - ``--files-dir DIR``    files of the person's own (an export, a brief), saved
   into the working folder and named in the prompt.
@@ -152,7 +151,7 @@ as current: assume today is just after the latest date it mentions. Do not
 send, publish, deploy, activate, purchase, schedule anything, connect or
 configure an integration, or mutate any external system. Local working
 files and scratch work are fine: the current working folder is writable.
-{sources_note}{files_note}{skills_note}Deliver the complete final deliverable in your chat reply
+{sources_note}{files_note}Deliver the complete final deliverable in your chat reply
 itself — not only as a saved file.
 
 Task:
@@ -164,10 +163,6 @@ SOURCES_NOTE = (
 )
 FILES_NOTE = (
     "These files are saved in the working folder: {names}.\n"
-)
-SKILLS_NOTE = (
-    "Before you start, open these installed skills with the Skill tool and\n"
-    "follow them: {names}.\n"
 )
 
 
@@ -240,12 +235,6 @@ def staged_names(task: dict, files: list[Path] | None = None) -> list[str]:
     return names
 
 
-def task_skill_names(task: dict, installed: set[str]) -> list[str]:
-    """The skills a task was written against that the installed plugins carry."""
-    names = [Path(skill).parent.name for skill in task.get("skills", [])]
-    return [name for name in names if name in installed]
-
-
 def given_files(files_dir: Path | None) -> list[Path]:
     """The files `--files-dir` hands every attempt: the folder's own files, by name."""
     if files_dir is None:
@@ -259,12 +248,11 @@ def given_files(files_dir: Path | None) -> list[Path]:
     return files
 
 
-def build_prompt(task: dict, named_skills: list[str] | None = None, files: list[Path] | None = None) -> str:
+def build_prompt(task: dict, files: list[Path] | None = None) -> str:
     assembled = bench.assemble_prompt(task, include_skills=False)
     return PREAMBLE_TEMPLATE.format(
         sources_note=SOURCES_NOTE if task.get("fixtures") else "",
         files_note=FILES_NOTE.format(names=", ".join(path.name for path in files)) if files else "",
-        skills_note=SKILLS_NOTE.format(names=", ".join(named_skills)) if named_skills else "",
         task_prompt=assembled,
     )
 
@@ -974,8 +962,6 @@ def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
         raise SystemExit("--repetitions and --parallel must be positive")
     mcp_config = Path(args.mcp_config).resolve() if args.mcp_config else None
     mcp_servers = mcp_server_names(mcp_config) if mcp_config else []
-    if args.name_skills and not args.plugin_dir:
-        raise SystemExit("--name-skills needs a --plugin-dir whose skills it can name")
 
     files_dir = Path(args.files_dir).resolve() if args.files_dir else None
     files = given_files(files_dir)
@@ -1008,11 +994,9 @@ def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
     # prompt, Ctrl-C, a `kill` or a closed terminal.
     run_root = make_run_root()
     try:
-        installed_skills = {skill for plugin in plugins for skill in plugin["skills"]}
         arm = (
             "claude-code"
             + ("+skills" if plugins else "")
-            + ("-named" if args.name_skills else "")
             + ("+files" if files else "")
             + ("+mcp" if mcp_servers else "")
         )
@@ -1033,11 +1017,7 @@ def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
             (run_dir / name).mkdir(parents=True)
         prompts = {}
         for task_id in selected:
-            prompts[task_id] = build_prompt(
-                tasks[task_id],
-                task_skill_names(tasks[task_id], installed_skills) if args.name_skills else None,
-                files,
-            )
+            prompts[task_id] = build_prompt(tasks[task_id], files)
             (run_dir / "prompts" / f"{task_id}.md").write_text(prompts[task_id])
             (run_dir / "tasks" / f"{task_id}.json").write_text(json.dumps(tasks[task_id], indent=2) + "\n")
 
@@ -1202,7 +1182,6 @@ def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
             "operator's home, the shared temp folders or another attempt, API key unset). "
             "Supplied sources are inline in the prompt and saved as files in the working folder. "
             + (f"Skills plugin installed: {', '.join(str(p['name']) for p in plugins)}. " if plugins else "")
-            + ("The prompt names the skills each task was written against. " if args.name_skills else "")
             + (f"Files given in the working folder: {', '.join(path.name for path in files)}. " if files else "")
             + (f"MCP servers attached: {', '.join(mcp_servers)}. " if mcp_servers else "")
             + "Token counts and cost sum every model call of the session."
@@ -1216,7 +1195,6 @@ def _run(args: argparse.Namespace, hold: Callable[[], None]) -> int:
             "sandbox_allowed_domains": list(SANDBOX_ALLOWED_DOMAINS),
             "setting_sources": "user (the attempt's own, empty); nothing from the folders above it",
             "plugins": plugins,
-            "skills_named_in_prompt": bool(args.name_skills),
             # Only when given, so a run without --files-dir records what it always did.
             **({"files_given": [path.name for path in files]} if files else {}),
             "mcp_servers": mcp_servers,
@@ -1267,8 +1245,6 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     run.add_argument("--plugin-dir", action="append",
                      help="a Claude Code plugin to install for the session (repeatable)")
-    run.add_argument("--name-skills", action="store_true",
-                     help="name each task's own skills in the prompt (needs --plugin-dir)")
     run.add_argument("--files-dir",
                      help="a folder whose files are saved into every attempt's working folder and named in the prompt")
     run.add_argument("--mcp-config", help="a Claude Code mcpServers JSON file; its contents stay out of the run")
