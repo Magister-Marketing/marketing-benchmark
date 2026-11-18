@@ -344,18 +344,45 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     # Symbols around the number leave it alone; a unit word does not.
     decorated = "A1: **12,480**\nA2: `11,020`\nA3: ~6.00%\nA4: 6.40 %\nA5: +6.6%\nA6: ≈ 90.7\nA7: (0.209)"
     assert _ab("Readout.\n\n" + decorated + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
-    # The limit of the rule: a block whose own lines carry words looks like such a notes list,
-    # and between two runs alike in every count the later one is read.
+    # A block with one line the parser cannot read is still the block: most of its lines are the
+    # number alone, and none of the notes' lines is.
+    for unreadable, index in (("A6: 90.7 (1 df)", 5), ("A7:", 6), ("A5: 6,6%", 4)):
+        label = unreadable.split(":")[0]
+        flawed = re.sub(rf"(?m)^{label}: .*$", unreadable, AB_BLOCK)
+        expected = AB_ANSWERS[:index] + [None] + AB_ANSWERS[index + 1:]
+        assert _ab("Readout.\n\n" + flawed) == expected, unreadable
+        assert _ab("Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes) == expected, unreadable
+        assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + flawed) == expected, unreadable
+        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes)
+    # A word on a line or two does not unmake a block either.
     worded = AB_BLOCK.replace("A1: 12,480", "A1: 12,480 visitors").replace("A2: 11,020", "A2: 11,020 visitors")
     assert _ab(worded) == AB_ANSWERS
-    assert _ab(worded + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS         # five lines of it are still the number alone
+    assert _ab(worded + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
+    # What is left: a block with words on half its lines or more is not written as asked.
     all_worded = "\n".join(line + " (final)" for line in AB_BLOCK.splitlines())
     assert _ab(all_worded) == AB_ANSWERS
-    assert _ab(all_worded + "\n\nMethod:\n" + one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]
-    # Such a block still beats notes that carry working: more of its lines read as a number.
+    # It still beats notes that carry working: more of its lines read as a number.
     assert _ab(all_worded + "\n\nMethod:\n" + notes) == AB_ANSWERS
-    # Only a line that is read can be the number alone: a blank answer is not one. A draft
-    # with a blank and a final block with working on the same line are alike, so the later is read.
+    # But a notes list after it with one number on every line is read in its place,
+    assert _ab(all_worded + "\n\nMethod:\n" + one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]
+    # and so is a clean draft before it.
+    clean_draft = AB_BLOCK.replace("12,480", "12,000").replace("0.209", "0.5")
+    assert _ab(clean_draft + "\n\nFinal:\n\n" + all_worded) == [12000.0] + AB_ANSWERS[1:6] + [0.5]
+    # "Most" is more than half, and only a line that is read can be the number alone. Here the
+    # draft is worded on three lines of seven and blank on one, and the final block has two
+    # lines that cannot be read: the final block is the one written as asked.
+    worded_draft = ("A1: 12,000 visitors\nA2: 11,020 visitors\nA3: 6.00% rate\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7:")
+    final = AB_BLOCK.replace("A6: 90.7", "A6: 90.7 (1 df)").replace("A7: 0.209", "A7: 0.209 (2-sided)")
+    assert _ab(worded_draft + "\n\nFinal:\n\n" + final) == AB_ANSWERS[:5] + [None, None]
+    # "Most" is counted over every line of the run, read or not. This draft has three lines
+    # of seven that are the number alone; that two more cannot be read does not make it most.
+    part_draft = ("A1: 12,000 visitors\nA2: 11,020 visitors\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\n"
+                  "A6: 90.7 (1 df)\nA7: 0.5 (2-sided)")
+    part_final = ("A1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6% (6.57 unrounded)\n"
+                  "A6: 90.7 (1 df)\nA7: 0.209 (2-sided)")
+    assert _ab(part_draft + "\n\nFinal:\n\n" + part_final) == AB_ANSWERS[:4] + [None, None, None]
+    # A draft with a blank and a final block with working on the same line are alike in
+    # every count, so the later is read.
     blank_draft = AB_BLOCK.replace("12,480", "12,000").replace("A6: 90.7", "A6:")
     final = AB_BLOCK.replace("A6: 90.7", "A6: 8,580.4 / 94.6 = 90.7")
     assert _ab(blank_draft + "\n\nFinal:\n\n" + final) == AB_ANSWERS[:5] + [None, 0.209]
@@ -385,6 +412,33 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     # Labels outside the task's range are not answers and do not break the block.
     assert _ab(AB_BLOCK.replace("A4: 6.40%", "A4: 6.40%\nA9: 5")) == AB_ANSWERS
     assert _ab("A" + "9" * 5000 + ": 5\n" + AB_BLOCK) == AB_ANSWERS
+
+
+def test_a_final_block_that_marks_its_corrected_line_is_the_block():
+    """A clean first block, a stated correction, then a final block with a word on the
+    corrected line. Counting the lines that are the number alone read the first block."""
+    search = ("Review.\n\nA1: $2,380.36\nA2: 5\nA3: $1,610.10\nA4: 30\n\n"
+              "Correction: the total above left out \"sablewood blinds careers\" ($26.80), a job search. "
+              "Final answer block:\n\nA1: $2,380.36\nA2: 5\nA3: $1,636.90 (corrected)\nA4: 30\n")
+    assert bench.measured_facts(bench.load_tasks()["search-terms-negatives"], search)["answer_q3"] == 1636.9
+    assert not _failed(_results("search-terms-negatives", search))
+    assert not _failed(_results("search-terms-negatives", search.replace(" (corrected)", "")))
+    # Exactly half of this final block is the number alone, and one line cannot be read: the
+    # clean draft before it has more that can, but the final block is still the one read.
+    half = ("A1: $2,380.36 in total\nA2: 6 candidates\nA3: $1,610.10\nA4: 30\n\nFinal answer block:\n\n"
+            "A1: $2,380.36\nA2: 5 (of 7 with 3 or more conversions)\nA3: $1,636.90\nA4: 30\n")
+    facts = bench.measured_facts(bench.load_tasks()["search-terms-negatives"], half)
+    assert [facts[f"answer_q{index}"] for index in range(1, 5)] == [2380.36, None, 1636.9, 30.0]
+
+    readout = ("Readout.\n\nFirst pass:\n\nA1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.104\n\n"
+               "The p-value above is one-sided; the plan's test is two-sided. Answer block:\n\n"
+               "A1: 12,480 visitors\nA2: 11,020 visitors\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209\n")
+    assert _ab(readout) == AB_ANSWERS and not _failed(_results("ab-test-readout", readout))
+
+    triage = ("Triage.\n\nA1: 7\nA2: 9\nA3: 4\nA4: 6\nA5: 4\nA6: 8,865\n\n"
+              "On re-checking the redirects, four of those are single hops, not chains. Final answers:\n\n"
+              "A1: 7\nA2: 5 (revised)\nA3: 4\nA4: 6\nA5: 4\nA6: 8,865\n")
+    assert not _failed(_results("seo-technical-triage", triage))
 
 
 def test_a_format_slip_is_absence_not_invention():

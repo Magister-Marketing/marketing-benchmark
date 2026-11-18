@@ -53,18 +53,33 @@
   the rule that every internal URL must be in the page list.
 - Answers: a task may set `"single_number": true` in `answers`. Its answer
   block is then the run of answer lines with the most answers; between runs
-  of the same length, the one with more lines that read as a number, then
-  the one with more lines that are the number alone, then the later one. So
-  a labelled line in a note, or a notes list that repeats every label,
-  cannot override a block written as asked. A line is an answer only when it
-  carries exactly one number, so a line with working on it (`A1: 749 /
-  12,480 = 6.00%`) is left unparsed instead of being read as its first
-  number; a label with nothing after it stays blank; and a minus sign is
-  read whether typed as a hyphen, U+2212 or a leading en dash.
-  `eval_runner/README.md` lists what is left unparsed on purpose. The 21
-  earlier tasks do not set it and parse exactly as before.
+  of the same length, a run most of whose lines are the number alone over
+  one that is not, then the one with more lines that read as a number, then
+  the later one. So a labelled line in a note, or a notes list that repeats
+  every label, cannot override a block written as asked, and a final block
+  that marks its corrected line still replaces the draft before it. A line
+  is an answer only when it carries exactly one number, so a line with
+  working on it (`A1: 749 / 12,480 = 6.00%`) is left unparsed instead of
+  being read as its first number; a label with nothing after it stays blank;
+  and a minus sign is read whether typed as a hyphen, U+2212 or a leading en
+  dash. `eval_runner/README.md` lists what is left unparsed on purpose, and
+  the one shape the block rule still misreads. The 21 earlier tasks do not
+  set it and parse exactly as before.
 - Judge: `judge_source_reference` now also returns reference totals for the
   six new tasks, computed from the sources in the recorded prompt.
+- Grade: `grade --current-rubric` can apply a rubric fix to a run made
+  through an agent harness (`claude-code`, `magister-agent`), whose recorded
+  prompt wraps the task in a preamble and so never hashes to the direct
+  assembly. The saved prompt, tied to the attempts by its hash, is accepted
+  when it ends with `Task:` and then the whole direct assembly of the
+  current task, text and every source, with nothing after it. A task that
+  has since been changed or cut down, and every other harness, is refused as
+  before.
+- Report: a run graded with the current task files is reported with each
+  task's current split, so a task moved out of holdout since the run is not
+  shown as held out. The report, `README.md` and `eval.py` now say of the
+  holdout split what is true: it is kept out of tuning, and `docs/TASKS.md`
+  records which holdout tasks have had results read.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

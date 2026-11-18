@@ -113,7 +113,7 @@ the board like every other configuration.
 |---|---|
 | `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
 | `--split development` | Run tasks used for improving and checking the benchmark. |
-| `--split holdout` | Run the untouched final-test tasks. |
+| `--split holdout` | Run the tasks kept out of tuning. [docs/TASKS.md](docs/TASKS.md) records which of them have had results read. |
 | `--repetitions 3` | Ask for three answers per model and task. All three must pass. The default is one. |
 | `--no-skills` | Leave the marketingskills guidance out of the prompt (see the skills provenance note above). |
 | `--tools` | Allow the answering model to use provider-hosted web search. |

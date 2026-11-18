@@ -109,17 +109,21 @@ to write the number alone, and is read by these rules:
 
 - **The answer block.** A run is a sequence of answer lines in rising label
   order with nothing but blank lines between them. The block is the run with
-  the most answer lines. Between runs of the same length it is the one with
-  more lines that read as a number; then the one with more lines that are
-  the number alone, with no word left once the number is taken out; then the
-  later one. A labelled line in a note (`A1: sum of 8 rows`) is a run of one
-  and cannot override the block. A list of method notes that repeats every
-  label loses to a block written as asked, before it or after it: a note
+  the most answer lines. Between runs of the same length it is a run most of
+  whose lines are the number alone, with no word left once the number is
+  taken out, over one that is not; then the one with more lines that read as
+  a number; then the later one. A labelled line in a note (`A1: sum of 8
+  rows`) is a run of one and cannot override the block. A list of method
+  notes that repeats every label loses to a block written as asked, before
+  it or after it, even when one line of the block cannot be read: a note
   carries working, or words around its one number (`A1: total cost of the 70
-  search terms`). When every line of the block carries words too (`A1: 7
-  URLs`), the rule cannot tell the two apart and reads the later run. A line
-  of commentary between two answer lines splits the block, and only its
-  largest piece is read.
+  search terms`). A draft loses to the final block after it, also when the
+  final block marks a line (`A3: $1,636.90 (corrected)`). What is left: a
+  block with words on half its lines or more (`A1: 7 URLs` throughout) is
+  not written as asked, and a clean draft before it, or a notes list after
+  it with one number on every line, is read in its place. A line of
+  commentary between two answer lines splits the block, and only its largest
+  piece is read.
 - **A line is an answer only when it carries exactly one number.** A currency
   sign, thousands separators, a percent sign and a unit word are fine. A
   label with nothing after it is a blank answer and never borrows the next
@@ -278,7 +282,7 @@ repo root:
 ./eval.py gpt-5.6-luna-medium gpt-5.6-terra-medium gpt-5.6-sol-medium
 ./eval.py claude-sonnet-5 --tools          # web-search arm
 ./eval.py claude-haiku-4-5 --no-skills -y  # baseline arm, no prompt
-./eval.py claude-sonnet-5 --split holdout  # untouched-task check
+./eval.py claude-sonnet-5 --split holdout  # the split kept out of tuning (see docs/TASKS.md)
 ./eval.py claude-sonnet-5 --repetitions 3  # explicitly request three runs/task
 ```
 
@@ -311,7 +315,9 @@ python3 -m eval_runner.bench report --run eval_runner/results/<run-id>
 
 # Calibrate a new rubric against old prompts without overwriting v1 evidence.
 # --current-rubric accepts only the current prompt or an explicitly archived,
-# rubric-compatible historical prompt.
+# rubric-compatible historical prompt. A run made through an agent harness
+# (claude-code, magister-agent) is accepted when its saved prompt ends with
+# "Task:" and then the whole direct assembly of that prompt and its sources.
 python3 -m eval_runner.bench grade --run eval_runner/results/<run-id> \
   --current-rubric --label candidate-rubric
 python3 -m eval_runner.bench report --run eval_runner/results/<run-id> --label candidate-rubric

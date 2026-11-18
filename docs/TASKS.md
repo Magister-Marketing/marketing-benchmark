@@ -62,11 +62,17 @@ tasks, and no held-out result is claimed from them. In these six tasks every
 figure a program checks is recomputed by separate code in the tests; the
 checks a judge makes are not calibrated yet.
 
-Known limit of those six tasks, to fix in their next prompt version: an
-answer written with a full stop as the thousands separator (`12.480`) is read
-as 12.48, because a full stop is always the decimal point. The prompts say
-thousands separators are fine without saying which; they should say "a comma
-as thousands separator".
+Known limits of those six tasks:
+
+- To fix in their next prompt version: an answer written with a full stop as
+  the thousands separator (`12.480`) is read as 12.48, because a full stop is
+  always the decimal point. The prompts say thousands separators are fine
+  without saying which; they should say "a comma as thousands separator".
+- To fix in the next rubric version of the A/B test readout: the critical
+  criterion says a readout may state the expected count per variant under the
+  planned 50/50 split (11,750). That a readout fails when it gives that count
+  as the sample size the plan required of each variant (18,000) is said only
+  in the judge's reference, not in the criterion's own text.
 
 ## Holdout tasks
 

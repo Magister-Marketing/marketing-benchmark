@@ -54,6 +54,11 @@ RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
 REPETITIONS_DEFAULT = 1
 HARNESS_ID = "direct-api"
+# Harnesses that hand the task to an agent wrapped in a preamble of their own.
+# The wrapped prompt ends with this marker and then the task's direct assembly
+# without skill files; nothing follows it.
+AGENT_HARNESSES = ("claude-code", "magister-agent")
+AGENT_TASK_MARKER = "\n\nTask:\n"
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -1261,19 +1266,23 @@ def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
 
     A run is a sequence of answer lines in rising label order (A1, A2, ...)
     with nothing but blank lines between them. The block is the run with the
-    most answer lines. Between runs of the same length it is the one with
-    more lines that read as a number; then the one with more lines that are
-    the number alone, as the prompt asks; then the later one.
+    most answer lines. Between runs of the same length it is a run most of
+    whose lines are the number alone, as the prompt asks, over one that is
+    not; then the one with more lines that read as a number; then the later
+    one.
 
     So a stray labelled line ("A1: sum of 8 rows" in a note) is a run of one
     that cannot override a block. A list of method notes that repeats every
-    label, before the block or after it, loses to a block written as asked:
-    a note carries working, or words around its one number. A worked draft
-    loses to the final block after it. What the rule cannot tell apart is a
-    block whose own lines carry words ("A1: 7 URLs") from a notes list of
-    the same length with one number on every line; there the later run is
-    read. A label with nothing after it is a blank answer: it never borrows
-    the next line.
+    label, before the block or after it, loses to a block written as asked,
+    even one with a line the parser cannot read: a note carries working, or
+    words around its one number. A draft loses to the final block after it,
+    also when the final block marks a line ("A3: $1,636.90 (corrected)").
+
+    What is left: a block with words on half its lines or more ("A1: 7 URLs"
+    throughout) is not written as asked. A clean draft before it, or a notes
+    list after it with one number on every line, is read in its place. A
+    label with nothing after it is a blank answer: it never borrows the next
+    line.
     """
     runs: list[list[tuple[int, str]]] = []
     current: list[tuple[int, str]] | None = None
@@ -1290,12 +1299,13 @@ def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
         elif line.strip():
             current = None
     block: dict[int, float] = {}
-    best = (0, 0, 0)
+    best = (0, False, 0)
     for run in runs:
         read = {index: number for index, value in run if (number := _single_number(value)) is not None}
         alone = sum(1 for index, value in run if index in read and _number_alone(value))
-        if (len(run), len(read), alone) >= best:  # the later run wins a tie
-            block, best = read, (len(run), len(read), alone)
+        key = (len(run), 2 * alone > len(run), len(read))
+        if key >= best:  # the later run wins a tie
+            block, best = read, key
     return block
 
 
@@ -1795,11 +1805,15 @@ def _resolve_recorded_prompt(
     # An agent harness (Claude Code, the Magister bridge) wraps the task in its
     # own preamble, so its recorded prompt never hashes to the direct assembly.
     # Its saved prompt is tied to the attempt evidence above; the task is this
-    # one when that prompt carries a candidate's whole direct assembly (the
-    # task text and every supplied source) word for word.
-    if saved_prompt is not None and run_meta.get("harness", "direct-api") != "direct-api":
+    # one when that prompt ends with the harness's task marker and then a
+    # candidate's whole direct assembly (the task text and every supplied
+    # source), with nothing after it. Containing the assembly is not enough: a
+    # task that has since lost its opening, the end of its last source, or a
+    # whole source is still contained in what the run recorded. Any other
+    # harness, named or not, keeps the hash rule above.
+    if saved_prompt is not None and run_meta.get("harness") in AGENT_HARNESSES:
         for version, prompt_text in candidates:
-            if _prompt_candidate(task, prompt_text, False).strip() in saved_prompt:
+            if saved_prompt.endswith(AGENT_TASK_MARKER + _prompt_candidate(task, prompt_text, False)):
                 return saved_prompt, version
     raise SystemExit(
         f"{task['id']}: recorded prompt is not the current or an explicitly "
@@ -3935,9 +3949,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         for model_id in model_ids
     }
     repetitions_per_model = repetitions * len(task_ids)
+    # A grading made with the current task files takes each task's split from
+    # them too: a task moved out of holdout since the run must not be reported
+    # as held out. Any other grading keeps the split the run recorded.
+    current_splits = (
+        {task_id: task.get("split") for task_id, task in report_tasks.items()}
+        if grading_meta.get("task_source") == "current"
+        else {}
+    )
     task_splits = {
         task_id: (
-            run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
+            current_splits.get(task_id)
+            or run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
             or report_tasks.get(task_id, {}).get("split")
             or "development"
         )
@@ -4081,8 +4104,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             "",
             "### Score by task split",
             "",
-            "Development scores are calibration evidence. Holdout scores are the",
-            "unseen-task check and should not be tuned after inspecting outputs.",
+            "Development scores are calibration evidence. The holdout split is kept",
+            "out of tuning; docs/TASKS.md records which holdout tasks have had",
+            "results read.",
             "",
             "| Model | Development | Holdout |",
             "|---|---|---|",
