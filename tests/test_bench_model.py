@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -215,6 +216,28 @@ def test_an_export_refreshes_every_runs_draft(site, tmp_path, monkeypatch, capsy
     # A second export of the same run finds nothing stale.
     bm.main(["--web", str(site), "--export", str(run)])
     assert "0 changed" in capsys.readouterr().out
+
+
+def test_a_run_going_at_the_same_time_is_not_taken_for_this_one(tmp_path, monkeypatch):
+    results = tmp_path / "results"
+    monkeypatch.setattr(bm, "RESULTS_DIR", results)
+    marker = time.time() - 1
+
+    def fresh(run_id, cand, skills=True):
+        d = write_run(results, report(run_id, cand, skills=skills))
+        (d / "run.json").write_text(json.dumps(
+            {"models": {cand: {}}, "harness": "direct-api", "skills_included": skills}))
+        return d
+
+    ours = fresh("20260103-000000-90909090", "gpt-6-luna-high")
+    # Started later in the same checkout: another model, and the same model
+    # without the skills.
+    fresh("20260103-000001-91919191", "gpt-6.2-sol-low")
+    plain = fresh("20260103-000002-92929292", "gpt-6-luna-high", skills=False)
+    assert bm.newest_run_since(marker, "gpt-6-luna-high", "skills") == ours
+    assert bm.newest_run_since(marker, "gpt-6-luna-high", "no-skills") == plain
+    with pytest.raises(SystemExit, match="no new run folder for gpt-6-luna-xhigh"):
+        bm.newest_run_since(marker, "gpt-6-luna-xhigh", "skills")
 
 
 def test_a_claude_code_run_exports_and_gets_a_draft(site, tmp_path):

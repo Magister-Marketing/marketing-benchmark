@@ -516,15 +516,20 @@ def estimate(run_dir: Path, pricing: dict, tasks: list[str], reps: int) -> dict:
 
 # ------------------------------------------------------------- running
 
-def newest_run_since(marker: float) -> Path:
+def newest_run_since(marker: float, model: str, setup: str) -> Path:
+    """The newest run folder made since `marker` for this model and setup.
+    Another run going at the same time in this checkout (another model, or
+    the same model in another setup) makes folders too; those are not it."""
     fresh = []
     if RESULTS_DIR.is_dir():
-        fresh = [
-            d for d in RESULTS_DIR.iterdir()
-            if d.is_dir() and d.stat().st_mtime >= marker and (d / "run.json").is_file()
-        ]
+        for d in RESULTS_DIR.iterdir():
+            if not (d.is_dir() and d.stat().st_mtime >= marker and (d / "run.json").is_file()):
+                continue
+            run = json.loads((d / "run.json").read_text())
+            if [plain_model(m) for m in run.get("models") or {}] == [model] and setup_of(run) == setup:
+                fresh.append(d)
     if not fresh:
-        raise Refusal(f"no new run folder appeared under {RESULTS_DIR}")
+        raise Refusal(f"no new run folder for {model} ({setup}) appeared under {RESULTS_DIR}")
     return max(fresh, key=lambda d: d.name)
 
 
@@ -553,11 +558,13 @@ def lane_command(args: argparse.Namespace, tasks: list[str], judge: str) -> list
     return cmd
 
 
-def run_and_export(cmd: list[str], web: Path, ran_on: str | None, site_url: str) -> None:
+def run_and_export(
+    cmd: list[str], model: str, setup: str, web: Path, ran_on: str | None, site_url: str
+) -> None:
     marker = time.time() - 1
     print(f"\n$ {shlex.join(cmd)}", flush=True)
     code = subprocess.call(cmd, cwd=REPO_ROOT)
-    run_dir = newest_run_since(marker)
+    run_dir = newest_run_since(marker, model, setup)
     if code != 0:
         print(
             f"bench-model: the run exited {code}; exporting {run_dir.name} as it stands "
@@ -731,8 +738,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nNothing was spent. To run it, pass confirm={CONFIRM_WORD}.", file=sys.stderr)
         return 2
 
-    for cmd in commands:
-        run_and_export(cmd, web, args.ran_on, args.site_url)
+    for cmd, setup in zip(commands, setups_of(args)):
+        run_and_export(cmd, args.model, setup, web, args.ran_on, args.site_url)
     print(
         f"\nNext: cd {web} && pnpm build (checks every claim on the page against the new data), "
         "then commit data/runs and the board's meta.json."
