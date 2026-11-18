@@ -217,6 +217,21 @@ def model_label(model: str) -> str:
     return label_from_id(base)
 
 
+def board_label(model: str, entries: list[dict]) -> str:
+    """The model's name as the site's board prints it (board.ts): with its
+    effort, "GPT-6.2 Sol (low effort)", when the board has the model at more
+    than one effort, else plain."""
+    def base(m: str) -> str:
+        effort = effort_of(m)
+        return m[: -(len(effort) + 1)] if effort else m
+
+    effort = effort_of(model)
+    others = {effort_of(e["model"]) for e in entries if base(e["model"]) == base(model)}
+    if effort and len(others - {None}) > 1:
+        return f"{model_label(model)} ({effort} effort)"
+    return model_label(model)
+
+
 def label_from_id(base: str) -> str:
     """A name from a bench id: "gpt-6.1-sol" is GPT-6.1 Sol, "claude-opus-5-5"
     Claude Opus 5.5, "gemini-3.8-flash" Gemini 3.8 Flash. Runs of version
@@ -281,8 +296,9 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     effortless = entry["model"][: -len(effort) - 1] if effort else entry["model"]
     if effortless == meta["judge_model"]:
         head += " It is also the judge."
-    # A long name with every note can run over: the effort goes first.
-    if len(head) + 1 + len(url) > TWEET_LIMIT and effort:
+    # A long name with every note can run over: the effort goes first, unless
+    # the board has this model at another effort too, when the name needs it.
+    if len(head) + 1 + len(url) > TWEET_LIMIT and effort and board_label(entry["model"], entries) == label:
         head = head.replace(name, label, 1)
     # The reference models that have a run in the same setup, best first,
     # as many as fit.
@@ -296,7 +312,7 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     )
     compare = ""
     for e in refs:
-        piece = f"{model_label(e['model'])} {fmt_score(e['score'])}"
+        piece = f"{board_label(e['model'], entries)} {fmt_score(e['score'])}"
         trial = f"{compare} · {piece}" if compare else f"\nvs {piece}"
         if len(head) + len(trial) + 1 + len(url) <= TWEET_LIMIT:
             compare = trial
