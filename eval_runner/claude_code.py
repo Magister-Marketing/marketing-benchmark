@@ -69,6 +69,7 @@ import re
 import secrets
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -895,10 +896,12 @@ def stopping_on_signals():
         if signum == signal.SIGHUP:
             # The terminal is gone and every write to it now fails, the last
             # one at exit (which would turn the exit code into 120). Output
-            # that goes to a file or a pipe is left where it is.
+            # that goes to a file or a pipe is left where it is. A terminal is
+            # told by its kind, not by `isatty`: on Linux a hung-up terminal
+            # answers `isatty` with an error, read as "not a terminal".
             for descriptor in (1, 2):
                 with contextlib.suppress(OSError):
-                    if os.isatty(descriptor):
+                    if stat.S_ISCHR(os.fstat(descriptor).st_mode):
                         nowhere = os.open(os.devnull, os.O_WRONLY)
                         os.dup2(nowhere, descriptor)
                         os.close(nowhere)

@@ -1063,7 +1063,10 @@ def test_a_run_denies_the_shell_its_own_config_and_key_file(tmp_path, monkeypatc
 
     argv = json.loads((cli.parent / "started-0a").read_text())["argv"]
     denied = json.loads(argv[argv.index("--settings") + 1])["sandbox"]["filesystem"]["denyRead"]
-    assert str(config.resolve()) in denied and str(keys.resolve()) in denied
+    # By name, or under a folder denied whole: on Linux the test's files sit
+    # under /tmp, which every run denies.
+    for path in (config.resolve(), keys.resolve()):
+        assert any(path == Path(root) or path.is_relative_to(root) for root in denied), path
 
 
 def test_a_run_records_an_attempt_without_its_server_as_an_error(tmp_path, monkeypatch):
