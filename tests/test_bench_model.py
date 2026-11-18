@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -191,6 +192,58 @@ def test_tweet_reads_the_site_and_stays_under_280(site, tmp_path):
     assert "vs GPT-6.2 Sol 97.0" in text  # the reference with a run; Opus 5.5 has none
     assert "Opus" not in text
     assert text.endswith("https://marketingbenchmark.ai/models/gpt-6.1-sol-high")
+
+
+def test_an_export_refreshes_every_runs_draft(site, tmp_path, monkeypatch, capsys):
+    results, copy = tmp_path / "results", tmp_path / "other-checkout"
+    monkeypatch.setattr(bm, "search_dirs", lambda: [results, copy])
+    # The board's run has a folder in two checkouts, each with the draft
+    # written when it was the only model: "#1 of 1".
+    old_id = "20260101-000000-aaaaaaaa"
+    old = json.loads((site / "data" / "runs" / f"{old_id}.json").read_text())
+    stale = [write_run(results, old) / "tweet.txt", write_run(copy, old) / "tweet.txt"]
+    for draft in stale:
+        draft.write_text("GPT-6.2 Sol (high effort) scored 97.0/100 ..., #1 of 1 models: ...\n")
+    new = report("20260103-000000-78787878", "gpt-6-luna-xhigh", scores={"alpha": 99.0, "beta": 99.0})
+    run = write_run(results, new)
+    bm.main(["--web", str(site), "--export", str(run)])
+    assert "#1 of 2 models" in (run / "tweet.txt").read_text()
+    assert (run / "tweet.txt").read_text().startswith("GPT-6 Luna (xhigh effort) scored 99.0/100")
+    for draft in stale:
+        assert draft.read_text() == bm.tweet_for(site, old_id) + "\n"
+        assert "#2 of 2 models" in draft.read_text()
+    assert "2 changed" in capsys.readouterr().out
+    # A second export of the same run finds nothing stale.
+    bm.main(["--web", str(site), "--export", str(run)])
+    assert "0 changed" in capsys.readouterr().out
+
+
+def test_a_run_going_at_the_same_time_is_not_taken_for_this_one(tmp_path, monkeypatch):
+    results = tmp_path / "results"
+    monkeypatch.setattr(bm, "RESULTS_DIR", results)
+    marker = time.time() - 1
+
+    def fresh(run_id, cand, skills=True):
+        d = write_run(results, report(run_id, cand, skills=skills))
+        (d / "run.json").write_text(json.dumps(
+            {"models": {cand: {}}, "harness": "direct-api", "skills_included": skills}))
+        return d
+
+    ours = fresh("20260103-000000-90909090", "gpt-6-luna-high")
+    # Started later in the same checkout: another model, and the same model
+    # without the skills.
+    fresh("20260103-000001-91919191", "gpt-6.2-sol-low")
+    plain = fresh("20260103-000002-92929292", "gpt-6-luna-high", skills=False)
+    # A run that has only begun writing its run.json, and one in a harness
+    # the site does not chart, are passed over.
+    (results / "20260103-000003-93939393").mkdir()
+    (results / "20260103-000003-93939393" / "run.json").write_text('{"models": {"gpt-6-lu')
+    odd = fresh("20260103-000004-94949494", "gpt-6-luna-high")
+    (odd / "run.json").write_text(json.dumps({"models": {"gpt-6-luna-high": {}}, "harness": "journeys"}))
+    assert bm.newest_run_since(marker, "gpt-6-luna-high", "skills") == ours
+    assert bm.newest_run_since(marker, "gpt-6-luna-high", "no-skills") == plain
+    with pytest.raises(SystemExit, match="no new run folder for gpt-6-luna-xhigh"):
+        bm.newest_run_since(marker, "gpt-6-luna-xhigh", "skills")
 
 
 def test_a_claude_code_run_exports_and_gets_a_draft(site, tmp_path):

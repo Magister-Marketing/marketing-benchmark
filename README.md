@@ -162,7 +162,11 @@ What it does:
 - **Writes `tweet.txt` next to the run**: under 280 characters, every number
   read from the site's data as the model's page reads it (score, rank,
   attempts that met every requirement, cost per task, and the reference
-  models that have a run), with the page's address.
+  models that have a run), with the page's address. Every other run on the
+  board that is on disk gets its draft rewritten too, since a new run moves
+  their ranks ("#4 of 6"); it finds them in this checkout's results, sibling
+  checkouts' and any folder in `BENCH_RESULTS_DIRS`, and lists the runs it
+  could not find.
 
 `make bench-model export=<run folder> web=...` does the export and the draft
 alone, for a run already graded; it spends nothing.
