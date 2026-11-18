@@ -135,6 +135,13 @@
   person hands the agent their own exports. `MARKETING_BENCH_TASKS_DIR`
   points `load_tasks` at a task set kept outside the repository, for tasks
   whose answers are a brand's real numbers.
+- Harness: `claude-code --name-skills` is gone. It named in the prompt the
+  skills each task was written against, but choosing the right skill is
+  part of the task, so the benchmark no longer offers an arm that does it
+  for the agent. The stock arm and the plugin arm (`--plugin-dir`, the
+  model decides what to open) send the same prompts and record the same arm
+  names as before. New runs no longer write `agent.skills_named_in_prompt`;
+  runs that have it still grade and report as before.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry
