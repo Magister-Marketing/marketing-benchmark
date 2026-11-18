@@ -525,8 +525,12 @@ def newest_run_since(marker: float, model: str, setup: str) -> Path:
         for d in RESULTS_DIR.iterdir():
             if not (d.is_dir() and d.stat().st_mtime >= marker and (d / "run.json").is_file()):
                 continue
-            run = json.loads((d / "run.json").read_text())
-            if [plain_model(m) for m in run.get("models") or {}] == [model] and setup_of(run) == setup:
+            try:
+                run = json.loads((d / "run.json").read_text())
+                ours = [plain_model(m) for m in run.get("models") or {}] == [model] and setup_of(run) == setup
+            except (ValueError, Refusal):  # still being written, or a harness the site does not chart
+                continue
+            if ours:
                 fresh.append(d)
     if not fresh:
         raise Refusal(f"no new run folder for {model} ({setup}) appeared under {RESULTS_DIR}")

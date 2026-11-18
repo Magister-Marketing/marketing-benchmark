@@ -234,6 +234,12 @@ def test_a_run_going_at_the_same_time_is_not_taken_for_this_one(tmp_path, monkey
     # without the skills.
     fresh("20260103-000001-91919191", "gpt-6.2-sol-low")
     plain = fresh("20260103-000002-92929292", "gpt-6-luna-high", skills=False)
+    # A run that has only begun writing its run.json, and one in a harness
+    # the site does not chart, are passed over.
+    (results / "20260103-000003-93939393").mkdir()
+    (results / "20260103-000003-93939393" / "run.json").write_text('{"models": {"gpt-6-lu')
+    odd = fresh("20260103-000004-94949494", "gpt-6-luna-high")
+    (odd / "run.json").write_text(json.dumps({"models": {"gpt-6-luna-high": {}}, "harness": "journeys"}))
     assert bm.newest_run_since(marker, "gpt-6-luna-high", "skills") == ours
     assert bm.newest_run_since(marker, "gpt-6-luna-high", "no-skills") == plain
     with pytest.raises(SystemExit, match="no new run folder for gpt-6-luna-xhigh"):
