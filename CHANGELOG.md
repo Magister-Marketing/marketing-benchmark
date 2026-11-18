@@ -82,10 +82,9 @@
   records which holdout tasks have had results read.
 - Harness: `claude-code` runs the tasks through headless Claude Code and
   writes the same run directory as `direct-api`, so the judge and the report
-  are unchanged (`python -m eval_runner.claude_code run`). Three arms: the
-  stock agent; with a skills plugin installed (`--plugin-dir`, the model
-  decides what to open); and with the task's own skills named in the prompt
-  (`--name-skills`, the best case for skills). `--mcp-config` attaches MCP
+  are unchanged (`python -m eval_runner.claude_code run`). Two arms: the
+  stock agent, and with a skills plugin installed (`--plugin-dir`, the model
+  decides what to open). `--mcp-config` attaches MCP
   servers. Each attempt gets its own working, configuration and home folder,
   the supplied sources as files, and Claude Code's shell sandbox (writes
   inside the attempt, network to the package registries only). Two things
