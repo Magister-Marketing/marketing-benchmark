@@ -42,9 +42,9 @@ NEW_TASKS = {
 # discarded. A version moves when its prompt or fixtures, or its rubric, do.
 VERSIONS = {
     "seo-technical-triage": (3, 3),
-    "search-terms-negatives": (3, 3),
-    "ab-test-readout": (3, 3),
-    "seo-content-brief": (3, 3),
+    "search-terms-negatives": (3, 4),
+    "ab-test-readout": (3, 4),
+    "seo-content-brief": (3, 4),
     "lifecycle-reengagement": (2, 2),
     "monthly-report-reconcile": (2, 3),
 }
@@ -63,7 +63,7 @@ BANDS = {
     },
     "search-terms-negatives": {
         "q1_zero_conversion_spend": ("relative", 0.005, 0.25), "q2_promote_count": ("absolute", 0, 3),
-        "q3_irrelevant_spend": ("relative", 0.02, 0.25), "q4_promote_conversions": ("absolute", 0, 8),
+        "q3_irrelevant_spend": ("absolute", 0.5, 400), "q4_promote_conversions": ("absolute", 0, 8),
     },
     "lifecycle-reengagement": {
         "q1_mailable": ("absolute", 0, 20), "q2_lapsed": ("absolute", 0, 10),
@@ -237,6 +237,8 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
         ("seo-technical-triage", "duplicate titles, bad canonicals, broken linked pages", "bad canonicals, duplicate titles, broken linked pages", True),
         ("lifecycle-reengagement", "valid for 14 days, offered", "valid for 10 days, offered", True),
         ("search-terms-negatives", "All 5 promote candidates", "All 4 promote candidates", True),
+        ("search-terms-negatives", '"kind": "absolute", "full": 0.5, "zero": 400', '"kind": "relative", "full": 0.02, "zero": 0.25', True),
+        ("ab-test-readout", "(11,750), is derived from the results", "(18,000), is derived from the results", True),
         ("seo-content-brief", "zero credit beyond 25% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", "zero credit beyond 50% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", True),
         # What sync cannot rewrite stays reported: a definition, a dropped flag.
         ("seo-content-brief", "a difficulty of 45 or lower", "a difficulty of 50 or lower", False),
@@ -313,8 +315,8 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
         assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + note), note
     # A labelled line before the block does not shadow it either.
     assert _ab("A1: the two totals are 8 rows each.\n\nReadout.\n\n" + AB_BLOCK) == AB_ANSWERS
-    # Method notes that repeat every label, as recorded responses write them: the
-    # block is the run whose lines read as numbers, wherever the notes stand.
+    # Method notes that repeat every label, as recorded responses write them, lose to a
+    # block written as the prompt asks, wherever the notes stand. These carry working.
     notes = "\n".join([
         "- **A1:** sum of 8 weekly rows.", "- **A2:** 5,620 + 5,400 = **11,020**", "- **A3:** 749 ÷ 12,480 = 6.00%",
         "- **A4:** 705 ÷ 11,020 = 6.40%", "- **A5:** 6.40 ÷ 6.00 − 1", "- **A6:** 1 degree of freedom", "- **A7:** from z = 1.26",
@@ -322,6 +324,36 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     assert _ab("Method:\n" + notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
     assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes) == AB_ANSWERS
     assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
+    # A notes list can also carry exactly one number on every line, so every line reads
+    # as a number. The block's lines are the number alone; the notes' lines are not.
+    one_number_notes = "\n".join([
+        "- **A1:** visitors summed over the 8 control rows", "- **A2:** visitors summed over the 8 variant rows",
+        "- **A3:** signups over visitors for control, to 2 decimals", "- **A4:** the same for variant B, to 2 decimals",
+        "- **A5:** ratio of the two rates, minus 1", "- **A6:** chi-square with 1 degree of freedom",
+        "- **A7:** two-sided, from a pooled z of about 1.26",
+    ])
+    assert _ab(one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]           # alone, the notes are all there is to read
+    assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
+    assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
+    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes)
+    # Symbols around the number leave it alone; a unit word does not.
+    decorated = "A1: **12,480**\nA2: `11,020`\nA3: ~6.00%\nA4: 6.40 %\nA5: +6.6%\nA6: ≈ 90.7\nA7: (0.209)"
+    assert _ab("Readout.\n\n" + decorated + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
+    # The limit of the rule: a block whose own lines carry words looks like such a notes list,
+    # and between two runs alike in every count the later one is read.
+    worded = AB_BLOCK.replace("A1: 12,480", "A1: 12,480 visitors").replace("A2: 11,020", "A2: 11,020 visitors")
+    assert _ab(worded) == AB_ANSWERS
+    assert _ab(worded + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS         # five lines of it are still the number alone
+    all_worded = "\n".join(line + " (final)" for line in AB_BLOCK.splitlines())
+    assert _ab(all_worded) == AB_ANSWERS
+    assert _ab(all_worded + "\n\nMethod:\n" + one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]
+    # Such a block still beats notes that carry working: more of its lines read as a number.
+    assert _ab(all_worded + "\n\nMethod:\n" + notes) == AB_ANSWERS
+    # Only a line that is read can be the number alone: a blank answer is not one. A draft
+    # with a blank and a final block with working on the same line are alike, so the later is read.
+    blank_draft = AB_BLOCK.replace("12,480", "12,000").replace("A6: 90.7", "A6:")
+    final = AB_BLOCK.replace("A6: 90.7", "A6: 8,580.4 / 94.6 = 90.7")
+    assert _ab(blank_draft + "\n\nFinal:\n\n" + final) == AB_ANSWERS[:5] + [None, 0.209]
     # Between a clean line and the same label with working on it, the clean line stands.
     assert _ab("A1: 12,480\nA1: 749 / 12,480 = 6.00%")[0] == 12480.0 == _ab("A1: 749 / 12,480 = 6.00%\nA1: 12,480")[0]
     # Commentary between answer lines splits the block: only its largest piece is read.
@@ -391,7 +423,7 @@ def test_the_judge_gets_reference_totals_computed_from_the_recorded_prompt():
         task = tasks[task_id]
         for include_skills in (True, False):
             reference = bench.judge_source_reference(task, bench.assemble_prompt(task, include_skills))
-            assert reference["version"] == task_references.VERSION == 2
+            assert reference["version"] == task_references.VERSION == 3
             assert reference["answers"] == _targets(task), task_id
         prompt = bench.assemble_prompt(task, True)
         assert set(task_references.supplied_sources(prompt)) == {path.rsplit("/", 1)[1] for path in task["fixtures"]}
@@ -436,7 +468,7 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
     args = argparse.Namespace(run=str(run_dir), judge="claude-sonnet-5", current_rubric=True, label=None, tasks=None)
     assert bench.cmd_grade(args) == 0
     grading = json.loads((run_dir / "grading.json").read_text())
-    assert grading["task_reference_version"] == task_references.VERSION == 2
+    assert grading["task_reference_version"] == task_references.VERSION == 3
     assert grading["source_reference_version"] == reference_facts.VERSION
     # The judge was shown the reference: both redirecting URLs of each chain, 38 inlinks.
     (judge_prompt,) = judge_prompts
@@ -528,6 +560,9 @@ def test_seo_reference_and_the_wording_that_quotes_it():
             "does cold brew tea go bad)") in wording["existing_rankings_respected"]
     assert "'cold brew tea ratio' and 'how long to cold brew tea'" in wording["outline_covers_demand"]
     assert "('cold brew tea caffeine' or 'can you cold brew tea bags')" in wording["competitor_gap_grounded"]
+    # A slug proposed for the article being briefed is not an existing page, so it is not held to the page list.
+    assert wording["internal_links_real"].endswith(
+        "any URL that is not in the list, fails; a URL or slug the brief proposes for the new article itself is exempt.")
 
 
 def test_nothing_supplied_names_the_topic_to_pick():
@@ -758,6 +793,12 @@ def test_every_irrelevant_search_term_is_ruled_out_in_writing_and_no_shortcut_fi
     jobs = sum(Decimal(row["cost_usd"]) for row in irrelevant if re.search(r"jobs|careers", row["search_term"]))
     without_jobs = _answer_block([answers[0], answers[1], float(Decimal(str(answers[2])) - jobs), answers[3]])
     assert "q3_irrelevant_spend" in _failed(_results("search-terms-negatives", without_jobs))
+    # The reviewer's notes list, one number on every line, after a correct block: the block is read.
+    block = "A1: $2,380.36\nA2: 5\nA3: $1,636.90\nA4: 30"
+    notes = ("- **A1:** total cost of the 70 search terms with no conversions\n- **A2:** candidates with at least 3 conversions\n"
+             "- **A3:** total cost of the 16 irrelevant search terms\n- **A4:** conversions of the candidates, in 2 campaigns")
+    assert not _failed(_results("search-terms-negatives", "Review.\n\n" + block + "\n\nNotes:\n" + notes))
+    assert not _critical_tripped("search-terms-negatives", "Review.\n\n" + block + "\n\nNotes:\n" + notes)
     # The irrelevant terms are spread over the account, so no campaign total is the answer.
     campaigns = collections.defaultdict(Decimal)
     for row in rows:
@@ -767,6 +808,41 @@ def test_every_irrelevant_search_term_is_ruled_out_in_writing_and_no_shortcut_fi
         shortcut = _answer_block([answers[0], answers[1], float(cost), answers[3]])
         assert "q3_irrelevant_spend" in _failed(_results("search-terms-negatives", shortcut)), campaign
         assert any(row["campaign"] == campaign and row not in irrelevant for row in rows), campaign
+
+
+def test_the_irrelevant_spend_band_gives_full_credit_to_no_single_row_error():
+    """At 2% of the total (about $33) full credit went to an answer that left out the
+    brand-plus-job search, and to one that counted any one of 94 relevant rows."""
+    task = bench.load_tasks()["search-terms-negatives"]
+    rows, irrelevant, promote = _search()
+    answers = list(_targets(task).values())
+    target = Decimal("1636.90")
+    assert sum(Decimal(row["cost_usd"]) for row in irrelevant) == target == Decimal(str(answers[2]))
+
+    def a3(value) -> dict:
+        response = _answer_block([answers[0], answers[1], f"{value:.2f}" if isinstance(value, Decimal) else value, answers[3]])
+        return _results("search-terms-negatives", response)["q3_irrelevant_spend"]
+
+    # The exact figure, and the figure rounded to the whole dollar, earn full credit.
+    for exact in ("$1,636.90", "1636.9", "1,636.90", "$1,637", "1637"):
+        assert (a3(exact)["pass"], a3(exact)["score"]) == (True, 1.0), exact
+    # Case one: the brand-plus-job search left out, on the view that a brand search is never irrelevant.
+    careers = next(row for row in irrelevant if row["search_term"] == "sablewood blinds careers")
+    assert Decimal(careers["cost_usd"]) == Decimal("26.80") == min(Decimal(row["cost_usd"]) for row in irrelevant)
+    left_out = a3(target - Decimal("26.80"))
+    assert left_out["pass"] is False and left_out["score"] == pytest.approx((400 - 26.8) / 399.5, abs=1e-4)
+    for row in irrelevant:  # and so for every irrelevant search term
+        assert a3(target - Decimal(row["cost_usd"]))["pass"] is False, row["search_term"]
+    # Case two: one relevant search term wrongly counted as irrelevant, whichever it is.
+    relevant = [row for row in rows if row not in irrelevant]
+    assert len(relevant) == 107 and min(Decimal(row["cost_usd"]) for row in rows) == Decimal("1.03")
+    for row in relevant:
+        counted_in = a3(target + Decimal(row["cost_usd"]))
+        assert counted_in["pass"] is False and counted_in["score"] < 1, row["search_term"]
+    # A miss of one cheap row costs little; a miss of $400 or more earns nothing.
+    assert a3(target + Decimal("1.03"))["score"] == pytest.approx((400 - 1.03) / 399.5, abs=1e-4)
+    assert a3(target + Decimal("400"))["score"] == 0 == a3(target - Decimal("400"))["score"]
+    assert a3(Decimal(str(answers[0])))["score"] == 0                       # every search term without an order
 
 
 def test_the_search_prompt_asks_for_the_work_without_pointing_at_the_traps():
@@ -922,8 +998,13 @@ def test_ab_reference_and_the_wording_that_quotes_it():
         "by_device": {device: {variant: dict(totals[variant, device]) for variant in ("control", "variant_b")}
                       for device in ("desktop", "mobile")},
         "weeks": 4,
+        # Half of the visitors the test received: what each variant is compared with in the sample-ratio check.
+        "expected_visitors_per_variant_under_the_planned_50_50_split":
+            sum(int(row["visitors"]) for row in rows) // 2,
         "secondary_metric_p_value": round(_ab_p(totals, "paid_conversions"), 3),
     }
+    assert reference["expected_visitors_per_variant_under_the_planned_50_50_split"] == 11750
+    assert sum(int(row["visitors"]) for row in rows) == 23500
     assert reference["by_device"]["mobile"] == {
         "control": {"visitors": 6900, "signups": 347, "paid_conversions": 66},
         "variant_b": {"visitors": 5400, "signups": 283, "paid_conversions": 67}}
@@ -939,6 +1020,13 @@ def test_ab_reference_and_the_wording_that_quotes_it():
     assert "(12,480 control against 11,020 variant B)" in wording["srm_flagged"]
     assert ("the mobile rows, where variant B has 5,400 visitors against control's 6,900 (desktop is balanced, "
             "5,620 against 5,580). Naming mobile is enough") in wording["imbalance_located"]
+    # The prompt's own definition speaks of "the 50/50 split the plan called for", so a readout that
+    # gives the count that split expects is not misquoting the plan, whose sample size is 18,000.
+    assert "with the 50/50 split the plan called for" in task["prompt"]
+    assert ("half of the visitors the two variants received (11,750), is derived from the results: stating it, also as "
+            "what the planned split called for, is not an invented figure") in wording["no_invented_data"]
+    assert "every figure about the plan matches the test plan" in wording["no_invented_data"]
+    assert "It is not the sample size the plan required of each variant." in reference["interpretation"]
 
 
 def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():

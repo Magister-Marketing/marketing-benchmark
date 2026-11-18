@@ -44,7 +44,7 @@ performance on an untouched test.
 | [Quarterly paid-media review, decoy file](../eval_runner/tasks/ads-ledger-analysis-decoy.json) | The same review, after a look-alike "preliminary" export with the same name, shape, and dates but different numbers was shared one turn earlier for reference | Computing from the file this request supplied, not the one already sitting in the workspace; every figure from the wrong file is outside the zero-credit band, so the oracle scores it 0. Runs only on a harness that can send a prior turn (the Magister agent), never on the direct-model arms | 13 |
 | [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritized defect list across UTM links, GTM/GA4 tags, and consent defaults | Finding all twelve planted defects (Performance Max counts separately from search) without flagging the conforming decoys | 18 |
 
-Added on 2026-11-17 (the first draft was run once and discarded; the versions here have not been run):
+Added on 2026-11-17 (the first draft was run once and discarded; the judged checks of these versions are not calibrated yet):
 
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
@@ -77,7 +77,15 @@ constraints discriminate. The current untouched set:
 
 The three tasks from Content brief down were added on 2026-11-17. Their first
 draft was attempted once by one agent and its results were discarded when the
-tasks were revised; the versions here have not been run by any model.
+tasks were revised. In the six tasks added that day, every figure a program
+checks is recomputed by separate code in the tests; the checks a judge makes
+are not calibrated yet.
+
+Known limit of those six tasks, to fix in their next prompt version: an
+answer written with a full stop as the thousands separator (`12.480`) is read
+as 12.48, because a full stop is always the decimal point. The prompts say
+thousands separators are fine without saying which; they should say "a comma
+as thousands separator".
 
 ## How tasks stay comparable
 

@@ -25,7 +25,7 @@ import re
 import warnings
 from decimal import Decimal
 
-VERSION = 2
+VERSION = 3
 
 _SOURCE_HEADING = re.compile(r"(?m)^---\n\n## (?:Supplied source: (?P<name>[^\n]+)|[^\n]*)\n\n")
 
@@ -359,10 +359,17 @@ def ab_test_reference(sources: dict[str, str]) -> dict:
             for device in sorted({row["device"] for row in rows})
         },
         "weeks": len({row["week"] for row in rows}),
+        # What the sample-ratio check compares each variant with: half of the visitors the test received.
+        "expected_visitors_per_variant_under_the_planned_50_50_split": int(expected) if expected == int(expected) else expected,
         "secondary_metric_p_value": round(two_proportion_p_value(
             control["paid_conversions"], control["visitors"],
             variant["paid_conversions"], variant["visitors"]), 3),
-        "interpretation": "The plan's sample size, split and decision rule are in test_plan.md in the prompt.",
+        "interpretation": (
+            "The plan's sample size, split and decision rule are in test_plan.md in the prompt. "
+            "expected_visitors_per_variant_under_the_planned_50_50_split is half of the visitors the two variants "
+            "received. A readout may state it, also as the count the planned split called for: it is derived from "
+            "the results. It is not the sample size the plan required of each variant."
+        ),
     }
 
 

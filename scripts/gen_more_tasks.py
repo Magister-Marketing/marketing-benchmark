@@ -747,7 +747,9 @@ BANDS = {
     "search-terms-negatives": {
         "q1_zero_conversion_spend": ("relative", 0.005, 0.25),
         "q2_promote_count": ("absolute", 0, 3),
-        "q3_irrelevant_spend": ("relative", 0.02, 0.25),
+        # Exact to the whole dollar: the cheapest row in the report costs $1.03, so leaving one
+        # irrelevant search term out, or counting one relevant term in, is outside full credit.
+        "q3_irrelevant_spend": ("absolute", 0.5, 400),
         "q4_promote_conversions": ("absolute", 0, 8),
     },
     "lifecycle-reengagement": {
@@ -1073,6 +1075,15 @@ def pinned_checks(task_id: str, files: dict[str, str] | None = None) -> dict[str
         gap = {device: abs(arms["control"]["visitors"] - arms["variant_b"]["visitors"]) for device, arms in devices.items()}
         uneven, even = max(gap, key=gap.get), min(gap, key=gap.get)
         checks.update({
+            "no_invented_data": (
+                "Every rate, count, statistic and p-value presented as a result is derivable from the results "
+                "file, and every figure about the plan matches the test plan. The expected count per variant "
+                "under the planned 50/50 split, half of the visitors the two variants received "
+                f"({ref['expected_visitors_per_variant_under_the_planned_50_50_split']:,}), is derived from the "
+                "results: stating it, also as what the planned split called for, is not an invented figure and "
+                "not a wrong figure about the plan. The readout states no projected revenue, annualised gain or "
+                "industry benchmark as if it were data."
+            ),
             "srm_flagged": (
                 f"The readout says the split of visitors ({totals['control']['visitors']:,} control against "
                 f"{totals['variant_b']['visitors']:,} variant B) departs from the planned 50/50 by more than "

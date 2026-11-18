@@ -3,7 +3,7 @@
   "title": "A/B test readout for a pricing page",
   "split": "development",
   "prompt_version": 3,
-  "rubric_version": 3,
+  "rubric_version": 4,
   "fixtures": [
     "eval_runner/fixtures/ab-test/test_plan.md",
     "eval_runner/fixtures/ab-test/experiment_results.csv"
@@ -33,7 +33,7 @@
       {"id": "srm_flagged", "check": "The readout says the split of visitors (12,480 control against 11,020 variant B) departs from the planned 50/50 by more than chance allows, and that the comparison between the variants cannot be trusted until that is explained. Reporting the two totals without saying the comparison is unreliable fails."},
       {"id": "not_significant_stated", "check": "The readout states that the difference in signup rate is not statistically significant at the plan's 5% level."},
       {"id": "stop_rule_respected", "check": "The readout notes that neither variant reached the 18,000 visitors the plan required before the result is read."},
-      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every rate, count, statistic and p-value presented as a result is derivable from the results file, and every figure about the plan matches the test plan. The readout states no projected revenue, annualised gain or industry benchmark as if it were data.", "fails_if_zero": ["q1_control_visitors", "q2_variant_visitors"]}
+      {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every rate, count, statistic and p-value presented as a result is derivable from the results file, and every figure about the plan matches the test plan. The expected count per variant under the planned 50/50 split, half of the visitors the two variants received (11,750), is derived from the results: stating it, also as what the planned split called for, is not an invented figure and not a wrong figure about the plan. The readout states no projected revenue, annualised gain or industry benchmark as if it were data.", "fails_if_zero": ["q1_control_visitors", "q2_variant_visitors"]}
     ],
     "best_practices": [
       {"id": "no_winner_declared", "negative": true, "check": "The readout does not call variant B the winner and does not recommend shipping it on the strength of this test."},

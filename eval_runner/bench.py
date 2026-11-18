@@ -1246,18 +1246,34 @@ def _single_number(value: str) -> float | None:
         return None
 
 
+def _number_alone(value: str) -> bool:
+    """Whether an answer line is the number and nothing but symbols around it.
+
+    `$1,234.50`, `6.00%` and `**7**` are; `7 URLs` and `total cost of the 70
+    search terms` are not: a letter or a digit is left once the number is
+    taken out.
+    """
+    return not re.search(r"[^\W_]", _SINGLE_ANSWER_NUMBER.sub("", value.translate(_MINUS_SIGNS), count=1))
+
+
 def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
     """The answer block of a task that sets `answers.single_number`.
 
     A run is a sequence of answer lines in rising label order (A1, A2, ...)
     with nothing but blank lines between them. The block is the run with the
-    most answer lines; between runs of the same length, the one with more
-    lines that read as a number, and then the later one. So a stray labelled
-    line ("A1: sum of 8 rows" in a note) is a run of one that cannot override
-    a block; a list of method notes that repeats every label, before the
-    block or after it, loses to the block because its lines carry working;
-    and a worked draft loses to the final block after it. A label with
-    nothing after it is a blank answer: it never borrows the next line.
+    most answer lines. Between runs of the same length it is the one with
+    more lines that read as a number; then the one with more lines that are
+    the number alone, as the prompt asks; then the later one.
+
+    So a stray labelled line ("A1: sum of 8 rows" in a note) is a run of one
+    that cannot override a block. A list of method notes that repeats every
+    label, before the block or after it, loses to a block written as asked:
+    a note carries working, or words around its one number. A worked draft
+    loses to the final block after it. What the rule cannot tell apart is a
+    block whose own lines carry words ("A1: 7 URLs") from a notes list of
+    the same length with one number on every line; there the later run is
+    read. A label with nothing after it is a blank answer: it never borrows
+    the next line.
     """
     runs: list[list[tuple[int, str]]] = []
     current: list[tuple[int, str]] | None = None
@@ -1274,11 +1290,12 @@ def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
         elif line.strip():
             current = None
     block: dict[int, float] = {}
-    best = (0, 0)
+    best = (0, 0, 0)
     for run in runs:
         read = {index: number for index, value in run if (number := _single_number(value)) is not None}
-        if (len(run), len(read)) >= best:  # the later run wins a tie
-            block, best = read, (len(run), len(read))
+        alone = sum(1 for index, value in run if index in read and _number_alone(value))
+        if (len(run), len(read), alone) >= best:  # the later run wins a tie
+            block, best = read, (len(run), len(read), alone)
     return block
 
 

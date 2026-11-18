@@ -109,12 +109,17 @@ to write the number alone, and is read by these rules:
 
 - **The answer block.** A run is a sequence of answer lines in rising label
   order with nothing but blank lines between them. The block is the run with
-  the most answer lines; between runs of the same length, the one with more
-  lines that read as a number, and then the later one. A labelled line in a
-  note (`A1: sum of 8 rows`) is a run of one and cannot override the block. A
-  list of method notes that repeats every label loses to the block, before it
-  or after it, because its lines carry working. A line of commentary between
-  two answer lines splits the block, and only its largest piece is read.
+  the most answer lines. Between runs of the same length it is the one with
+  more lines that read as a number; then the one with more lines that are
+  the number alone, with no word left once the number is taken out; then the
+  later one. A labelled line in a note (`A1: sum of 8 rows`) is a run of one
+  and cannot override the block. A list of method notes that repeats every
+  label loses to a block written as asked, before it or after it: a note
+  carries working, or words around its one number (`A1: total cost of the 70
+  search terms`). When every line of the block carries words too (`A1: 7
+  URLs`), the rule cannot tell the two apart and reads the later run. A line
+  of commentary between two answer lines splits the block, and only its
+  largest piece is read.
 - **A line is an answer only when it carries exactly one number.** A currency
   sign, thousands separators, a percent sign and a unit word are fine. A
   label with nothing after it is a blank answer and never borrows the next
@@ -196,10 +201,13 @@ stable winner, and one week of missing conversions that must be treated
 as missing, not zero), so the analysis task is graded against oracle
 numbers, not vibes.
 
-The last six tasks were added on 2026-11-17 and are not calibrated yet.
-Version 1 of each was a local draft, attempted once by one agent and
-discarded; the versions here (`prompt_version` and `rubric_version` 2 or 3,
-per task) answer two reviews of it and have not been run by any model. All
+The last six tasks were added on 2026-11-17. Version 1 of each was a local
+draft, attempted once by one agent and discarded; the versions here answer
+the reviews that followed. What is checked: every program-checked figure, and
+every figure the judge is given, is recomputed by separate code in the tests.
+What is not: the judged criteria are not calibrated. No judge has been tested
+on these tasks against responses with known errors and clean controls, so a
+judged verdict on them has not been measured against a known answer. All
 brands and data in them are invented. Two files keep them honest:
 
 - `task_references.py` computes each task's figures from the sources in a

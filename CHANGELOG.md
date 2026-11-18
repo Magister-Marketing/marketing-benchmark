@@ -25,18 +25,40 @@
   and proves that the careless answer each task is built to catch scores zero
   on the criterion meant to catch it. All brands and data are invented.
   Version 1 was a local draft, run once by one agent and discarded after
-  review; the versions here are not calibrated and have not been run. Two
+  review. In the versions here the program-checked figures are verified by
+  that independent recomputation; the judged criteria are not calibrated (no
+  judge has been tested on them against responses with known errors). Two
   more drafts, `social-calendar-limits` and `positioning-from-competitors`,
   read free text by pattern and are not in the set.
+- Tasks: rubric version 4 of `ab-test-readout`, `search-terms-negatives` and
+  `seo-content-brief`, after a review of recorded answers; prompts and
+  fixtures are unchanged, so recorded responses stay valid and can be
+  regraded. A/B test: the critical criterion now says that the expected
+  count per variant under the planned 50/50 split (half of the visitors
+  received, 11,750) is derived from the results and is not an invented or
+  misquoted plan figure; a judge had failed one readout and passed two on
+  the same sentence. The judge's reference carries that count
+  (`task_references.VERSION` 3). Search terms: the band on A3, the cost of
+  the irrelevant search terms, is now absolute, full credit within $0.50
+  and none from $400 off, in place of 2% to 25%. At 2% (about $33) full
+  credit went to an answer that left out the cheapest irrelevant search
+  term ($26.80), and to one that counted any one of 94 relevant terms; the
+  cheapest row in the report costs $1.03, so no single-row error now earns
+  full credit. Content
+  brief: a URL the brief proposes for the new article itself is exempt from
+  the rule that every internal URL must be in the page list.
 - Answers: a task may set `"single_number": true` in `answers`. Its answer
-  block is then the run of answer lines with the most answers (the later run
-  when two are alike), so a labelled line in a note cannot override it; a
-  line is an answer only when it carries exactly one number, so a line with
-  working on it (`A1: 749 / 12,480 = 6.00%`) is left unparsed instead of
-  being read as its first number; a label with nothing after it stays blank;
-  and a minus sign is read whether typed as a hyphen, U+2212 or a leading en
-  dash. `eval_runner/README.md` lists what is left unparsed on purpose. The
-  21 earlier tasks do not set it and parse exactly as before.
+  block is then the run of answer lines with the most answers; between runs
+  of the same length, the one with more lines that read as a number, then
+  the one with more lines that are the number alone, then the later one. So
+  a labelled line in a note, or a notes list that repeats every label,
+  cannot override a block written as asked. A line is an answer only when it
+  carries exactly one number, so a line with working on it (`A1: 749 /
+  12,480 = 6.00%`) is left unparsed instead of being read as its first
+  number; a label with nothing after it stays blank; and a minus sign is
+  read whether typed as a hyphen, U+2212 or a leading en dash.
+  `eval_runner/README.md` lists what is left unparsed on purpose. The 21
+  earlier tasks do not set it and parse exactly as before.
 - Judge: `judge_source_reference` now also returns reference totals for the
   six new tasks, computed from the sources in the recorded prompt.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and

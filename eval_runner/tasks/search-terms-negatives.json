@@ -3,7 +3,7 @@
   "title": "Search terms review: negatives, keepers and promotions",
   "split": "development",
   "prompt_version": 3,
-  "rubric_version": 3,
+  "rubric_version": 4,
   "fixtures": [
     "eval_runner/fixtures/search-terms/business_facts.md",
     "eval_runner/fixtures/search-terms/search_terms_report.csv"
@@ -21,7 +21,7 @@
       {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 4 labeled answers A1-A4 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 4}},
       {"id": "q1_zero_conversion_spend", "check": "A1 states the total cost of search terms with 0 conversions; full credit within 0.5%, zero credit beyond 25% off.", "programmatic": {"fact": "answer_q1", "near": 2380.36, "tolerance": {"kind": "relative", "full": 0.005, "zero": 0.25}}},
       {"id": "q2_promote_count", "check": "A2 states the number of promote candidates as defined; full credit for the exact figure, zero credit 3 or more off.", "programmatic": {"fact": "answer_q2", "near": 5, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
-      {"id": "q3_irrelevant_spend", "check": "A3 states the total cost of the irrelevant search terms as defined; full credit within 2%, zero credit beyond 25% off.", "programmatic": {"fact": "answer_q3", "near": 1636.9, "tolerance": {"kind": "relative", "full": 0.02, "zero": 0.25}}},
+      {"id": "q3_irrelevant_spend", "check": "A3 states the total cost of the irrelevant search terms as defined; full credit within 0.5, zero credit 400 or more off.", "programmatic": {"fact": "answer_q3", "near": 1636.9, "tolerance": {"kind": "absolute", "full": 0.5, "zero": 400}}},
       {"id": "q4_promote_conversions", "check": "A4 states the combined conversions of the promote candidates; full credit for the exact figure, zero credit 8 or more off.", "programmatic": {"fact": "answer_q4", "near": 30, "tolerance": {"kind": "absolute", "full": 0, "zero": 8}}},
       {"id": "three_lists_present", "check": "The review contains a list of negative keywords to add, a list of promote candidates, and a list of search terms kept. One missing list fails."}
     ],

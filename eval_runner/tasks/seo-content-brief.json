@@ -3,7 +3,7 @@
   "title": "Content brief from a keyword export",
   "split": "holdout",
   "prompt_version": 3,
-  "rubric_version": 3,
+  "rubric_version": 4,
   "fixtures": [
     "eval_runner/fixtures/seo-brief/keyword_export.csv",
     "eval_runner/fixtures/seo-brief/existing_pages.md",
@@ -32,7 +32,7 @@
       {"id": "target_topic_named", "check": "The brief targets the cold brew tea topic and names it as the target. Targeting any other topic fails."},
       {"id": "primary_keyword_named", "check": "The primary keyword is 'how to cold brew tea'. Any other primary keyword fails."},
       {"id": "existing_rankings_respected", "negative": true, "check": "No keyword the site already ranks in the top 10 for (how to store loose leaf tea, best green tea, matcha caffeine, green tea caffeine, does tea expire, does cold brew tea go bad) is listed as a primary or secondary keyword of the new article. Linking to the pages that rank for them is fine; listing one of them as a target fails."},
-      {"id": "internal_links_real", "check": "The brief lists at least two internal URLs to link to, and every internal URL it lists appears in the supplied page list. Fewer than two, or any URL that is not in the list, fails."},
+      {"id": "internal_links_real", "check": "The brief lists at least two internal URLs to link to, and every internal URL it lists appears in the supplied page list. Fewer than two, or any URL that is not in the list, fails; a URL or slug the brief proposes for the new article itself is exempt."},
       {"id": "no_invented_data", "negative": true, "critical": true, "check": "Every search volume, difficulty score and ranking position presented as a fact matches the keyword export, and the brief gives no traffic, click or revenue forecast as if it were data. Explicitly labelled assumptions are not data.", "fails_if_zero": ["q5_ranking_volume"]}
     ],
     "best_practices": [
