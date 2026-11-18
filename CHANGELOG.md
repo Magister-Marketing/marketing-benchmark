@@ -2,33 +2,43 @@
 
 ## Unreleased
 
-- Tasks: eight closed-book tasks in kinds of marketing work the set lacked.
+- Tasks: six closed-book tasks in kinds of marketing work the set lacked.
   Development: `seo-technical-triage`, `search-terms-negatives`,
-  `ab-test-readout`, `social-calendar-limits`. Holdout: `seo-content-brief`,
-  `lifecycle-reengagement`, `monthly-report-reconcile`,
-  `positioning-from-competitors`. Six end in a labeled answer block of
-  banded figures; the calendar and positioning tasks are checked by
-  `eval_runner/task_facts.py` (character, hashtag, spacing and embargo-date
-  rules; citations, prices and percentages against the sources). Each has one
-  critical no-invention criterion backed by an oracle that lists only plain
-  aggregates, so a trap or a miscount costs its own criterion and never the
-  whole attempt. `eval_runner/task_references.py` computes the data tasks'
-  figures from the recorded prompt and gives them to the judge as reference
-  totals. `scripts/gen_more_tasks.py` writes the fixtures from seeded
-  generators and pins every programmatic condition, tolerance, oracle list
-  and definition line in the task files (`--write`, `--sync`, `--check`);
-  `tests/test_more_tasks.py` recomputes the figures independently and proves
-  that the careless answer each task is built to catch scores zero on the
-  criterion meant to catch it. All brands and data are invented. The tasks
-  are at version 2: version 1 was a local draft, run once by one agent and
-  discarded after review. Version 2 is not calibrated.
-- Answers: a task may set `"single_number": true` in `answers`. A line is
-  then an answer only when it carries exactly one number, so a line with
+  `ab-test-readout`. Holdout: `seo-content-brief`, `lifecycle-reengagement`,
+  `monthly-report-reconcile`. Each ends in a labeled answer block of banded
+  figures and has one critical no-invention criterion backed by an oracle
+  that lists only plain aggregates: a plain sum, count or rate under an
+  explicit filter, with a zero band at least a tenth of its value. A planted
+  trap therefore costs its own criterion. A listed figure beyond its zero
+  band still scores the whole attempt zero, as for every oracle-backed
+  critical; a figure on an unparsed answer line is absence and does not.
+  `eval_runner/task_references.py` computes the tasks' figures from the
+  recorded prompt and gives them to the judge as reference totals; its
+  version is recorded in `grading.json` as `task_reference_version`, and a
+  prompt whose sources cannot be read grades without a reference and warns.
+  `scripts/gen_more_tasks.py` writes the fixtures from seeded generators and
+  pins, in the task files, every programmatic condition, tolerance, oracle
+  list and definition line, and the wording of every check that states a
+  band or a figure from the data (`--write`, `--sync`, `--check`).
+  `tests/test_more_tasks.py` recomputes every target and every reference
+  figure independently, writes out the bands and oracle lists a second time,
+  and proves that the careless answer each task is built to catch scores zero
+  on the criterion meant to catch it. All brands and data are invented.
+  Version 1 was a local draft, run once by one agent and discarded after
+  review; the versions here are not calibrated and have not been run. Two
+  more drafts, `social-calendar-limits` and `positioning-from-competitors`,
+  read free text by pattern and are not in the set.
+- Answers: a task may set `"single_number": true` in `answers`. Its answer
+  block is then the run of answer lines with the most answers (the later run
+  when two are alike), so a labelled line in a note cannot override it; a
+  line is an answer only when it carries exactly one number, so a line with
   working on it (`A1: 749 / 12,480 = 6.00%`) is left unparsed instead of
-  being read as its first number. The 21 earlier tasks do not set it and
-  parse exactly as before.
+  being read as its first number; a label with nothing after it stays blank;
+  and a minus sign is read whether typed as a hyphen, U+2212 or a leading en
+  dash. `eval_runner/README.md` lists what is left unparsed on purpose. The
+  21 earlier tasks do not set it and parse exactly as before.
 - Judge: `judge_source_reference` now also returns reference totals for the
-  six new data tasks, computed from the sources in the recorded prompt.
+  six new tasks, computed from the sources in the recorded prompt.
 - Judges: `grade --judge` now sends the judge entry's `reasoning_effort` and
   `text_verbosity` with every judge request; before, a judge picked from
   models.json was called at the provider default effort whatever its entry

@@ -1,5 +1,5 @@
 keyword,topic,monthly_searches,difficulty,intent,current_rank,ranking_url
-loose leaf green tea,green tea,2400,55,transactional,15,/collections/green-tea
+loose leaf green tea,green tea,2400,55,transactional,11,/collections/green-tea
 chamomile tea benefits,herbal tea for sleep,5400,66,informational,,
 cold brew tea ratio,cold brew tea,1900,19,informational,,
 oolong tea caffeine,oolong,1600,33,informational,,
@@ -29,7 +29,7 @@ best tea for sleep,herbal tea for sleep,8100,58,commercial,,
 how to make matcha,matcha,5400,49,informational,,
 matcha powder,matcha,9900,68,transactional,,
 cold brew tea recipe,cold brew tea,1300,52,informational,,
-cold brew tea vs iced tea,cold brew tea,880,26,informational,,
+cold brew tea vs iced tea,cold brew tea,880,45,informational,,
 does tea expire,tea storage,2400,35,informational,8,/blog/does-tea-expire
 tea storage containers,tea storage,1300,42,transactional,,
 how to make iced tea,iced tea,8100,51,informational,,
@@ -44,7 +44,7 @@ gifts for tea lovers,tea gifts,4400,53,commercial,,
 how to store loose leaf tea,tea storage,1900,23,informational,3,/blog/how-to-store-loose-leaf-tea
 tea sampler,tea gifts,2900,45,transactional,22,/collections/samplers
 best tea for cold brew,cold brew tea,1300,34,commercial,,
-does cold brew tea go bad,cold brew tea,480,15,informational,9,/blog/how-long-does-brewed-tea-last
+does cold brew tea go bad,cold brew tea,480,15,informational,10,/blog/how-long-does-brewed-tea-last
 green tea temperature,green tea,1300,29,informational,,
 can you cold brew tea bags,cold brew tea,590,17,informational,,
 best tea tins,tea storage,880,37,commercial,,

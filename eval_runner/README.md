@@ -101,14 +101,38 @@ archived with a reason and the new rubric intentionally supports both; a
 change to graded behavior or fixture contract requires a new task id.
 
 `answers` may carry `"single_number": true`. Without it the first number on an
-answer line is the answer, so `A1: 749 / 12,480 = 6.00%` reads 749 and a
-banded check scores the slip as a wrong figure. With it a line is an answer
-only when it carries exactly one number (a currency sign, thousands
-separators, a percent sign and a unit word are fine): a line with working on
-it is left unparsed, which fails the criterion as absence and can never be
-called an invented figure by the oracle. A task that sets it tells the
-candidate to write the number alone. The tasks that do not set it parse as
-they always have.
+answer line is the answer, the last line carrying a label wins, and a label
+with nothing after it reads the line below: `A1: 749 / 12,480 = 6.00%` reads
+749, and a banded check scores the slip as a wrong figure. The tasks that do
+not set it parse as they always have. A task that sets it tells the candidate
+to write the number alone, and is read by these rules:
+
+- **The answer block.** A run is a sequence of answer lines in rising label
+  order with nothing but blank lines between them. The block is the run with
+  the most answer lines; between runs of the same length, the one with more
+  lines that read as a number, and then the later one. A labelled line in a
+  note (`A1: sum of 8 rows`) is a run of one and cannot override the block. A
+  list of method notes that repeats every label loses to the block, before it
+  or after it, because its lines carry working. A line of commentary between
+  two answer lines splits the block, and only its largest piece is read.
+- **A line is an answer only when it carries exactly one number.** A currency
+  sign, thousands separators, a percent sign and a unit word are fine. A
+  label with nothing after it is a blank answer and never borrows the next
+  line. Only a colon may follow the label.
+- **A minus sign is read however it is typed** when it stands directly before
+  the number: a hyphen, the minus sign U+2212, the non-breaking and
+  full-width hyphens, and an en dash that opens the value (`–6.6%`). After a
+  word or between two numbers an en dash is punctuation, and an em dash
+  always is.
+- **Left unparsed, on purpose:** a second number on the line (working, a
+  range such as `7-8`, a ratio written `3.14:1`, a bracketed footnote such as
+  `35,901.46 [1]`, `0.209 (2-sided)`), scientific notation (`2.09e-1`), a
+  number in words, a rounded `11.4k` or `11.4 million`, a decimal comma
+  (`3,14`), and the `[...]` or `<...>` placeholder idiom. `12.480` reads as
+  12.48: a full stop is always the decimal point.
+
+An unparsed line fails its criterion as absence. It can never be called an
+invented figure by the oracle, because an absent answer is not a wrong one.
 
 Three optional fields cover a task whose input a harness must *deliver*
 rather than inline:
@@ -162,11 +186,9 @@ rather than inline:
 | development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
 | development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
-| development | `social-calendar-limits` | twelve posts under character, hashtag, spacing and embargo-date rules, checked by program |
 | holdout | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks |
 | holdout | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out |
 | holdout | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures |
-| holdout | `positioning-from-competitors` | three cited claims against competitor extracts; the founder's unsupported superlatives declined; prices and percentages checked against the sources |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
@@ -174,37 +196,50 @@ stable winner, and one week of missing conversions that must be treated
 as missing, not zero), so the analysis task is graded against oracle
 numbers, not vibes.
 
-The last eight tasks were added on 2026-11-17 (version 2 of each; version 1
-was a local draft, run once and discarded) and are not calibrated yet. All
-brands and data in them are invented. Three files keep them honest:
+The last six tasks were added on 2026-11-17 and are not calibrated yet.
+Version 1 of each was a local draft, attempted once by one agent and
+discarded; the versions here (`prompt_version` and `rubric_version` 2 or 3,
+per task) answer two reviews of it and have not been run by any model. All
+brands and data in them are invented. Two files keep them honest:
 
-- `task_references.py` computes each data task's figures from the sources in
-  a recorded prompt. The judge receives them as its reference totals, and the
-  task files' `near` targets are the same numbers.
-- `task_facts.py` holds the mechanical checks of `social-calendar-limits` and
-  `positioning-from-competitors`. Its constants are also what the campaign
-  brief is rendered from, so the brief and the checks cannot disagree.
+- `task_references.py` computes each task's figures from the sources in a
+  recorded prompt. The judge receives them as its reference totals, and the
+  task files' `near` targets are the same numbers. Its `VERSION` is recorded
+  in `grading.json` as `task_reference_version`. A prompt whose sources
+  cannot be read grades without a reference and raises a `RuntimeWarning`
+  that says so.
 - `scripts/gen_more_tasks.py` writes the fixtures (seeded, so a rerun
   reproduces the same bytes) and pins everything a program decides in a task
   file: each programmatic condition with its target and tolerance, the
-  `answers` field, each critical criterion's oracle list, and the definition
-  and answer lines the prompt must carry. `--sync` writes those values;
-  `--check` reports every difference, as does `tests/test_more_tasks.py`,
-  which recomputes each figure with separate code.
+  `answers` field, each critical criterion's oracle list, the definition and
+  answer lines the prompt must carry, and the wording of every check that
+  states a band or a figure taken from the data (a keyword, a search term, a
+  visitor count, the order of the issue types, the numbers of a policy).
+  That wording is rendered from the same computed values, so it cannot go
+  stale. `--sync` writes all of it; `--check` reports every difference.
 
-Three rules these tasks follow, each learned from a review of version 1:
+`tests/test_more_tasks.py` is the second key. It recomputes every target and
+every figure of the judge's reference from the committed fixtures with
+separate code, and it writes out the bands and the oracle lists again, so a
+band changed in the generator and synced into a task file still fails until
+it is changed in the test as well.
+
+Three rules these tasks follow, each learned from a review:
 
 - A judged criterion asks only for what the prompt or a fixture asks for.
-  A professional standard that is wanted (one ask per post, a summary in plain
-  words) is stated in the prompt or the brief, never in the rubric alone.
+  A professional standard that is wanted (a summary in plain words, the
+  shortest negative that blocks a theme) is stated in the prompt, never in
+  the rubric alone. A prompt asks for the work without pointing at the trap.
 - An answer is in a critical criterion's oracle list only when it is a plain
   sum, count or rate under an explicit filter, with no planted trap inside it
-  and a zero band at least a tenth of its value. A trap or a miscount costs
-  its own criterion; only a figure no reading of the data supports fails the
-  critical one.
-- Nothing is credited until the whole deliverable is there: with eleven posts
-  or three of four labelled lines, every rule check fails and none trips the
-  oracle.
+  and a zero band at least a tenth of its value. A planted trap therefore
+  costs its own criterion. A listed figure beyond its zero band still scores
+  the whole attempt zero: that is what the list is for.
+- Each criterion tests one thing, so one error is not charged twice.
+
+Two more tasks drafted with these, `social-calendar-limits` and
+`positioning-from-competitors`, read free text by pattern and are not part of
+the set.
 
 ### Calibration discipline
 

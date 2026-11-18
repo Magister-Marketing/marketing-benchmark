@@ -41,10 +41,10 @@ from pathlib import Path
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from eval_runner import (  # type: ignore
-        brand_assets, providers, reference_facts, response_facts, task_facts, task_references,
+        brand_assets, providers, reference_facts, response_facts, task_references,
     )
 else:
-    from . import brand_assets, providers, reference_facts, response_facts, task_facts, task_references
+    from . import brand_assets, providers, reference_facts, response_facts, task_references
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
@@ -1201,6 +1201,87 @@ def _unsupportable_claims_facts(response_text: str) -> dict:
     }
 
 
+_SINGLE_ANSWER_LABEL = re.compile(
+    r"^[ \t>]*(?:#{1,6}[ \t]*)?(?:[-*][ \t]*|\d{1,3}[.)][ \t]*)?[*_`]*A(\d{1,3})[*_`]*[ \t]*[:：][*_]*[ \t]*(.*)$",
+    re.IGNORECASE,
+)
+_SINGLE_ANSWER_NUMBER = re.compile(r"-?(?:\d(?:[\d,]*\d)?(?:\.\d+)?|\.\d+)")
+# U+2212 minus sign, U+2010 hyphen, U+2011 non-breaking hyphen, U+FE63 small and U+FF0D full-width hyphen-minus.
+_MINUS_SIGNS = {ord(sign): "-" for sign in "\u2212\u2010\u2011\ufe63\uff0d"}
+
+
+def _single_number(value: str) -> float | None:
+    """The one number on an answer line, or None when the line is not that.
+
+    Read as a number: a currency sign, thousands separators, a percent sign,
+    a unit word, and a minus sign directly before the number (a hyphen, the
+    minus sign U+2212, or an en dash that opens the value). Left unparsed, on
+    purpose: a line with a second number on it (working, a range, a ratio
+    such as 3.14:1, a bracketed footnote, scientific notation), a number in
+    words, a rounded "11.4k" or "11.4 million", a decimal comma, and the
+    `[...]` or `<...>` placeholder idiom.
+    """
+    value = value.strip()
+    # `A5: [blocked -- final-28-day spend unavailable]` is a placeholder in
+    # the prompt's own `<...>` idiom, not an answer.
+    if not value or value[0] in "[<":
+        return None
+    # A minus sign, however it is typed: the minus sign itself and the other
+    # hyphens anywhere, an en dash only where the value starts (after a word
+    # or between two numbers it is punctuation). "-$12" is minus twelve dollars.
+    value = value.translate(_MINUS_SIGNS)
+    value = re.sub(r"^([^\w–—-]*)–(?=[$€£]?\.?\d)", r"\1-", value)
+    value = re.sub(r"-([$€£])[ \t]?(?=\.?\d)", r"\1-", value)
+    numbers = list(_SINGLE_ANSWER_NUMBER.finditer(value))
+    if len(numbers) != 1:
+        return None
+    token = numbers[0].group(0)
+    if re.match(r"[ \t]?(?:[kKmMbB]\b|thousand|million|billion)", value[numbers[0].end():]):
+        return None
+    if not re.fullmatch(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?", token):
+        return None
+    try:
+        return float(token.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
+    """The answer block of a task that sets `answers.single_number`.
+
+    A run is a sequence of answer lines in rising label order (A1, A2, ...)
+    with nothing but blank lines between them. The block is the run with the
+    most answer lines; between runs of the same length, the one with more
+    lines that read as a number, and then the later one. So a stray labelled
+    line ("A1: sum of 8 rows" in a note) is a run of one that cannot override
+    a block; a list of method notes that repeats every label, before the
+    block or after it, loses to the block because its lines carry working;
+    and a worked draft loses to the final block after it. A label with
+    nothing after it is a blank answer: it never borrows the next line.
+    """
+    runs: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] | None = None
+    for line in response_text.splitlines():
+        match = _SINGLE_ANSWER_LABEL.match(line)
+        if match:
+            index = int(match.group(1))
+            if not 1 <= index <= count:
+                continue  # some other label: not an answer, and not a break either
+            if current is None or index <= current[-1][0]:
+                current = []
+                runs.append(current)
+            current.append((index, match.group(2)))
+        elif line.strip():
+            current = None
+    block: dict[int, float] = {}
+    best = (0, 0)
+    for run in runs:
+        read = {index: number for index, value in run if (number := _single_number(value)) is not None}
+        if (len(run), len(read)) >= best:  # the later run wins a tie
+            block, best = read, (len(run), len(read))
+    return block
+
+
 def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # Backward-compatible one-argument form for callers that only need generic facts.
     if response_text is None:
@@ -1222,51 +1303,28 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         # line is absent or carries no number, and `near` conditions score a
         # None fact as 0 rather than erroring.
         count = answers["count"]
-        # `single_number` is a task's opt-in to a stricter reading of its
-        # answer lines. Without it the first number on the line is the
-        # answer, so `A1: 749 / 12,480 = 6.00%` reads 749 and a banded check
-        # scores the slip as a wrong figure. With it a line is an answer only
-        # when it carries exactly one number: a line with working on it is
-        # left unparsed, which is absence (the criterion fails) and never a
-        # figure the oracle can call invented. Such a task's prompt tells the
-        # candidate to write the number alone.
-        single = bool(answers.get("single_number"))
-        label_line = (
-            r"(?im)^[ \t>]*(?:#{1,6}\s*)?(?:[-*]\s*|\d+[.)]\s*)?[*_`]*A(\d+)[*_`]*\s*:[*_]*\s*(.+)$"
-            if single else
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$"
-        )
-        parsed: dict[int, float] = {}
-        for match in re.finditer(label_line, response_text):
-            index = int(match.group(1))
-            if not 1 <= index <= count:
-                continue
-            value = match.group(2).strip()
-            # `A5: [blocked -- final-28-day spend unavailable]` is a
-            # placeholder in the prompt's own `<...>` idiom, not an answer.
-            # The 2026-09-02 honest-abstention run parsed `-28` out of one
-            # and counted it as a parsed answer.
-            if value[:1] in "[<":
-                continue
-            if single:
-                numbers = list(re.finditer(r"-?(?:\d[\d,]*(?:\.\d+)?|\.\d+)", value))
-                # More than one number, a number in words, a rounded "11.4k"
-                # or a decimal comma ("3,14") is not "the number alone".
-                if (
-                    len(numbers) != 1
-                    or re.match(r"\s?[kKmMbB]\b", value[numbers[0].end():])
-                    or not re.fullmatch(
-                        r"-?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?", numbers[0].group(0))
-                ):
+        if answers.get("single_number"):
+            # The task's prompt asks for the number alone on each answer line.
+            parsed = _single_number_answers(response_text, count)
+        else:
+            parsed: dict[int, float] = {}
+            for match in re.finditer(
+                r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
+                response_text,
+            ):
+                index = int(match.group(1))
+                if not 1 <= index <= count:
                     continue
-                try:
-                    parsed[index] = float(numbers[0].group(0).replace(",", ""))
-                except ValueError:
+                value = match.group(2).strip()
+                # `A5: [blocked -- final-28-day spend unavailable]` is a
+                # placeholder in the prompt's own `<...>` idiom, not an answer.
+                # The 2026-09-02 honest-abstention run parsed `-28` out of one
+                # and counted it as a parsed answer.
+                if value[:1] in "[<":
                     continue
-                continue
-            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
-            if number:
-                parsed[index] = float(number.group(0).replace(",", ""))
+                number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
+                if number:
+                    parsed[index] = float(number.group(0).replace(",", ""))
         facts["answer_count"] = len(parsed)
         for index in range(1, count + 1):
             facts[f"answer_q{index}"] = parsed.get(index)
@@ -1313,10 +1371,6 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         facts.update(_platform_gauntlet_facts(response_text))
     elif task_id == "unsupportable-claims-brief":
         facts.update(_unsupportable_claims_facts(response_text))
-    elif task_id == "social-calendar-limits":
-        facts.update(task_facts.social_calendar_facts(response_text))
-    elif task_id == "positioning-from-competitors":
-        facts.update(task_facts.positioning_facts(response_text))
     return facts
 
 
@@ -2005,6 +2059,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
         "judge_protocol_version": JUDGE_PROTOCOL_VERSION,
         "judge_instructions": JUDGE_INSTRUCTIONS,
         "source_reference_version": reference_facts.VERSION,
+        "task_reference_version": task_references.VERSION,
         "label": label,
         "task_source": task_source,
         "judge_usage": judge_usage,

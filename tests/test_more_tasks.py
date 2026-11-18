@@ -1,19 +1,24 @@
-"""The eight tasks added in November 2026: fixtures, oracles, traps and parsing.
+"""The six data tasks added in November 2026: fixtures, oracles, traps and parsing.
 
 What is pinned here, for every task:
 
 - the committed fixtures and every value a program decides in a task file are
-  exactly what `scripts/gen_more_tasks.py` produces and pins;
-- every banded target equals a figure recomputed in this file from the
-  committed fixture, by code that shares nothing with `task_references`;
+  exactly what `scripts/gen_more_tasks.py` produces and pins, and the bands
+  and oracle lists it pins are the ones written out in this file, so neither
+  can change by one edit alone;
+- every banded target, and every figure the judge's reference carries, equals
+  a figure recomputed in this file from the committed fixture, by code that
+  shares nothing with `task_references`;
 - a careful answer passes every programmatic criterion, and the careless
   answer the task is built to catch scores zero on the criterion meant to
   catch it without failing the critical one;
-- the checks never raise and never credit an unfinished deliverable.
+- an answer block is read as the prompt asks for it to be written.
 """
+import argparse
 import collections
 import csv
 import datetime as dt
+import hashlib
 import importlib.util
 import io
 import json
@@ -23,19 +28,68 @@ from decimal import Decimal
 
 import pytest
 
-from eval_runner import bench, task_facts, task_references
+from eval_runner import bench, reference_facts, task_references
 
 NEW_TASKS = {
-    "seo-content-brief": "holdout",
     "seo-technical-triage": "development",
     "search-terms-negatives": "development",
-    "lifecycle-reengagement": "holdout",
     "ab-test-readout": "development",
-    "social-calendar-limits": "development",
+    "seo-content-brief": "holdout",
+    "lifecycle-reengagement": "holdout",
     "monthly-report-reconcile": "holdout",
-    "positioning-from-competitors": "holdout",
 }
-DATA_TASKS = [task_id for task_id in NEW_TASKS if task_id in task_references.REFERENCES]
+# (prompt version, rubric version). Version 1 was a local draft, run once and
+# discarded. A version moves when its prompt or fixtures, or its rubric, do.
+VERSIONS = {
+    "seo-technical-triage": (3, 3),
+    "search-terms-negatives": (3, 3),
+    "ab-test-readout": (3, 3),
+    "seo-content-brief": (3, 3),
+    "lifecycle-reengagement": (2, 2),
+    "monthly-report-reconcile": (2, 3),
+}
+# The second key. The generator pins these into the task files; a change to a
+# band or an oracle list has to be made there and here.
+BANDS = {
+    "seo-content-brief": {
+        "q1_already_ranking": ("absolute", 0, 3), "q2_qualifying_count": ("absolute", 0, 3),
+        "q3_topic_volume": ("relative", 0.005, 0.25), "q4_primary_volume": ("relative", 0.005, 0.25),
+        "q5_ranking_volume": ("relative", 0.005, 0.25),
+    },
+    "seo-technical-triage": {
+        "q1_broken_linked": ("absolute", 0, 3), "q2_redirect_chains": ("absolute", 0, 3),
+        "q3_noindex_in_sitemap": ("absolute", 0, 3), "q4_bad_canonicals": ("absolute", 0, 3),
+        "q5_duplicate_title_groups": ("absolute", 0, 3), "q6_sessions_at_risk": ("relative", 0.005, 0.25),
+    },
+    "search-terms-negatives": {
+        "q1_zero_conversion_spend": ("relative", 0.005, 0.25), "q2_promote_count": ("absolute", 0, 3),
+        "q3_irrelevant_spend": ("relative", 0.02, 0.25), "q4_promote_conversions": ("absolute", 0, 8),
+    },
+    "lifecycle-reengagement": {
+        "q1_mailable": ("absolute", 0, 20), "q2_lapsed": ("absolute", 0, 10),
+        "q3_lapsed_buyers": ("absolute", 0, 6), "q4_lapsed_non_buyers": ("absolute", 0, 6),
+        "q5_long_dormant": ("absolute", 0, 5),
+    },
+    "ab-test-readout": {
+        "q1_control_visitors": ("relative", 0.001, 0.1), "q2_variant_visitors": ("relative", 0.001, 0.1),
+        "q3_control_rate": ("absolute", 0.02, 0.5), "q4_variant_rate": ("absolute", 0.02, 0.5),
+        "q5_relative_lift": ("absolute", 0.15, 3.0), "q6_srm_chi_square": ("relative", 0.02, 0.3),
+        "q7_p_value": ("absolute", 0.015, 0.1),
+    },
+    "monthly-report-reconcile": {
+        "q1_ad_spend": ("relative", 0.005, 0.1), "q2_real_orders": ("absolute", 0, 8),
+        "q3_net_revenue": ("relative", 0.005, 0.03), "q4_duplicate_rows": ("absolute", 0, 8),
+        "q5_blended_roas": ("relative", 0.01, 0.04), "q6_platform_conversions": ("absolute", 0, 50),
+    },
+}
+ORACLE = {
+    "seo-content-brief": ["q5_ranking_volume"],
+    "seo-technical-triage": ["q6_sessions_at_risk"],
+    "search-terms-negatives": ["q1_zero_conversion_spend"],
+    "lifecycle-reengagement": ["q1_mailable"],
+    "ab-test-readout": ["q1_control_visitors", "q2_variant_visitors"],
+    "monthly-report-reconcile": ["q1_ad_spend", "q6_platform_conversions"],
+}
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
 
 
@@ -53,14 +107,22 @@ def _table(name: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO((FIXTURES / name).read_text())))
 
 
+def _by_id(task: dict) -> dict[str, dict]:
+    return {c["id"]: c for section in bench.RUBRIC_SECTIONS for c in task["rubric"][section]}
+
+
 def _targets(task: dict) -> dict[str, float]:
     return {
-        criterion["id"]: criterion["programmatic"]["near"]
-        for section in bench.RUBRIC_SECTIONS
-        for criterion in task["rubric"][section]
+        criterion_id: criterion["programmatic"]["near"]
+        for criterion_id, criterion in _by_id(task).items()
         if isinstance(criterion.get("programmatic"), dict)
         and criterion["programmatic"].get("fact", "").startswith("answer_q")
     }
+
+
+def _reference(task_id: str) -> dict:
+    task = bench.load_tasks()[task_id]
+    return bench.judge_source_reference(task, bench.assemble_prompt(task, False))
 
 
 def _results(task_id: str, response: str) -> dict:
@@ -90,130 +152,208 @@ def _critical_tripped(task_id: str, response: str) -> bool:
     return bool(next(item for item in after if item["id"] == critical).get("oracle_failed"))
 
 
+def _money(value) -> float:
+    return float(Decimal(value).quantize(Decimal("0.01")))
+
+
 # ------------------------------------------------------------------ the set as a whole
 
-def test_new_tasks_load_with_their_splits_versions_and_one_oracle_backed_critical():
+def test_six_tasks_load_with_their_splits_versions_and_one_oracle_backed_critical():
     tasks = bench.load_tasks()
     assert {task_id: tasks[task_id]["split"] for task_id in NEW_TASKS} == NEW_TASKS
+    assert collections.Counter(NEW_TASKS.values()) == {"development": 3, "holdout": 3}
+    assert set(task_references.REFERENCES) == set(NEW_TASKS)
+    # The two tasks whose checks read free text by pattern are parked, not here.
+    assert not {"social-calendar-limits", "positioning-from-competitors"} & set(tasks)
     for task_id in NEW_TASKS:
         task = tasks[task_id]
-        # Version 1 was a local draft, run once and discarded.
-        assert (task["prompt_version"], task["rubric_version"]) == (2, 2), task_id
+        assert (task["prompt_version"], task["rubric_version"]) == VERSIONS[task_id], task_id
         critical = bench.critical_criterion_ids(task)
-        assert len(critical) == 1, task_id
-        assert bench.oracle_rules(task)[next(iter(critical))], task_id
+        assert critical == {"no_invented_data"} and critical <= bench.negative_criterion_ids(task), task_id
         assert bench.task_supports_harness(task, bench.HARNESS_ID)
         assert all((bench.REPO_ROOT / path).is_file() for path in task["fixtures"])
-        # No criterion is already true of an empty reply.
-        assert bench.free_credit_scores(task) == {}, task_id
-    for task_id in DATA_TASKS:
-        assert tasks[task_id]["answers"]["single_number"] is True
+        assert bench.free_credit_scores(task) == {}, task_id  # nothing is already true of an empty reply
+        assert task["answers"] == {"count": len(BANDS[task_id]), "single_number": True}
 
 
 def test_committed_fixtures_and_task_files_are_what_the_generator_pins(generator):
     assert generator.check() == []
 
 
-def test_check_reports_a_changed_tolerance_or_definition_and_survives_reformatting(generator, tmp_path):
-    """A hand edit to a number or a definition is drift; reformatting is not."""
-    source = bench.TASKS_DIR
-    for path in source.glob("*.json"):
+def test_bands_and_oracle_lists_are_the_ones_written_here(generator):
+    """Synced from the generator, a changed band would carry the task file and
+    its wording with it and look consistent. It still has to match this file."""
+    assert generator.BANDS == BANDS
+    assert generator.ORACLE == {task_id: {"no_invented_data": listed} for task_id, listed in ORACLE.items()}
+    tasks = bench.load_tasks()
+    for task_id in NEW_TASKS:
+        criteria = _by_id(tasks[task_id])
+        assert bench.oracle_rules(tasks[task_id]) == {"no_invented_data": ORACLE[task_id]}, task_id
+        for criterion_id, (kind, full, zero) in BANDS[task_id].items():
+            condition = criteria[criterion_id]["programmatic"]
+            assert condition["tolerance"] == {"kind": kind, "full": full, "zero": zero}, (task_id, criterion_id)
+            # The wording describes the band that is applied.
+            if kind == "relative":
+                wording = f"full credit within {full * 100:g}%, zero credit beyond {zero * 100:g}% off"
+            elif full == 0:
+                wording = f"full credit for the exact figure, zero credit {zero:g} or more off"
+            else:
+                wording = f"full credit within {full:g}, zero credit {zero:g} or more off"
+            assert criteria[criterion_id]["check"].endswith("; " + wording + "."), (task_id, criterion_id)
+        # An oracle-listed answer is a plain aggregate with a zero band of at
+        # least a tenth of its value: only a figure no reading of the data
+        # supports scores the whole attempt zero.
+        for listed in ORACLE[task_id]:
+            kind, _full, zero = BANDS[task_id][listed]
+            relative = zero if kind == "relative" else zero / criteria[listed]["programmatic"]["near"]
+            assert relative >= 0.0999, (task_id, listed)
+
+
+def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatting(generator, tmp_path):
+    """A hand edit to a number, a definition or a pinned sentence is drift;
+    reformatting is not; and `--sync` puts back everything it pins."""
+    for path in bench.TASKS_DIR.glob("*.json"):
         (tmp_path / path.name).write_text(path.read_text())
     assert generator.check(tmp_path) == []
 
+    def drift(task_id: str, old: str, new: str) -> list[str]:
+        target = tmp_path / f"{task_id}.json"
+        original = target.read_text()
+        assert original.count(old) == 1, old
+        target.write_text(original.replace(old, new))
+        problems = generator.check(tmp_path)
+        changed, after_sync = generator.sync_tasks(tmp_path)
+        restored = target.read_text() == original
+        target.write_text(original)
+        return problems, restored
+
+    for task_id, old, new, restorable in (
+        ("monthly-report-reconcile", '"zero": 0.03', '"zero": 0.06', True),                    # a tolerance
+        ("ab-test-readout", '"near": 0.209', '"near": 0.219', True),                           # a target
+        ("seo-content-brief", '"fails_if_zero": ["q5_ranking_volume"]', '"fails_if_zero": ["q3_topic_volume"]', True),
+        ("lifecycle-reengagement", '"single_number": true', '"single_number": false', True),
+        ("ab-test-readout", "variant B has 5,400 visitors against control's 6,900", "variant B has 5,400 visitors against control's 6,800", True),
+        ("search-terms-negatives", "('sablewood', 'sablewood blinds' and 'sablewood blinds reviews')", "('sablewood' and 'sablewood blinds')", True),
+        ("seo-technical-triage", "duplicate titles, bad canonicals, broken linked pages", "bad canonicals, duplicate titles, broken linked pages", True),
+        ("lifecycle-reengagement", "valid for 14 days, offered", "valid for 10 days, offered", True),
+        ("search-terms-negatives", "All 5 promote candidates", "All 4 promote candidates", True),
+        ("seo-content-brief", "zero credit beyond 25% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", "zero credit beyond 50% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", True),
+        # What sync cannot rewrite stays reported: a definition, a dropped flag.
+        ("seo-content-brief", "a difficulty of 45 or lower", "a difficulty of 50 or lower", False),
+        ("monthly-report-reconcile", "minus `refund_usd`", "before refunds", False),
+        ("seo-technical-triage", '{"id": "no_invented_data", "negative": true, "critical": true,', '{"id": "no_invented_data", "critical": true,', False),
+        ("search-terms-negatives", '{"id": "no_invented_data", "negative": true, "critical": true,', '{"id": "no_invented_data", "negative": true,', False),
+    ):
+        problems, restored = drift(task_id, old, new)
+        assert problems and all(problem.startswith(task_id) for problem in problems), (task_id, old)
+        assert restored is restorable, (task_id, old)
+
     target = tmp_path / "monthly-report-reconcile.json"
     original = target.read_text()
-    # Reformatted, same content: no drift, no exception.
     target.write_text(json.dumps(json.loads(original), indent=4, ensure_ascii=False))
-    assert generator.check(tmp_path) == []
-    changed, problems = generator.sync_tasks(tmp_path)
-    assert (changed, problems) == (["monthly-report-reconcile"], [])
-    assert target.read_text() == original  # sync restores the repository's layout
-
-    def drift(mutate) -> list[str]:
-        task = json.loads(original)
-        mutate(task)
-        target.write_text(json.dumps(task))
-        return generator.check(tmp_path)
-
-    def widen(task):
-        criterion = next(c for c in task["rubric"]["completion"] if c["id"] == "q3_net_revenue")
-        criterion["programmatic"]["tolerance"]["zero"] = 0.05
-
-    def redefine(task):
-        task["prompt"] = task["prompt"].replace("minus `refund_usd`", "before refunds")
-
-    def retarget(task):
-        next(c for c in task["rubric"]["completion"] if c["id"] == "q2_real_orders")["programmatic"]["near"] = 300
-
-    def reoracle(task):
-        next(c for c in task["rubric"]["skill_adherence"] if c["id"] == "no_invented_data")["fails_if_zero"] = [
-            "q3_net_revenue"]
-
-    def unstrict(task):
-        task["answers"] = {"count": 6}
-
-    assert any("q3_net_revenue" in problem and "pinned" in problem for problem in drift(widen))
-    assert any("no longer carries the line" in problem and "refund_usd" in problem for problem in drift(redefine))
-    assert any("q2_real_orders" in problem for problem in drift(retarget))
-    assert any("fails_if_zero" in problem for problem in drift(reoracle))
-    assert any("answers" in problem for problem in drift(unstrict))
+    assert generator.check(tmp_path) == []                       # reformatted, same content
+    assert generator.sync_tasks(tmp_path) == (["monthly-report-reconcile"], [])
+    assert target.read_text() == original                        # back in the repository's layout
     target.write_text("{not json")
     assert any("not valid JSON" in problem for problem in generator.check(tmp_path))
     target.unlink()
     assert any("missing task file" in problem for problem in generator.check(tmp_path))
 
 
-def test_oracle_lists_hold_only_plain_aggregates_with_wide_zero_bands():
-    """A trap or a miscount costs its own criterion. Only a figure no reading
-    of the data supports may fail the critical one, so an oracle-listed answer
-    has a zero band of at least a tenth of its value."""
-    tasks = bench.load_tasks()
-    for task_id in DATA_TASKS:
-        by_id = {c["id"]: c for s in bench.RUBRIC_SECTIONS for c in tasks[task_id]["rubric"][s]}
-        for listed in next(iter(bench.oracle_rules(tasks[task_id]).values())):
-            condition = by_id[listed]["programmatic"]
-            zero = condition["tolerance"]["zero"]
-            relative = zero if condition["tolerance"]["kind"] == "relative" else zero / condition["near"]
-            assert relative >= 0.0999, (task_id, listed, relative)
-
-
 # ------------------------------------------------------- answer lines: the number alone
 
-def test_single_number_answers_leave_a_line_with_working_unparsed():
-    """`A1: 749 / 12,480 = 6.00%` used to read 749, a wrong figure the oracle
-    scored as invented. A task that opts in reads only a line with one number."""
-    task = bench.load_tasks()["ab-test-readout"]
+AB_BLOCK = "A1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209"
+AB_ANSWERS = [12480.0, 11020.0, 6.0, 6.4, 6.6, 90.7, 0.209]
 
-    def answers(block: str) -> list:
-        facts = bench.measured_facts(task, "Readout.\n\n" + block)
-        return [facts[f"answer_q{index}"] for index in range(1, 8)]
 
-    correct = [12480.0, 11020.0, 6.0, 6.4, 6.6, 90.7, 0.209]
-    plain = "A1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209"
-    assert answers(plain) == correct
-    assert answers(plain.replace("A3: 6.00%", "A3: 749 / 12,480 = 6.00%"))[2] is None
-    assert answers(plain.replace("A6: 90.7", "A6: chi2 = 90.7"))[5] is None
-    assert answers(plain.replace("A7: 0.209", "A7: 0.209 (z = 1.26)"))[6] is None
-    # One number with a word, a sign or a unit around it is still one number.
-    assert answers("A1: 12,480 visitors\nA2: 11,020 visitors\nA3: Control signup rate = 6.00%\nA4: ~6.40 percent\n"
-                   "A5: +6.6 %\nA6: χ² = 90.7\nA7: p ≈ .209") == correct
-    # Harmless wrappers around the label line.
+def _ab(response: str) -> list:
+    facts = bench.measured_facts(bench.load_tasks()["ab-test-readout"], response)
+    return [facts[f"answer_q{index}"] for index in range(1, 8)]
+
+
+def _one(value: str):
+    """How a single-number task reads the line `A1: <value>`."""
+    return bench.measured_facts({"id": "x", "answers": {"count": 7, "single_number": True}}, "A1: " + value)["answer_q1"]
+
+
+def test_an_answer_line_is_read_only_when_it_carries_exactly_one_number():
+    assert _ab("Readout.\n\n" + AB_BLOCK) == AB_ANSWERS
+    for value, expected in {
+        "12,480": 12480.0, "12480": 12480.0, "12,480.00": 12480.0, "$35,901.46": 35901.46, "6.00%": 6.0,
+        "6.00 percent": 6.0, "~6.40": 6.4, "≈ 0.209": 0.209, ".209": 0.209, "+6.6 %": 6.6, "3.14x": 3.14,
+        "7 URLs": 7.0, "12,480 visitors": 12480.0, "Control signup rate = 6.00%": 6.0, "χ² = 90.7": 90.7,
+        "**12,480**": 12480.0, "`12,480`": 12480.0, "12,480.": 12480.0, "12,480,": 12480.0, "USD 11,435.94": 11435.94,
+        # A minus sign, however it is typed: a hyphen, U+2212, the non-breaking and full-width
+        # hyphens, and an en dash that opens the value.
+        "-6.6": -6.6, "−6.6%": -6.6, "–6.6%": -6.6, "‑6.6%": -6.6, "－6.6": -6.6, "(–6.6%)": -6.6, "~−0.4": -0.4,
+        "-$1,234.50": -1234.5, "$-1,234.50": -1234.5, "−$1,234.50": -1234.5, "–$1,234.50": -1234.5,
+        "Lift: −6.6%": -6.6, "Lift -6.6%": -6.6,
+        # After a word, or with a space before the number, a dash is punctuation.
+        "Lift –6.6%": 6.6, "Lift – 6.6%": 6.6, "— 6.6%": 6.6, "- 6.6": 6.6, "—6.6%": 6.6,
+    }.items():
+        assert _one(value) == expected, value
+    for value in (
+        "749 / 12,480 = 6.00%", "chi2 = 90.7", "0.209 (z = 1.26)", "282 of 300 rows", "7 or 8", "7-8", "7–8",
+        "3.14:1", "35,901.46 [1]", "2.09e-1", "1e4",                     # a second number on the line
+        "seven", "n/a", "", "-", ".",                                    # no number
+        "$11.4k", "11.4 k", "11.4 million", "11.4M",                     # rounded
+        "3,14", "12,48", "1,2480", "12 480",                             # not thousands separators
+        "[12,480]", "<12,480>", "[blocked -- final-28-day spend unavailable]",  # the placeholder idiom
+    ):
+        assert _one(value) is None, value
+
+
+def test_the_answer_block_is_the_last_full_run_of_answer_lines():
+    """A labelled line in a note cannot override the block, and a blank answer stays blank."""
+    # The reviewer's case: a correct block, then a note that restates a label.
+    for note in ("\n\nA1: sum of 8 rows", "\n\nNotes:\nA1: sum of 8 rows\nA6: 1 degree of freedom",
+                 "\nA1: sum of 8 rows", "\n\n- A1: 8 weekly rows per variant",
+                 "\nA7: one-sided it would be 0.104"):  # the last label again, straight after the block
+        assert _ab("Readout.\n\n" + AB_BLOCK + note) == AB_ANSWERS, note
+        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + note), note
+    # A labelled line before the block does not shadow it either.
+    assert _ab("A1: the two totals are 8 rows each.\n\nReadout.\n\n" + AB_BLOCK) == AB_ANSWERS
+    # Method notes that repeat every label, as recorded responses write them: the
+    # block is the run whose lines read as numbers, wherever the notes stand.
+    notes = "\n".join([
+        "- **A1:** sum of 8 weekly rows.", "- **A2:** 5,620 + 5,400 = **11,020**", "- **A3:** 749 ÷ 12,480 = 6.00%",
+        "- **A4:** 705 ÷ 11,020 = 6.40%", "- **A5:** 6.40 ÷ 6.00 − 1", "- **A6:** 1 degree of freedom", "- **A7:** from z = 1.26",
+    ])
+    assert _ab("Method:\n" + notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
+    assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes) == AB_ANSWERS
+    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
+    # Between a clean line and the same label with working on it, the clean line stands.
+    assert _ab("A1: 12,480\nA1: 749 / 12,480 = 6.00%")[0] == 12480.0 == _ab("A1: 749 / 12,480 = 6.00%\nA1: 12,480")[0]
+    # Commentary between answer lines splits the block: only its largest piece is read.
+    assert _ab(AB_BLOCK.replace("A3: 6.00%", "(both devices, four weeks)\nA3: 6.00%")) == [None, None] + AB_ANSWERS[2:]
+    # A worked draft, then the block: the later full run is the block.
+    draft = AB_BLOCK.replace("12,480", "12,000").replace("0.209", "0.5")
+    assert _ab(draft + "\n\nCorrected:\n\n" + AB_BLOCK) == AB_ANSWERS
+    assert _ab(draft + "\n\n" + AB_BLOCK) == AB_ANSWERS
+    # Blank lines between answer lines do not break the block, and a code fence around it is fine.
+    assert _ab("```\n" + AB_BLOCK.replace("\n", "\n\n") + "\n```") == AB_ANSWERS
     for wrap in ("> {}", "- {}", "1. {}", "`{}`", "**{}**", "### {}"):
-        assert answers("\n".join(wrap.format(line) for line in plain.splitlines())) == correct, wrap
-    # A later note that restates a label with working does not shadow the answer.
-    assert answers(plain + "\n\nNotes:\nA6: with 1 degree of freedom the critical value is 3.84.")[5] == 90.7
-    # Rounded, regrouped or comma-decimal money is not the number alone either.
-    monthly = bench.load_tasks()["monthly-report-reconcile"]
-    facts = bench.measured_facts(
-        monthly, "A1: $11.4k\nA2: 282 of 300 rows\nA3: $35 901.46\nA4: 39\nA5: 3,14\nA6: 454 conversions")
-    assert [facts[f"answer_q{index}"] for index in range(1, 7)] == [None, None, None, 39.0, None, 454.0]
+        assert _ab("\n".join(wrap.format(line) for line in AB_BLOCK.splitlines())) == AB_ANSWERS, wrap
+    assert _ab(AB_BLOCK.replace("\n", "\r\n")) == AB_ANSWERS
+    # A blank answer is blank: it never borrows the next line, and the next line keeps its own answer.
+    blank = AB_BLOCK.replace("A6: 90.7", "A6:")
+    assert _ab(blank) == AB_ANSWERS[:5] + [None, 0.209]
+    assert _ab(AB_BLOCK.replace("A7: 0.209", "A7:") + "\n\nNote: z is about 1.26, so the result is not significant.") == (
+        AB_ANSWERS[:6] + [None])
+    assert _ab(AB_BLOCK.replace("A1: 12,480", "A1:\n\n12,480"))[0] is None
+    # Only a colon follows the label: the block is written as the prompt writes it.
+    for separator in (".", " -", " =", ")"):
+        assert _ab(re.sub(r"(?m)^(A\d):", rf"\1{separator}", AB_BLOCK)) == [None] * 7, separator
+    assert _ab(AB_BLOCK.replace(":", "："))[0] == 12480.0   # a full-width colon is a colon
+    # Labels outside the task's range are not answers and do not break the block.
+    assert _ab(AB_BLOCK.replace("A4: 6.40%", "A4: 6.40%\nA9: 5")) == AB_ANSWERS
+    assert _ab("A" + "9" * 5000 + ": 5\n" + AB_BLOCK) == AB_ANSWERS
 
 
 def test_a_format_slip_is_absence_not_invention():
     slip = "A1: 404s with ≥1 inlink: 7\nA2: 5\nA3: 4\nA4: 6\nA5: 4\nA6: 8,865 sessions (4 URLs)"
     results = _results("seo-technical-triage", slip)
-    assert {"answer_block_complete", "q1_broken_linked", "q6_sessions_at_risk"} <= _failed(results)
+    assert {"answer_block_complete", "q1_broken_linked", "q6_sessions_at_risk"} == _failed(results)
     assert results["q6_sessions_at_risk"]["missing"] is True
     assert not _critical_tripped("seo-technical-triage", slip)
     working = ("A1: 5,580 + 6,900 = 12,480\nA2: 5,620 + 5,400 = 11,020\nA3: 749 / 12,480 = 6.00%\n"
@@ -223,15 +363,21 @@ def test_a_format_slip_is_absence_not_invention():
     fractions = "A1: 12,480\nA2: 11,020\nA3: 0.0600\nA4: 0.0640\nA5: 0.066\nA6: 90.7\nA7: 0.209"
     assert {"q3_control_rate", "q4_variant_rate", "q5_relative_lift"} == _failed(_results("ab-test-readout", fractions))
     assert not _critical_tripped("ab-test-readout", fractions)
+    # A lift with the wrong sign is a wrong lift, however the minus is typed.
+    for minus in ("-", "−", "–"):
+        assert "q5_relative_lift" in _zeroed(_results("ab-test-readout", AB_BLOCK.replace("A5: 6.6%", f"A5: {minus}6.6%")))
     # A single clear figure that no reading of the data supports still trips it.
-    assert _critical_tripped("ab-test-readout", "A1: 20,000\nA2: 20,000\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209")
+    assert _critical_tripped("ab-test-readout", AB_BLOCK.replace("12,480", "20,000"))
 
 
 def test_tasks_without_the_flag_parse_answers_as_before():
     ledger = bench.load_tasks()["ads-ledger-analysis"]
     assert "single_number" not in ledger["answers"]
-    facts = bench.measured_facts(ledger, "A1: 749 / 12,480 = 6.00%\nA2. $10,228.41 total\n> A3: 10")
-    assert (facts["answer_q1"], facts["answer_q2"], facts["answer_q3"]) == (749.0, 10228.41, None)
+    facts = bench.measured_facts(
+        ledger, "A1: 749 / 12,480 = 6.00%\nA2. $10,228.41 total\n> A3: 10\nA4: 8,470.84\n\nNote\nA4: sum of 8 rows\nA5:\nA1: 3")
+    # First number on the line, last labelled line wins, and a blank answer reads the line after it:
+    # the behaviour the 21 earlier tasks were graded under, kept as it was.
+    assert [facts[f"answer_q{index}"] for index in range(1, 6)] == [749.0, 10228.41, None, 8.0, 1.0]
     with pytest.raises(ValueError, match="single_number must be a boolean"):
         bench._validate_task({**ledger, "answers": {"count": 5, "single_number": "yes"}},
                              bench.TASKS_DIR / "ads-ledger-analysis.json")
@@ -241,84 +387,86 @@ def test_tasks_without_the_flag_parse_answers_as_before():
 
 def test_the_judge_gets_reference_totals_computed_from_the_recorded_prompt():
     tasks = bench.load_tasks()
-    for task_id in DATA_TASKS:
+    for task_id in NEW_TASKS:
         task = tasks[task_id]
         for include_skills in (True, False):
             reference = bench.judge_source_reference(task, bench.assemble_prompt(task, include_skills))
-            assert reference["version"] == task_references.VERSION
+            assert reference["version"] == task_references.VERSION == 2
             assert reference["answers"] == _targets(task), task_id
-        # Computed from the prompt that was recorded, not from today's files.
         prompt = bench.assemble_prompt(task, True)
         assert set(task_references.supplied_sources(prompt)) == {path.rsplit("/", 1)[1] for path in task["fixtures"]}
-    # No reference is not an error: other tasks, and prompts that cannot be read.
+    # Other tasks have no such reference, and asking is not an error.
     assert bench.judge_source_reference(tasks["headline"], bench.assemble_prompt(tasks["headline"], True)) == {}
-    assert bench.judge_source_reference(tasks["social-calendar-limits"], "anything") == {}
-    for broken in ("", "no sources here", "---\n\n## Supplied source: crawl_export.csv\n\nurl,status_code\nx,not-a-number\n"):
-        assert bench.judge_source_reference(tasks["seo-technical-triage"], broken) == {}
 
 
-def test_references_name_what_the_judged_criteria_name():
-    tasks = bench.load_tasks()
+def test_a_prompt_whose_sources_cannot_be_read_warns_and_grades_without_a_reference():
+    task = bench.load_tasks()["seo-technical-triage"]
+    for broken in ("", "no sources here", "\x00",
+                   "---\n\n## Supplied source: crawl_export.csv\n\nurl,status_code\nx,not-a-number\n"):
+        with pytest.warns(RuntimeWarning, match="no judge reference for seo-technical-triage"):
+            assert bench.judge_source_reference(task, broken) == {}
 
-    def reference(task_id):
-        return bench.judge_source_reference(tasks[task_id], bench.assemble_prompt(tasks[task_id], False))
 
-    crawl = reference("seo-technical-triage")
-    assert crawl["url_with_most_organic_sessions"]["organic_sessions_30d"] == 8420
-    assert {name: len(issue["urls"]) for name, issue in crawl["issues"].items()} == {
-        "broken_linked_pages": 7, "redirect_chains": 5, "noindex_in_sitemap": 4,
-        "bad_canonicals": 6, "duplicate_title_pages": 9,
-    }
-    # The prompt's ordering rule (organic sessions, then inlinks) gives exactly
-    # the order the rubric names, and no two neighbours are close.
-    ordered = sorted(crawl["issues"], key=lambda name: (-crawl["issues"][name]["organic_sessions_30d"],
-                                                       -crawl["issues"][name]["inlinks"]))
-    assert ordered == ["noindex_in_sitemap", "duplicate_title_pages", "bad_canonicals",
-                       "broken_linked_pages", "redirect_chains"]
-    sessions = [crawl["issues"][name]["organic_sessions_30d"] for name in ordered]
-    assert sessions[0] > 3 * sessions[1] and sessions[1] > 1.2 * sessions[2] and sessions[3:] == [0, 0]
-    assert crawl["issues"]["broken_linked_pages"]["inlinks"] > 2 * crawl["issues"]["redirect_chains"]["inlinks"]
-    wording = {c["id"]: c["check"] for s in bench.RUBRIC_SECTIONS for c in tasks["seo-technical-triage"]["rubric"][s]}
-    assert ("noindex pages in the sitemap, duplicate titles, bad canonicals, broken linked pages, redirect chains"
-            in wording["issues_in_order"])
-    assert "most first; where two issue types affect no organic sessions" in tasks["seo-technical-triage"]["prompt"]
-    search = reference("search-terms-negatives")
-    assert len(search["irrelevant_search_terms"]) == 16 and len(search["promote_candidates"]) == 5
-    assert [row["search_term"] for row in search["not_yet_keywords_with_3_or_more_conversions_above_target"]] == [
-        "faux wood blinds white"]
-    lifecycle = reference("lifecycle-reengagement")
-    assert lifecycle["rows"] - sum(lifecycle["not_mailable"].values()) == lifecycle["answers"]["q1_mailable"]
-    ab = reference("ab-test-readout")
-    assert ab["by_device"]["mobile"]["variant_b"]["visitors"] == 5400 and ab["secondary_metric_p_value"] == 0.049
-    monthly = reference("monthly-report-reconcile")
-    assert monthly["order_system"]["rows_dated_outside_may"] == 3
-    assert monthly["analytics"]["purchase_rows"] - monthly["analytics"]["distinct_order_ids"] == 39
-    seo = reference("seo-content-brief")
-    assert (seo["target_topic"], seo["primary_keyword"]) == ("cold brew tea", "how to cold brew tea")
-    assert "/collections/cold-brew" in seo["existing_page_urls"]
+def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path, monkeypatch):
+    task = bench.load_tasks()["seo-technical-triage"]
+    run_dir = tmp_path / "run"
+    (run_dir / "prompts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    prompt = bench.assemble_prompt(task, include_skills=True)
+    (run_dir / "prompts" / "seo-technical-triage.md").write_text(prompt)
+    (run_dir / "responses" / "answer.md").write_text(_answer_block([7, 5, 4, 6, 4, "8,865"]))
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "run", "models": {"claude-haiku-4-5": {"model": "anthropic/claude-haiku-4-5"}},
+        "tasks": ["seo-technical-triage"], "repetitions": 1, "skills_included": True,
+        "tools_enabled": False, "max_output_tokens": 16000,
+    }))
+    (run_dir / "attempts.jsonl").write_text(json.dumps({
+        "task_id": "seo-technical-triage", "model_id": "claude-haiku-4-5", "repetition": 1,
+        "response_path": "responses/answer.md", "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+    }) + "\n")
+    judge_prompts = []
+
+    def fake_generate(_spec, judge_prompt, *_args, **_kwargs):
+        judge_prompts.append(judge_prompt)
+        return {"text": json.dumps({"completed": True, "self_report": "complete", "criteria": [
+            {"id": criterion_id, "pass": True, "evidence": "present"}
+            for criterion_id in re.findall(r"(?m)^- id: (\S+) · ", judge_prompt)]})}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    args = argparse.Namespace(run=str(run_dir), judge="claude-sonnet-5", current_rubric=True, label=None, tasks=None)
+    assert bench.cmd_grade(args) == 0
+    grading = json.loads((run_dir / "grading.json").read_text())
+    assert grading["task_reference_version"] == task_references.VERSION == 2
+    assert grading["source_reference_version"] == reference_facts.VERSION
+    # The judge was shown the reference: both redirecting URLs of each chain, 38 inlinks.
+    (judge_prompt,) = judge_prompts
+    reference = json.loads(judge_prompt.split("## Source reference totals")[1].split("\n\n")[1])
+    assert reference == _reference("seo-technical-triage")
+    assert reference["issues"]["redirect_chains"]["inlinks"] == 38
 
 
 # ------------------------------------------------------------------ seo-content-brief
 
-def _seo_answers():
+def _seo():
     rows = _table("seo-brief/keyword_export.csv")
-    ranking = [row for row in rows if row["current_rank"] and int(row["current_rank"]) <= 10]
-    ranked_keywords = {row["keyword"] for row in ranking}
+    ranking = sorted((row for row in rows if row["current_rank"] and int(row["current_rank"]) <= 10),
+                     key=lambda row: int(row["current_rank"]))
+    ranked = {row["keyword"] for row in ranking}
     by_topic = collections.defaultdict(list)
     for row in rows:
-        if (row["intent"] == "informational" and int(row["difficulty"]) <= 45
-                and row["keyword"] not in ranked_keywords):
-            by_topic[row["topic"]].append(int(row["monthly_searches"]))
-    volumes = {topic: sum(values) for topic, values in by_topic.items()}
+        if row["intent"] == "informational" and int(row["difficulty"]) <= 45 and row["keyword"] not in ranked:
+            by_topic[row["topic"]].append(row)
+    volumes = {topic: sum(int(row["monthly_searches"]) for row in group) for topic, group in by_topic.items()}
     target = max(volumes, key=volumes.get)
-    answers = [len(ranking), len(by_topic[target]), volumes[target], max(by_topic[target]),
-               sum(int(row["monthly_searches"]) for row in ranking)]
-    return rows, target, answers, volumes
+    qualifying = sorted(by_topic[target], key=lambda row: -int(row["monthly_searches"]))
+    return rows, ranking, volumes, target, qualifying
 
 
 def test_seo_content_brief_oracle_and_trap():
     task = bench.load_tasks()["seo-content-brief"]
-    rows, target, answers, volumes = _seo_answers()
+    rows, ranking, volumes, target, qualifying = _seo()
+    answers = [len(ranking), len(qualifying), volumes[target], int(qualifying[0]["monthly_searches"]),
+               sum(int(row["monthly_searches"]) for row in ranking)]
     assert target == "cold brew tea"
     assert list(_targets(task).values()) == answers == [6, 7, 10290, 3600, 28080]
     raw = collections.Counter()
@@ -335,39 +483,106 @@ def test_seo_content_brief_oracle_and_trap():
     careless = _answer_block([6, len(green), raw["green tea"], int(head["monthly_searches"]), answers[4]])
     assert {"q3_topic_volume", "q4_primary_volume"} <= _zeroed(_results("seo-content-brief", careless))
     assert not _critical_tripped("seo-content-brief", careless)  # the trap is not invention
-    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text().lower()
-    assert "caffeine" not in outlines and "tea bag" not in outlines  # the two real gaps
-    assert "ratio" in outlines and "how long to steep" in outlines
+    # A row sits exactly on each threshold the definitions use, and one just past it,
+    # placed where reading the threshold wrongly changes an answer.
+    by_keyword = {row["keyword"]: row for row in rows}
+    assert by_keyword["cold brew tea vs iced tea"]["difficulty"] == "45" and by_keyword["cold brew tea vs iced tea"] in qualifying
+    assert (by_keyword["what is oolong tea"]["difficulty"], by_keyword["what is oolong tea"]["intent"]) == ("46", "informational")
+    assert by_keyword["does cold brew tea go bad"]["current_rank"] == "10" and by_keyword["does cold brew tea go bad"] in ranking
+    assert by_keyword["loose leaf green tea"]["current_rank"] == "11"
+    strict = _answer_block([5, 7, 9890, 3600, 27600])  # "better than 10" and "lower than 45" read strictly
+    assert {"q1_already_ranking", "q3_topic_volume", "q5_ranking_volume"} <= _failed(_results("seo-content-brief", strict))
+
+
+def test_seo_reference_and_the_wording_that_quotes_it():
+    task = bench.load_tasks()["seo-content-brief"]
+    rows, ranking, volumes, target, qualifying = _seo()
+    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
+    section = outlines.split("## Topic: cold brew tea")[1].split("## Topic:")[0].lower()
+    # A qualifying keyword neither outline touches: none of its own words is in them.
+    own_words = {"cold brew tea ratio": ["ratio"], "how long to cold brew tea": ["long"], "cold brew green tea": ["green"],
+                 "cold brew tea vs iced tea": ["iced"], "cold brew tea caffeine": ["caffeine"],
+                 "can you cold brew tea bags": ["bag"], "how to cold brew tea": []}
+    assert set(own_words) == {row["keyword"] for row in qualifying}
+    gaps = [row["keyword"] for row in qualifying
+            if own_words[row["keyword"]] and not any(word in section for word in own_words[row["keyword"]])]
+    reference = _reference("seo-content-brief")
+    assert {key: reference[key] for key in reference if key not in ("version", "answers")} == {
+        "target_topic": "cold brew tea",
+        "primary_keyword": "how to cold brew tea",
+        "qualifying_keywords_in_target_topic": [
+            {"keyword": row["keyword"], "monthly_searches": int(row["monthly_searches"]),
+             "difficulty": int(row["difficulty"])} for row in qualifying],
+        "qualifying_keywords_neither_competing_outline_covers": gaps,
+        "qualifying_volume_by_topic": dict(sorted(volumes.items(), key=lambda item: -item[1])),
+        "keywords_already_ranking_top_10": [
+            {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]} for row in ranking],
+        "existing_page_urls": sorted(re.findall(r"(?m)^\| (/\S+) \|", (FIXTURES / "seo-brief/existing_pages.md").read_text())),
+    }
+    assert gaps == ["cold brew tea caffeine", "can you cold brew tea bags"]
+    assert all(row["ranking_url"] in reference["existing_page_urls"] for row in rows if row["ranking_url"])
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    assert "targets the cold brew tea topic" in wording["target_topic_named"]
+    assert "'how to cold brew tea'" in wording["primary_keyword_named"]
+    assert ("(how to store loose leaf tea, best green tea, matcha caffeine, green tea caffeine, does tea expire, "
+            "does cold brew tea go bad)") in wording["existing_rankings_respected"]
+    assert "'cold brew tea ratio' and 'how long to cold brew tea'" in wording["outline_covers_demand"]
+    assert "('cold brew tea caffeine' or 'can you cold brew tea bags')" in wording["competitor_gap_grounded"]
+
+
+def test_nothing_supplied_names_the_topic_to_pick():
+    """The fixtures used to: an outlines file titled for the target topic, and
+    a note saying the blog had no article on it yet."""
+    task = bench.load_tasks()["seo-content-brief"]
+    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
     pages = (FIXTURES / "seo-brief/existing_pages.md").read_text()
-    assert all(row["ranking_url"] in pages for row in rows if row["ranking_url"])
+    assert re.findall(r"(?m)^## Topic: (.+)$", outlines) == ["green tea", "cold brew tea", "matcha"]
+    assert "cold" not in outlines.split("## Topic:")[0].lower()        # the title and the introduction
+    notes = pages.split("Notes from the content lead:")[1].lower()
+    assert "cold" not in notes and "no article" not in notes
+    assert "cold brew" not in task["prompt"].lower()
+    assert "outlines of competing articles for three topics the team is considering" in task["prompt"]
+    assert "neither competing outline for its topic does" in task["prompt"]
 
 
 # --------------------------------------------------------------- seo-technical-triage
 
-def _crawl_answers():
+def _crawl():
     rows = _table("seo-crawl/crawl_export.csv")
-    code = {row["url"]: row["status_code"] for row in rows}
+    by_url = {row["url"]: row for row in rows}
+
+    def is_redirect(url):
+        return url in by_url and by_url[url]["status_code"].startswith("3")
+
     broken = [row for row in rows if row["status_code"] == "404" and row["inlinks"] != "0"]
-    chains = [row for row in rows
-              if row["status_code"].startswith("3") and code[row["redirect_target"]].startswith("3")]
+    starts = [row for row in rows if is_redirect(row["url"]) and is_redirect(row["redirect_target"])]
+    hops = {row["redirect_target"] for row in starts}
+    chain_urls = [row for row in rows if row in starts or row["url"] in hops]
     flagged = [row for row in rows if "noindex" in row["meta_robots"] and row["in_sitemap"] == "yes"]
     bad_canonical = [row for row in rows if row["status_code"] == "200" and row["canonical"]
-                     and row["canonical"] != row["url"] and code[row["canonical"]] != "200"]
-    titles = collections.Counter(
-        row["title"] for row in rows
-        if row["status_code"] == "200" and "noindex" not in row["meta_robots"] and row["canonical"] == row["url"]
-    )
-    groups = [title for title, count in titles.items() if count >= 2]
-    sessions = sum(int(row["organic_sessions_30d"]) for row in flagged)
-    return rows, [len(broken), len(chains), len(flagged), len(bad_canonical), len(groups), sessions], groups
+                     and row["canonical"] != row["url"] and by_url[row["canonical"]]["status_code"] != "200"]
+    titles = collections.defaultdict(list)
+    for row in rows:
+        if row["status_code"] == "200" and "noindex" not in row["meta_robots"] and row["canonical"] == row["url"]:
+            titles[row["title"]].append(row["url"])
+    groups = {title: sorted(urls) for title, urls in titles.items() if len(urls) >= 2}
+    duplicates = [row for row in rows if row["title"] in groups and row["url"] in groups[row["title"]]]
+    return rows, {"broken_linked_pages": (len(broken), broken), "redirect_chains": (len(starts), chain_urls),
+                  "noindex_in_sitemap": (len(flagged), flagged), "bad_canonicals": (len(bad_canonical), bad_canonical),
+                  "duplicate_titles": (len(groups), duplicates)}, groups
 
 
 def test_seo_technical_triage_oracle_and_trap():
     task = bench.load_tasks()["seo-technical-triage"]
-    rows, answers, groups = _crawl_answers()
+    rows, issues, groups = _crawl()
+    answers = [issues[name][0] for name in ("broken_linked_pages", "redirect_chains", "noindex_in_sitemap",
+                                            "bad_canonicals", "duplicate_titles")]
+    answers.append(sum(int(row["organic_sessions_30d"]) for row in issues["noindex_in_sitemap"][1]))
     assert list(_targets(task).values()) == answers == [7, 5, 4, 6, 4, 8865]
     top = max(rows, key=lambda row: int(row["organic_sessions_30d"]))
     assert top["url"].endswith("/collections/rain-jackets") and top["organic_sessions_30d"] == "8420"
+    # "At least one inlink": a broken page with exactly one is in the data, beside three with none.
+    assert sorted(int(row["inlinks"]) for row in rows if row["status_code"] == "404") == [0, 0, 0, 1, 4, 6, 9, 14, 21, 38]
     assert "noindex" in top["meta_robots"] and top["in_sitemap"] == "yes"
     assert sorted(title.split(" | ")[0] for title in groups) == [
         "How to Choose Hiking Boots", "Merino Crew Top", "Shipping & Returns", "TrailLite Rain Shell",
@@ -387,6 +602,51 @@ def test_seo_technical_triage_oracle_and_trap():
     assert {"q1_broken_linked", "q2_redirect_chains", "q3_noindex_in_sitemap",
             "q5_duplicate_title_groups"} <= _zeroed(_results("seo-technical-triage", careless))
     assert not _critical_tripped("seo-technical-triage", careless)
+
+
+def test_triage_reference_counts_the_urls_the_prompt_says_an_issue_affects():
+    """The reference used to count a chain's first URL only, so a triage that
+    listed both redirecting URLs (38 inlinks, not 26) contradicted it."""
+    task = bench.load_tasks()["seo-technical-triage"]
+    rows, issues, groups = _crawl()
+    reference = _reference("seo-technical-triage")
+    expected = {
+        name: {
+            "count_as_the_prompt_counts_it": count,
+            "affected_urls": sorted(row["url"] for row in urls),
+            "organic_sessions_30d": sum(int(row["organic_sessions_30d"]) for row in urls),
+            "inlinks": sum(int(row["inlinks"]) for row in urls),
+        }
+        for name, (count, urls) in issues.items()
+    }
+    assert reference["issues"] == expected
+    assert {name: (issue["organic_sessions_30d"], issue["inlinks"]) for name, issue in expected.items()} == {
+        "noindex_in_sitemap": (8865, 144), "duplicate_titles": (2800, 308), "bad_canonicals": (1938, 75),
+        "broken_linked_pages": (0, 93), "redirect_chains": (0, 38),
+    }
+    assert len(expected["redirect_chains"]["affected_urls"]) == 10          # five chains, two redirecting URLs each
+    assert reference["duplicate_title_groups"] == groups
+    assert reference["url_with_most_organic_sessions"] == {
+        "url": "https://www.pinecrestoutfitters.example/collections/rain-jackets", "organic_sessions_30d": 8420}
+    dead = sorted(row["url"] for row in rows if row["status_code"] == "404" and row["inlinks"] == "0")
+    assert reference["dead_pages_with_no_inlinks"] == dead and len(dead) == 3
+    # The prompt's ordering rule gives exactly the order the rubric names, with no close neighbours.
+    order = sorted(expected, key=lambda name: (-expected[name]["organic_sessions_30d"], -expected[name]["inlinks"]))
+    assert reference["issue_order_by_sessions_then_inlinks"] == order == [
+        "noindex_in_sitemap", "duplicate_titles", "bad_canonicals", "broken_linked_pages", "redirect_chains"]
+    assert set(reference) == {"version", "answers", "issues", "issue_order_by_sessions_then_inlinks",
+                              "duplicate_title_groups", "url_with_most_organic_sessions",
+                              "dead_pages_with_no_inlinks", "interpretation"}
+    # The judge is told the truth about what lies outside the lists.
+    assert "reporting them is not an error" in reference["interpretation"]
+    assert "URLs outside these lists are correctly configured" not in reference["interpretation"]
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    assert ("noindex pages in the sitemap, duplicate titles, bad canonicals, broken linked pages, redirect chains"
+            in wording["issues_in_order"])
+    assert "reporting the 404 URLs that have no inlinks" in wording["decoys_not_flagged"]
+    assert ("a redirect chain affects every redirecting URL in it (its first URL and each URL it passes through)"
+            in task["prompt"])
+    assert "most first; where two issue types affect no organic sessions" in task["prompt"]
 
 
 def test_crawl_look_alikes_are_plainly_fine():
@@ -415,57 +675,86 @@ def test_crawl_look_alikes_are_plainly_fine():
 THEMES = re.compile(r"\b(repair|restring|fix|curtains?|drapes|shutters|wholesale|trade|jobs|careers|diy|how to make)\b")
 
 
-def _search_answers():
+def _search():
     rows = _table("search-terms/search_terms_report.csv")
-    zero = sum(Decimal(row["cost_usd"]) for row in rows if row["conversions"] == "0")
     irrelevant = [row for row in rows if THEMES.search(row["search_term"])]
     promote = [row for row in rows if row["added_as_keyword"] == "no" and int(row["conversions"]) >= 3
                and Decimal(row["cost_usd"]) <= 45 * int(row["conversions"])]
-    answers = [float(zero), len(promote), float(sum(Decimal(row["cost_usd"]) for row in irrelevant)),
-               sum(int(row["conversions"]) for row in promote)]
-    return rows, answers, irrelevant, promote
+    return rows, irrelevant, promote
+
+
+def _search_line(row: dict) -> dict:
+    conversions = int(row["conversions"])
+    return {"search_term": row["search_term"], "campaign": row["campaign"], "clicks": int(row["clicks"]),
+            "cost_usd": float(row["cost_usd"]), "conversions": conversions,
+            "cost_per_conversion_usd": _money(Decimal(row["cost_usd"]) / conversions) if conversions else None}
 
 
 def test_search_terms_negatives_oracle_and_trap(generator):
     task = bench.load_tasks()["search-terms-negatives"]
-    rows, answers, irrelevant, promote = _search_answers()
-    assert list(_targets(task).values()) == answers
-    assert answers[1:] == [5, 1636.9, 30]
+    rows, irrelevant, promote = _search()
+    answers = [float(sum(Decimal(row["cost_usd"]) for row in rows if row["conversions"] == "0")), len(promote),
+               float(sum(Decimal(row["cost_usd"]) for row in irrelevant)), sum(int(row["conversions"]) for row in promote)]
+    assert list(_targets(task).values()) == answers == [2380.36, 5, 1636.9, 30]
     assert sorted(row["search_term"] for row in irrelevant) == sorted(term for term, *_ in generator.SEARCH_IRRELEVANT)
     assert len(irrelevant) == 16 and all(row["conversions"] == "0" for row in irrelevant)
-    assert sorted(row["search_term"] for row in promote) == [
-        "cheap blackout blinds", "day night blinds made to measure", "free blind samples",
-        "roman blinds for bay window", "wooden venetian blinds 2 inch",
-    ]
     by_term = {row["search_term"]: row for row in rows}
-    # The traps: brand searches that fail a blunt rule, and two near misses.
+    # Both sides of each threshold in the promote definition are in the data.
+    assert Decimal(by_term["roman blinds for bay window"]["cost_usd"]) / 4 == Decimal("45")         # exactly at the target
+    assert Decimal(by_term["faux wood blinds white"]["cost_usd"]) / 3 == Decimal("46.5")            # just over
+    assert (by_term["free blind samples"]["conversions"], by_term["roller blinds for kitchen"]["conversions"]) == ("3", "2")
+    assert by_term["made to measure roller blinds"]["added_as_keyword"] == "yes"                   # already a keyword
+    # The traps: brand searches that fail a blunt rule.
     assert by_term["sablewood blinds reviews"]["conversions"] == "0"
     assert Decimal(by_term["sablewood blinds"]["cost_usd"]) / 9 > 45
-    assert Decimal(by_term["faux wood blinds white"]["cost_usd"]) / 3 > 45
-    assert by_term["roller blinds for kitchen"]["conversions"] == "2"
     # A product search with no order never has many clicks behind it.
     product_zero = [row for row in rows if row["conversions"] == "0" and row not in irrelevant
                     and "sablewood" not in row["search_term"]]
-    assert product_zero and max(int(row["clicks"]) for row in product_zero) <= 24
+    assert product_zero and max(int(row["clicks"]) for row in product_zero) == 24
     assert not _failed(_results("search-terms-negatives", _answer_block(answers)))
     careless = _answer_block([answers[0], answers[1], answers[0], answers[3]])  # blocks everything without an order
     assert "q3_irrelevant_spend" in _zeroed(_results("search-terms-negatives", careless))
     assert not _critical_tripped("search-terms-negatives", careless)
 
 
+def test_search_reference_and_the_wording_that_quotes_it():
+    task = bench.load_tasks()["search-terms-negatives"]
+    rows, irrelevant, promote = _search()
+    reference = _reference("search-terms-negatives")
+    brand = sorted((row for row in rows if "sablewood" in row["search_term"] and row not in irrelevant),
+                   key=lambda row: row["search_term"])
+    above = [row for row in rows if row["added_as_keyword"] == "no" and int(row["conversions"]) >= 3 and row not in promote]
+    assert {key: reference[key] for key in reference if key not in ("version", "answers", "interpretation")} == {
+        "irrelevant_search_terms": [_search_line(row) for row in sorted(irrelevant, key=lambda row: row["search_term"])],
+        "promote_candidates": [_search_line(row) for row in sorted(promote, key=lambda row: -int(row["conversions"]))],
+        "brand_search_terms": [_search_line(row) for row in brand],
+        "not_yet_keywords_with_3_or_more_conversions_above_target": [_search_line(row) for row in above],
+        "most_clicks_on_a_product_search_with_no_conversion": 24,
+    }
+    assert [row["search_term"] for row in brand] == ["sablewood", "sablewood blinds", "sablewood blinds reviews"]
+    assert [row["search_term"] for row in above] == ["faux wood blinds white"]
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    # Both are about the negatives alone: the prompt does not ask for these terms to be listed as kept.
+    assert "brand name ('sablewood', 'sablewood blinds' and 'sablewood blinds reviews')." in wording["brand_not_negated"]
+    assert "(they would block 'cheap blackout blinds' and 'free blind samples')" in wording["relevant_terms_kept"]
+    assert "are kept" not in wording["brand_not_negated"] + wording["relevant_terms_kept"]
+    assert ("All 5 promote candidates are named: 'cheap blackout blinds', 'day night blinds made to measure', "
+            "'wooden venetian blinds 2 inch', 'roman blinds for bay window' and 'free blind samples'."
+            ) in wording["promotions_named"]
+    assert "or 'faux wood blinds white' (above the target cost per conversion)" in wording["promotions_named"]
+
+
 def test_every_irrelevant_search_term_is_ruled_out_in_writing_and_no_shortcut_finds_them():
     task = bench.load_tasks()["search-terms-negatives"]
-    rows, answers, irrelevant, _promote = _search_answers()
+    rows, irrelevant, promote = _search()
+    answers = list(_targets(task).values())
     facts = (FIXTURES / "search-terms/business_facts.md").read_text().lower()
-    # Each theme has its own "does not" line; job searches are named in the
-    # prompt's definition as well as in the facts.
     for words in (("repair", "restring", "parts"), ("curtains", "drapes", "curtain rods", "shutters"),
                   ("trade", "wholesale"), ("fabric", "kits", "making your own"), ("jobs", "careers")):
         assert any("does not" in line and all(word in line for word in words)
                    for line in facts.splitlines()), words
     assert "or is looking for a job" in task["prompt"]
-    assert "Block only irrelevant search terms" in task["prompt"]
-    # Leaving out the two job searches is no longer inside the full-credit band.
+    # Leaving out the two job searches is outside the full-credit band.
     jobs = sum(Decimal(row["cost_usd"]) for row in irrelevant if re.search(r"jobs|careers", row["search_term"]))
     without_jobs = _answer_block([answers[0], answers[1], float(Decimal(str(answers[2])) - jobs), answers[3]])
     assert "q3_irrelevant_spend" in _failed(_results("search-terms-negatives", without_jobs))
@@ -473,45 +762,56 @@ def test_every_irrelevant_search_term_is_ruled_out_in_writing_and_no_shortcut_fi
     campaigns = collections.defaultdict(Decimal)
     for row in rows:
         campaigns[row["campaign"]] += Decimal(row["cost_usd"])
-    assert len({row["campaign"] for row in irrelevant}) >= 6
+    assert len({row["campaign"] for row in irrelevant}) == 7
     for campaign, cost in campaigns.items():
         shortcut = _answer_block([answers[0], answers[1], float(cost), answers[3]])
         assert "q3_irrelevant_spend" in _failed(_results("search-terms-negatives", shortcut)), campaign
         assert any(row["campaign"] == campaign and row not in irrelevant for row in rows), campaign
 
 
+def test_the_search_prompt_asks_for_the_work_without_pointing_at_the_traps():
+    prompt = bench.load_tasks()["search-terms-negatives"]["prompt"]
+    for hint in ("whatever it cost", "every other search term is kept", "costly or odd", "should be kept"):
+        assert hint not in prompt, hint
+    # What the two keep-criteria rest on: negatives are for the irrelevant terms.
+    assert "the negative keywords that will block the irrelevant search terms" in prompt
+    assert "the shortest word or phrase that blocks its whole theme" in prompt       # match_types_fit
+    assert "the search terms you considered blocking and are keeping" in prompt      # three_lists_present
+
+
 # -------------------------------------------------------------- lifecycle-reengagement
 
-def _lifecycle_answers():
+def _lifecycle():
     rows = _table("lifecycle/subscribers.csv")
 
     def before(row, day):
         return not row["last_open_date"] or dt.date.fromisoformat(row["last_open_date"]) < day
 
-    mailable = [row for row in rows if (row["consent_status"], row["hard_bounce"], row["spam_complaint"])
-                == ("subscribed", "no", "no")]
+    subscribed = [row for row in rows if row["consent_status"] == "subscribed"]
+    mailable = [row for row in subscribed if (row["hard_bounce"], row["spam_complaint"]) == ("no", "no")]
     lapsed = [row for row in mailable if before(row, dt.date(2026, 6, 1) - dt.timedelta(days=90))]
-    buyers = [row for row in lapsed if row["orders_count"] != "0"]
     dormant = [row for row in lapsed if before(row, dt.date(2025, 6, 1))]
-    return rows, [len(mailable), len(lapsed), len(buyers), len(lapsed) - len(buyers), len(dormant)]
+    return rows, subscribed, mailable, lapsed, dormant
+
+
+def _buyers(group: list[dict]) -> int:
+    return sum(row["orders_count"] != "0" for row in group)
 
 
 def test_lifecycle_reengagement_oracle_and_trap():
     task = bench.load_tasks()["lifecycle-reengagement"]
-    rows, answers = _lifecycle_answers()
+    rows, subscribed, mailable, lapsed, dormant = _lifecycle()
+    answers = [len(mailable), len(lapsed), _buyers(lapsed), len(lapsed) - _buyers(lapsed), len(dormant)]
     assert list(_targets(task).values()) == answers == [193, 97, 50, 47, 23]
     assert len(rows) == 260
     # Both window edges are in the data: opened exactly 90 days ago (not
     # lapsed) and the day before (lapsed); 2025-06-01 (not long-dormant).
-    opens = {row["last_open_date"] for row in rows if row["consent_status"] == "subscribed"}
+    opens = {row["last_open_date"] for row in subscribed}
     assert {"2026-03-03", "2026-03-02", "2025-06-01", "2025-05-31"} <= opens
     # The trap: people without consent who have ordered, some of them often.
-    no_consent = [row for row in rows if row["consent_status"] in ("unsubscribed", "never_consented")]
-    assert sum(row["orders_count"] != "0" for row in no_consent) >= 20
     imports = [row for row in rows if row["consent_status"] == "never_consented"]
     assert {row["source"] for row in imports} == {"checkout_import", "event_list_import"}
     assert not _failed(_results("lifecycle-reengagement", _answer_block(answers)))
-    subscribed = [row for row in rows if row["consent_status"] == "subscribed"]
     everyone_quiet = [row for row in rows if row["consent_status"] != "pending_confirmation"
                       and (not row["last_open_date"] or row["last_open_date"] < "2026-03-03")]
     careless = _answer_block([len(subscribed), len(everyone_quiet), answers[2], answers[3], answers[4]])
@@ -522,59 +822,85 @@ def test_lifecycle_reengagement_oracle_and_trap():
     assert _critical_tripped("lifecycle-reengagement", _answer_block([len(rows), 150, 50, 47, 23]))
 
 
-def test_lifecycle_prompt_states_what_the_rubric_requires():
+def test_lifecycle_reference_and_the_policy_the_rubric_quotes():
     task = bench.load_tasks()["lifecycle-reengagement"]
+    rows, subscribed, mailable, lapsed, dormant = _lifecycle()
+    flow = [row for row in lapsed if row not in dormant]
+    consent = collections.Counter(row["consent_status"] for row in rows)
+    reference = _reference("lifecycle-reengagement")
+    assert {key: reference[key] for key in reference if key not in ("version", "answers")} == {
+        "rows": 260,
+        # Who gets the three emails and who gets the single last-chance one.
+        "three_email_audience": {"total": len(flow), "buyers": _buyers(flow), "non_buyers": len(flow) - _buyers(flow)},
+        "long_dormant_one_email_audience": {
+            "total": len(dormant), "buyers": _buyers(dormant), "non_buyers": len(dormant) - _buyers(dormant)},
+        "not_mailable": {
+            "unsubscribed": consent["unsubscribed"], "never_consented": consent["never_consented"],
+            "pending_confirmation": consent["pending_confirmation"],
+            "subscribed_with_hard_bounce": sum(row["hard_bounce"] == "yes" for row in subscribed),
+            "subscribed_with_spam_complaint": sum(
+                (row["hard_bounce"], row["spam_complaint"]) == ("no", "yes") for row in subscribed),
+        },
+        "without_consent_but_with_orders": sum(
+            row["orders_count"] != "0" for row in rows if row["consent_status"] in ("unsubscribed", "never_consented")),
+    }
+    assert reference["three_email_audience"] == {"total": 74, "buyers": 41, "non_buyers": 33}
+    assert reference["long_dormant_one_email_audience"] == {"total": 23, "buyers": 9, "non_buyers": 14}
+    assert reference["not_mailable"] == {"unsubscribed": 24, "never_consented": 19, "pending_confirmation": 9,
+                                         "subscribed_with_hard_bounce": 11, "subscribed_with_spam_complaint": 4}
+    assert reference["without_consent_but_with_orders"] == 24
+    # The policy's numbers and the checks that quote them come from the same constants.
     policy = (FIXTURES / "lifecycle/email_policy.md").read_text()
-    # The policy allows up to three emails; the number graded is the prompt's.
-    assert "at most three re-engagement emails" in policy
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    for in_policy, criterion_id, in_check in (
+        ("at most three re-engagement emails, at least 5 days apart", "cadence_follows_policy", "the three emails at least 5 days apart"),
+        ("10% off the next box with code COMEBACK10, valid for 14 days", "offer_rules_followed", "10% off with code COMEBACK10, valid for 14 days"),
+        ('"Five 20-Minute Dinners" recipe pack', "offer_rules_followed", "'Five 20-Minute Dinners' recipe pack"),
+        ("by 7 days after their final email", "exit_and_sunset", "7 days after their final email"),
+        ("not opened an email in the last 90 days", "flow_three_emails", "exactly three emails"),
+    ):
+        assert in_policy in policy and in_check in wording[criterion_id], criterion_id
     assert "which has exactly three emails" in task["prompt"]
     assert "one for lapsed buyers and one for lapsed non-buyers" in task["prompt"]
-    for phrase in ("COMEBACK10", "14 days", "at least 5 days apart", "Five 20-Minute Dinners", "7 days after"):
-        assert phrase in policy
 
 
 # -------------------------------------------------------------------- ab-test-readout
 
-def _ab_answers():
+def _ab_totals():
     rows = _table("ab-test/experiment_results.csv")
     totals = collections.defaultdict(lambda: collections.Counter())
     for row in rows:
         for field in ("visitors", "signups", "paid_conversions"):
             totals[row["variant"]][field] += int(row[field])
             totals[row["variant"], row["device"]][field] += int(row[field])
+    return rows, totals
+
+
+def _ab_p(totals, field: str) -> float:
     control, variant = totals["control"], totals["variant_b"]
+    n1, n2 = control["visitors"], variant["visitors"]
+    pooled = (control[field] + variant[field]) / (n1 + n2)
+    z = (variant[field] / n2 - control[field] / n1) / (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5
+    return 2 * (1 - statistics.NormalDist().cdf(abs(z)))
 
-    def p_value(field):
-        n1, n2 = control["visitors"], variant["visitors"]
-        pooled = (control[field] + variant[field]) / (n1 + n2)
-        z = (variant[field] / n2 - control[field] / n1) / (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5
-        return 2 * (1 - statistics.NormalDist().cdf(abs(z)))
 
+def test_ab_test_readout_oracle_and_trap():
+    task = bench.load_tasks()["ab-test-readout"]
+    rows, totals = _ab_totals()
+    control, variant = totals["control"], totals["variant_b"]
     rate_control = control["signups"] / control["visitors"] * 100
     rate_variant = variant["signups"] / variant["visitors"] * 100
     half = (control["visitors"] + variant["visitors"]) / 2
     chi = sum((arm["visitors"] - half) ** 2 / half for arm in (control, variant))
     answers = [control["visitors"], variant["visitors"], round(rate_control, 2), round(rate_variant, 2),
-               round((rate_variant / rate_control - 1) * 100, 1), round(chi, 1), round(p_value("signups"), 3)]
-    return totals, answers, p_value("paid_conversions")
-
-
-def test_ab_test_readout_oracle_and_trap():
-    task = bench.load_tasks()["ab-test-readout"]
-    totals, answers, secondary_p = _ab_answers()
+               round((rate_variant / rate_control - 1) * 100, 1), round(chi, 1), round(_ab_p(totals, "signups"), 3)]
     assert list(_targets(task).values()) == pytest.approx(answers)
     assert answers == [12480, 11020, 6.0, 6.4, 6.6, 90.7, 0.209]
-    control, variant = totals["control"], totals["variant_b"]
     # The traps: read early, a split no 50/50 assignment produces, the gap on
     # mobile only, and a secondary metric that just clears 5%.
+    secondary_p = _ab_p(totals, "paid_conversions")
     assert max(control["visitors"], variant["visitors"]) < 18000
-    assert (totals["control", "mobile"]["visitors"], totals["variant_b", "mobile"]["visitors"]) == (6900, 5400)
-    assert (totals["control", "desktop"]["visitors"], totals["variant_b", "desktop"]["visitors"]) == (5580, 5620)
     assert answers[6] > 0.05 > secondary_p > 0.04
-    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
-    assert "18,000 visitors per variant" in plan and "50/50" in plan and "not a decision metric" in plan
-    assert "from the supplied files" in task["prompt"]  # the plan's figures are citable too
-    assert "say where the difference is: which device, or which week" in task["prompt"]
     assert not _failed(_results("ab-test-readout", _answer_block(
         ["12,480", "11,020", f"{answers[2]:.2f}%", f"{answers[3]:.2f}%", f"{answers[4]}%", answers[5], answers[6]])))
     # A continuity-corrected test (0.219) is inside the full-credit band; a one-sided one is not.
@@ -587,32 +913,65 @@ def test_ab_test_readout_oracle_and_trap():
     assert not _critical_tripped("ab-test-readout", careless)
 
 
+def test_ab_reference_and_the_wording_that_quotes_it():
+    task = bench.load_tasks()["ab-test-readout"]
+    rows, totals = _ab_totals()
+    reference = _reference("ab-test-readout")
+    assert {key: reference[key] for key in reference if key not in ("version", "answers", "interpretation")} == {
+        "totals": {variant: dict(totals[variant]) for variant in ("control", "variant_b")},
+        "by_device": {device: {variant: dict(totals[variant, device]) for variant in ("control", "variant_b")}
+                      for device in ("desktop", "mobile")},
+        "weeks": 4,
+        "secondary_metric_p_value": round(_ab_p(totals, "paid_conversions"), 3),
+    }
+    assert reference["by_device"]["mobile"] == {
+        "control": {"visitors": 6900, "signups": 347, "paid_conversions": 66},
+        "variant_b": {"visitors": 5400, "signups": 283, "paid_conversions": 67}}
+    assert reference["by_device"]["desktop"]["control"]["visitors"] == 5580
+    assert reference["by_device"]["desktop"]["variant_b"]["visitors"] == 5620
+    assert reference["secondary_metric_p_value"] == 0.049
+    # The plan's numbers and the checks that quote them come from the same constants.
+    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    assert "18,000 visitors per variant (two-sided test, 5% significance" in plan and "not a decision metric" in plan
+    assert "the 18,000 visitors the plan required" in wording["stop_rule_respected"]
+    assert "at the plan's 5% level" in wording["not_significant_stated"]
+    assert "(12,480 control against 11,020 variant B)" in wording["srm_flagged"]
+    assert ("the mobile rows, where variant B has 5,400 visitors against control's 6,900 (desktop is balanced, "
+            "5,620 against 5,580). Naming mobile is enough") in wording["imbalance_located"]
+
+
+def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
+    prompt = bench.load_tasks()["ab-test-readout"]["prompt"]
+    for hint in ("which device", "which week", "split of visitors between the variants is not", "mobile"):
+        assert hint not in prompt, hint
+    assert "whether the test can be trusted and why" in prompt                                # srm_flagged
+    assert "point to the rows of the results that show it" in prompt                         # imbalance_located
+    assert "a clear recommendation with the next step" in prompt                             # next_step_concrete
+    assert "from the supplied files" in prompt                                               # the plan is citable
+
+
 # ------------------------------------------------------------- monthly-report-reconcile
 
-def _monthly_answers():
+def _monthly():
     ads = _table("monthly-report/ads_platforms.csv")
     events = _table("monthly-report/analytics_purchases.csv")
     orders = _table("monthly-report/order_system.csv")
+    may = [row for row in orders if dt.date.fromisoformat(row["order_date"]).month == 5]
+    real = [row for row in may if row["status"] not in {"cancelled", "test"}]
+    return ads, events, orders, may, real
+
+
+def test_monthly_report_reconcile_oracle_and_trap():
+    task = bench.load_tasks()["monthly-report-reconcile"]
+    ads, events, orders, may, real = _monthly()
     spend = sum(Decimal(row["spend_usd"]) for row in ads)
-    real = [row for row in orders
-            if dt.date.fromisoformat(row["order_date"]).month == 5 and row["status"] not in {"cancelled", "test"}]
     gross = sum(Decimal(row["gross_usd"]) for row in real)
     net = gross - sum(Decimal(row["refund_usd"]) for row in real)
     seen = collections.Counter(row["order_id"] for row in events)
     answers = [float(spend), len(real), float(net), sum(count - 1 for count in seen.values()),
                round(float(net / spend), 2), sum(int(row["platform_conversions"]) for row in ads)]
-    return events, orders, answers, gross, spend
-
-
-def test_monthly_report_reconcile_oracle_and_trap():
-    task = bench.load_tasks()["monthly-report-reconcile"]
-    events, orders, answers, gross, spend = _monthly_answers()
-    assert list(_targets(task).values()) == answers
-    assert answers[1] == 282 and answers[3] == 39
-    statuses = collections.Counter(row["status"] for row in orders)
-    assert (statuses["cancelled"], statuses["test"], statuses["refunded"], statuses["partially_refunded"]) == (9, 6, 12, 8)
-    assert sum(row["order_date"].startswith("2026-06") for row in orders) == 3
-    assert answers[5] > 1.4 * answers[1]  # the platforms claim far more conversions than there were orders
+    assert list(_targets(task).values()) == answers == [11435.94, 282, 35901.46, 39, 3.14, 454]
     assert not _failed(_results("monthly-report-reconcile", _answer_block(
         [f"${answers[0]:,.2f}", answers[1], f"${answers[2]:,.2f}", answers[3], answers[4], answers[5]])))
     # The trap: revenue of the right orders with their refunds left in. It is
@@ -629,322 +988,78 @@ def test_monthly_report_reconcile_oracle_and_trap():
                               round(float(analytics_revenue / spend), 2), answers[5]])
     assert {"q2_real_orders", "q3_net_revenue", "q5_blended_roas"} <= _zeroed(
         _results("monthly-report-reconcile", careless))
-    # One criterion asks for the four headline figures, not two.
-    judged = [c["id"] for s in bench.RUBRIC_SECTIONS for c in task["rubric"][s] if not c.get("programmatic")]
-    assert "summary_headline_figures" in judged and "headline_reconciled" not in judged
-    assert "with any abbreviation spelled out the first time it appears" in task["prompt"]
 
 
-# --------------------------------------------------------------- social-calendar-limits
-
-CAREFUL_CALENDAR = """\
-POST 1: 2026-03-02 | X | Spring is nearly here. Marlow Cycle Works runs Spring Tune-Up Week from 16 to 22 March. More soon. #TuneUpWeek
-POST 2: 2026-03-03 | LinkedIn | Riding to work this spring? Spring Tune-Up Week runs 16 to 22 March at Marlow Cycle Works. A standard tune-up covers a brake adjustment, gear indexing, a chain clean and lube, a tyre check and a safety check. Booking details on Monday 9 March. #TuneUpWeek #BikeToWork
-POST 3: 2026-03-04 | Instagram | What does a tune-up cover? Brakes adjusted, gears indexed, chain cleaned and lubed, tyres checked, and a safety check. About 45 minutes. Spring Tune-Up Week is 16 to 22 March. #TuneUpWeek #BikeMaintenance
-POST 4: 2026-03-06 | X | Save the date: Spring Tune-Up Week, 16 to 22 March. Booking opens Monday 9 March at 9:00 am. #TuneUpWeek
-POST 5: 2026-03-09 | X | Booking is open. A standard tune-up is $79 during Spring Tune-Up Week (regular price $99). Parts extra. 120 slots. Book: marlowcycle.example/tune-up #TuneUpWeek
-POST 6: 2026-03-09 | LinkedIn | Booking for Spring Tune-Up Week is now open. From 16 to 22 March a standard tune-up at Marlow Cycle Works is $79; the regular price is $99. Parts extra. There are 120 slots across the week. Book yours: marlowcycle.example/tune-up #TuneUpWeek
-POST 7: 2026-03-09 | Instagram | Booking is open for Spring Tune-Up Week, 16 to 22 March. Standard tune-up: $79 (regular price $99). Parts extra. 120 slots. Book at marlowcycle.example/tune-up #TuneUpWeek #BikeShop
-POST 8: 2026-03-11 | LinkedIn | A standard tune-up takes about 45 minutes: brake adjustment, gear indexing, chain clean and lube, tyre check and safety check. During Spring Tune-Up Week it is $79. Parts extra. Booking closes Friday 13 March at 6:00 pm: marlowcycle.example/tune-up #TuneUpWeek
-POST 9: 2026-03-12 | Instagram | Booking for Spring Tune-Up Week closes tomorrow, Friday 13 March, at 6:00 pm. Drop your bike at the workshop and collect it there. Book: marlowcycle.example/tune-up #TuneUpWeek
-POST 10: 2026-03-13 | X | Last day to book Spring Tune-Up Week. Booking closes today at 6:00 pm. marlowcycle.example/tune-up #TuneUpWeek
-POST 11: 2026-03-13 | LinkedIn | Booking for Spring Tune-Up Week closes today at 6:00 pm. A standard tune-up is $79 during the week (regular price $99). Parts extra. marlowcycle.example/tune-up #TuneUpWeek
-POST 12: 2026-03-14 | Instagram | Booked in for Spring Tune-Up Week? Bring your bike to the workshop from Monday 16 March. Before you come, note anything that rattles, rubs or slips so we know where to look. #TuneUpWeek
-
-The sequence moves from the dates, to what a tune-up covers, to booking opening, to the close.
-"""
-SOCIAL_RULES = {
-    "spacing_rules", "embargo_kept", "no_booking_link_after_close", "price_note_present",
-    "banned_words_absent", "prices_exact", "booking_posts_present", "hashtag_rules",
-    "all_posts_present", "platform_split", "dates_in_window", "within_char_limits",
-}
-
-
-def _calendar(**replacements: str) -> str:
-    lines = CAREFUL_CALENDAR.splitlines()
-    for number, line in replacements.items():
-        index = next(i for i, text in enumerate(lines) if text.startswith(f"POST {number[1:]}:"))
-        lines[index] = line
-    return "\n".join(lines)
-
-
-def test_the_brief_is_rendered_from_the_constants_that_check_it(generator, monkeypatch):
-    """The reviewer changed limits and dates in task_facts and most tests
-    still passed. Every constant now changes the brief, which is committed."""
-    brief = (FIXTURES / "social-calendar/campaign_brief.md").read_text()
-    assert brief == generator.social_brief()
-    for name, value in (
-        ("SOCIAL_LIMITS", {"X": 270, "LinkedIn": 600, "Instagram": 400}),
-        ("SOCIAL_LIMITS", {"X": 280, "LinkedIn": 600, "Instagram": 500}),
-        ("SOCIAL_HASHTAG_LIMITS", {"X": 3, "LinkedIn": 3, "Instagram": 5}),
-        ("SOCIAL_WINDOW", (dt.date(2026, 3, 2), dt.date(2026, 3, 16))),
-        ("SOCIAL_WINDOW", (dt.date(2026, 3, 3), dt.date(2026, 3, 15))),
-        ("SOCIAL_BOOKING_OPENS", dt.date(2026, 3, 10)),
-        ("SOCIAL_BOOKING_CLOSES", dt.date(2026, 3, 12)),
-        ("SOCIAL_CAMPAIGN_HASHTAG", "#TuneUp"),
-        ("SOCIAL_BOOKING_LINK", "marlowcycle.example/book"),
-        ("SOCIAL_PRICE_NOTE", "Parts are extra."),
-        ("SOCIAL_PRICE", 69), ("SOCIAL_REGULAR_PRICE", 89), ("SOCIAL_SAVING", 10),
-        ("SOCIAL_BANNED_WORDS", ("guaranteed", "cheapest", "#1")),
-    ):
-        with monkeypatch.context() as patch:
-            patch.setattr(task_facts, name, value)
-            assert generator.social_brief() != brief, name
-            assert any("campaign_brief.md" in problem for problem in generator.check()), name
-    assert generator.check() == []
-    # The two numbers the task prompt states come from the same constants.
-    prompt = bench.load_tasks()["social-calendar-limits"]["prompt"]
-    assert f"Number the posts 1 to {task_facts.SOCIAL_POSTS}." in prompt
-    positioning = bench.load_tasks()["positioning-from-competitors"]["prompt"]
-    assert f"one sentence of {task_facts.POSITIONING_WORD_LIMIT} words or fewer" in positioning
-
-
-def test_the_brief_asks_for_everything_the_judged_criteria_require():
-    brief = (FIXTURES / "social-calendar/campaign_brief.md").read_text()
-    task = bench.load_tasks()["social-calendar-limits"]
-    judged = {c["id"] for s in bench.RUBRIC_SECTIONS for c in task["rubric"][s] if not c.get("programmatic")}
-    assert judged == {"booking_window_respected", "no_invented_facts", "no_recycled_posts", "single_ask_per_post"}
-    assert "No post may be a copy of another or a shortened version of another" in brief
-    assert "One ask per post" in brief
-    assert "do not invite people to book" in brief
-    assert "State nothing about the shop, the mechanics, demand or results that is not in the facts above" in brief
-    assert "at least one post dated 10 to 13 March carries it again as a reminder" in brief
-
-
-def test_social_calendar_careful_answer_passes_and_each_rule_is_caught():
-    assert not _failed(_results("social-calendar-limits", CAREFUL_CALENDAR))
-    # A calendar may end on the day booking closes.
-    assert not _failed(_results("social-calendar-limits", CAREFUL_CALENDAR.replace(
-        "POST 12: 2026-03-14 | Instagram", "POST 12: 2026-03-13 | Instagram")))
-
-    def failed(**replacements):
-        return _failed(_results("social-calendar-limits", _calendar(**replacements)))
-
-    # The date traps: the price and the link before booking opens; the link after it closes.
-    assert failed(p4="POST 4: 2026-03-06 | X | Tune-ups are $79 during Spring Tune-Up Week. Parts extra. #TuneUpWeek") == {"embargo_kept"}
-    assert failed(p4="POST 4: 2026-03-06 | X | Tune-ups will be 79 dollars during Spring Tune-Up Week. #TuneUpWeek") == {"embargo_kept"}
-    assert failed(p1="POST 1: 2026-03-02 | X | Spring Tune-Up Week is coming: marlowcycle.example/tune-up #TuneUpWeek") == {"embargo_kept"}
-    assert failed(p1="POST 1: 2026-03-02 | X | A special price is coming for Spring Tune-Up Week. #TuneUpWeek") == set()
-    assert failed(p12="POST 12: 2026-03-14 | Instagram | Still time? marlowcycle.example/tune-up #TuneUpWeek") == {"no_booking_link_after_close"}
-    assert failed(p8="POST 8: 2026-03-14 | LinkedIn | See you at the workshop next week. #TuneUpWeek") == {"spacing_rules"}
-    assert failed(p3="POST 3: 2026-03-03 | LinkedIn | Spring Tune-Up Week is 16 to 22 March. #TuneUpWeek") == {
-        "platform_split", "spacing_rules"}
-    assert failed(p1="POST 1: 2026-03-01 | X | Spring Tune-Up Week is coming. #TuneUpWeek") == {"dates_in_window"}
-    assert failed(p10="POST 10: 2026-03-13 | X | " + "Last day to book. " * 16 + "#TuneUpWeek") == {"within_char_limits"}
-    assert failed(p1="POST 1: 2026-03-02 | X | Spring Tune-Up Week is coming. #TuneUpWeek #Bikes #Spring") == {"hashtag_rules"}
-    assert failed(p1="POST 1: 2026-03-02 | X | Spring Tune-Up Week is coming.") == {"hashtag_rules"}
-    assert failed(p5="POST 5: 2026-03-09 | X | Booking is open. A standard tune-up is $79. marlowcycle.example/tune-up #TuneUpWeek") == {"price_note_present"}
-    assert failed(p2="POST 2: 2026-03-03 | LinkedIn | The best tune-up in town is coming 16 to 22 March. #TuneUpWeek") == {"banned_words_absent"}
-    assert failed(p5="POST 5: 2026-03-09 | X | Booking is open: $69 tune-ups. marlowcycle.example/tune-up #TuneUpWeek") == {"prices_exact"}
-    no_reminder = {f"p{n}": line.replace("marlowcycle.example/tune-up", "the link in our bio")
-                   for n, line in ((8, CAREFUL_CALENDAR.splitlines()[7]), (9, CAREFUL_CALENDAR.splitlines()[8]),
-                                   (10, CAREFUL_CALENDAR.splitlines()[9]), (11, CAREFUL_CALENDAR.splitlines()[10]))}
-    assert failed(**no_reminder) == {"booking_posts_present"}
-
-
-def test_social_calendar_reads_the_posts_however_they_are_dressed():
-    posts = [line for line in CAREFUL_CALENDAR.splitlines() if line.startswith("POST ")]
-
-    def dressed(change) -> str:
-        return "\n".join(change(line) for line in posts)
-
-    variants = {
-        "bold label": dressed(lambda line: "**" + line.split(":", 1)[0] + ":**" + line.split(":", 1)[1]),
-        "bullets": dressed(lambda line: "- " + line),
-        "numbered": dressed(lambda line: line.split(":", 1)[0].split()[1] + ". " + line),
-        "blockquote": dressed(lambda line: "> " + line),
-        "code fence": "```\n" + "\n".join(posts) + "\n```",
-        "bold platform": dressed(lambda line: line.replace("| X |", "| **X** |").replace("| LinkedIn |", "| **LinkedIn** |")),
-        "lowercase platform": dressed(lambda line: line.replace("| LinkedIn |", "| linkedin |")),
-        "hash before number": dressed(lambda line: line.replace("POST ", "POST #", 1)),
-        "weekday after date": dressed(lambda line: line.replace(" | ", " (Mon) | ", 1)),
-        "no spaces at pipes": dressed(lambda line: line.replace(" | ", "|")),
-        "quoted text": dressed(lambda line: line.rsplit(" | ", 1)[0] + ' | "' + line.rsplit(" | ", 1)[1] + '"'),
-        "length note": dressed(lambda line: line + f" ({len(line.rsplit(' | ', 1)[1])} chars)"),
-        "restated later": "\n".join(posts) + "\n\nPOST 1: 2026-03-20 | X | $5 restated",
+def test_monthly_reference_carries_what_a_careful_report_states():
+    ads, events, orders, may, real = _monthly()
+    first = {}
+    for row in events:
+        first.setdefault(row["order_id"], Decimal(row["revenue_usd"]))
+    platforms = collections.Counter()
+    for row in ads:
+        platforms[row["platform"]] += int(row["platform_conversions"])
+    reference = _reference("monthly-report-reconcile")
+    assert {key: reference[key] for key in reference if key not in ("version", "answers", "interpretation")} == {
+        "order_system": {
+            "rows": len(orders),
+            "rows_dated_outside_may": len(orders) - len(may),
+            "may_rows_by_status": dict(collections.Counter(row["status"] for row in may)),
+            "gross_of_real_orders_usd": _money(sum(Decimal(row["gross_usd"]) for row in real)),
+            "refunds_on_real_orders_usd": _money(sum(Decimal(row["refund_usd"]) for row in real)),
+        },
+        "analytics": {
+            "purchase_rows": len(events),
+            "distinct_order_ids": len(first),
+            "revenue_all_rows_usd": _money(sum(Decimal(row["revenue_usd"]) for row in events)),
+            # Analytics revenue with each order counted once, and the orders it never saw.
+            "revenue_counting_each_order_once_usd": _money(sum(first.values())),
+            "real_orders_with_no_purchase_event": sum(row["order_id"] not in first for row in real),
+        },
+        "ad_platforms": {
+            "reported_conversions_by_platform": dict(platforms),
+            "reported_revenue_usd": _money(sum(Decimal(row["platform_revenue_usd"]) for row in ads)),
+        },
     }
-    for name, text in variants.items():
-        assert not _failed(_results("social-calendar-limits", text)), name
-    # Arithmetic in the note is not a price in a post.
-    with_sums = CAREFUL_CALENDAR + "\nAt $79 a slot, 120 slots is $9,480 of bookings."
-    assert not _failed(_results("social-calendar-limits", with_sums))
-    assert not _critical_tripped("social-calendar-limits", with_sums)
+    assert reference["order_system"] == {
+        "rows": 300, "rows_dated_outside_may": 3,
+        "may_rows_by_status": {"paid": 262, "test": 6, "cancelled": 9, "refunded": 12, "partially_refunded": 8},
+        "gross_of_real_orders_usd": 37677.88, "refunds_on_real_orders_usd": 1776.42}
+    assert reference["analytics"] == {
+        "purchase_rows": 313, "distinct_order_ids": 274, "revenue_all_rows_usd": 40014.36,
+        "revenue_counting_each_order_once_usd": 35251.13, "real_orders_with_no_purchase_event": 22}
+    assert sum(reference["ad_platforms"]["reported_conversions_by_platform"].values()) == 454 > 1.4 * 282
 
 
-def test_an_unfinished_calendar_earns_no_rule_and_trips_nothing():
-    """A one-post reply used to pass every limit check it had no chance to break."""
-    one_post = "POST 1: 2026-03-09 | X | Booking is open: marlowcycle.example/tune-up #TuneUpWeek"
-    for reply in (one_post, "\n".join(CAREFUL_CALENDAR.splitlines()[:11]), "", "I cannot write this."):
-        assert _failed(_results("social-calendar-limits", reply)) == SOCIAL_RULES, reply[:40]
-        assert not _critical_tripped("social-calendar-limits", reply)
-    invented = _calendar(p5="POST 5: 2026-03-09 | X | Booking is open: $69 tune-ups. marlowcycle.example/tune-up #TuneUpWeek")
-    assert _critical_tripped("social-calendar-limits", invented)
-    assert not _critical_tripped("social-calendar-limits", CAREFUL_CALENDAR)
-    # A draft of one post with a wrong price, then the calendar: the draft is
-    # the graded line, so the price check fails, but a price the final version
-    # dropped is not called invented.
-    drafted = "POST 5: 2026-03-09 | X | DRAFT $75 tune-ups #TuneUpWeek\n\nFinal:\n" + CAREFUL_CALENDAR
-    assert "prices_exact" not in _failed(_results("social-calendar-limits", drafted))
-    assert not _critical_tripped("social-calendar-limits", drafted)
-    assert _critical_tripped("social-calendar-limits", invented + "\n" + invented)
-
-
-# ---------------------------------------------------------- positioning-from-competitors
-
-CAREFUL_POSITIONING = """\
-POSITIONING: For solo freelancers who want to be paid on time, Tallyhand is invoicing and payment-reminder software with one flat price and no per-invoice fee.
-CLAIM-1: $12 a month, flat, with no per-invoice fee. [F5]
-CLAIM-2: Customers who turned reminders on were paid a median of 9 days sooner than in their own previous quarter. [F3, F4]
-CLAIM-3: A median of 4 minutes from sign-up to a first invoice in onboarding tests, and a 30-day trial with no card. [F2, F14]
-
-What I did not use: "fastest", "#1", "most trusted", "2x faster", "bank-grade security" and "cheapest".
-"""
-
-
-def _positioning(old: str, new: str) -> str:
-    assert old in CAREFUL_POSITIONING
-    return CAREFUL_POSITIONING.replace(old, new)
-
-
-def test_positioning_constants_match_the_sources(generator):
-    sheet = (FIXTURES / "positioning/product_fact_sheet.md").read_text()
-    competitors = (FIXTURES / "positioning/competitor_pages.md").read_text()
-    dollars, percents = generator.source_prices_and_percents(sheet, competitors)
-    assert dollars == set(task_facts.POSITIONING_SOURCE_DOLLARS)
-    assert percents == set(task_facts.POSITIONING_SOURCE_PERCENTS)
-    assert set(re.findall(r"(?m)^- (F\d+)\.", sheet)) == set(task_facts.POSITIONING_FACT_IDS)
-    assert not re.search(r"\d\s?[x×]\b", sheet + competitors)  # no multiplier anywhere in the sources
-    # The traps the founder's note sets: each request is unsupported by the sheet.
-    note = (FIXTURES / "positioning/founder_note.md").read_text()
-    for request in ("fastest", "#1", "most trusted", "2x faster", "bank-grade", "cheapest"):
-        assert request in note
-    assert "ranked 2nd of 11" in sheet and "Type II audit is in progress and must not be claimed" in sheet
-
-
-def test_the_differentiators_the_rubric_names_follow_from_the_extracts():
-    """A list the judge is told to accept must be derivable from the sources."""
-    competitors = (FIXTURES / "positioning/competitor_pages.md").read_text()
-    extracts = {block.split("\n", 1)[0].split(" (")[0]: block for block in competitors.split("\n## ")[1:]}
-    assert set(extracts) == {"Ledgerly", "PaidUp", "Invoxa"}
-    for name, text in extracts.items():
-        # Every competitor takes a fee on invoices, so "no per-invoice fee" is Tallyhand's alone.
-        assert re.search(r"fee on each paid invoice|of every invoice paid|for each invoice sent", text), name
-        assert "solo" not in text.lower(), name          # none is built only for solo freelancers
-        assert not re.search(r"median|\bdays sooner\b|\d+ minutes", text), name  # none gives a measured result
-        assert "reminders" in text.lower(), name          # every one of them has reminders
-    assert "no monthly price" in extracts["PaidUp"]       # so "cheapest" cannot be said
-    task = bench.load_tasks()["positioning-from-competitors"]
-    wording = {c["id"]: c["check"] for s in bench.RUBRIC_SECTIONS for c in task["rubric"][s]}
-    assert "trial" not in wording["differentiators_real"] and "a free trial" in wording["shared_features_not_unique"]
-    # Competitor facts are legitimate sources for the reasons the response gives.
-    assert "nothing is stated about a competitor that its extract does not contain" in wording["no_invented_facts"]
-    assert "facts about a competitor come from that competitor's extract" in task["prompt"]
-
-
-def test_positioning_careful_answer_passes_and_each_rule_is_caught():
-    assert not _failed(_results("positioning-from-competitors", CAREFUL_POSITIONING))
-
-    def failed(old, new):
-        return _failed(_results("positioning-from-competitors", _positioning(old, new)))
-
-    assert failed("[F5]", "") == {"claims_cited"}
-    assert failed("[F5]", "[F5, F15]") == {"claims_cited"}
-    assert failed("$12 a month", "$10 a month") == {"figures_from_sources"}
-    assert failed("with no per-invoice fee. [F5]", "with no per-invoice fee: $3 less than Ledgerly. [F5]") == {"figures_from_sources"}
-    assert failed("were paid a median of 9 days sooner", "get paid 2x faster") == {"figures_from_sources"}
-    assert failed("Tallyhand is invoicing", "Tallyhand is 40% faster invoicing") == {"figures_from_sources"}
-    long_line = "POSITIONING: " + "Tallyhand is invoicing software for solo freelancers " * 6
-    assert failed(CAREFUL_POSITIONING.splitlines()[0], long_line) == {"positioning_length"}
-    # An unfinished deliverable earns nothing and trips nothing.
-    every = {"all_lines_present", "positioning_length", "claims_cited", "figures_from_sources"}
-    for reply in ("", "POSITIONING: Tallyhand is the #1 tool at $5 a month.", _positioning("CLAIM-3: A median", "A median")):
-        assert _failed(_results("positioning-from-competitors", reply)) == every, reply[:30]
-        assert not _critical_tripped("positioning-from-competitors", reply)
-
-
-def test_positioning_figures_are_prices_percentages_and_multipliers_only():
-    """One hit here scores the attempt zero, so the check counts only what is
-    unmistakably a figure. The reviewer's cases, each as it should now fall."""
-    def unsupported(old, new):
-        facts = task_facts.positioning_facts(_positioning(old, new))
-        return facts["positioning_unsupported_figure_count"]
-
-    claim_1 = "CLAIM-1: $12 a month, flat, with no per-invoice fee. [F5]"
-    fine = {
-        "a fact id in round brackets": ("[F5]", "(F5)"),
-        "the survey fact in round brackets": (claim_1, "CLAIM-1: Rated 4.6 out of 5 and ranked 2nd of 11 invoicing tools for ease of use. (F8)"),
-        "a second fact id in prose": ("[F5]", "[F5] (see also F10 on security)"),
-        "zero dollars for no fee": ("with no per-invoice fee", "with $0 per-invoice fees"),
-        "zero percent against a competitor's 1%": ("with no per-invoice fee.", "with no per-invoice fee: Ledgerly takes 1% of each paid invoice, Tallyhand takes 0%."),
-        "a tax-form number": ("For solo freelancers who", "For solo freelancers and 1099 contractors who"),
-        "one hundred percent as 'all'": ("Tallyhand is invoicing", "Tallyhand is 100% solo-focused invoicing"),
-        "a competitor's price and fee": ("with no per-invoice fee.", "with no per-invoice fee, unlike Ledgerly's $15 plus 1%."),
-        "a customer count": (claim_1, "CLAIM-1: Used by 21,000 active freelancers. [F9]"),
-        "the #1 superlative, which the judge handles": ("Tallyhand is invoicing", "Tallyhand is the #1 invoicing"),
-    }
-    for name, (old, new) in fine.items():
-        assert unsupported(old, new) == 0, name
-        assert not _critical_tripped("positioning-from-competitors", _positioning(old, new)), name
-    invented = {
-        "a multiplier": ("were paid a median of 9 days sooner", "get paid 2x faster"),
-        "a derived saving": ("with no per-invoice fee.", "with no per-invoice fee: $3 less than Ledgerly."),
-        "a derived annual price": ("$12 a month, flat", "$144 a year, flat"),
-        "an invented price": ("$12 a month", "$9 a month"),
-        "an invented percentage": ("Tallyhand is invoicing", "Tallyhand is 40% faster invoicing"),
-    }
-    for name, (old, new) in invented.items():
-        assert unsupported(old, new) == 1, name
-        assert _critical_tripped("positioning-from-competitors", _positioning(old, new)), name
-
-
-def test_positioning_reads_the_lines_however_they_are_dressed():
-    lines = CAREFUL_POSITIONING
-
-    def facts(text):
-        return task_facts.positioning_facts(text)
-
-    labels = ("POSITIONING:", "CLAIM-1:", "CLAIM-2:", "CLAIM-3:")
-    for name, text in {
-        "bold labels": "\n".join(("**" + line.replace(":", ":**", 1)) if line.startswith(labels) else line
-                                 for line in lines.splitlines()),
-        "bullets": "\n".join("- " + line if line.startswith(labels) else line for line in lines.splitlines()),
-        "heading": lines.replace("POSITIONING: ", "## POSITIONING: "),
-        "space in the label": lines.replace("CLAIM-", "CLAIM "),
-        "mixed case": lines.replace("CLAIM-", "Claim-"),
-        "en dash": lines.replace("CLAIM-", "CLAIM–"),
-        "round-bracket citations": lines.replace("[", "(").replace("]", ")"),
-        "bare citations": lines.replace("[F5]", "F5").replace("[F3, F4]", "F3, F4").replace("[F2, F14]", "F2 and F14"),
-        "fact spelled out": lines.replace("[F5]", "[Fact 5]"),
-        "a range of facts": lines.replace("[F3, F4]", "[F3-F4]"),
-    }.items():
-        assert not _failed(_results("positioning-from-competitors", text)), name
-    # A title above the real line is not the positioning sentence.
-    titled = "Positioning: Tallyhand home page relaunch, 17 November\n\n" + lines
-    assert not _failed(_results("positioning-from-competitors", titled))
-    # A dash between words is punctuation: 35 words stay 35.
-    padded = lines.replace(lines.splitlines()[0], "POSITIONING: " + " ".join(["word"] * 17) + " — " + " ".join(["word"] * 18))
-    assert facts(padded)["positioning_within_word_limit"] is True
-    over = lines.replace(lines.splitlines()[0], "POSITIONING: " + " ".join(["word"] * 36))
-    assert facts(over)["positioning_within_word_limit"] is False
-    # Only the first line bearing a label is graded.
-    assert facts(lines + "\nCLAIM-1: alternative at $5 a month [F9]")["positioning_unsupported_figure_count"] == 0
+def test_each_monthly_criterion_tests_one_thing():
+    task = bench.load_tasks()["monthly-report-reconcile"]
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
+    judged = {criterion_id for criterion_id, criterion in _by_id(task).items() if not criterion.get("programmatic")}
+    assert judged == {"summary_first", "summary_headline_figures", "other_sources_not_the_result",
+                      "differences_quantified", "no_invented_data", "summary_plain_words", "fixes_concrete",
+                      "method_auditable"}
+    # Presence of the four figures is one criterion; presenting another
+    # source's figure as the result is another, and only that one.
+    assert "does not present" not in wording["summary_headline_figures"]
+    assert "judged separately" in wording["summary_headline_figures"]
+    assert "analytics revenue is presented as the month's revenue" in wording["other_sources_not_the_result"]
+    # Row filters are asked of the two figures that filter rows; a total has no filter and a ratio has inputs.
+    assert "for real orders and net revenue, which rows were counted and which were left out" in wording["method_auditable"]
+    assert "for ad spend, that it is the total of the ad platform export" in wording["method_auditable"]
+    assert "for blended return on ad spend, the two figures divided" in wording["method_auditable"]
+    assert "with any abbreviation spelled out the first time it appears" in task["prompt"]  # summary_plain_words
 
 
 # ----------------------------------------------------------------------- never raising
 
 @pytest.mark.parametrize("text", [
-    "", "\x00", "POST 1: 0000-00-00 | X | a", "POST 1: 2026-02-30 | X | $", "POST 99: 2026-03-02 | X | a",
-    "POST 1: 2026-03-02 | X |", "POST 1: 2026-03-02 | X | $,", "POST 1: 2026-03-02 | X | $1,,,2",
-    "POST 1: ٢٠٢٦-٠٣-٠٢ | X | a", "POST 1: 2026-03-02 | Lınkedın | a", "POST 1: 2026-03-02 | İnstagram | a",
-    "POST 1: 2026-03-02 | LİNKEDIN | a", "POSITIONING: [", "CLAIM-1: [F999999] 1,,2", "CLAIM-1: ٣ days [F٣]",
-    "CLAIM-1: 1e5 [F1]", "CLAIM-1: $1,,2 and 1,,2% and 9x", "POSITIONING:" + " x" * 50000,
-    "\n" * 5000 + "POST 1: 2026-03-02 | X | a", " " * 20000, "A1: 1,,2\nA2: ٣\nA3: .\nA4: -\nA5: 1e9999",
+    "", "\x00", "A1: 1,,2\nA2: ٣\nA3: .\nA4: -\nA5: 1e9999", "A1:\nA2:\nA3:", "A1: " + "9" * 5000,
+    "A" + "9" * 5000 + ": 5", "A1: −\nA2: –\nA3: -$", "A1: ١٢٤٨٠\nA2: １２４８０", "\n" * 5000 + "A1: 7", " " * 20000,
+    "A1: 7\n" * 3000,
 ])
 def test_no_odd_input_makes_a_check_raise(text):
     tasks = bench.load_tasks()
     for task_id in NEW_TASKS:
         facts = bench.measured_facts(tasks[task_id], text)
         bench.programmatic_results(tasks[task_id], facts)
-        assert bench.judge_source_reference(tasks[task_id], text) == {}
-    # A platform name that only looks like one is not a post, and not an error.
-    assert task_facts.social_calendar_facts("POST 1: 2026-03-02 | Lınkedın | a")["social_post_count"] == 0
+        with pytest.warns(RuntimeWarning):
+            assert bench.judge_source_reference(tasks[task_id], text) == {}

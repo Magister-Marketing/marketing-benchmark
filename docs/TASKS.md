@@ -44,14 +44,13 @@ performance on an untouched test.
 | [Quarterly paid-media review, decoy file](../eval_runner/tasks/ads-ledger-analysis-decoy.json) | The same review, after a look-alike "preliminary" export with the same name, shape, and dates but different numbers was shared one turn earlier for reference | Computing from the file this request supplied, not the one already sitting in the workspace; every figure from the wrong file is outside the zero-credit band, so the oracle scores it 0. Runs only on a harness that can send a prior turn (the Magister agent), never on the direct-model arms | 13 |
 | [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritized defect list across UTM links, GTM/GA4 tags, and consent defaults | Finding all twelve planted defects (Performance Max counts separately from search) without flagging the conforming decoys | 18 |
 
-Added on 2026-11-17 (version 2; the first draft was run once and discarded):
+Added on 2026-11-17 (the first draft was run once and discarded; the versions here have not been run):
 
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
-| [Technical SEO triage](../eval_runner/tasks/seo-technical-triage.json) | A prioritised fix list from a 165-URL site crawl, with six labeled figures | Counting five issue types exactly while leaving correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) unflagged, and putting the highest-traffic page first | 14 |
+| [Technical SEO triage](../eval_runner/tasks/seo-technical-triage.json) | A prioritised fix list from a 165-URL site crawl, with six labeled figures | Counting five issue types exactly while leaving correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) unflagged, and ordering the issue types by the traffic of the pages each affects | 14 |
 | [Search terms review](../eval_runner/tasks/search-terms-negatives.json) | Negative keywords by theme, terms to keep, and terms to promote, from a month of search terms | Blocking what the business does not sell without blocking its own brand name, two converting terms, or product searches with too few clicks to judge | 12 |
 | [A/B test readout](../eval_runner/tasks/ab-test-readout.json) | A readout and recommendation for a pricing-page test, with seven labeled figures | Seeing that the test was read early and that the visitor split is not the planned 50/50, and not shipping on a secondary metric | 17 |
-| [Social calendar](../eval_runner/tasks/social-calendar-limits.json) | Twelve dated posts across three platforms | Character, hashtag and spacing limits plus two date rules: no price or booking link before booking opens, no booking link after it closes | 16 |
 
 ## Holdout tasks
 
@@ -72,14 +71,13 @@ constraints discriminate. The current untouched set:
 | [Platform limits gauntlet](../eval_runner/tasks/platform-limits-gauntlet.json) | One coordinated promotion in eleven labeled fields across Google, Meta, LinkedIn, and SMS | Hard character limits and exact required strings, enforced programmatically | 10 |
 | [Rate-card reconciliation](../eval_runner/tasks/rate-card-reconciliation.json) | An invoice audit against a signed agreement, rate card, and delivery log | Choosing the one correct rate among four candidates and quantifying three planted billing errors without disputing the clean line | 10 |
 | [Unsupportable claims brief](../eval_runner/tasks/unsupportable-claims-brief.json) | A landing section and promo email that fulfill a franchise brief minus its unsupportable claims | Declining exactly the four unsupported demands without fabricating them or silently dropping them | 10 |
-| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a keyword export, the site's pages and two competitor outlines | Picking the topic the numbers support when the highest-volume keyword has buying intent and already ranks on another page | 15 |
+| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a keyword export, the site's pages and competitor outlines for three candidate topics | Picking the topic the numbers support when the highest-volume keyword has buying intent and already ranks on another page | 15 |
 | [Re-engagement programme](../eval_runner/tasks/lifecycle-reengagement.json) | An audience with counts, segments and a three-email flow, from a 260-row subscriber export and an email policy | Leaving out everyone without consent, including past buyers, and following the policy's offer, cadence and sunset rules | 15 |
 | [Monthly report](../eval_runner/tasks/monthly-report-reconcile.json) | A founder-ready report with six labeled figures, from ad, analytics and order exports that disagree | Reconciling double-fired events, refunds, test orders and platform over-claiming into one set of real results | 15 |
-| [Positioning](../eval_runner/tasks/positioning-from-competitors.json) | A positioning sentence and three claims that cite an approved fact sheet | Declining the founder's unsupported superlatives and claiming only what three competitor pages show is different | 11 |
 
-The four tasks from Content brief down were added on 2026-11-17. Their first
+The three tasks from Content brief down were added on 2026-11-17. Their first
 draft was attempted once by one agent and its results were discarded when the
-tasks were revised; version 2 has not been run by any model.
+tasks were revised; the versions here have not been run by any model.
 
 ## How tasks stay comparable
 

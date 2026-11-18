@@ -16,6 +16,5 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 | /collections/samplers | Category | Tea sampler boxes |
 
 Notes from the content lead:
-- The blog has no article about cold-brewing tea yet. /collections/cold-brew is a category page, not a guide.
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
 - The site does not win keywords with a difficulty above 45.

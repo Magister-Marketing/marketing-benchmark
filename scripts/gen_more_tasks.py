@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
-"""Generate the fixtures of the eight tasks added in November 2026, and pin their targets.
+"""Generate the fixtures of the six data tasks added in November 2026, and pin their targets.
 
-Tasks: seo-content-brief, seo-technical-triage, search-terms-negatives,
-lifecycle-reengagement, ab-test-readout, social-calendar-limits,
-monthly-report-reconcile, positioning-from-competitors.
+Tasks: seo-technical-triage, search-terms-negatives, ab-test-readout,
+seo-content-brief, lifecycle-reengagement, monthly-report-reconcile.
 
 Deterministic: every table is either written out below or drawn from a seeded
 generator, so re-running reproduces identical files. The figures come from
 `eval_runner/task_references.py`, which reads only fixture text and is the same
-code that gives the judge its reference totals; the limits and dates of the
-social brief come from `eval_runner/task_facts.py`, which also checks them.
+code that gives the judge its reference totals.
 
-A task file's prose (its prompt and the wording of each check) is written by
-hand. Everything a program decides is pinned here: each programmatic
-condition with its target and tolerance, the `answers` field, the oracle list
-of each critical criterion, and the definition and answer lines the prompt
-must carry. `--sync` writes those into the task files; `--check` (and
-tests/test_more_tasks.py) reports every difference and never raises on a task
-file it can parse.
+A task file's prose is written by hand, except where it states something a
+program computes. Pinned here, and written by `--sync`: each programmatic
+condition with its target and tolerance; the wording of each banded check, so
+the band it describes is the band applied; every judged check that names a
+figure, a keyword or a URL from the data; the `answers` field; the oracle list
+of each critical criterion; and the definition and answer lines the prompt
+must carry. `--check` (and tests/test_more_tasks.py) reports every difference
+and never raises on a task file it can parse.
+
+The numbers of the email policy and the test plan (days, percentages, sample
+size) are constants here that both the fixture and the checks are rendered
+from, so a fixture and the rubric that quotes it cannot drift apart.
 
 All brands, people, URLs and figures here are invented.
 
@@ -41,7 +44,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-from eval_runner import task_facts, task_references  # noqa: E402
+from eval_runner import task_references  # noqa: E402
 
 FIXTURES = REPO_ROOT / "eval_runner" / "fixtures"
 TASKS = REPO_ROOT / "eval_runner" / "tasks"
@@ -75,10 +78,10 @@ SEO_KEYWORDS = [
     ("cold brew green tea", "cold brew tea", 1000, 31, "informational", "", ""),
     ("cold brew tea caffeine", "cold brew tea", 720, 24, "informational", "", ""),
     ("can you cold brew tea bags", "cold brew tea", 590, 17, "informational", "", ""),
-    ("cold brew tea vs iced tea", "cold brew tea", 880, 26, "informational", "", ""),
+    ("cold brew tea vs iced tea", "cold brew tea", 880, 45, "informational", "", ""),         # exactly on the difficulty limit
     ("cold brew tea maker", "cold brew tea", 2400, 48, "transactional", "", ""),
     ("cold brew tea recipe", "cold brew tea", 1300, 52, "informational", "", ""),
-    ("does cold brew tea go bad", "cold brew tea", 480, 15, "informational", 9, "/blog/how-long-does-brewed-tea-last"),
+    ("does cold brew tea go bad", "cold brew tea", 480, 15, "informational", 10, "/blog/how-long-does-brewed-tea-last"),  # the last top-10 rank
     ("best green tea", "green tea", 14800, 62, "commercial", 4, "/guides/best-green-tea"),
     ("green tea benefits", "green tea", 12100, 71, "informational", "", ""),
     ("green tea caffeine", "green tea", 6600, 38, "informational", 7, "/blog/green-tea-caffeine"),
@@ -86,7 +89,7 @@ SEO_KEYWORDS = [
     ("green tea temperature", "green tea", 1300, 29, "informational", "", ""),
     ("sencha vs gyokuro", "green tea", 880, 33, "informational", "", ""),
     ("japanese green tea brands", "green tea", 1000, 44, "commercial", "", ""),
-    ("loose leaf green tea", "green tea", 2400, 55, "transactional", 15, "/collections/green-tea"),
+    ("loose leaf green tea", "green tea", 2400, 55, "transactional", 11, "/collections/green-tea"),        # the first rank outside it
     ("matcha powder", "matcha", 9900, 68, "transactional", "", ""),
     ("ceremonial grade matcha", "matcha", 4400, 57, "commercial", "", ""),
     ("how to make matcha", "matcha", 5400, 49, "informational", "", ""),
@@ -142,16 +145,32 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 | /collections/samplers | Category | Tea sampler boxes |
 
 Notes from the content lead:
-- The blog has no article about cold-brewing tea yet. /collections/cold-brew is a category page, not a guide.
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
 - The site does not win keywords with a difficulty above 45.
 """
 
 SEO_OUTLINES_MD = """\
-# Competitor outlines for cold-brew tea articles (captured 2026-04)
+# Competitor outlines (captured 2026-04)
 
-## Competitor A: Steepwell, "Cold Brew Tea 101"
+Two competing articles for each of three topics the content team is considering.
 
+## Topic: green tea
+
+### Competitor A: Steepwell, "The Complete Guide to Green Tea"
+- H2: Types of green tea
+- H2: Health benefits of green tea
+- H2: How to brew green tea
+  - H3: Water temperature
+- H2: How much caffeine is in green tea?
+
+### Competitor B: The Leaf Ledger, "Green Tea for Beginners"
+- H2: Sencha, gyokuro and the rest
+- H2: Brewing basics
+- H2: Our favourite Japanese green tea brands (product roundup)
+
+## Topic: cold brew tea
+
+### Competitor A: Steepwell, "Cold Brew Tea 101"
 - H2: What is cold brew tea?
 - H2: Cold brew tea vs iced tea
 - H2: The basic method, step by step
@@ -160,13 +179,25 @@ SEO_OUTLINES_MD = """\
 - H2: FAQ
   - H3: Do you need to add sugar?
 
-## Competitor B: The Leaf Ledger, "How to Cold Brew Tea at Home"
-
+### Competitor B: The Leaf Ledger, "How to Cold Brew Tea at Home"
 - H2: Equipment you need
 - H2: Tea-to-water ratio
 - H2: How long to steep (chart by tea type)
 - H2: Cold brewing green tea without bitterness
 - H2: Storing your cold brew
+
+## Topic: matcha
+
+### Competitor A: Steepwell, "Matcha 101"
+- H2: What is matcha?
+- H2: Ceremonial and culinary grades
+- H2: How to whisk matcha
+- H2: Matcha vs green tea
+
+### Competitor B: The Leaf Ledger, "How to Make Matcha"
+- H2: Tools you need
+- H2: Step-by-step method
+- H2: Matcha latte variation
 """
 
 
@@ -306,7 +337,7 @@ def build_seo_crawl() -> dict[str, str]:
             sitemap="no", inlinks=rng.randint(0, 5))
     # Planted: 404s that internal links still point at, and three nobody links to.
     dead = []
-    for index, (path, inlinks) in enumerate(zip(products[1::9], (38, 21, 14, 9, 6, 4, 2))):
+    for index, (path, inlinks) in enumerate(zip(products[1::9], (38, 21, 14, 9, 6, 4, 1))):  # one has exactly one inlink
         gone = path + "-2024"
         dead.append(gone)
         add(gone, status=404, robots="", sitemap="yes" if index < 2 else "no", inlinks=inlinks)
@@ -374,7 +405,7 @@ SEARCH_PLANTED = [
     ("day night blinds made to measure", "NB - Day Night", "phrase", 2210, 139, "217.00", 7, "1239.00", "no"),
     ("free blind samples", "NB - Broad Discovery", "broad", 520, 38, "35.60", 3, "402.00", "no"),
     ("wooden venetian blinds 2 inch", "NB - Venetian", "broad", 1760, 121, "190.00", 5, "905.00", "no"),
-    ("roman blinds for bay window", "NB - Roman", "phrase", 1490, 110, "179.20", 4, "868.00", "no"),
+    ("roman blinds for bay window", "NB - Roman", "phrase", 1490, 110, "180.00", 4, "868.00", "no"),   # exactly at the $45 target
     ("faux wood blinds white", "NB - Venetian", "broad", 1620, 97, "139.50", 3, "512.00", "no"),
     ("roller blinds for kitchen", "NB - Roller", "phrase", 640, 28, "40.00", 2, "311.00", "no"),
     ("made to measure roller blinds", "NB - Roller", "exact", 5110, 262, "308.00", 14, "2702.00", "yes"),
@@ -451,7 +482,17 @@ LIFECYCLE_TODAY = dt.date(2026, 6, 1)
 LIFECYCLE_LAPSED_BEFORE = task_references.LIFECYCLE_LAPSED_BEFORE    # 90 days before today
 LIFECYCLE_DORMANT_BEFORE = task_references.LIFECYCLE_DORMANT_BEFORE  # 12 months before today
 
-LIFECYCLE_POLICY_MD = """\
+LIFECYCLE_LAPSED_DAYS = (LIFECYCLE_TODAY - LIFECYCLE_LAPSED_BEFORE).days
+LIFECYCLE_MAX_EMAILS = 3
+LIFECYCLE_MIN_GAP_DAYS = 5
+LIFECYCLE_SUNSET_DAYS = 7
+LIFECYCLE_DISCOUNT_PERCENT = 10
+LIFECYCLE_DISCOUNT_CODE = "COMEBACK10"
+LIFECYCLE_DISCOUNT_VALID_DAYS = 14
+LIFECYCLE_RECIPE_PACK = "Five 20-Minute Dinners"
+_NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five"}
+
+LIFECYCLE_POLICY_MD = f"""\
 # Sorrel Kitchen: email policy (marketing sends)
 
 Sorrel Kitchen is a weekly meal-kit subscription. This policy applies to every marketing email.
@@ -464,15 +505,15 @@ Sorrel Kitchen is a weekly meal-kit subscription. This policy applies to every m
 - An address with a hard bounce or a spam complaint is suppressed.
 
 ## Re-engagement rules
-- A subscriber is lapsed when they have not opened an email in the last 90 days.
-- A lapsed subscriber gets at most three re-engagement emails, at least 5 days apart.
-- A subscriber with no open in the last 12 months gets one last-chance email only, not the three-email flow.
+- A subscriber is lapsed when they have not opened an email in the last {LIFECYCLE_LAPSED_DAYS} days.
+- A lapsed subscriber gets at most {_NUMBER_WORDS[LIFECYCLE_MAX_EMAILS]} re-engagement emails, at least {LIFECYCLE_MIN_GAP_DAYS} days apart.
+- A subscriber with no open in the last 12 months gets one last-chance email only, not the {_NUMBER_WORDS[LIFECYCLE_MAX_EMAILS]}-email flow.
 - Anyone who opens, clicks or orders leaves the flow at once and returns to regular sends.
-- Anyone who has not opened or clicked by 7 days after their final email is suppressed from marketing.
+- Anyone who has not opened or clicked by {LIFECYCLE_SUNSET_DAYS} days after their final email is suppressed from marketing.
 
 ## Offers
-- The only approved incentive is 10% off the next box with code COMEBACK10, valid for 14 days from the send. It is for lapsed subscribers who have ordered before.
-- Lapsed subscribers who have never ordered get the free "Five 20-Minute Dinners" recipe pack instead. No discount.
+- The only approved incentive is {LIFECYCLE_DISCOUNT_PERCENT}% off the next box with code {LIFECYCLE_DISCOUNT_CODE}, valid for {LIFECYCLE_DISCOUNT_VALID_DAYS} days from the send. It is for lapsed subscribers who have ordered before.
+- Lapsed subscribers who have never ordered get the free "{LIFECYCLE_RECIPE_PACK}" recipe pack instead. No discount.
 
 ## Every email
 - Carries an unsubscribe link and a link to email preferences.
@@ -569,7 +610,10 @@ AB_WEEKS = {
 }
 AB_WEEK_STARTS = ["2026-04-06", "2026-04-13", "2026-04-20", "2026-04-27"]
 
-AB_PLAN_MD = """\
+AB_REQUIRED_PER_ARM = 18000
+AB_SIGNIFICANCE_PERCENT = 5
+
+AB_PLAN_MD = f"""\
 # Kestrel Notes: pricing-page test plan (written before launch)
 
 Kestrel Notes is a note-taking app with a free plan and a paid plan.
@@ -582,8 +626,8 @@ Kestrel Notes is a note-taking app with a free plan and a paid plan.
 - **Implementation:** variant B is served by a client-side redirect from /pricing to /pricing-b after assignment.
 - **Baseline:** 6% signup rate.
 - **Smallest lift worth shipping:** 12% relative.
-- **Sample size:** 18,000 visitors per variant (two-sided test, 5% significance, 80% power).
-- **Decision rule:** read the result once each variant has 18,000 visitors. Ship variant B only if the primary metric is higher and statistically significant at 5%. Do not stop early on a promising interim result.
+- **Sample size:** {AB_REQUIRED_PER_ARM:,} visitors per variant (two-sided test, {AB_SIGNIFICANCE_PERCENT}% significance, 80% power).
+- **Decision rule:** read the result once each variant has {AB_REQUIRED_PER_ARM:,} visitors. Ship variant B only if the primary metric is higher and statistically significant at {AB_SIGNIFICANCE_PERCENT}%. Do not stop early on a promising interim result.
 """
 
 
@@ -596,81 +640,6 @@ def build_ab_test() -> dict[str, str]:
         "ab-test/experiment_results.csv": _csv_text(AB_HEADER, rows),
         "ab-test/test_plan.md": AB_PLAN_MD,
     }
-
-
-# ------------------------------------------------------------- social-calendar-limits
-
-_NUMBER_WORDS = {3: "three", 4: "four", 5: "five", 6: "six", 12: "twelve"}
-
-
-def _day(date: dt.date, *, weekday: bool = False, year: bool = False) -> str:
-    text = f"{date.day} {date:%B}"
-    if weekday:
-        text = f"{date:%A} {text}"
-    return f"{text} {date.year}" if year else text
-
-
-def _days(dates: list[dt.date], joiner: str) -> str:
-    """'7, 8, 14 and 15 March' for dates in one month."""
-    numbers = [str(date.day) for date in dates]
-    listed = numbers[0] if len(numbers) == 1 else ", ".join(numbers[:-1]) + f" {joiner} " + numbers[-1]
-    return f"{listed} {dates[0]:%B}"
-
-
-def social_brief() -> str:
-    """The campaign brief, with every limit and date taken from task_facts."""
-    f = task_facts
-    start, end = f.SOCIAL_WINDOW
-    window = [start + dt.timedelta(days=offset) for offset in range((end - start).days + 1)]
-    weekend = [day for day in window if day.weekday() >= 5]
-    after_close = [day for day in window if day > f.SOCIAL_BOOKING_CLOSES]
-    reminder_days = [day for day in window if f.SOCIAL_BOOKING_OPENS < day <= f.SOCIAL_BOOKING_CLOSES]
-    platforms = list(f.SOCIAL_LIMITS)
-    each = _NUMBER_WORDS[f.SOCIAL_POSTS // len(platforms)]
-    limits = ", ".join(f"{name} {limit}" for name, limit in f.SOCIAL_LIMITS.items())
-    hashtags = ", ".join(f"{name} at most {limit}" for name, limit in f.SOCIAL_HASHTAG_LIMITS.items())
-    split = f"{each} on {platforms[0]}, {each} on {platforms[1]} and {each} on {platforms[2]}"
-    return f"""\
-# Marlow Cycle Works: Spring Tune-Up Week campaign brief
-
-Marlow Cycle Works is a neighbourhood bike shop and repair workshop.
-
-## The facts you may use
-- Spring Tune-Up Week runs Monday 16 March to Sunday 22 March 2026 at the workshop.
-- A standard tune-up costs ${f.SOCIAL_PRICE} during the week. The regular price is ${f.SOCIAL_REGULAR_PRICE}, a saving of ${f.SOCIAL_SAVING}. Parts are extra.
-- A standard tune-up covers a brake adjustment, gear indexing, a chain clean and lube, a tyre check and a safety check. It takes about 45 minutes.
-- There are 120 slots across the week.
-- Booking opens {_day(f.SOCIAL_BOOKING_OPENS, weekday=True, year=True)} at 9:00 am and closes {_day(f.SOCIAL_BOOKING_CLOSES, weekday=True, year=True)} at 6:00 pm.
-- Booking link: {f.SOCIAL_BOOKING_LINK}
-- Bikes are dropped off and collected at the workshop. There is no collection service.
-
-## Dates that constrain the calendar
-- The price, the saving and the booking link are under embargo until booking opens. No post dated before {_day(f.SOCIAL_BOOKING_OPENS)} may mention the ${f.SOCIAL_PRICE} price, the ${f.SOCIAL_REGULAR_PRICE} regular price, the ${f.SOCIAL_SAVING} saving, or the booking link.
-- At least one post dated {_day(f.SOCIAL_BOOKING_OPENS)} carries the booking link, and at least one post dated {reminder_days[0].day} to {_day(reminder_days[-1])} carries it again as a reminder.
-- After booking closes, do not invite people to book. Posts dated {_days(after_close, "or")} may not carry the booking link.
-
-## Calendar rules
-- {_NUMBER_WORDS[f.SOCIAL_POSTS].capitalize()} posts dated from {_day(start)} to {_day(end, year=True)} inclusive: exactly {split}.
-- No more than one post per platform per day. No LinkedIn posts on a Saturday or Sunday ({_days(weekend, "and")}).
-- Length, counted in characters including spaces, hashtags and links: {limits}.
-- Every post carries the campaign hashtag {f.SOCIAL_CAMPAIGN_HASHTAG}. Total hashtags per post, including that one: {hashtags}.
-- Any post that states the ${f.SOCIAL_PRICE} price also carries the exact sentence "{f.SOCIAL_PRICE_NOTE}"
-- Never use these words: {", ".join(f.SOCIAL_BANNED_WORDS)}.
-- State nothing about the shop, the mechanics, demand or results that is not in the facts above.
-
-## How to write the posts
-- Write every post fresh. No post may be a copy of another or a shortened version of another, on the same platform or a different one. The required elements (the dates, the price sentence, "{f.SOCIAL_PRICE_NOTE}", the link and the hashtag) may repeat.
-- One ask per post: a post may invite the reader to do one thing (for example to save the date, or to book), not two.
-
-## Format
-One line per post, in date order, exactly like this:
-
-POST 1: {start.isoformat()} | {platforms[0]} | <post text>
-"""
-
-
-def build_social() -> dict[str, str]:
-    return {"social-calendar/campaign_brief.md": social_brief()}
 
 
 # ------------------------------------------------------------ monthly-report-reconcile
@@ -739,95 +708,10 @@ def build_monthly() -> dict[str, str]:
     }
 
 
-# -------------------------------------------------------- positioning-from-competitors
-
-POSITIONING_FACTS_MD = """\
-# Tallyhand: product fact sheet (approved by product and legal, April 2026)
-
-Use these facts as written. Each is numbered so a claim can cite it.
-
-- F1. Tallyhand is invoicing and payment-reminder software built for solo freelancers. It is not designed for teams or agencies.
-- F2. In onboarding tests, the median time from sign-up to sending a first invoice was 4 minutes (internal test, 212 new users, March 2026).
-- F3. Tallyhand sends automatic payment reminders at 3, 7 and 14 days overdue.
-- F4. Customers who turned reminders on were paid a median of 9 days sooner than in their own previous quarter (customer data, 1,840 accounts, 2025). This is an observed median, not a promise.
-- F5. Tallyhand costs $12 per month, flat. Tallyhand charges no per-invoice fee. Card payments are processed by a third party at that processor's own rate.
-- F6. Invoices can be issued in 14 currencies.
-- F7. Tallyhand has no built-in time tracking. It connects to 3 time trackers: Hourstack, Tempoline and Daybook.
-- F8. In the independent SoloWork Review 2026 Freelance Tools Survey, Tallyhand was rated 4.6 out of 5 and ranked 2nd of 11 invoicing tools for ease of use.
-- F9. Tallyhand has 21,000 active freelancers as of April 2026.
-- F10. Tallyhand completed a SOC 2 Type I report in January 2026. A Type II audit is in progress and must not be claimed.
-- F11. Support is by email only. The median first response is 3 hours on business days.
-- F12. Recurring invoices and monthly retainers are supported.
-- F13. There is no mobile app. The product works in a mobile browser.
-- F14. The free trial lasts 30 days and needs no card.
-"""
-
-POSITIONING_COMPETITORS_MD = """\
-# Competitor page extracts (captured April 2026)
-
-## Ledgerly (pricing and home page)
-- "Invoicing and accounting for growing businesses."
-- "Send professional invoices in minutes."
-- Automatic payment reminders.
-- $15 per month plus a 1% fee on each paid invoice.
-- 135 currencies. Built-in time tracking. iOS and Android apps.
-- 14-day free trial; a card is required to start it.
-- "Trusted by 400,000 businesses."
-
-## PaidUp (home page)
-- "The #1 rated invoicing app."
-- Free to start, with no monthly price. PaidUp keeps 1.5% of every invoice paid; card payments cost 2.9% + 60¢ on top.
-- Automatic payment reminders on every plan.
-- Time tracking available as a paid add-on.
-- "For freelancers, contractors and small teams."
-
-## Invoxa (features and pricing page)
-- "Billing for agencies and consultancies."
-- $19 per month, plus 50¢ for each invoice sent.
-- Payment reminders on a schedule you set.
-- SOC 2 Type II certified.
-- 24/7 live chat support. Client portal.
-- 7-day free trial; a card is required to start it.
-"""
-
-POSITIONING_FOUNDER_MD = """\
-# Note from the founder
-
-We relaunch the home page next week. I need one positioning line and three claims we can put under it.
-
-What I'd love to say:
-- that we're the fastest way to invoice,
-- that we're the #1 and most trusted invoicing tool for freelancers,
-- that freelancers get paid 2x faster with us,
-- that we have bank-grade security,
-- that we're the cheapest option.
-
-Use what's true. If one of those can't be said, tell me which and why, and give me what we can say instead.
-"""
-
-
-def build_positioning() -> dict[str, str]:
-    return {
-        "positioning/product_fact_sheet.md": POSITIONING_FACTS_MD,
-        "positioning/competitor_pages.md": POSITIONING_COMPETITORS_MD,
-        "positioning/founder_note.md": POSITIONING_FOUNDER_MD,
-    }
-
-
-def source_prices_and_percents(*texts: str) -> tuple[set[float], set[float]]:
-    """The dollar amounts and the percentages written in the supplied sources."""
-    dollars, percents = set(), set()
-    for text in texts:
-        dollars.update(float(raw.replace(",", "")) for raw in re.findall(r"\$\s*(\d[\d,]*(?:\.\d+)?)", text))
-        percents.update(float(raw.replace(",", "")) for raw in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*%", text))
-    return dollars, percents
-
-
 # ------------------------------------------------------------------------- driver
 
 BUILDERS = (
-    build_seo_brief, build_seo_crawl, build_search_terms, build_lifecycle,
-    build_ab_test, build_social, build_monthly, build_positioning,
+    build_seo_brief, build_seo_crawl, build_search_terms, build_lifecycle, build_ab_test, build_monthly,
 )
 # task id -> the fixture folder its sources live in
 FOLDERS = {
@@ -836,11 +720,8 @@ FOLDERS = {
     "search-terms-negatives": "search-terms",
     "lifecycle-reengagement": "lifecycle",
     "ab-test-readout": "ab-test",
-    "social-calendar-limits": "social-calendar",
     "monthly-report-reconcile": "monthly-report",
-    "positioning-from-competitors": "positioning",
 }
-DATA_TASKS = tuple(task_references.REFERENCES)
 
 ANSWER_RULE = (
     "Each line is the label, a colon, and the number alone: no words, no working and no second "
@@ -894,11 +775,59 @@ BANDS = {
         "q6_platform_conversions": ("absolute", 0, 50),
     },
 }
+# What each banded answer states, for the wording of its check.
+ANSWER_WHAT = {
+    "seo-content-brief": {
+        "q1_already_ranking": "how many keywords in the export the site already ranks in the top 10 for",
+        "q2_qualifying_count": "how many qualifying keywords the target topic has",
+        "q3_topic_volume": "the combined monthly searches of the target topic's qualifying keywords",
+        "q4_primary_volume": "the monthly searches of the primary keyword",
+        "q5_ranking_volume": "the combined monthly searches of the keywords the site already ranks in the top 10 for",
+    },
+    "seo-technical-triage": {
+        "q1_broken_linked": "the number of 404 URLs with at least one inlink",
+        "q2_redirect_chains": "the number of redirect chains as defined",
+        "q3_noindex_in_sitemap": "the number of noindex URLs listed in the sitemap",
+        "q4_bad_canonicals": "the number of bad canonicals as defined",
+        "q5_duplicate_title_groups": "the number of duplicate-title groups among indexable pages",
+        "q6_sessions_at_risk": "the total organic sessions of the noindex URLs listed in the sitemap",
+    },
+    "search-terms-negatives": {
+        "q1_zero_conversion_spend": "the total cost of search terms with 0 conversions",
+        "q2_promote_count": "the number of promote candidates as defined",
+        "q3_irrelevant_spend": "the total cost of the irrelevant search terms as defined",
+        "q4_promote_conversions": "the combined conversions of the promote candidates",
+    },
+    "lifecycle-reengagement": {
+        "q1_mailable": "the number of mailable subscribers",
+        "q2_lapsed": "the number of lapsed subscribers",
+        "q3_lapsed_buyers": "the number of lapsed buyers",
+        "q4_lapsed_non_buyers": "the number of lapsed non-buyers",
+        "q5_long_dormant": "the number of long-dormant subscribers",
+    },
+    "ab-test-readout": {
+        "q1_control_visitors": "the total visitors in control over the four weeks",
+        "q2_variant_visitors": "the total visitors in variant B over the four weeks",
+        "q3_control_rate": "control's signup rate as a percentage",
+        "q4_variant_rate": "variant B's signup rate as a percentage",
+        "q5_relative_lift": "variant B's relative lift over control as a percentage",
+        "q6_srm_chi_square": "the chi-square statistic of observed visitors against the planned 50/50 split",
+        "q7_p_value": "the two-sided p-value of the pooled two-proportion test on signup rate (a continuity-corrected test lands inside the full-credit band)",
+    },
+    "monthly-report-reconcile": {
+        "q1_ad_spend": "total ad spend",
+        "q2_real_orders": "the number of real orders as defined",
+        "q3_net_revenue": "net revenue as defined (revenue with the refunds left in is outside the band)",
+        "q4_duplicate_rows": "the number of duplicate analytics rows as defined",
+        "q5_blended_roas": "blended return on ad spend as defined",
+        "q6_platform_conversions": "the conversions the ad platforms report, all platforms combined",
+    },
+}
 # The banded checks that prove each task's critical criterion. An answer is
 # listed only when it is a plain sum, count or rate under an explicit filter,
-# with no planted trap inside it and a zero band at least 10% wide: a trap
-# then costs its own criterion, and only a figure no reading of the data
-# supports fails the critical one.
+# with no planted trap inside it and a zero band at least a tenth of its
+# value. A planted trap therefore costs its own criterion. A figure beyond the
+# zero band of a listed answer scores the whole attempt zero.
 ORACLE = {
     "seo-content-brief": {"no_invented_data": ["q5_ranking_volume"]},
     "seo-technical-triage": {"no_invented_data": ["q6_sessions_at_risk"]},
@@ -906,8 +835,6 @@ ORACLE = {
     "lifecycle-reengagement": {"no_invented_data": ["q1_mailable"]},
     "ab-test-readout": {"no_invented_data": ["q1_control_visitors", "q2_variant_visitors"]},
     "monthly-report-reconcile": {"no_invented_data": ["q1_ad_spend", "q6_platform_conversions"]},
-    "social-calendar-limits": {"no_invented_facts": ["prices_exact"]},
-    "positioning-from-competitors": {"no_invented_facts": ["figures_from_sources"]},
 }
 # Lines each prompt must carry word for word: the definitions the figures are
 # computed under, and the answer lines. A changed definition without a changed
@@ -930,6 +857,7 @@ PROMPT_LINES = {
         "- A page is indexable when its status is 200, its `meta_robots` does not contain noindex, and its `canonical` is blank or equal to its own URL.",
         "- A bad canonical is a status-200 URL whose `canonical` points to a different URL that does not return 200.",
         "- A duplicate-title group is a set of two or more indexable pages that share exactly the same `title`.",
+        "- The URLs an issue type affects are the URLs it counts, with two exceptions: a redirect chain affects every redirecting URL in it (its first URL and each URL it passes through), and a duplicate-title group affects every page in the group.",
         "A1: <number of broken linked pages>",
         "A2: <number of redirect chains>",
         "A3: <number of URLs that are noindex but listed in the sitemap>",
@@ -948,9 +876,9 @@ PROMPT_LINES = {
     ],
     "lifecycle-reengagement": [
         "- Mailable: `consent_status` is subscribed, `hard_bounce` is no and `spam_complaint` is no.",
-        "- Lapsed: mailable, and `last_open_date` is earlier than 2026-03-03 or blank.",
+        f"- Lapsed: mailable, and `last_open_date` is earlier than {LIFECYCLE_LAPSED_BEFORE.isoformat()} or blank.",
         "- Lapsed buyers are lapsed subscribers with an `orders_count` of 1 or more; lapsed non-buyers have 0.",
-        "- Long-dormant: lapsed, and `last_open_date` is earlier than 2025-06-01 or blank.",
+        f"- Long-dormant: lapsed, and `last_open_date` is earlier than {LIFECYCLE_DORMANT_BEFORE.isoformat()} or blank.",
         "A1: <number of mailable subscribers>",
         "A2: <number of lapsed subscribers>",
         "A3: <number of lapsed buyers>",
@@ -983,19 +911,8 @@ PROMPT_LINES = {
         "A5: <blended ROAS, to two decimals>",
         "A6: <total conversions the ad platforms report, all platforms combined>",
     ],
-    "social-calendar-limits": [
-        "POST <n>: <YYYY-MM-DD> | <X, LinkedIn or Instagram> | <post text>",
-        f"Number the posts 1 to {task_facts.SOCIAL_POSTS}.",
-    ],
-    "positioning-from-competitors": [
-        f"POSITIONING: <one sentence of {task_facts.POSITIONING_WORD_LIMIT} words or fewer saying who Tallyhand is for, what it is, and why they would choose it>",
-        "CLAIM-1: <a supporting claim> [fact ids]",
-        "CLAIM-2: <a supporting claim> [fact ids]",
-        "CLAIM-3: <a supporting claim> [fact ids]",
-        "(facts numbered F1 to F14)",
-    ],
 }
-for _task_id in DATA_TASKS:
+for _task_id in FOLDERS:
     PROMPT_LINES[_task_id].append(ANSWER_RULE)
 
 
@@ -1011,7 +928,7 @@ def read_fixtures() -> dict[str, str]:
 
 
 def reference(task_id: str, files: dict[str, str] | None = None) -> dict:
-    """The judge's reference for a data task, computed from its fixture files."""
+    """The judge's reference for a task, computed from its fixture files."""
     files = files if files is not None else read_fixtures()
     prefix = FOLDERS[task_id] + "/"
     sources = {name[len(prefix):]: text for name, text in files.items() if name.startswith(prefix)}
@@ -1020,54 +937,165 @@ def reference(task_id: str, files: dict[str, str] | None = None) -> dict:
 
 def answers(files: dict[str, str] | None = None) -> dict[str, dict]:
     files = files if files is not None else read_fixtures()
-    return {task_id: reference(task_id, files)["answers"] for task_id in DATA_TASKS}
+    return {task_id: reference(task_id, files)["answers"] for task_id in FOLDERS}
 
 
-def expected_answers_field(task_id: str) -> dict | None:
-    return {"count": len(BANDS[task_id]), "single_number": True} if task_id in BANDS else None
+def expected_answers_field(task_id: str) -> dict:
+    return {"count": len(BANDS[task_id]), "single_number": True}
 
 
 def expected_programmatic(task_id: str, files: dict[str, str] | None = None) -> dict:
     """Every programmatic condition a task file must carry, by criterion id."""
-    if task_id in BANDS:
-        values = reference(task_id, files)["answers"]
-        conditions: dict = {"answer_block_complete": {"fact": "answer_count", "equals": len(BANDS[task_id])}}
-        for criterion_id, (kind, full, zero) in BANDS[task_id].items():
-            conditions[criterion_id] = {
-                "fact": "answer_q" + re.match(r"q(\d+)_", criterion_id).group(1),
-                "near": values[criterion_id],
-                "tolerance": {"kind": kind, "full": full, "zero": zero},
-            }
-        return conditions
-    exact = {"kind": "absolute", "full": 0, "zero": 1}
-    if task_id == "social-calendar-limits":
-        posts = task_facts.SOCIAL_POSTS
-        return {
-            "all_posts_present": {"fact": "social_post_count", "equals": posts},
-            "platform_split": {"fact": "social_platform_split_ok", "equals": True},
-            "dates_in_window": {"fact": "social_in_window_post_count", "equals": posts},
-            "within_char_limits": {"fact": "social_within_limit_post_count", "equals": posts},
-            "spacing_rules": [{"fact": "social_same_platform_same_day_count", "equals": 0},
-                              {"fact": "social_linkedin_weekend_count", "equals": 0}],
-            "hashtag_rules": [{"fact": "social_campaign_hashtag_post_count", "equals": posts},
-                              {"fact": "social_hashtag_limit_violation_count", "equals": 0}],
-            "booking_posts_present": [{"fact": "social_opening_day_link_post_count", "gte": 1},
-                                      {"fact": "social_reminder_link_post_count", "gte": 1}],
-            "embargo_kept": {"fact": "social_embargo_violation_count", "equals": 0},
-            "no_booking_link_after_close": {"fact": "social_late_booking_link_count", "equals": 0},
-            "price_note_present": {"fact": "social_price_without_note_count", "equals": 0},
-            "banned_words_absent": {"fact": "social_banned_word_post_count", "equals": 0},
-            "prices_exact": {"fact": "social_wrong_dollar_amount_count", "near": 0, "tolerance": exact},
+    values = reference(task_id, files)["answers"]
+    conditions: dict = {"answer_block_complete": {"fact": "answer_count", "equals": len(BANDS[task_id])}}
+    for criterion_id, (kind, full, zero) in BANDS[task_id].items():
+        conditions[criterion_id] = {
+            "fact": "answer_q" + re.match(r"q(\d+)_", criterion_id).group(1),
+            "near": values[criterion_id],
+            "tolerance": {"kind": kind, "full": full, "zero": zero},
         }
-    if task_id == "positioning-from-competitors":
-        return {
-            "all_lines_present": {"fact": "positioning_missing_label_count", "equals": 0},
-            "positioning_length": {"fact": "positioning_within_word_limit", "equals": True},
-            "claims_cited": [{"fact": "positioning_cited_claim_count", "equals": 3},
-                             {"fact": "positioning_invalid_citation_count", "equals": 0}],
-            "figures_from_sources": {"fact": "positioning_unsupported_figure_count", "near": 0, "tolerance": exact},
-        }
-    raise KeyError(task_id)
+    return conditions
+
+
+def band_wording(kind: str, full: float, zero: float) -> str:
+    """How a check's text describes its band; rendered, so it cannot go stale."""
+    if kind == "absolute" and full == 0:
+        return f"full credit for the exact figure, zero credit {zero:g} or more off"
+    if kind == "absolute":
+        return f"full credit within {full:g}, zero credit {zero:g} or more off"
+    return f"full credit within {full * 100:g}%, zero credit beyond {zero * 100:g}% off"
+
+
+def _listed(items: list[str], joiner: str = "and", quote: str = "'") -> str:
+    items = [f"{quote}{item}{quote}" for item in items]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {joiner} " + items[-1]
+
+
+def pinned_checks(task_id: str, files: dict[str, str] | None = None) -> dict[str, str]:
+    """The wording of every check that states something a program computes.
+
+    A band, a figure, a keyword, a search term or an order of issues written
+    by hand in a rubric goes stale the day the data or a tolerance changes.
+    These are rendered from the same values the oracle and the judge's
+    reference use.
+    """
+    ref = reference(task_id, files)
+    count = len(BANDS[task_id])
+    checks = {
+        "answer_block_complete": (
+            f"The response ends with the required answer block and all {count} labeled answers A1-A{count} "
+            "are present, each on its own line with the number alone."
+        ),
+    }
+    for criterion_id, what in ANSWER_WHAT[task_id].items():
+        checks[criterion_id] = f"A{criterion_id[1]} states {what}; {band_wording(*BANDS[task_id][criterion_id])}."
+
+    if task_id == "seo-content-brief":
+        qualifying = [row["keyword"] for row in ref["qualifying_keywords_in_target_topic"]]
+        ranking = [row["keyword"] for row in ref["keywords_already_ranking_top_10"]]
+        gaps = ref["qualifying_keywords_neither_competing_outline_covers"]
+        checks.update({
+            "target_topic_named": (
+                f"The brief targets the {ref['target_topic']} topic and names it as the target. "
+                "Targeting any other topic fails."
+            ),
+            "primary_keyword_named": f"The primary keyword is '{ref['primary_keyword']}'. Any other primary keyword fails.",
+            "existing_rankings_respected": (
+                f"No keyword the site already ranks in the top 10 for ({', '.join(ranking)}) is listed as a "
+                "primary or secondary keyword of the new article. Linking to the pages that rank for them is "
+                "fine; listing one of them as a target fails."
+            ),
+            "outline_covers_demand": (
+                "The outline has a section that answers each of the two highest-volume qualifying keywords "
+                f"after the primary keyword: {_listed(qualifying[1:3])}. Missing either fails."
+            ),
+            "competitor_gap_grounded": (
+                "The brief names at least one subtopic that the keyword export shows demand for and that "
+                f"neither competing outline for the target topic covers ({_listed(gaps, 'or')}), and includes "
+                "it in the outline. Naming as the gap a subtopic one of those two outlines already covers fails."
+            ),
+        })
+    elif task_id == "seo-technical-triage":
+        order = [task_references.CRAWL_ISSUE_NAMES[name] for name in ref["issue_order_by_sessions_then_inlinks"]]
+        checks["issues_in_order"] = (
+            f"The five issue types appear in the order the prompt's rule gives: {', '.join(order)} (organic "
+            "sessions of the affected URLs, most first; then inlinks for the issue types that affect none). "
+            "Any other order fails."
+        )
+    elif task_id == "search-terms-negatives":
+        brand = [row["search_term"] for row in ref["brand_search_terms"]]
+        promote = [row["search_term"] for row in ref["promote_candidates"]]
+        odd = [term for term in promote if re.search(r"\b(cheap|free)\b", term)]
+        above = [row["search_term"] for row in ref["not_yet_keywords_with_3_or_more_conversions_above_target"]]
+        checks.update({
+            "brand_not_negated": (
+                f"No negative keyword would block a search for the brand name ({_listed(brand)}). "
+                "Blocking 'careers' or 'jobs' is fine; a negative such as 'sablewood' or 'reviews' fails."
+            ),
+            "relevant_terms_kept": (
+                "No negative keyword would block a search for a product Sablewood sells: no negative such as "
+                f"'cheap' or 'free' is proposed (they would block {_listed(odd)}), and no roller, Roman, "
+                "Venetian, blackout or day-night blind search is blocked. One such negative fails."
+            ),
+            "promotions_named": (
+                f"All {len(promote)} promote candidates are named: {_listed(promote)}. It fails if one is "
+                f"missing, or if a search term with fewer than 3 conversions, or {_listed(above, 'or')} (above "
+                "the target cost per conversion), is presented as meeting the definition."
+            ),
+        })
+    elif task_id == "lifecycle-reengagement":
+        emails = _NUMBER_WORDS[LIFECYCLE_MAX_EMAILS]
+        checks.update({
+            "flow_three_emails": (
+                f"The re-engagement flow has exactly {emails} emails, each with a send timing and a single ask. "
+                f"{_NUMBER_WORDS[LIFECYCLE_MAX_EMAILS - 1].capitalize()} emails or "
+                f"{_NUMBER_WORDS[LIFECYCLE_MAX_EMAILS + 1]} fails."
+            ),
+            "offer_rules_followed": (
+                f"The only incentive is {LIFECYCLE_DISCOUNT_PERCENT}% off with code {LIFECYCLE_DISCOUNT_CODE}, "
+                f"valid for {LIFECYCLE_DISCOUNT_VALID_DAYS} days, offered to lapsed buyers only; lapsed "
+                f"non-buyers are offered the '{LIFECYCLE_RECIPE_PACK}' recipe pack and no discount. Any other "
+                "discount, gift or free box fails, and so does the discount offered to non-buyers."
+            ),
+            "cadence_follows_policy": (
+                f"The stated send timings put the {emails} emails at least {LIFECYCLE_MIN_GAP_DAYS} days apart, "
+                "and no subject line starts with 'Re:' or 'Fwd:'. Emails less than "
+                f"{LIFECYCLE_MIN_GAP_DAYS} days apart, or such a subject line, fails."
+            ),
+            "exit_and_sunset": (
+                "The plan says that people who open, click or order leave the flow at once, and that people who "
+                f"have not opened or clicked {LIFECYCLE_SUNSET_DAYS} days after their final email are suppressed "
+                "from marketing. Missing either fails."
+            ),
+        })
+    elif task_id == "ab-test-readout":
+        totals, devices = ref["totals"], ref["by_device"]
+        gap = {device: abs(arms["control"]["visitors"] - arms["variant_b"]["visitors"]) for device, arms in devices.items()}
+        uneven, even = max(gap, key=gap.get), min(gap, key=gap.get)
+        checks.update({
+            "srm_flagged": (
+                f"The readout says the split of visitors ({totals['control']['visitors']:,} control against "
+                f"{totals['variant_b']['visitors']:,} variant B) departs from the planned 50/50 by more than "
+                "chance allows, and that the comparison between the variants cannot be trusted until that is "
+                "explained. Reporting the two totals without saying the comparison is unreliable fails."
+            ),
+            "not_significant_stated": (
+                "The readout states that the difference in signup rate is not statistically significant at the "
+                f"plan's {AB_SIGNIFICANCE_PERCENT}% level."
+            ),
+            "stop_rule_respected": (
+                f"The readout notes that neither variant reached the {AB_REQUIRED_PER_ARM:,} visitors the plan "
+                "required before the result is read."
+            ),
+            "imbalance_located": (
+                f"The readout says which rows of the results show the imbalance: the {uneven} rows, where "
+                f"variant B has {devices[uneven]['variant_b']['visitors']:,} visitors against control's "
+                f"{devices[uneven]['control']['visitors']:,} ({even} is balanced, "
+                f"{devices[even]['variant_b']['visitors']:,} against {devices[even]['control']['visitors']:,}). "
+                f"Naming {uneven} is enough; not saying where the imbalance is fails."
+            ),
+        })
+    return checks
 
 
 def dump_task(task: dict) -> str:
@@ -1121,6 +1149,11 @@ def task_problems(task_id: str, task: dict, files: dict[str, str] | None = None)
             problems.append(f"{task_id}: criterion {criterion_id} is missing")
         elif actual != condition:
             problems.append(f"{task_id}: {criterion_id} is {json.dumps(actual)}, pinned {json.dumps(condition)}")
+    for criterion_id, text in pinned_checks(task_id, files).items():
+        if criterion_id not in criteria:
+            problems.append(f"{task_id}: criterion {criterion_id} is missing")
+        elif criteria[criterion_id].get("check") != text:
+            problems.append(f"{task_id}: the wording of {criterion_id} differs from what the data and bands give: {text!r}")
     for criterion_id, criterion in criteria.items():
         if criterion.get("programmatic") and criterion_id not in expected:
             problems.append(f"{task_id}: {criterion_id} has a programmatic condition this script does not pin")
@@ -1128,6 +1161,9 @@ def task_problems(task_id: str, task: dict, files: dict[str, str] | None = None)
         if criterion.get("fails_if_zero") != wanted:
             problems.append(
                 f"{task_id}: {criterion_id} fails_if_zero is {criterion.get('fails_if_zero')}, pinned {wanted}")
+        # A critical criterion is also a negative one: it is satisfied by absence.
+        if criterion_id in ORACLE[task_id] and not (criterion.get("critical") is True and criterion.get("negative") is True):
+            problems.append(f"{task_id}: {criterion_id} must be flagged both critical and negative")
     for criterion_id in ORACLE[task_id]:
         if criterion_id not in criteria:
             problems.append(f"{task_id}: criterion {criterion_id} is missing")
@@ -1172,12 +1208,13 @@ def sync_tasks(tasks_dir: Path = TASKS) -> tuple[list[str], list[str]]:
         for criterion_id, condition in expected_programmatic(task_id, files).items():
             if criterion_id in criteria:
                 criteria[criterion_id]["programmatic"] = condition
+        for criterion_id, text in pinned_checks(task_id, files).items():
+            if criterion_id in criteria:
+                criteria[criterion_id]["check"] = text
         for criterion_id, rules in ORACLE[task_id].items():
             if criterion_id in criteria:
                 criteria[criterion_id]["fails_if_zero"] = rules
-        field = expected_answers_field(task_id)
-        if field is not None:
-            task["answers"] = field
+        task["answers"] = expected_answers_field(task_id)
         text = dump_task(task)
         if text != path.read_text():
             path.write_text(text)

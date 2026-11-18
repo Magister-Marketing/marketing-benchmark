@@ -9,10 +9,12 @@ from today's fixture files and nothing comes from the response.
 
 `scripts/gen_more_tasks.py` computes the task files' `near` targets with the
 same functions, so the judge's reference and the oracle cannot disagree.
-`tests/test_more_tasks.py` recomputes every answer with separate code.
+`tests/test_more_tasks.py` recomputes every answer and every other figure
+returned here with separate code.
 
 `task_reference` never raises: a prompt it cannot read yields no reference,
-which is what every task had before this module existed.
+which is what every task had before this module existed, and a warning that
+says so, because a judge without totals grades these tasks blind.
 """
 import collections
 import csv
@@ -20,9 +22,10 @@ import datetime as dt
 import io
 import math
 import re
+import warnings
 from decimal import Decimal
 
-VERSION = 1
+VERSION = 2
 
 _SOURCE_HEADING = re.compile(r"(?m)^---\n\n## (?:Supplied source: (?P<name>[^\n]+)|[^\n]*)\n\n")
 
@@ -52,15 +55,42 @@ def _money(value: Decimal) -> float:
 
 # ------------------------------------------------------------------ seo-content-brief
 
+def seo_ranks_top_ten(row: dict) -> bool:
+    """Whether the site already ranks 10 or better for the keyword."""
+    return row["current_rank"] != "" and int(row["current_rank"]) <= 10
+
+
 def seo_qualifies(row: dict) -> bool:
     """Informational, difficulty at or under 45, and not already in the top 10."""
-    ranked_top_ten = row["current_rank"] != "" and int(row["current_rank"]) <= 10
-    return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and not ranked_top_ten
+    return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and not seo_ranks_top_ten(row)
+
+
+_SEO_FILLER_WORDS = frozenset("how to can you vs does is what a the of for do with and".split())
+
+
+def seo_topic_outlines(outlines: str, topic: str) -> str:
+    """The part of competitor_outlines.md under `## Topic: <topic>`, lowercased."""
+    for block in re.split(r"(?m)^## Topic: ", outlines)[1:]:
+        heading, _, body = block.partition("\n")
+        if heading.strip().lower() == topic.lower():
+            return body.lower()
+    return ""
+
+
+def seo_uncovered(keyword: str, topic: str, outlines: str) -> bool:
+    """Whether no heading of the topic's competing outlines touches the keyword.
+
+    A keyword is touched when a word of it, other than the topic's own words
+    and filler, appears in an outline: "ratio", "long", "iced".
+    """
+    own = [word for word in re.findall(r"[a-z]+", keyword.lower())
+           if word not in _SEO_FILLER_WORDS and word not in topic.lower().split()]
+    return bool(own) and not any(word.rstrip("s") in outlines for word in own)
 
 
 def seo_brief_reference(sources: dict[str, str]) -> dict:
     rows = _rows(sources["keyword_export.csv"])
-    ranking = [row for row in rows if row["current_rank"] != "" and int(row["current_rank"]) <= 10]
+    ranking = sorted((row for row in rows if seo_ranks_top_ten(row)), key=lambda row: int(row["current_rank"]))
     totals: dict[str, int] = collections.defaultdict(int)
     for row in rows:
         if seo_qualifies(row):
@@ -71,6 +101,7 @@ def seo_brief_reference(sources: dict[str, str]) -> dict:
         (row for row in rows if row["topic"] == target and seo_qualifies(row)),
         key=lambda row: -int(row["monthly_searches"]),
     )
+    outlines = seo_topic_outlines(sources.get("competitor_outlines.md", ""), target)
     return {
         "answers": {
             "q1_already_ranking": len(ranking),
@@ -85,6 +116,9 @@ def seo_brief_reference(sources: dict[str, str]) -> dict:
             {"keyword": row["keyword"], "monthly_searches": int(row["monthly_searches"]),
              "difficulty": int(row["difficulty"])} for row in qualifying
         ],
+        "qualifying_keywords_neither_competing_outline_covers": [
+            row["keyword"] for row in qualifying if outlines and seo_uncovered(row["keyword"], target, outlines)
+        ],
         "qualifying_volume_by_topic": dict(by_volume),
         "keywords_already_ranking_top_10": [
             {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]}
@@ -96,12 +130,21 @@ def seo_brief_reference(sources: dict[str, str]) -> dict:
 
 # --------------------------------------------------------------- seo-technical-triage
 
+CRAWL_ISSUE_NAMES = {
+    "noindex_in_sitemap": "noindex pages in the sitemap",
+    "duplicate_titles": "duplicate titles",
+    "bad_canonicals": "bad canonicals",
+    "broken_linked_pages": "broken linked pages",
+    "redirect_chains": "redirect chains",
+}
+
+
 def seo_crawl_reference(sources: dict[str, str]) -> dict:
     rows = _rows(sources["crawl_export.csv"])
-    status = {row["url"]: int(row["status_code"]) for row in rows}
+    by_url = {row["url"]: row for row in rows}
 
-    def redirects(code: int | None) -> bool:
-        return code is not None and 300 <= code < 400
+    def redirects(row: dict | None) -> bool:
+        return row is not None and 300 <= int(row["status_code"]) < 400
 
     def indexable(row: dict) -> bool:
         return (int(row["status_code"]) == 200 and "noindex" not in row["meta_robots"]
@@ -112,37 +155,59 @@ def seo_crawl_reference(sources: dict[str, str]) -> dict:
         if indexable(row):
             titles[row["title"]].append(row)
     duplicate_groups = {title: group for title, group in titles.items() if len(group) > 1}
-    issues = {
+    chain_starts = [row for row in rows if redirects(row) and redirects(by_url.get(row["redirect_target"]))]
+    # Every redirecting URL of a chain: its first URL and each URL it passes through.
+    chain_urls: dict[str, dict] = {}
+    for row in chain_starts:
+        hop: dict | None = row
+        while redirects(hop) and hop["url"] not in chain_urls:
+            chain_urls[hop["url"]] = hop
+            hop = by_url.get(hop["redirect_target"])
+    affected = {
         "broken_linked_pages": [row for row in rows if int(row["status_code"]) == 404 and int(row["inlinks"]) > 0],
-        "redirect_chains": [row for row in rows if redirects(int(row["status_code"]))
-                            and redirects(status.get(row["redirect_target"]))],
+        "redirect_chains": list(chain_urls.values()),
         "noindex_in_sitemap": [row for row in rows if "noindex" in row["meta_robots"] and row["in_sitemap"] == "yes"],
         "bad_canonicals": [row for row in rows if int(row["status_code"]) == 200
-                           and row["canonical"] not in ("", row["url"]) and status.get(row["canonical"]) != 200],
-        "duplicate_title_pages": [row for group in duplicate_groups.values() for row in group],
+                           and row["canonical"] not in ("", row["url"])
+                           and int(by_url.get(row["canonical"], {"status_code": 0})["status_code"]) != 200],
+        "duplicate_titles": [row for group in duplicate_groups.values() for row in group],
+    }
+    counts = {name: len(urls) for name, urls in affected.items()}
+    counts["redirect_chains"] = len(chain_starts)            # a chain is counted once, at its first URL
+    counts["duplicate_titles"] = len(duplicate_groups)       # groups, not pages
+    issues = {
+        name: {
+            "count_as_the_prompt_counts_it": counts[name],
+            "affected_urls": sorted(row["url"] for row in urls),
+            "organic_sessions_30d": sum(int(row["organic_sessions_30d"]) for row in urls),
+            "inlinks": sum(int(row["inlinks"]) for row in urls),
+        }
+        for name, urls in affected.items()
     }
     top = max(rows, key=lambda row: int(row["organic_sessions_30d"]))
     return {
         "answers": {
-            "q1_broken_linked": len(issues["broken_linked_pages"]),
-            "q2_redirect_chains": len(issues["redirect_chains"]),
-            "q3_noindex_in_sitemap": len(issues["noindex_in_sitemap"]),
-            "q4_bad_canonicals": len(issues["bad_canonicals"]),
-            "q5_duplicate_title_groups": len(duplicate_groups),
-            "q6_sessions_at_risk": sum(int(row["organic_sessions_30d"]) for row in issues["noindex_in_sitemap"]),
+            "q1_broken_linked": counts["broken_linked_pages"],
+            "q2_redirect_chains": counts["redirect_chains"],
+            "q3_noindex_in_sitemap": counts["noindex_in_sitemap"],
+            "q4_bad_canonicals": counts["bad_canonicals"],
+            "q5_duplicate_title_groups": counts["duplicate_titles"],
+            "q6_sessions_at_risk": issues["noindex_in_sitemap"]["organic_sessions_30d"],
         },
-        "issues": {
-            name: {
-                "urls": sorted(row["url"] for row in affected),
-                "organic_sessions_30d": sum(int(row["organic_sessions_30d"]) for row in affected),
-                "inlinks": sum(int(row["inlinks"]) for row in affected),
-            }
-            for name, affected in issues.items()
-        },
+        "issues": issues,
+        "issue_order_by_sessions_then_inlinks": sorted(
+            issues, key=lambda name: (-issues[name]["organic_sessions_30d"], -issues[name]["inlinks"])),
         "duplicate_title_groups": {title: sorted(row["url"] for row in group)
                                    for title, group in duplicate_groups.items()},
         "url_with_most_organic_sessions": {"url": top["url"], "organic_sessions_30d": int(top["organic_sessions_30d"])},
-        "interpretation": "Counts follow the prompt's definitions. URLs outside these lists are correctly configured in this export.",
+        "dead_pages_with_no_inlinks": sorted(
+            row["url"] for row in rows if int(row["status_code"]) == 404 and int(row["inlinks"]) == 0),
+        "interpretation": (
+            "Counts and affected URLs follow the prompt's definitions; a redirect chain's affected URLs are "
+            "every redirecting URL in it. dead_pages_with_no_inlinks are real 404s that the definition of a "
+            "broken linked page leaves out: reporting them is not an error, and counting them in A1 is. "
+            "Every other URL in the export is correctly configured."
+        ),
     }
 
 
@@ -185,7 +250,7 @@ def search_terms_reference(sources: dict[str, str]) -> dict:
         },
         "irrelevant_search_terms": [line(row) for row in sorted(irrelevant, key=lambda row: row["search_term"])],
         "promote_candidates": [line(row) for row in sorted(promote, key=lambda row: -int(row["conversions"]))],
-        "brand_search_terms": [line(row) for row in rows
+        "brand_search_terms": [line(row) for row in sorted(rows, key=lambda row: row["search_term"])
                                if SEARCH_BRAND.search(row["search_term"]) and row not in irrelevant],
         "not_yet_keywords_with_3_or_more_conversions_above_target": [
             line(row) for row in rows
@@ -196,7 +261,7 @@ def search_terms_reference(sources: dict[str, str]) -> dict:
              if int(row["conversions"]) == 0 and row not in irrelevant and not SEARCH_BRAND.search(row["search_term"])),
             default=0,
         ),
-        "interpretation": "Every other search term in the report is for a product Sablewood sells.",
+        "interpretation": "Every other search term in the report is a search for the brand or for a product Sablewood sells.",
     }
 
 
@@ -225,6 +290,20 @@ def lifecycle_reference(sources: dict[str, str]) -> dict:
             "q5_long_dormant": sum(1 for row in lapsed if opened_before(row, LIFECYCLE_DORMANT_BEFORE)),
         },
         "rows": len(rows),
+        "three_email_audience": {
+            "total": sum(1 for row in lapsed if not opened_before(row, LIFECYCLE_DORMANT_BEFORE)),
+            "buyers": sum(1 for row in lapsed if not opened_before(row, LIFECYCLE_DORMANT_BEFORE)
+                          and int(row["orders_count"]) >= 1),
+            "non_buyers": sum(1 for row in lapsed if not opened_before(row, LIFECYCLE_DORMANT_BEFORE)
+                              and int(row["orders_count"]) == 0),
+        },
+        "long_dormant_one_email_audience": {
+            "total": sum(1 for row in lapsed if opened_before(row, LIFECYCLE_DORMANT_BEFORE)),
+            "buyers": sum(1 for row in lapsed if opened_before(row, LIFECYCLE_DORMANT_BEFORE)
+                          and int(row["orders_count"]) >= 1),
+            "non_buyers": sum(1 for row in lapsed if opened_before(row, LIFECYCLE_DORMANT_BEFORE)
+                              and int(row["orders_count"]) == 0),
+        },
         "not_mailable": {
             "unsubscribed": consent["unsubscribed"],
             "never_consented": consent["never_consented"],
@@ -299,6 +378,9 @@ def monthly_reference(sources: dict[str, str]) -> dict:
     gross = sum(Decimal(row["gross_usd"]) for row in real)
     refunds = sum(Decimal(row["refund_usd"]) for row in real)
     status = collections.Counter(row["status"] for row in in_may)
+    first_event: dict[str, Decimal] = {}
+    for row in events:
+        first_event.setdefault(row["order_id"], Decimal(row["revenue_usd"]))
     by_platform: dict[str, int] = collections.defaultdict(int)
     for row in ads:
         by_platform[row["platform"]] += int(row["platform_conversions"])
@@ -320,8 +402,10 @@ def monthly_reference(sources: dict[str, str]) -> dict:
         },
         "analytics": {
             "purchase_rows": len(events),
-            "distinct_order_ids": len({row["order_id"] for row in events}),
+            "distinct_order_ids": len(first_event),
             "revenue_all_rows_usd": _money(sum(Decimal(row["revenue_usd"]) for row in events)),
+            "revenue_counting_each_order_once_usd": _money(sum(first_event.values())),
+            "real_orders_with_no_purchase_event": sum(1 for row in real if row["order_id"] not in first_event),
         },
         "ad_platforms": {
             "reported_conversions_by_platform": dict(by_platform),
@@ -348,5 +432,10 @@ def task_reference(task_id: str | None, exact_prompt: str) -> dict:
         return {}
     try:
         return {"version": VERSION, **build(supplied_sources(exact_prompt))}
-    except Exception:  # noqa: BLE001 - an unreadable prompt means no reference, never a failed grading run
+    except Exception as error:  # noqa: BLE001 - an unreadable prompt means no reference, never a failed grading run
+        warnings.warn(
+            f"no judge reference for {task_id}: its sources could not be read from the recorded prompt "
+            f"({type(error).__name__}: {error}); the judge will grade this task without reference totals",
+            RuntimeWarning, stacklevel=2,
+        )
         return {}
