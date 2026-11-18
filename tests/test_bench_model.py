@@ -286,6 +286,20 @@ def test_a_model_at_several_efforts_is_named_with_its_effort(site, tmp_path, mon
     assert bm.tweet_for(site, low["run_id"]).startswith("GPT-6.2 Sol (low effort) scored 96.0/100")
 
 
+def test_a_run_with_fewer_attempts_than_its_peers_says_so(site, tmp_path):
+    # The board's run made 3 attempts per task; this one made 1.
+    old = json.loads((site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").read_text())
+    old["repetitions"] = 3
+    (site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").write_text(json.dumps(old))
+    rep = report("20260103-000000-c3c3c3c3", "gpt-6-luna-high", scores={"alpha": 99.0, "beta": 99.0})
+    bm.export_run(write_run(tmp_path / "results", rep), site)
+    text = bm.tweet_for(site, rep["run_id"])
+    assert "#1 of 2 models" in text
+    assert "1 attempt per task; others ranked made 3." in text and len(text) <= 280
+    # The run with the most attempts says nothing of it.
+    assert "per task;" not in bm.tweet_for(site, "20260101-000000-aaaaaaaa")
+
+
 def test_numbers_round_as_the_page_does():
     assert bm.fmt_score(96.25) == "96.3"  # JavaScript's toFixed rounds this tie up
     assert bm.fmt_score(97.866) == "97.9"
