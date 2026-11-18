@@ -237,8 +237,9 @@ def label_from_id(base: str) -> str:
 
 def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     """A draft under 280 characters about the run, from the site's data: its
-    score, attempts passed, cost per task, rank among the board's runs of the
-    same setup, and the reference models that have a run in that setup."""
+    score, attempts passed, cost per attempt, rank among the board's runs of
+    the same setup, the reference models that have a run in that setup, and,
+    when the model is also the judge, that it is."""
     meta = read_meta(web)
     tasks = board_tasks(web, meta)
     entries = [entry_of(site_report(web, r["run_id"]), tasks) for r in meta["runs"]]
@@ -246,8 +247,11 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     if entry is None:
         raise Refusal(f"{run_id} is not on the site's board; export it first")
     peers = [e for e in entries if e["setup"] == entry["setup"]]
-    rank = 1 + sum(1 for e in peers if e["score"] > entry["score"])
-    tied = sum(1 for e in peers if e["score"] == entry["score"]) > 1
+    # Ranked on the score as printed, as the site ranks (board.ts rankIn): two
+    # runs that print the same score share a rank.
+    shown = lambda e: Decimal(fmt_score(e["score"]))  # noqa: E731
+    rank = 1 + sum(1 for e in peers if shown(e) > shown(entry))
+    tied = sum(1 for e in peers if shown(e) == shown(entry)) > 1
     label = model_label(entry["model"])
     effort = effort_of(entry["model"])
     name = f"{label} ({effort} effort)" if effort else label
@@ -269,8 +273,15 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
         f"{name} scored {fmt_score(entry['score'])}/100 on the Marketing Benchmark, "
         f"{'tied ' if tied else ''}#{rank} of {len(peers)} {peers_word}: "
         f"{entry['passed']}/{entry['attempts']} attempts met every requirement"
-        f"{lost_note}, at {fmt_cents(entry['cost_per_attempt'])} a task. {how}"
+        f"{lost_note}, at {fmt_cents(entry['cost_per_attempt'])} an attempt. {how}"
     )
+    # As the model's page and card say it (board.ts gradesItself).
+    effortless = entry["model"][: -len(effort) - 1] if effort else entry["model"]
+    if effortless == meta["judge_model"]:
+        head += " It is also the judge."
+    # A long name with every note can run over: the effort goes first.
+    if len(head) + 1 + len(url) > TWEET_LIMIT and effort:
+        head = head.replace(name, label, 1)
     # The reference models that have a run in the same setup, best first,
     # as many as fit.
     refs = sorted(

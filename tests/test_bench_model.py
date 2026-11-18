@@ -187,7 +187,7 @@ def test_tweet_reads_the_site_and_stays_under_280(site, tmp_path):
     text = bm.tweet_for(site, rep["run_id"])
     assert len(text) <= 280
     assert text.startswith("GPT-6.1 Sol (high effort) scored 97.9/100 on the Marketing Benchmark, #1 of 2 models: ")
-    assert "3/6 attempts met every requirement, at 10¢ a task." in text
+    assert "3/6 attempts met every requirement, at 10¢ an attempt." in text
     assert "vs GPT-6.2 Sol 97.0" in text  # the reference with a run; Opus 5.5 has none
     assert "Opus" not in text
     assert text.endswith("https://marketingbenchmark.ai/models/gpt-6.1-sol-high")
@@ -199,6 +199,23 @@ def test_a_claude_code_run_exports_and_gets_a_draft(site, tmp_path):
     assert bm.export_run(run, site)["setup"] == "claude-code"
     text = bm.tweet_for(site, rep["run_id"])
     assert "#1 of 1 models inside Claude Code" in text and "Run inside Claude Code." in text
+
+
+def test_runs_that_print_the_same_score_share_a_rank(site, tmp_path):
+    # 96.98 prints as 97.0, the board run's score, so the two share first place.
+    rep = report("20260103-000000-34343434", "gpt-6.1-sol-high", scores={"alpha": 98.0, "beta": 95.96})
+    run = write_run(tmp_path / "results", rep)
+    bm.export_run(run, site)
+    assert "tied #1 of 2 models" in bm.tweet_for(site, rep["run_id"])
+
+
+def test_the_draft_says_when_the_model_is_also_the_judge(site, tmp_path):
+    rep = report("20260103-000000-56565656", "claude-sonnet-5-5-high")
+    run = write_run(tmp_path / "results", rep)
+    bm.export_run(run, site)
+    text = bm.tweet_for(site, rep["run_id"])
+    assert text.startswith("Claude Sonnet 5.5 (high effort) scored")
+    assert "It is also the judge." in text and len(text) <= 280
 
 
 def test_numbers_round_as_the_page_does():
