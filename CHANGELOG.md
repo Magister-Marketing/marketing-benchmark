@@ -2,10 +2,14 @@
 
 ## Unreleased
 
-- Tasks: six closed-book tasks in kinds of marketing work the set lacked.
-  Development: `seo-technical-triage`, `search-terms-negatives`,
-  `ab-test-readout`. Holdout: `seo-content-brief`, `lifecycle-reengagement`,
-  `monthly-report-reconcile`. Each ends in a labeled answer block of banded
+- Tasks: six closed-book tasks in kinds of marketing work the set lacked,
+  all in the development split: `seo-technical-triage`,
+  `search-terms-negatives`, `ab-test-readout`, `seo-content-brief`,
+  `lifecycle-reengagement`, `monthly-report-reconcile`. The last three were
+  drafted as holdout tasks; their recorded answers were read and one rubric
+  was changed because of them, so they are development tasks and no
+  held-out claim rests on them. The holdout split is the four tasks it held
+  before. Each of the six ends in a labeled answer block of banded
   figures and has one critical no-invention criterion backed by an oracle
   that lists only plain aggregates: a plain sum, count or rate under an
   explicit filter, with a zero band at least a tenth of its value. A planted

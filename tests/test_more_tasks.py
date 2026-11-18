@@ -34,10 +34,14 @@ NEW_TASKS = {
     "seo-technical-triage": "development",
     "search-terms-negatives": "development",
     "ab-test-readout": "development",
-    "seo-content-brief": "holdout",
-    "lifecycle-reengagement": "holdout",
-    "monthly-report-reconcile": "holdout",
+    # Drafted as holdout tasks. Their recorded answers were read, and one rubric was changed
+    # because of them, so by the repository's rule they are development tasks.
+    "seo-content-brief": "development",
+    "lifecycle-reengagement": "development",
+    "monthly-report-reconcile": "development",
 }
+# The holdout split is the four tasks it held before these six were added.
+HOLDOUT = {"launch-capacity-trap", "platform-limits-gauntlet", "rate-card-reconciliation", "unsupportable-claims-brief"}
 # (prompt version, rubric version). Version 1 was a local draft, run once and
 # discarded. A version moves when its prompt or fixtures, or its rubric, do.
 VERSIONS = {
@@ -161,7 +165,8 @@ def _money(value) -> float:
 def test_six_tasks_load_with_their_splits_versions_and_one_oracle_backed_critical():
     tasks = bench.load_tasks()
     assert {task_id: tasks[task_id]["split"] for task_id in NEW_TASKS} == NEW_TASKS
-    assert collections.Counter(NEW_TASKS.values()) == {"development": 3, "holdout": 3}
+    assert set(NEW_TASKS.values()) == {"development"}
+    assert {task_id for task_id, task in tasks.items() if task["split"] == "holdout"} == HOLDOUT
     assert set(task_references.REFERENCES) == set(NEW_TASKS)
     # The two tasks whose checks read free text by pattern are parked, not here.
     assert not {"social-calendar-limits", "positioning-from-competitors"} & set(tasks)

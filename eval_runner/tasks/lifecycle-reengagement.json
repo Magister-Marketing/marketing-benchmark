@@ -1,7 +1,7 @@
 {
   "id": "lifecycle-reengagement",
   "title": "Re-engagement programme from a subscriber export",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 2,
   "rubric_version": 2,
   "fixtures": [

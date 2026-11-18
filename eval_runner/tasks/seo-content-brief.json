@@ -1,7 +1,7 @@
 {
   "id": "seo-content-brief",
   "title": "Content brief from a keyword export",
-  "split": "holdout",
+  "split": "development",
   "prompt_version": 3,
   "rubric_version": 4,
   "fixtures": [
