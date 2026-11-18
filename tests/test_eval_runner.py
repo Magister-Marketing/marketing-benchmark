@@ -1564,6 +1564,44 @@ def test_current_rubric_resolves_explicitly_compatible_historical_prompt(tmp_pat
     assert version == historical["version"]
 
 
+def test_current_rubric_accepts_an_agent_harness_prompt_that_carries_the_task(tmp_path):
+    """An agent harness wraps the task in its own preamble, so its recorded
+    prompt never hashes to the direct assembly. A rubric fix must still be
+    gradable against such a run: the saved prompt is tied to the attempt by
+    its hash, and it is the same task when it carries the whole direct
+    assembly (task text and every source) word for word. A changed task, or a
+    direct-api run with a wrapped prompt, is still refused."""
+    task = bench.load_tasks()["headline"]
+    saved_prompt = (
+        "Treat the supplied sources as current.\n\n"
+        + bench.assemble_prompt(task, False)
+        + "\nThe sources are also saved as files in the working folder.\n"
+    )
+    (tmp_path / "prompts").mkdir()
+    (tmp_path / "prompts" / "headline.md").write_text(saved_prompt)
+    attempts = [{
+        "task_id": "headline",
+        "prompt_sha256": hashlib.sha256(saved_prompt.encode()).hexdigest(),
+    }]
+
+    for harness in ("claude-code", "magister-agent"):
+        resolved, version = bench._resolve_recorded_prompt(
+            tmp_path, task, {"skills_included": False, "harness": harness}, attempts
+        )
+        assert resolved == saved_prompt
+        assert version == task["prompt_version"]
+
+    changed = dict(task)
+    changed["prompt"] = task["prompt"] + " One more requirement."
+    with pytest.raises(SystemExit, match="requires a new task id"):
+        bench._resolve_recorded_prompt(
+            tmp_path, changed, {"skills_included": False, "harness": "claude-code"}, attempts
+        )
+    for meta in ({"skills_included": False, "harness": "direct-api"}, {"skills_included": False}):
+        with pytest.raises(SystemExit, match="requires a new task id"):
+            bench._resolve_recorded_prompt(tmp_path, task, meta, attempts)
+
+
 def test_labeled_current_rubric_grade_combines_judge_and_programmatic(
     tmp_path, monkeypatch
 ):

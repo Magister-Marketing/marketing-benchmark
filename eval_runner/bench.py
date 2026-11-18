@@ -1792,6 +1792,15 @@ def _resolve_recorded_prompt(
         assembled = _prompt_candidate(task, prompt_text, run_meta["skills_included"])
         if hashlib.sha256(assembled.encode()).hexdigest() == recorded_hash:
             return saved_prompt or assembled, version
+    # An agent harness (Claude Code, the Magister bridge) wraps the task in its
+    # own preamble, so its recorded prompt never hashes to the direct assembly.
+    # Its saved prompt is tied to the attempt evidence above; the task is this
+    # one when that prompt carries a candidate's whole direct assembly (the
+    # task text and every supplied source) word for word.
+    if saved_prompt is not None and run_meta.get("harness", "direct-api") != "direct-api":
+        for version, prompt_text in candidates:
+            if _prompt_candidate(task, prompt_text, False).strip() in saved_prompt:
+                return saved_prompt, version
     raise SystemExit(
         f"{task['id']}: recorded prompt is not the current or an explicitly "
         "rubric-compatible historical version; a changed prompt requires a new task id"
