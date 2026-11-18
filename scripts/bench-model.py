@@ -305,10 +305,17 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
     effortless = entry["model"][: -len(effort) - 1] if effort else entry["model"]
     if effortless == meta["judge_model"]:
         head += " It is also the judge."
-    # A long name with every note can run over: the effort goes first, unless
-    # the board has this model at another effort too, when the name needs it.
-    if len(head) + 1 + len(url) > TWEET_LIMIT and effort and board_label(entry["model"], entries) == label:
-        head = head.replace(name, label, 1)
+    # A long name with every note can run over. The effort goes first, unless
+    # the board has this model at another effort too, when the name needs it;
+    # then the prose shortens, one phrase at a time. The notes (a lost
+    # attempt, fewer attempts, the judge) always stay.
+    shortenings = [(" on the Marketing Benchmark", ""), ("attempts met every requirement", "attempts passed")]
+    if effort and board_label(entry["model"], entries) == label:
+        shortenings.insert(0, (name, label))
+    for long, short in shortenings:
+        if len(head) + 1 + len(url) <= TWEET_LIMIT:
+            break
+        head = head.replace(long, short, 1)
     # The reference models that have a run in the same setup, best first,
     # as many as fit.
     refs = sorted(
