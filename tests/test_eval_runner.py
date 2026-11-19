@@ -216,6 +216,26 @@ def test_programmatic_facts_and_criteria_are_exact():
     assert ad_facts["primary_text_field_count"] == 3
     assert bench.programmatic_results(ad_task, ad_facts)["three_concepts"]["pass"]
 
+    # The ways saved answers wrote the labels (2026-11-19: 21 of 248 scored as
+    # having no concepts): bold before a note, a dash, or the value below.
+    written = [
+        "**Primary text** (87 characters)\nClip it where you work.\n\n**CTA**\nExplore the Arc Clip Lamp",
+        "- **Primary text** (92): Desk by day, bed by night.\n- **CTA**: Explore the Arc Clip Lamp",
+        "**Primary text** — 101 characters\nThread a needle.\n\n**CTA** — Explore the Arc Clip Lamp.",
+    ]
+    labelled = "\n\n".join(f"## Concept {n}\n{text}" for n, text in enumerate(written, 1))
+    labelled += "\n\n## Notes\n- **CTA:** All three use “Explore the Arc Clip Lamp” exactly.\n**CTA note:** a button label is picked at build time."
+    ad_facts = bench.measured_facts(ad_task, labelled)
+    assert (ad_facts["primary_text_field_count"], ad_facts["cta_field_count"], ad_facts["approved_cta_field_count"]) == (3, 3, 3)
+    results = bench.programmatic_results(ad_task, ad_facts)
+    assert results["three_concepts"]["pass"] and results["approved_cta"]["pass"]
+    # A sentence that starts with a label word is not a field, and a short
+    # wrong CTA still counts as a field and fails.
+    prose = labelled.replace("**Primary text** — 101 characters", "Primary text runs long here")
+    assert bench.measured_facts(ad_task, prose)["primary_text_field_count"] == 2
+    wrong = labelled.replace("**CTA** — Explore the Arc Clip Lamp.", "**CTA** — Shop now")
+    assert bench.measured_facts(ad_task, wrong)["approved_cta_field_count"] == 2
+
     blog_task = tasks["blog-post"]
     mixed_headings = "## One\n<h2>Two</h2>\n## Three\n<h2 class='last'>Four</h2>"
     assert bench.measured_facts(blog_task, mixed_headings)["h2_count"] == 4

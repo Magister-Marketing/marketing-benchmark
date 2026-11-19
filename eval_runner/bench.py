@@ -1118,6 +1118,37 @@ def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, li
     return values
 
 
+def _field_values(response_text: str, name: str) -> list[str]:
+    """The values of every field labelled `name`, in order, for a task whose
+    prompt asks for labelled fields without fixing how a label is written.
+
+    A label opens its line, after an optional bullet, list number or heading
+    mark, and may be bold. A note may follow it in brackets ("(87
+    characters)", "*(87 characters)*"), and the value after a colon, an em or
+    en dash or a spaced hyphen, or on the next non-empty line when the label
+    line ends there. So "**Primary text:** …", "**Primary text** (87): …",
+    "**Primary text** — 87 characters" and a bare "**CTA**" over its value all
+    count. A label word inside a longer label ("**CTA note:**") or a sentence
+    ("Primary text runs past…") does not. 2026-11-19: the earlier pattern
+    wanted the colon straight after the label, so 21 of 248 saved answers,
+    each with three labelled concepts, scored as having none.
+    """
+    pattern = re.compile(
+        r"(?im)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?(?:#{1,6}[ \t]+)?(?:\*\*|__)?"
+        + re.escape(name).replace(r"\ ", r"\s+")
+        + r"(?:\*\*|__)?[ \t]*(?:\([^\r\n)]*\)|\*\([^\r\n)]*\)\*|_\([^\r\n)]*\)_)?[ \t]*"
+        r"(?:(?::|[—–]|-(?=[ \t]))(?:\*\*|__)?[ \t]*([^\r\n]*)|(?:\*\*|__)?[ \t]*$)"
+    )
+    values: list[str] = []
+    for match in pattern.finditer(response_text):
+        value = (match.group(1) or "").strip()
+        if not value:
+            following = response_text[match.end():].splitlines()
+            value = next((line.strip() for line in following if line.strip()), "")
+        values.append(value.strip("*_`\"'“”‘’ ").strip())
+    return values
+
+
 def _dollar_amount_counts(text: str, expected: float) -> tuple[int, int]:
     amounts = [
         float(raw.replace(",", ""))
@@ -1379,20 +1410,20 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         ))
         facts["h2_count"] = markdown_h2s + html_h2s
     elif task_id == "ad-creatives":
-        facts["primary_text_field_count"] = len(re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?Primary\s+text"
-            r"(?:\s*\([^\r\n)]*\))?\s*:(?:\*\*)?",
-            response_text,
-        ))
-        cta_values = re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?CTA\s*:(?:\*\*)?"
-            r"[^\S\r\n]*(?:\r?\n[\t ]*)?([^\r\n]+)",
-            response_text,
-        )
+        facts["primary_text_field_count"] = len(_field_values(response_text, "Primary text"))
+        approved = "Explore the Arc Clip Lamp"
+        # A CTA field holds a button label. A labelled line that is a sentence
+        # about the CTAs ("**CTA:** All three use “Explore the Arc Clip Lamp”
+        # exactly.") is the answer's own audit, not a fourth field; only lines
+        # that would otherwise add to an exact three are affected.
+        cta_values = [
+            value
+            for value in _field_values(response_text, "CTA")
+            if value in (approved, approved + ".") or len(value.split()) <= 5
+        ]
         facts["cta_field_count"] = len(cta_values)
         facts["approved_cta_field_count"] = sum(
-            value.strip().strip("*_`\"'“”‘’") == "Explore the Arc Clip Lamp"
-            for value in cta_values
+            value in (approved, approved + ".") for value in cta_values
         )
     elif task_id in ("landing-page", "landing-page-repair"):
         facts.update(_html_facts(response_text))
