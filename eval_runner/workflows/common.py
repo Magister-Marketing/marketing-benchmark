@@ -11,20 +11,46 @@ block the judge is told to trust.
 from __future__ import annotations
 
 import csv
-import io
 import re
 from decimal import Decimal, InvalidOperation
 
-# A line that names a file: "### keywords.csv", "**keywords.csv**",
-# "File: `keywords.csv`", "keywords.csv:".
-_FILE_LINE = re.compile(
-    r"^\s*(?:#{1,6}\s*)?(?:[-*]\s+)?[*_`]*\s*(?:file\s*[:=]\s*)?[*_`]*\s*"
-    r"([a-z0-9][a-z0-9_.-]*\.csv)\s*[*_`]*\s*:?\s*[*_`]*\s*$",
-    re.IGNORECASE,
-)
-_HEADING = re.compile(r"^\s*#{1,6}\s+\S")
-_FENCE = re.compile(r"^\s*(```|~~~)")
-_PIPE_RULE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+# A reply is a model's output: untrusted, and as long and as odd as the model
+# made it. Lines are recognised by stripping and comparing, with one
+# single-class pattern for the name, so no line can make a pattern backtrack.
+_FILE_NAME = re.compile(r"[a-z0-9][a-z0-9_.-]*\.csv", re.IGNORECASE)
+_MAX_MARKER_LINE = 200
+_FENCES = ("```", "~~~")
+
+
+def file_named(line: str) -> str | None:
+    """The file a line names, or None: "### keywords.csv", "**keywords.csv**",
+    "- `keywords.csv`:", "File: keywords.csv"."""
+    if len(line) > _MAX_MARKER_LINE:
+        return None
+    core = line.strip().lstrip("#").strip()
+    if core[:2] in ("- ", "* "):
+        core = core[2:]
+    core = core.strip("*_` \t")
+    if core[:4].lower() == "file" and core[4:].lstrip()[:1] in (":", "="):
+        core = core[4:].lstrip()[1:]
+    core = core.strip("*_` \t:")
+    return core.lower() if _FILE_NAME.fullmatch(core) else None
+
+
+def _is_heading(line: str) -> bool:
+    core = line.lstrip()
+    marks = len(core) - len(core.lstrip("#"))
+    return 1 <= marks <= 6 and core[marks:marks + 1] in (" ", "\t") and bool(core[marks:].strip())
+
+
+def _is_fence(line: str) -> bool:
+    return line.lstrip().startswith(_FENCES)
+
+
+def _is_table_rule(line: str) -> bool:
+    """The line under a Markdown table's header: only pipes, colons, dashes."""
+    core = line.strip()
+    return "--" in core and not core.strip("|:- \t")
 
 
 def norm(text: object) -> str:
@@ -55,15 +81,29 @@ def money(text: object) -> Decimal | None:
         return None
 
 
+# No cell of a deliverable needs more than this; a longer line is cut, so a
+# runaway line cannot trip the csv module's field limit or fill a row.
+_MAX_ROW_CHARS = 4000
+
+
+def _csv_row(line: str) -> list[str]:
+    """One line as CSV, on its own: a stray quote spoils that row and cannot
+    swallow the rows after it."""
+    try:
+        return next(csv.reader([line]), [])
+    except csv.Error:
+        return [line]
+
+
 def _split(lines: list[str]) -> list[list[str]]:
-    kept = [line for line in lines if line.strip()]
+    kept = [line[:_MAX_ROW_CHARS] for line in lines if line.strip()]
     if kept and sum(line.strip().startswith("|") for line in kept) >= max(1, len(kept) - 1):
         # A Markdown table in place of the CSV that was asked for: read it anyway.
         return [
             [cell.strip() for cell in line.strip().strip("|").split("|")]
-            for line in kept if not _PIPE_RULE.match(line)
+            for line in kept if not _is_table_rule(line)
         ]
-    return [[cell.strip() for cell in row] for row in csv.reader(io.StringIO("\n".join(kept)))]
+    return [[cell.strip() for cell in _csv_row(line)] for line in kept]
 
 
 def _rows(lines: list[str]) -> list[dict[str, str]]:
@@ -90,24 +130,23 @@ def tables(text: str, names: list[str]) -> dict[str, list[dict[str, str]] | None
     found: dict[str, list[str]] = {}
     index = 0
     while index < len(lines):
-        match = _FILE_LINE.match(lines[index])
-        if not match or match.group(1).lower() not in wanted:
+        name = file_named(lines[index])
+        if name not in wanted:
             index += 1
             continue
-        name = match.group(1).lower()
         index += 1
         body: list[str] = []
         fenced = False
         while index < len(lines):
             line = lines[index]
-            if _FENCE.match(line):
+            if _is_fence(line):
                 index += 1
                 if fenced or body:
                     break
                 fenced = True
                 continue
             if not fenced:
-                if _FILE_LINE.match(line) or _HEADING.match(line):
+                if file_named(line) or _is_heading(line):
                     break
                 if not line.strip() and body:
                     break
