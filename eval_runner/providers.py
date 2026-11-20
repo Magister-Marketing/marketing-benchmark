@@ -148,7 +148,10 @@ REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # Anthropic's effort scale has no xhigh; a candidate must name a level the
 # provider actually accepts rather than being silently clamped into one.
 ANTHROPIC_EFFORTS = ("low", "medium", "high", "max")
-ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens")
+# model_max_output_tokens is the most output tokens the model accepts in one
+# request (its provider's documented maximum). It is never sent: it bounds
+# the ceiling retry below, and an explicit max_output_tokens may not exceed it.
+ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens", "model_max_output_tokens")
 OPENAI_ONLY_SETTINGS = ("text_verbosity",)
 CEILING_RETRY_MULTIPLIER = 2  # one retry with a doubled cap on empty+incomplete
 
@@ -170,10 +173,12 @@ def build_request(
     """Return (url, headers, body) for one generation request.
 
     `settings` are optional per-candidate knobs from models.json
-    (reasoning_effort, text_verbosity, max_output_tokens). Absent settings
-    are omitted from the request so the provider default applies. The
-    `max_output_tokens` argument is the Anthropic/OpenRouter ceiling; OpenAI
-    requests carry no cap unless the candidate sets one explicitly.
+    (reasoning_effort, text_verbosity, max_output_tokens,
+    model_max_output_tokens). Absent settings are omitted from the request so
+    the provider default applies. The `max_output_tokens` argument is the
+    Anthropic/OpenRouter ceiling; OpenAI requests carry no cap unless the
+    candidate sets one explicitly. `model_max_output_tokens`, the model's own
+    maximum, is never sent: `generate` uses it to bound the ceiling retry.
     """
     provider, model = split_model_spec(model_spec)
     settings = settings or {}
@@ -186,6 +191,15 @@ def build_request(
     cap_override = settings.get("max_output_tokens")
     if cap_override is not None and (not isinstance(cap_override, int) or cap_override <= 0):
         raise ProviderError(f"invalid max_output_tokens {cap_override!r}")
+    model_max = settings.get("model_max_output_tokens")
+    if model_max is not None and (
+            not isinstance(model_max, int) or isinstance(model_max, bool) or model_max <= 0):
+        raise ProviderError(f"invalid model_max_output_tokens {model_max!r}")
+    if model_max is not None and cap_override is not None and cap_override > model_max:
+        raise ProviderError(
+            f"max_output_tokens {cap_override} is above the model's maximum "
+            f"(model_max_output_tokens {model_max}) for {model_spec}"
+        )
 
     if provider in ("anthropic", "openrouter"):
         openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
@@ -479,17 +493,26 @@ def generate(
     # maximum — doubling cannot help, so the truncation is recorded honestly.
     # Anthropic and OpenRouter requests always carry a cap, so truncation
     # qualifies even when the candidate set no cap of its own; OpenAI requests
-    # are capped only when the candidate set one.
+    # are capped only when the candidate set one. The doubled cap never goes
+    # past the model's own maximum when the candidate names it
+    # (model_max_output_tokens): a request above it is rejected. A cap already
+    # at that maximum cannot be raised, so there is no retry, only the
+    # truncation recorded honestly.
     finish = result["finish_reason"] or ""
     explicit_cap = (settings or {}).get("max_output_tokens")
     effective_cap = explicit_cap or (
         max_output_tokens if provider in ("anthropic", "openrouter") else None
     )
+    raised_cap = effective_cap * CEILING_RETRY_MULTIPLIER if effective_cap else None
+    model_max = (settings or {}).get("model_max_output_tokens")
+    if raised_cap and model_max:
+        raised_cap = min(raised_cap, model_max)
     truncated = "incomplete" in finish or finish == "max_tokens"
-    if retry_empty_completion and not result["text"].strip() and truncated and effective_cap:
+    if (retry_empty_completion and not result["text"].strip() and truncated
+            and raised_cap and raised_cap > effective_cap):
         ceiling_retried = True
         raised = dict(settings or {})
-        raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
+        raised["max_output_tokens"] = raised_cap
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )

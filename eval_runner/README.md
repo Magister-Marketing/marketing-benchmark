@@ -25,6 +25,11 @@ point for direct-model marketing quality.
 - Provider errors and judge failures count as failed runs.
 - Temperature is never sent. Anthropic and OpenRouter get an output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
+  An empty reply cut off at a ceiling is retried once with the ceiling
+  doubled, but never past a candidate's `model_max_output_tokens` (the
+  model's own per-request maximum, never sent; optional in `models.json`,
+  and its `max_output_tokens` may not exceed it). A ceiling already at that
+  maximum is not retried.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
     prompt by default. Each task explicitly lists its skill files, whose full

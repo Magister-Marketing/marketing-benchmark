@@ -1215,6 +1215,76 @@ def test_ceiling_retry_covers_anthropic_default_cap(monkeypatch):
     assert result["ceiling_retried"] is True
 
 
+def _empty_anthropic_then_answer(calls):
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"content": [{"type": "thinking", "thinking": "…"}],
+                    "usage": {"input_tokens": 1, "output_tokens": body["max_tokens"]},
+                    "stop_reason": "max_tokens"}
+        return {"content": [{"type": "text", "text": "recovered"}],
+                "usage": {"input_tokens": 1, "output_tokens": 900}, "stop_reason": "end_turn"}
+    return fake_post
+
+
+def test_ceiling_retry_never_asks_past_the_models_maximum(monkeypatch):
+    # Claude Opus 5.5 at medium asks for 65,536; doubled that is 131,072,
+    # above the model's 128,000, and the retry call would be rejected.
+    spec = bench.load_models()["claude-opus-5-5-medium"]
+    assert spec["max_output_tokens"] == 65536 and spec["model_max_output_tokens"] == 128000
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+    monkeypatch.setattr(providers, "_post_json_with_retries", _empty_anthropic_then_answer(calls))
+    result = providers.generate(spec["model"], "hi", bench.MAX_OUTPUT_TOKENS,
+                                settings=bench._candidate_settings(spec))
+    assert [c["max_tokens"] for c in calls] == [65536, 128000]
+    assert all("model_max_output_tokens" not in c for c in calls)   # a runner setting, never sent
+    assert calls[1]["output_config"] == {"effort": "medium"}
+    assert result["text"] == "recovered" and result["ceiling_retried"] is True
+
+
+@pytest.mark.parametrize("spec, settings", [
+    ("anthropic/claude-opus-5-5", {"max_output_tokens": 128000, "model_max_output_tokens": 128000}),
+    ("openrouter/google/gemini-3.8-flash", {"max_output_tokens": 65536, "model_max_output_tokens": 65536}),
+    ("openai/gpt-6.2-sol", {"max_output_tokens": 128000, "model_max_output_tokens": 128000}),
+])
+def test_a_cap_already_at_the_models_maximum_is_not_retried(monkeypatch, spec, settings):
+    # Doubling cannot raise it, so a second call would only repeat the first
+    # and be recorded as the retry: the truncation is recorded in one call.
+    for key in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.setenv(key, "test-key")
+    calls = []
+    empty = {"anthropic": {"content": [], "usage": {}, "stop_reason": "max_tokens"},
+             "openrouter": {"choices": [{"message": {"content": ""}, "finish_reason": "length"}], "usage": {}},
+             "openai": {"output": [], "usage": {}, "status": "incomplete",
+                        "incomplete_details": {"reason": "max_output_tokens"}}}[spec.split("/")[0]]
+    monkeypatch.setattr(providers, "_post_json_with_retries", lambda url, headers, body, provider: calls.append(body) or empty)
+    with pytest.raises(providers.ProviderError, match="ceiling_retried=False"):
+        providers.generate(spec, "hi", 16000, settings=settings)
+    assert len(calls) == 1
+
+
+def test_the_models_maximum_is_validated_and_entries_without_it_keep_doubling(monkeypatch):
+    for bad in (0, -1, "lots", 1.5, True):
+        with pytest.raises(providers.ProviderError, match="invalid model_max_output_tokens"):
+            providers.build_request("anthropic/claude-opus-5-5", "hi", 1, False, "k",
+                                    settings={"model_max_output_tokens": bad})
+    with pytest.raises(providers.ProviderError, match="above the model's maximum"):
+        providers.build_request("anthropic/claude-opus-5-5", "hi", 1, False, "k",
+                                settings={"max_output_tokens": 131072, "model_max_output_tokens": 128000})
+    # Without the field, the cap still doubles as before.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+    monkeypatch.setattr(providers, "_post_json_with_retries", _empty_anthropic_then_answer(calls))
+    providers.generate("anthropic/claude-opus-5-5", "hi", 16000, settings={"max_output_tokens": 65536})
+    assert [c["max_tokens"] for c in calls] == [65536, 131072]
+    # A maximum short of the doubled cap but above the cap raises it as far as it goes.
+    calls.clear()
+    providers.generate("anthropic/claude-opus-5-5", "hi", 16000,
+                       settings={"max_output_tokens": 100000, "model_max_output_tokens": 128000})
+    assert [c["max_tokens"] for c in calls] == [100000, 128000]
+
+
 def test_uncapped_truncation_never_retries(monkeypatch):
     # With no explicit cap the request is bounded only by the model's own
     # maximum; doubling cannot help, so the failure is recorded honestly

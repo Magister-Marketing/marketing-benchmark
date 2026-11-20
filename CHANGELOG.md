@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Runner: the ceiling retry (one call with the output cap doubled, after an
+  empty reply cut off at the cap) never asks for more than a candidate's new
+  optional `model_max_output_tokens`, and makes no call when the cap is
+  already there. `claude-opus-5-5-medium` (65,536, doubled to 131,072 past
+  the model's 128,000, so the retry was rejected) now retries at 128,000;
+  `gemini-3.8-flash-high` is at its 65,536 maximum and records the
+  truncation in one call. Entries without the field double as before.
 - Tasks: workflow task `price-change-rollout` (development split): a price
   change, a plan rename and a longer trial rolled through 14 assets, where
   everything the brief changes must change and nothing else may. Adds a
