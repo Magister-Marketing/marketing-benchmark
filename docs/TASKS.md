@@ -93,7 +93,9 @@ from the Upworthy Research Archive (Matias, Munger, Le Quere and Ebersole,
 2021; CC BY 4.0): `eval_runner/fixtures/headline-forecast/NOTICE.md` has the
 source, the licence and how the pairs were chosen. The archive is public, so
 a model may have seen it; the second task holds only headlines that were not
-the ones published.
+the ones published. A forecast task carries `"forecast": true`, which keeps
+it out of a report's false-confidence figure: a reply with every pick made is
+complete, and a pick that turned out wrong is a miss, not unfinished work.
 
 ### Workflow tasks
 

@@ -286,6 +286,8 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         raise ValueError(f"{path.name}: answers needs a positive integer count")
     if answers is not None and not isinstance(answers.get("single_number", False), bool):
         raise ValueError(f"{path.name}: answers.single_number must be a boolean")
+    if not isinstance(task.get("forecast", False), bool):
+        raise ValueError(f"{path.name}: forecast must be a boolean")
     workflow = task.get("workflow")
     if workflow is not None and workflow not in workflows.MODULES:
         raise ValueError(
@@ -2449,7 +2451,8 @@ def _count_field(rows: list[dict], key: str) -> tuple[int, int]:
 
 
 def model_behavior(
-    model_id: str, attempts: list, judgments: list, verdicts: dict
+    model_id: str, attempts: list, judgments: list, verdicts: dict,
+    forecast_tasks: frozenset[str] = frozenset(),
 ) -> dict:
     """How a model worked and how it described its work, per attempt.
 
@@ -2460,6 +2463,11 @@ def model_behavior(
     the deliverable as complete. Abstentions are attempts the judge marked
     `blocked`. Judgments recorded before `self_report` existed are counted in
     `self_report_observations` only when they carry the field.
+
+    A forecast task (`"forecast": true` in its file) is left out of false
+    confidence: its reply is complete when every pick is made, and a pick
+    that turned out wrong is a miss the candidate could not have known, not
+    an unfinished deliverable presented as finished.
     """
     rows = [
         a for a in attempts
@@ -2487,6 +2495,8 @@ def model_behavior(
             continue
         reported += 1
         abstained += self_report == "blocked"
+        if judgment["task_id"] in forecast_tasks:
+            continue
         if not verdicts.get(key, {}).get("pass"):
             failed += 1
             confident_failures += self_report == "complete"
@@ -3571,7 +3581,8 @@ def _render_report_html(
             '<h2 class="section-title" id="behavior-title">Behavior</h2>',
             '<p class="section-note">How each model worked and how it described its '
             'work. Guardrail events are approval-gated or denied action attempts. '
-            'False confidence is the share of failed attempts presented as complete; '
+            'False confidence is the share of failed attempts presented as complete '
+            '(forecast tasks are left out: a missed forecast is not unfinished work); '
             'an <code>A</code> run mark is a failed attempt that said it was blocked.</p>',
             '</div><div class="table-shell"><table class="submission-results-table">',
             '<thead><tr><th>Model</th><th>Tool calls<small class="metric-sub">per attempt</small></th>',
@@ -4054,8 +4065,12 @@ def cmd_report(args: argparse.Namespace) -> int:
     efficiency = model_efficiency(
         model_ids, attempts, judgments, models_meta, section_of
     )
+    # Like `negative`, `forecast` is an annotation read from the current task files.
+    forecast_tasks = frozenset(
+        task_id for task_id, task in current_tasks.items() if task.get("forecast")
+    )
     behavior = {
-        model_id: model_behavior(model_id, attempts, judgments, verdicts)
+        model_id: model_behavior(model_id, attempts, judgments, verdicts, forecast_tasks)
         for model_id in model_ids
     }
     session_isolation = run_meta.get("session_isolation")
@@ -4183,8 +4198,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "How each model worked and how it described its work. Guardrail events "
         "are approval-gated or denied action attempts. False confidence is the "
-        "share of failed attempts the model presented as complete; `A` in the "
-        "run marks is a failed attempt that said it was blocked.",
+        "share of failed attempts the model presented as complete (forecast "
+        "tasks are left out: a missed forecast is not unfinished work); `A` in "
+        "the run marks is a failed attempt that said it was blocked.",
         "",
         "| Model | Tool calls / attempt | Tool errors | Guardrail events | "
         "False confidence | Abstained |",

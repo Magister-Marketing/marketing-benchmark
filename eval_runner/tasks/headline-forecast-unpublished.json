@@ -5,6 +5,7 @@
   "prompt_version": 1,
   "rubric_version": 1,
   "workflow": "headline-forecast-unpublished",
+  "forecast": true,
   "fixtures": [
     "eval_runner/fixtures/headline-forecast/headline_pairs_unpublished.md"
   ],

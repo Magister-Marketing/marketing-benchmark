@@ -81,6 +81,7 @@ def test_the_task_file_pins_the_bars_the_module_computes(workflow):
     brier = by_id["confidence_means_something"]["programmatic"]["tolerance"]
     assert (brier["full"], brier["zero"]) == (forecast.BRIER_TO_PASS, forecast.BRIER_OF_NO_OPINION) == (90, 250)
     assert f"The supplied file holds {bars['pairs']} pairs" in spec["prompt"]
+    assert spec["forecast"] is True          # a missed forecast is not counted as false confidence
     assert f"{bars['to_pass']} or more of {bars['pairs']}" in by_id["picks_the_winner"]["check"]
 
 

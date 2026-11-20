@@ -2919,3 +2919,11 @@ def test_model_behavior_counts_tools_guardrails_and_false_confidence():
     assert empty["tool_calls_per_attempt"] is None and empty["false_confidence_rate"] is None
     assert bench._false_confidence_cell(stats) == "1/2 failed (50%)"
     assert bench._false_confidence_cell(empty) == "n/a"
+    # A missed forecast is not unfinished work presented as finished: the
+    # task of every counted failure here is a forecast, so none counts.
+    failed_tasks = frozenset(j["task_id"] for j in judgments if not verdicts.get(
+        (j["task_id"], j["model_id"], j["repetition"]), {}).get("pass"))
+    forecast = bench.model_behavior("m", attempts, judgments, verdicts, failed_tasks)
+    assert forecast["failed"] == 0 and forecast["false_confidence_rate"] is None
+    assert forecast["self_report_observations"] == stats["self_report_observations"]
+    assert forecast["abstained"] == stats["abstained"]
