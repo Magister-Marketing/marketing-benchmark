@@ -62,12 +62,16 @@
           },
           {
             "tools": [
-              "read",
-              "exec"
+              "read"
             ],
             "args": {
               "*": "(^|[\\s/'\"])data/[a-z0-9_]+/|audits/|['\"]data['\"]"
             }
+          },
+          {
+            "tools": [
+              "exec"
+            ]
           }
         ],
         "min": 0,
