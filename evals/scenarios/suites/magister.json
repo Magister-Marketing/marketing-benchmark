@@ -8,7 +8,6 @@
     "mb-ads-review",
     "mb-store-sales",
     "mb-email-results",
-    "mb-keyword-ideas",
     "mb-web-research-cited",
     "mb-plan-next",
     "mb-email-needs-approval",
@@ -24,5 +23,11 @@
     "mb-library-brief",
     "mb-plan-add-task",
     "mb-not-connected"
+  ],
+  "exclusive": [
+    "mb-workflow-weekly",
+    "mb-one-off-not-workflow",
+    "mb-memory-preference",
+    "mb-plan-add-task"
   ]
 }

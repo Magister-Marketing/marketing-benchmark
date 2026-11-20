@@ -285,6 +285,12 @@ def test_names_row_needs_a_real_rows_text_in_the_reply():
     yes = [message("user", "what next?", "2026-11-20T06:00:00Z"),
            message("assistant", "Next: **Fix the Cold Brew collection page title.** It blocks the rest.", "2026-11-20T06:01:00Z")]
     assert verdict(record(messages=yes, state=state), check)["passed"]
+    # In the person's own words: two of the title's three words, in one sentence.
+    said = [yes[0], message("assistant", "**Fix the collection page's title first.** It blocks the rest.", "2026-11-20T06:01:00Z")]
+    assert verdict(record(messages=said, state=state), check)["passed"]
+    # Words scattered over the reply name nothing.
+    scattered = [yes[0], message("assistant", "We should fix tracking. Later, the brew guide. Collection ads can wait.", "2026-11-20T06:01:00Z")]
+    assert not verdict(record(messages=scattered, state=state), check)["passed"]
     # A short title would match by chance, and an invented task matches nothing.
     no = [yes[0], message("assistant", "Next: launch a referral program.", "2026-11-20T06:01:00Z")]
     assert not verdict(record(messages=no, state=state), check)["passed"]
@@ -339,3 +345,21 @@ def test_a_charts_bars_are_figures_and_can_be_checked_on_their_own():
     # The sentence's own figure is outside the rendered scope; only the bars are read.
     assert verdict(record(reads(rows), messages=chat_with(real)), check)["passed"]
     assert not verdict(record(reads(rows), messages=chat_with(fake)), check)["passed"]
+
+
+def test_a_real_answer_in_other_words_names_the_task():
+    """2026-11-20: "Rewrite the Shopify homepage first" for the plan's
+    "Rewrite and structure the homepage" failed the exact-title match."""
+    assert pc.names("**Rewrite the Shopify homepage first.** The plan marks it Ready.", "Rewrite and structure the homepage")
+    assert pc.names("Next: optimizing the two running Google Ads campaigns.", "Optimize the two running Google Ads campaigns")
+    assert not pc.names("Start with the homepage.", "Rewrite and structure the homepage")
+    assert not pc.names("Launch a referral program for subscribers.", "Rewrite and structure the homepage")
+    assert not pc.names("Improve the page.", "Improve the fall hoodie purchase page")
+
+
+def test_a_turn_held_on_a_card_may_end_without_words_only_when_the_scenario_says_so():
+    held = record(approvals=[card()], messages=[message("user", "Send it.", "2026-11-20T06:00:00Z")])
+    checks = [{"id": "raised", "type": "approval", "decision": "pending", "executed": False}]
+    assert not pc.check_product(held, {"kind": "product_checks", "checks": checks})["passed"]
+    result = pc.check_product(held, {"kind": "product_checks", "checks": checks, "reply_required": False})
+    assert result["passed"] and result["summary"] == "1/1 checks"

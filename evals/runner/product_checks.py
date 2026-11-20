@@ -358,6 +358,41 @@ def _plain(text: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
 
 
+# Words that carry no part of a title's meaning.
+FILLER = frozenset("a an and the of for to in on at by with from our your its it is are be this that these those "
+                   "into up out or as new all two three more most best page pages".split())
+
+
+def _stem(word: str) -> str:
+    for ending in ("ing", "ed", "es", "s"):
+        if len(word) > len(ending) + 3 and word.endswith(ending):
+            return word[: -len(ending)]
+    return word
+
+
+def _title_words(text: Any) -> set[str]:
+    return {_stem(word) for word in _plain(text).split() if len(word) > 2 and word not in FILLER}
+
+
+def names(reply: str, title: Any) -> bool:
+    """Does the reply name this row? Its title in full, or one sentence of
+    the reply carrying at least two, and at least three in five, of the
+    title's own words: a person says "rewrite the homepage" for "Rewrite and
+    structure the homepage" (2026-11-20: a right answer failed on the exact
+    title). A title of one distinctive word has to appear in full."""
+    whole = _plain(title)
+    if len(whole) >= 8 and whole in _plain(reply):
+        return True
+    wanted = _title_words(title)
+    if len(wanted) < 2:
+        return False
+    need = max(2, -(-len(wanted) * 3 // 5))
+    for sentence in re.split(r"(?<=[.!?:;])\s+|\n+", reply or ""):
+        if len(wanted & {_stem(word) for word in _plain(sentence).split()}) >= need:
+            return True
+    return False
+
+
 # ── One check, then all of them ───────────────────────────────────────────────
 
 def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
@@ -424,9 +459,9 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(name, str) or not isinstance(field, str) or table is None:
             result.update(passed=False, found=0, detail=f"state {name!r} was not read back")
         else:
-            words = _plain(agent_words(record, check.get("scope", "all")))
+            words = agent_words(record, check.get("scope", "all"))
             named = sorted({str(row.get(field)) for row in table if isinstance(row, dict)
-                            and len(_plain(row.get(field))) >= 8 and _plain(row.get(field)) in words
+                            and names(words, row.get(field))
                             and fields_match(row, check.get("where"), f"check {check_id!r}.where")})
             low, high = _bounds(check, default_min=1)
             result.update(passed=_within(len(named), low, high), found=len(named),
@@ -459,10 +494,13 @@ def check_product(record: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any
     failed = [item["id"] for item in required if not item["passed"]]
     passed = not failed
     # A run that never chatted has nothing to check, however empty the
-    # forbidden lists are.
+    # forbidden lists are. The one exception a scenario may claim
+    # (reply_required: false): a turn held open on an approval card nobody
+    # decides says nothing until someone does, and the card is the answer.
     rows = record.get("rows") or {}
-    answered = any(isinstance(row, dict) and row.get("role") == "assistant" and str(row.get("content") or "").strip()
-                   for row in rows.get("chat_messages") or [])
+    answered = spec.get("reply_required", True) is False or any(
+        isinstance(row, dict) and row.get("role") == "assistant" and str(row.get("content") or "").strip()
+        for row in rows.get("chat_messages") or [])
     if not answered:
         passed = False
         failed = failed or ["(no reply)"]

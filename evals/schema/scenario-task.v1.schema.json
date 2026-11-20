@@ -299,6 +299,7 @@
           }
         },
         "approvals_expected": { "type": "integer", "minimum": 0 },
+        "reply_required": { "description": "product_checks only. false: the run may end with no words from the agent (its turn is held open on an approval card the scripted person leaves alone). Otherwise a run with no reply fails whatever its checks say.", "type": "boolean" },
         "checks": {
           "description": "product_checks only: the facts to check, in the order they are reported. args, match and where map a field path (a.b.0.c, or * for the whole value) to a pattern that must match; a pattern that starts with ! must not.",
           "type": "array",

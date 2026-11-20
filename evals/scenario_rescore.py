@@ -45,7 +45,12 @@ def main(argv: list[str] | None = None) -> int:
     for path in found:
         record = json.loads(path.read_text())
         before = record.get("outcome") or {}
-        after = scenario_outcomes.evaluate(scenario_for(path, record, saved=args.saved_scenario), record)
+        try:
+            scenario = scenario_for(path, record, saved=args.saved_scenario)
+        except FileNotFoundError:
+            print(f"{record['scenario_id']} rep {record['repetition']}: not scored (this checkout has no such scenario)")
+            continue
+        after = scenario_outcomes.evaluate(scenario, record)
         flipped = bool(before.get("passed")) != bool(after.get("passed"))
         changed += flipped
         print(f"{record['scenario_id']} rep {record['repetition']}: "
