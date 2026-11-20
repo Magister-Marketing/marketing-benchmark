@@ -236,6 +236,27 @@ def test_programmatic_facts_and_criteria_are_exact():
     wrong = labelled.replace("**CTA** — Explore the Arc Clip Lamp.", "**CTA** — Shop now")
     assert bench.measured_facts(ad_task, wrong)["approved_cta_field_count"] == 2
 
+    # An answer's own checklist is not a fourth concept, and cannot make up a
+    # missing one: a length note over another field's label is an empty field.
+    checklist = "\n\n## Checks\n- **Primary text** — all three under 125 characters\n- **Headline** — all under 40"
+    facts = bench.measured_facts(ad_task, labelled + checklist)
+    assert facts["primary_text_field_count"] == 3
+    # Copy may say "all three" itself (a saved claude-haiku-4-5 answer did).
+    copy = labelled.replace("Thread a needle.", "Bedside reading. Desk work. One light handles all three.")
+    assert bench.measured_facts(ad_task, copy)["primary_text_field_count"] == 3
+    two = "\n\n".join(f"## Concept {n}\n{text}" for n, text in enumerate(written[:2], 1))
+    padded = two + "\n\n## Checks\n- **Primary text** — 98 / 104 characters\n- **CTA** — Explore the Arc Clip Lamp"
+    facts = bench.measured_facts(ad_task, padded)
+    assert facts["primary_text_field_count"] == 2
+    assert not bench.programmatic_results(ad_task, facts)["three_concepts"]["pass"]
+    # A long wrong CTA still counts (and fails), however long it is, even
+    # beside a checklist line that repeats the approved one.
+    long_wrong = labelled.replace("**CTA** — Explore the Arc Clip Lamp.", "**CTA:** Shop the brand new Arc Clip Lamp")
+    long_wrong += "\n- **CTA** — Explore the Arc Clip Lamp"
+    facts = bench.measured_facts(ad_task, long_wrong)
+    assert (facts["cta_field_count"], facts["approved_cta_field_count"]) == (4, 3)
+    assert not bench.programmatic_results(ad_task, facts)["approved_cta"]["pass"]
+
     blog_task = tasks["blog-post"]
     mixed_headings = "## One\n<h2>Two</h2>\n## Three\n<h2 class='last'>Four</h2>"
     assert bench.measured_facts(blog_task, mixed_headings)["h2_count"] == 4
