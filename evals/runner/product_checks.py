@@ -16,6 +16,12 @@ account of itself:
   ``outcome.state`` reads.
 - ``reply``: the agent's visible words, for the things only words can show
   (it said the account is not connected; it did not claim it sent).
+- ``grounded``: figures in the reply that are also in the results of the
+  named read tools. A lower bound on "it answered from the data": a reply
+  with no figure from any result did not.
+- ``rendered``: a table or chart the agent drew itself in the chat.
+- ``names_row``: the reply names something that exists (a plan task's
+  title, a workflow's name), taken from a state read.
 
 Every check is required unless it says ``"required": false``; the run passes
 when every required check passes. No network, no database, no clock.
@@ -32,7 +38,13 @@ MAGISTER_PREFIX = "magister_"
 ALLOW_DECISIONS = frozenset({"manual_allow", "auto_yolo", "auto_custom", "auto_change", "auto_retry"})
 EXECUTED_STATES = frozenset({"succeeded", "executed", "completed", "done"})
 PENDING_STATES = frozenset({"needs_approval", "pending_approval", "awaiting_approval", "pending", "queued", "running"})
-CHECK_TYPES = ("tool_called", "tool_not_called", "approval", "state", "reply")
+CHECK_TYPES = ("tool_called", "tool_not_called", "approval", "state", "reply", "grounded", "cited", "rendered",
+               "names_row")
+# A figure worth matching: three or more digits, or a decimal. "Top 5",
+# "30 days" and "28-day window" are in every skill and every result.
+FIGURE = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.])\d+\.\d+|(?<![\w.])\d{3,}")
+YEAR = re.compile(r"^(19|20)\d\d$")
+LINK = re.compile(r"https?://[^\s)\]>\"'`*|]+")
 DEFAULT_FLAGS = re.IGNORECASE | re.DOTALL
 
 
@@ -259,6 +271,91 @@ def agent_words(record: dict[str, Any], scope: str = "all") -> str:
     return "\n".join(parts)
 
 
+# ── Figures, drawn blocks, named rows ─────────────────────────────────────────
+
+def figures(text: str) -> set[str]:
+    """The figures in a text, commas dropped and trailing zeros trimmed, so
+    "1,204" and "1204.0" are one figure. A year is not a figure."""
+    found: set[str] = set()
+    for raw in FIGURE.findall(text or ""):
+        value = raw.replace(",", "")
+        if YEAR.match(value):
+            continue
+        if "." in value:
+            value = value.rstrip("0").rstrip(".")
+        found.add(value)
+    return found
+
+
+def source_calls(record: dict[str, Any], check: dict[str, Any]) -> list[dict[str, Any]]:
+    """The successful calls a grounded or cited check may draw on: its own
+    ``tools`` (with ``args``), or each of its ``sources`` (a file read counts
+    only for the data folders its source names, never for a skill it read)."""
+    sources = check.get("sources") or [{key: check[key] for key in ("tools", "args", "result") if key in check}]
+    if not isinstance(sources, list) or not all(isinstance(item, dict) for item in sources):
+        raise CheckSpecError(f"check {check.get('id')!r}: sources must be a list of tool groups")
+    found: list[dict[str, Any]] = []
+    for source in sources:
+        found.extend(matching_calls(record, {"id": check.get("id"), "type": "tool_called", "ending": "ok", **source}))
+    return found
+
+
+def result_figures(record: dict[str, Any], check: dict[str, Any]) -> set[str]:
+    """Figures in the results of the check's sources, with each decimal also
+    at one and two places (a result's 4.7312 is said as 4.7 or 4.73) and
+    each fraction also as a percentage (0.0473 is said as 4.73%)."""
+    found: set[str] = set()
+    for call in source_calls(record, check):
+        for value in figures(_text(call.get("result_text"))):
+            found.add(value)
+            if "." in value:
+                number = float(value)
+                for scaled in (number, number * 100 if abs(number) < 1 else None):
+                    if scaled is None:
+                        continue
+                    for places in (0, 1, 2):
+                        rounded = f"{scaled:.{places}f}"
+                        found.add(rounded.rstrip("0").rstrip(".") if "." in rounded else rounded)
+    return found
+
+
+def links(text: str) -> set[str]:
+    """The links in a text, without trailing punctuation or a fragment."""
+    return {raw.rstrip(".,;:!?").split("#")[0].rstrip("/") for raw in LINK.findall(text or "")} - {""}
+
+
+def _unbacked_bound(check: dict[str, Any]) -> int | None:
+    bound = check.get("unbacked_max")
+    if bound is not None and (not isinstance(bound, int) or bound < 0):
+        raise CheckSpecError(f"check {check.get('id')!r}: unbacked_max must be a whole number")
+    return bound
+
+
+def rendered_components(record: dict[str, Any]) -> list[str]:
+    """The component types in the blocks the agent drew (never a Gateway card)."""
+    found: list[str] = []
+    for row in (record.get("rows") or {}).get("chat_messages") or []:
+        if not isinstance(row, dict) or row.get("role") != "ui_spec":
+            continue
+        meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        if meta.get("kind"):
+            continue
+        content = row.get("content")
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except ValueError:
+                continue
+        elements = content.get("elements") if isinstance(content, dict) else None
+        if isinstance(elements, dict):
+            found.extend(str(item.get("type")) for item in elements.values() if isinstance(item, dict) and item.get("type"))
+    return found
+
+
+def _plain(text: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+
+
 # ── One check, then all of them ───────────────────────────────────────────────
 
 def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
@@ -292,6 +389,47 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
             low, high = _bounds(check, default_min=1)
             result.update(passed=_within(len(rows), low, high), found=len(rows),
                           detail=f"{len(rows)} of {len(table)} row(s) match")
+    elif kind in ("grounded", "cited"):
+        # grounded: figures; cited: links. Each counts when a result of the
+        # check's sources holds it. unbacked_max bounds the ones no result
+        # holds (0: the reply may state none it did not read).
+        low, high = _bounds(check, default_min=1)
+        loose = _unbacked_bound(check)
+        words = agent_words(record, check.get("scope", "all"))
+        if kind == "grounded":
+            said, available, noun = figures(words), result_figures(record, check), "figure"
+        else:
+            said, noun = links(words), "link"
+            available = set()
+            for item in source_calls(record, check):
+                available |= links(_text(item.get("result_text")))
+        backed, unbacked = sorted(said & available), sorted(said - available)
+        ok = _within(len(backed), low, high) and (loose is None or len(unbacked) <= loose)
+        result.update(passed=ok, found=len(backed),
+                      detail=(f"{len(backed)} of the reply's {len(said)} {noun}(s) are in the results"
+                              + (f"; not in any result: {', '.join(unbacked[:4])}" if unbacked and loose is not None else "")))
+    elif kind == "rendered":
+        wanted = check.get("components")
+        if not isinstance(wanted, list) or not wanted:
+            raise CheckSpecError(f"check {check_id!r}: components must be a non-empty list")
+        drawn = [name for name in rendered_components(record) if name in wanted]
+        low, high = _bounds(check, default_min=1)
+        result.update(passed=_within(len(drawn), low, high), found=len(drawn),
+                      detail=", ".join(sorted(set(drawn))) or "the agent drew none of " + ", ".join(wanted))
+    elif kind == "names_row":
+        name, field = check.get("rows"), check.get("field")
+        table = ((record.get("rows") or {}).get("state") or {}).get(name)
+        if not isinstance(name, str) or not isinstance(field, str) or table is None:
+            result.update(passed=False, found=0, detail=f"state {name!r} was not read back")
+        else:
+            words = _plain(agent_words(record, check.get("scope", "all")))
+            named = sorted({str(row.get(field)) for row in table if isinstance(row, dict)
+                            and len(_plain(row.get(field))) >= 8 and _plain(row.get(field)) in words
+                            and fields_match(row, check.get("where"), f"check {check_id!r}.where")})
+            low, high = _bounds(check, default_min=1)
+            result.update(passed=_within(len(named), low, high), found=len(named),
+                          detail=("named " + "; ".join(item[:60] for item in named[:3])) if named
+                          else f"the reply names none of the {len(table)} row(s)")
     else:
         pattern = _pattern(check.get("pattern"), f"check {check_id!r}.pattern")
         present = check.get("present", True) is not False

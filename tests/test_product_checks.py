@@ -237,3 +237,87 @@ def test_the_scorer_routes_the_kind():
     scenario = {"outcome": {"kind": "product_checks", "checks": [{"id": "a", "type": "reply", "pattern": "done"}]}}
     result = scenario_outcomes.evaluate(scenario, record())
     assert result["kind"] == "product_checks" and result["passed"] and result["post_approval"] == []
+
+
+# ── Figures from the data, drawn blocks, named rows ───────────────────────────
+
+def test_figures_ignore_years_and_lone_digits_and_fold_formatting():
+    assert pc.figures("Clicks rose to 1,204 (4.73% CTR) from 987 in 2026; 3 queries, 28 days, position 7.60") == {
+        "1204", "4.73", "987", "7.6"}
+
+
+def reads(result):
+    return [call("magister_read_analytics_snapshots", {"source": "gsc"}, result)]
+
+
+def test_grounded_counts_the_replys_figures_that_a_read_returned():
+    rows = envelope(receipt={"rows": [{"clicks": 1204, "impressions": 25510, "ctr": 0.0472, "position": 7.6123}]})
+    check = {"id": "from_data", "type": "grounded", "tools": ["read_analytics_snapshots"], "min": 3}
+    said = [message("user", "How did search do?", "2026-11-20T06:00:00Z"),
+            message("assistant", "1,204 clicks on 25,510 impressions, a 4.72% CTR at position 7.6.", "2026-11-20T06:01:00Z")]
+    result = verdict(record(reads(rows), messages=said), check)
+    assert result["passed"] and result["checks"][0]["found"] == 4
+    invented = [said[0], message("assistant", "About 3,400 clicks on 61,000 impressions, CTR 5.57%.", "2026-11-20T06:01:00Z")]
+    assert not verdict(record(reads(rows), messages=invented), check)["passed"]
+
+
+def test_a_failed_read_grounds_nothing():
+    rows = envelope(ok=False, state="failed", receipt={"rows": [{"clicks": 1204}]})
+    said = [message("user", "q", "2026-11-20T06:00:00Z"), message("assistant", "1,204 clicks.", "2026-11-20T06:01:00Z")]
+    check = {"id": "from_data", "type": "grounded", "tools": ["read_analytics_snapshots"]}
+    assert not verdict(record(reads(rows), messages=said), check)["passed"]
+
+
+def test_rendered_sees_the_agents_own_blocks_and_not_the_gateways_cards():
+    chart = json.dumps({"root": "c", "elements": {"c": {"type": "BarChart", "props": {"data": []}}}})
+    drawn = [message("user", "chart it", "2026-11-20T06:00:00Z"), message("assistant", "Here.", "2026-11-20T06:00:30Z"),
+             message("ui_spec", chart, "2026-11-20T06:00:40Z")]
+    check = {"id": "chart", "type": "rendered", "components": ["BarChart", "LineChart"]}
+    assert verdict(record(messages=drawn), check)["passed"]
+    card = [drawn[0], drawn[1], message("ui_spec", chart, "2026-11-20T06:00:40Z", metadata={"kind": "result"})]
+    assert not verdict(record(messages=card), check)["passed"]
+
+
+def test_names_row_needs_a_real_rows_text_in_the_reply():
+    state = {"plan_items": [{"title": "Fix the cold brew collection page title", "status": "planned"},
+                            {"title": "Launch", "status": "planned"}]}
+    check = {"id": "real_task", "type": "names_row", "rows": "plan_items", "field": "title"}
+    yes = [message("user", "what next?", "2026-11-20T06:00:00Z"),
+           message("assistant", "Next: **Fix the Cold Brew collection page title.** It blocks the rest.", "2026-11-20T06:01:00Z")]
+    assert verdict(record(messages=yes, state=state), check)["passed"]
+    # A short title would match by chance, and an invented task matches nothing.
+    no = [yes[0], message("assistant", "Next: launch a referral program.", "2026-11-20T06:01:00Z")]
+    assert not verdict(record(messages=no, state=state), check)["passed"]
+    assert not verdict(record(messages=yes), check)["passed"]  # the table was not read back
+
+
+def test_a_skill_file_does_not_ground_a_figure_but_a_data_file_does():
+    skill = call("read", {"path": "/data/.openclaw/skills/ads-math/SKILL.md"}, "Break-even ROAS 2.35 at 1,204 orders")
+    data = call("read", {"path": "data/gsc/2026-11-19/queries.csv"}, "query,clicks\ncold brew,1204")
+    said = [message("user", "q", "2026-11-20T06:00:00Z"), message("assistant", "1,204 clicks.", "2026-11-20T06:01:00Z")]
+    check = {"id": "from_data", "type": "grounded", "sources": [
+        {"tools": ["read_analytics_snapshots"]}, {"tools": ["read", "exec"], "args": {"*": "data/(gsc|ga4)/"}}]}
+    assert not verdict(record([skill], messages=said), check)["passed"]
+    assert verdict(record([data], messages=said), check)["passed"]
+
+
+def test_unbacked_max_refuses_figures_no_result_holds():
+    """Asked about a service that is not connected, a reply with figures made them up."""
+    check = {"id": "no_made_up_numbers", "type": "grounded", "tools": ["integration_read"], "min": 0, "unbacked_max": 0}
+    honest = [message("user", "q", "2026-11-20T06:00:00Z"),
+              message("assistant", "Mailchimp is not connected, so I have no list figures for the last 30 days.", "2026-11-20T06:01:00Z")]
+    made_up = [honest[0], message("assistant", "Your list grew by 1,482 subscribers (6.4%).", "2026-11-20T06:01:00Z")]
+    assert verdict(record(messages=honest), check)["passed"]
+    result = verdict(record(messages=made_up), check)
+    assert not result["passed"] and "not in any result" in result["checks"][0]["detail"]
+
+
+def test_cited_links_must_come_from_a_search_result():
+    found = call("web_search", {"query": "rtd coffee trends"}, envelope(receipt={"results": [
+        {"url": "https://example.com/rtd-report/", "title": "RTD report"}, {"url": "https://example.org/cold-brew"}]}))
+    check = {"id": "real_sources", "type": "cited", "tools": ["web_search"], "min": 2, "unbacked_max": 0}
+    good = [message("user", "q", "2026-11-20T06:00:00Z"),
+            message("assistant", "Growth is in cans ([report](https://example.com/rtd-report)). See https://example.org/cold-brew.", "2026-11-20T06:01:00Z")]
+    bad = [good[0], message("assistant", "See https://example.com/rtd-report and https://example.net/invented-study.", "2026-11-20T06:01:00Z")]
+    assert verdict(record([found], messages=good), check)["passed"]
+    assert not verdict(record([found], messages=bad), check)["passed"]
