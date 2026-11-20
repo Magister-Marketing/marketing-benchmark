@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "mb-social-post-approved",
+  "title": "A social post, approved, goes live with its link",
+  "version": 1,
+  "description": "Publishing is a gated action. The agent attempts the post with the exact text, the person approves the card, and the reply returns the post's link.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Post this on our LinkedIn page now, exactly as written: \"Cold brew restock is live. Batch {nonce} ships this week.\"",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes, post it to LinkedIn exactly as written.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 600,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "card_approved_and_ran",
+        "type": "approval",
+        "match": {
+          "action": "social_post",
+          "*": "{nonce}"
+        },
+        "decision": "allowed",
+        "executed": true,
+        "min": 1,
+        "max": 1,
+        "why": "The approved post did not go out, or went out more than once."
+      },
+      {
+        "id": "returned_a_link",
+        "type": "reply",
+        "pattern": "https?://\\S+",
+        "scope": "final",
+        "why": "After publishing, the person was not given the post's link."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "exact_text",
+        "check": "The post is the text the person gave, unchanged."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "approval",
+    "social"
+  ]
+}

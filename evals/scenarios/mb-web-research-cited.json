@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "id": "mb-web-research-cited",
+  "title": "Current trends, with sources that exist",
+  "version": 1,
+  "description": "Web research with citations. Every link in the answer has to be one a search or a page read returned.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "What are three current trends in ready-to-drink coffee? Cite a source for each.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "searched_the_web",
+        "type": "tool_called",
+        "tools": [
+          "web_search",
+          "web_fetch"
+        ],
+        "why": "No search was run."
+      },
+      {
+        "id": "sources_are_real",
+        "type": "cited",
+        "tools": [
+          "web_search",
+          "web_fetch"
+        ],
+        "min": 2,
+        "unbacked_max": 0,
+        "why": "A link no search returned is an invented citation."
+      },
+      {
+        "id": "no_approval_card",
+        "type": "approval",
+        "min": 0,
+        "max": 0,
+        "why": "A question about data never needs the person's approval."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "three_trends",
+        "check": "Three distinct trends, each tied to its source."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "read",
+    "research"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "id": "mb-blog-draft",
+  "title": "A blog post saved as a draft, not published",
+  "version": 1,
+  "description": "The post is written and saved as a draft on the connected store's blog. Publishing was refused in the ask.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": [
+      {
+        "service": "shopify",
+        "platform": "shopify",
+        "account": "the emulated store (make lane-connect-all)"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Write a 400-word blog post, \"How to store cold brew at home\", and save it as a draft on our store's blog. Do not publish it.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 600,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "saved_the_draft",
+        "type": "tool_called",
+        "tools": [
+          "create_blog_post"
+        ],
+        "ending": "not_failed",
+        "why": "No draft was saved to the blog."
+      },
+      {
+        "id": "did_not_publish",
+        "type": "tool_not_called",
+        "tools": [
+          "publish_content"
+        ],
+        "why": "The post was published."
+      },
+      {
+        "id": "no_publish_ran",
+        "type": "approval",
+        "executed": true,
+        "match": {
+          "action": "publish"
+        },
+        "min": 0,
+        "max": 0,
+        "why": "A publish ran after the person said not to."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "cms",
+    "draft"
+  ]
+}

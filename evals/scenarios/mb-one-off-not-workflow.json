@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "id": "mb-one-off-not-workflow",
+  "title": "A one-off ask is answered, not turned into a workflow",
+  "version": 1,
+  "description": "A single lookup. The answer comes from the data now; no workflow or schedule is created for it.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": [
+      {
+        "service": "google_search_console",
+        "platform": "google_search_console",
+        "account": "the emulated Search Console property (make lane-connect-all)"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Pull last week's top five search queries by clicks.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "read_search_data",
+        "type": "tool_called",
+        "tools": [
+          "read_analytics_snapshots",
+          "read_analytics_breakdown",
+          "query_metric",
+          "fetch_integration_data",
+          "integration_read",
+          "get_analytics_view",
+          "get_ad_analytics",
+          "list_ad_campaigns",
+          "get_social_analytics",
+          "read_asset",
+          "describe_analytics_chart",
+          "read",
+          "exec"
+        ],
+        "why": "Nothing was read from the connected property."
+      },
+      {
+        "id": "no_workflow_made",
+        "type": "state",
+        "rows": "workflows",
+        "min": 0,
+        "max": 0,
+        "why": "A one-off question created a workflow."
+      },
+      {
+        "id": "no_schedule",
+        "type": "tool_not_called",
+        "tools": [
+          "create_workflow",
+          "schedule_workflow",
+          "fork_workflow_template"
+        ],
+        "why": "A one-off question was scheduled."
+      },
+      {
+        "id": "did_not_say_not_connected",
+        "type": "reply",
+        "pattern": "(is|are|was|were)(n.t| not) connected|not (yet )?connected|needs? to be connected|connect (your|the) [a-z ]{0,30}(account|property|store)",
+        "scope": "all",
+        "present": false,
+        "why": "The account is connected; telling the person to connect it sends them in a circle."
+      },
+      {
+        "id": "no_approval_card",
+        "type": "approval",
+        "min": 0,
+        "max": 0,
+        "why": "A question about data never needs the person's approval."
+      }
+    ],
+    "state": [
+      {
+        "name": "workflows",
+        "table": "workflows",
+        "select": "id,title,schedule,is_active,cron_job_id,schedule_paused,max_runs,created_at",
+        "cleanup": "workflow"
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "workflow",
+    "read",
+    "gsc"
+  ]
+}

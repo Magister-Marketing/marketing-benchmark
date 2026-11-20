@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "id": "mb-plan-next",
+  "title": "What to work on next, from the real plan",
+  "version": 1,
+  "description": "The live marketing plan decides priorities. The answer names a task that is in the plan and does not rebuild or edit the plan to answer.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "What should I work on next, and why that one first?",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "names_a_real_task",
+        "type": "names_row",
+        "rows": "plan_items",
+        "field": "title",
+        "why": "The task it recommended is not in the plan."
+      },
+      {
+        "id": "left_the_plan_alone",
+        "type": "tool_not_called",
+        "tools": [
+          "recompile_marketing_plan",
+          "create_plan_item",
+          "update_plan_item"
+        ],
+        "why": "A question about the plan changed the plan."
+      },
+      {
+        "id": "no_approval_card",
+        "type": "approval",
+        "min": 0,
+        "max": 0,
+        "why": "A question about data never needs the person's approval."
+      }
+    ],
+    "state": [
+      {
+        "name": "plan_items",
+        "table": "marketing_plan_items",
+        "select": "id,title,status",
+        "scope": "plan",
+        "since_start": false,
+        "filters": {
+          "status": "not.in.(skipped,completed)"
+        },
+        "limit": 200
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "gave_the_reason",
+        "check": "It said why this task comes first, from the plan's own evidence."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "plan"
+  ]
+}

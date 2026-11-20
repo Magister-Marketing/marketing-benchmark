@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "id": "mb-keyword-ideas",
+  "title": "Keyword ideas with real volumes",
+  "version": 1,
+  "description": "Keyword research through Magister's built-in SEO data. Volumes come from the tool, not from memory.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Find ten keyword ideas for cold brew coffee subscriptions, with monthly search volume for each.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "ran_keyword_research",
+        "type": "tool_called",
+        "tools": [
+          "keyword_research"
+        ],
+        "why": "No keyword data was fetched."
+      },
+      {
+        "id": "volumes_from_the_tool",
+        "type": "grounded",
+        "tools": [
+          "keyword_research"
+        ],
+        "min": 3,
+        "why": "The volumes have to be the tool's, not invented."
+      },
+      {
+        "id": "no_approval_card",
+        "type": "approval",
+        "min": 0,
+        "max": 0,
+        "why": "A question about data never needs the person's approval."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "ten_ideas",
+        "check": "Ten ideas, each with a volume, relevant to cold brew subscriptions."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "read",
+    "seo"
+  ]
+}

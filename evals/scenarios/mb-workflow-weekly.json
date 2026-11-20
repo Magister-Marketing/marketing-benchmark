@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "id": "mb-workflow-weekly",
+  "title": "A weekly report is set up and scheduled",
+  "version": 1,
+  "description": "The person asks for recurring work with the cadence and timezone given. One workflow exists afterwards, with a schedule.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Set up a weekly report for me: every Monday at 9am Pacific, last week's organic search clicks and our top five pages. Go ahead and schedule it.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes: every Monday at 9am Pacific, no end date, send it to me here.",
+    "max_replies": 2
+  },
+  "stop": {
+    "budget_seconds": 720,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "one_workflow_made",
+        "type": "state",
+        "rows": "workflows",
+        "min": 1,
+        "max": 1,
+        "why": "No workflow was created, or more than one was."
+      },
+      {
+        "id": "it_is_scheduled",
+        "type": "state",
+        "rows": "workflows",
+        "where": {
+          "schedule": "\\S",
+          "is_active": "true"
+        },
+        "min": 1,
+        "why": "The workflow exists but nothing will run it on Mondays."
+      },
+      {
+        "id": "said_when_it_runs",
+        "type": "reply",
+        "pattern": "monday",
+        "scope": "final",
+        "why": "The person was not told when it will run."
+      }
+    ],
+    "state": [
+      {
+        "name": "workflows",
+        "table": "workflows",
+        "select": "id,title,schedule,is_active,cron_job_id,schedule_paused,max_runs,created_at",
+        "cleanup": "workflow"
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "confirmed_cadence",
+        "check": "It restated the cadence and timezone it scheduled."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "workflow"
+  ]
+}

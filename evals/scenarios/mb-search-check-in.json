@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "id": "mb-search-check-in",
+  "title": "Organic search, last 28 days against the 28 before",
+  "version": 1,
+  "description": "One typed question about Search Console in a fresh chat. The agent has to read the connected property and answer with its figures.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": [
+      {
+        "service": "google_search_console",
+        "platform": "google_search_console",
+        "account": "the emulated Search Console property (make lane-connect-all)"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "How did organic search do over the last 28 days compared with the 28 days before? Give me clicks, impressions and CTR, and the three queries that moved the most.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "read_search_data",
+        "type": "tool_called",
+        "tools": [
+          "read_analytics_snapshots",
+          "read_analytics_breakdown",
+          "query_metric",
+          "fetch_integration_data",
+          "integration_read",
+          "get_analytics_view",
+          "get_ad_analytics",
+          "list_ad_campaigns",
+          "get_social_analytics",
+          "read_asset",
+          "describe_analytics_chart",
+          "read",
+          "exec"
+        ],
+        "why": "Nothing was read from the connected property."
+      },
+      {
+        "id": "figures_from_the_data",
+        "type": "grounded",
+        "sources": [
+          {
+            "tools": [
+              "read_analytics_snapshots",
+              "read_analytics_breakdown",
+              "query_metric",
+              "fetch_integration_data",
+              "integration_read",
+              "get_analytics_view",
+              "get_ad_analytics",
+              "list_ad_campaigns",
+              "get_social_analytics",
+              "read_asset",
+              "describe_analytics_chart"
+            ]
+          },
+          {
+            "tools": [
+              "read",
+              "exec"
+            ],
+            "args": {
+              "*": "(^|[\\s/'\"])data/[a-z0-9_]+/|audits/|['\"]data['\"]"
+            }
+          }
+        ],
+        "min": 3,
+        "why": "The answer has to come from the connected data, not from memory."
+      },
+      {
+        "id": "gives_clicks",
+        "type": "reply",
+        "pattern": "\\bclicks\\b",
+        "scope": "all"
+      },
+      {
+        "id": "gives_impressions",
+        "type": "reply",
+        "pattern": "\\bimpressions\\b",
+        "scope": "all"
+      },
+      {
+        "id": "did_not_say_not_connected",
+        "type": "reply",
+        "pattern": "(is|are|was|were)(n.t| not) connected|not (yet )?connected|needs? to be connected|connect (your|the) [a-z ]{0,30}(account|property|store)",
+        "scope": "all",
+        "present": false,
+        "why": "The account is connected; telling the person to connect it sends them in a circle."
+      },
+      {
+        "id": "no_approval_card",
+        "type": "approval",
+        "min": 0,
+        "max": 0,
+        "why": "A question about data never needs the person's approval."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "led_with_numbers",
+        "check": "The reply opened with the two periods' figures before any advice."
+      },
+      {
+        "id": "named_queries",
+        "check": "It named three real queries with how each moved."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "read",
+    "gsc"
+  ]
+}

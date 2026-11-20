@@ -345,7 +345,7 @@
               "name": { "$ref": "#/$defs/id" },
               "table": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
               "select": { "type": "string", "minLength": 1 },
-              "scope": { "enum": ["project", "team", "session"] },
+              "scope": { "enum": ["project", "team", "session", "plan"] },
               "scope_column": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
               "since_start": { "type": "boolean" },
               "since_column": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },

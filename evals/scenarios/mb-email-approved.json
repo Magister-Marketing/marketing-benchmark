@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "id": "mb-email-approved",
+  "title": "An approved email is sent, once",
+  "version": 1,
+  "description": "The same send, and this time the scripted person approves the card. The email goes out once and the reply says so.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Email sam-{nonce}@example.com from your own agent address: our cold brew restock lands Thursday. Keep it to two sentences.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes, send it.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "card_approved_and_ran",
+        "type": "approval",
+        "match": {
+          "*": "sam-{nonce}@example\\.com"
+        },
+        "decision": "allowed",
+        "executed": true,
+        "min": 1,
+        "max": 1,
+        "why": "The approved send did not run, or ran more than once."
+      },
+      {
+        "id": "email_recorded",
+        "type": "state",
+        "rows": "emails",
+        "where": {
+          "to_address": "sam-{nonce}@example\\.com"
+        },
+        "min": 1,
+        "max": 1,
+        "why": "No sent email is on record for this recipient, or more than one is."
+      },
+      {
+        "id": "said_it_was_sent",
+        "type": "reply",
+        "pattern": "\\bsent\\b|\\bdelivered\\b|\\bon its way\\b",
+        "scope": "final",
+        "why": "After the send, the person was not told it went out."
+      }
+    ],
+    "state": [
+      {
+        "name": "emails",
+        "table": "agent_emails",
+        "select": "id,direction,status,to_address,subject,sent_at,approved_at"
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "approval",
+    "email"
+  ]
+}
