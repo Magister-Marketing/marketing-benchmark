@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "id": "share-flood-guide-instagram",
+  "title": "Share the flood guide on Instagram",
+  "version": 1,
+  "description": "A plan task started from the Plan tab's Work on button: adapt the site's flood-response guide into an Instagram post and publish it on the connected account through the approval card. The original chat (lane onepr, 2026-10-20) took 19 minutes, 26 LLM calls and about 40 tool calls over three user turns and published nothing; the agent re-read the same integrations and plan several times, could not find a guide the site never published, hesitated over the connected handle, and only raised an approval card on a seventh turn. The scenario replays the same three turns with a scripted responder and stops once a post is live.",
+  "origin": {
+    "lane": "onepr",
+    "chat_session_id": "acf95a40-5877-4a35-834f-ad9f42446766",
+    "plan_item_id": "a43e32ac-53bf-4c6e-bd6d-ebe6883c5823",
+    "project_id": "39a68c89-95ec-4c1d-8bc5-17ecf113d84f",
+    "model": "openai/gpt-6-luna",
+    "user_turns": 3,
+    "note": "Run 0 covers the brief, the Continue re-prompt and the typed 'Post it to this accoutn' (the chat went on for four more turns). Instagram was connected by the person between turn 1 and turn 2; the fixture has it connected from the start."
+  },
+  "fixture": {
+    "website": "https://www.artworkssandiego.com/",
+    "brand": "ArtWorks San Diego",
+    "project_slug": "artworks-san-diego-2",
+    "owner_email": "bench-s1@magistermarketing.com",
+    "model": "openai/gpt-6-luna",
+    "connections": [
+      { "service": "zernio", "platform": "instagram", "account": "@ylambda_tech" }
+    ],
+    "plan_item": {
+      "title": "Share the flood guide on Instagram",
+      "description": null,
+      "task_prompt": "Adapt the published flood-response guide into a useful Instagram post and publish it on the existing ArtWorks San Diego account. Invite readers to share the guide without promising an unverified referral benefit; request approval at the moment of posting.",
+      "section_key": "move_4",
+      "phase": "this_month",
+      "aarrr_stage": "Referral",
+      "channel": "Social media",
+      "priority_score": 70.0,
+      "effort": "low",
+      "confidence": "medium",
+      "expected_impact": "Amplifies the guide through the existing Instagram account; the audited flood prompt currently has 0/1 brand mentions.",
+      "owner_kind": "agent",
+      "required_connections": ["instagram", "google_analytics"],
+      "workflow_slug": "social-content-calendar",
+      "due_in_days": 14,
+      "task_contract_version": 1,
+      "task_contract": {
+        "kpi": null,
+        "goal": "Publish a factual, shareable Instagram post linking to the live flood-response guide.",
+        "kind": "ship",
+        "steps": [
+          "Read the published flood-response guide and confirm its final live URL.",
+          "Create a concise Instagram post that conveys a helpful point from the guide without adding unsupported advice or service claims.",
+          "Include the guide link in the available Instagram linking format and invite readers to share it with someone who may need the information.",
+          "Preview the post and verify its factual claims against the published guide.",
+          "Request approval at the moment of posting, then publish to the existing ArtWorks San Diego Instagram account.",
+          "Verify the post is live and record its URL."
+        ],
+        "inputs": {
+          "account": "https://www.instagram.com/artworkssandiego",
+          "guide_url": "Use the final live URL recorded by the flood-response guide task.",
+          "content_source": "Use only verified advice and service claims from the published guide."
+        },
+        "measure": {
+          "scope": { "page": null, "channel": "Organic Social", "campaign_id": null },
+          "metric": "sessions",
+          "source": "ga4",
+          "window_days": 28
+        },
+        "version": 1,
+        "audience": "Museums, galleries, fine art collectors, and estates in the San Diego area.",
+        "evidence": ["social.inventory", "channel.ai_search.opportunity.0", "ai_visibility.probe.0", "brand.profile"],
+        "fallback": "If the Instagram connection, guide URL, or publishing approval is unavailable, save the post and report the blocker without publishing.",
+        "done_when": [
+          "The post is live on the existing account.",
+          "The post links to the published guide.",
+          "Its claims match the guide and it contains no unverified referral offer."
+        ],
+        "deliverable": "A live Instagram post linking to the flood-response guide.",
+        "destination": "The existing ArtWorks San Diego Instagram account.",
+        "verification": [
+          "Open the published post and confirm it is visible on the account.",
+          "Test the guide link.",
+          "Compare post claims with the published guide."
+        ],
+        "approval_gate": null,
+        "idempotency_key": "plan-task:v1:1237b029e5385c978db5cba29c0b02b52b51ccd121f762d815d1b2d43d89edd5",
+        "capability_hints": ["instagram", "social-content-calendar", "Social media", "google_analytics"],
+        "measurement_window": null
+      },
+      "evidence_refs": {
+        "source": "llm_synthesis",
+        "evidence": [
+          {
+            "ref": "social.inventory",
+            "source": "scrape_context",
+            "summary": "[{\"platform\": \"facebook\", \"url\": \"https://www.facebook.com/artworkssandiego\"}, {\"platform\": \"instagram\", \"url\": \"https://www.instagram.com/artworkssandiego\"}]",
+            "raw_path": "scrape_context.social_links"
+          },
+          {
+            "ref": "channel.ai_search.opportunity.0",
+            "source": "health_score.tabs",
+            "summary": "Publish a flood-response guide — Explain immediate steps to protect wet artwork, when to seek professional help, and how ArtWorks can assist with emergency removal or storage.",
+            "raw_path": "health_score.tabs.ai_search.opportunities[0]"
+          },
+          {
+            "ref": "ai_visibility.probe.0",
+            "source": "ai_probe_results",
+            "summary": "claude: How should I protect artwork after a flood? — mentioned=no; cited=no",
+            "raw_path": "ai_probe_results[0]"
+          }
+        ],
+        "source_key": "move_4.task_1",
+        "evidence_refs": ["social.inventory", "channel.ai_search.opportunity.0", "ai_visibility.probe.0", "brand.profile"],
+        "estimated_monthly_spend_cents": null
+      }
+    }
+  },
+  "turns": [
+    { "id": "brief", "kind": "task_brief", "when": "always" },
+    { "id": "continue", "kind": "continue", "when": "not_published" },
+    { "id": "post-it", "kind": "message", "text": "Post it to this accoutn", "when": "not_published" }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [
+      {
+        "id": "which-account",
+        "match": "which (instagram )?account|account (do you|should i|would you like|to use)|confirm (the|which|that) account|(post|publish) (it |this |there )?(to|on) @ylambda_tech\\?|do you want (me )?to (post|publish)|should i (post|publish)|shall i (post|publish)|proceed with @ylambda_tech|use @ylambda_tech\\?|@ylambda_tech( instead)?\\?",
+        "reply": "@ylambda_tech"
+      }
+    ],
+    "default_reply": "Yes, go ahead.",
+    "max_replies": 3
+  },
+  "stop": { "budget_seconds": 1500, "settle_quiet_seconds": 20 },
+  "outcome": { "kind": "social_post_published", "platform": "instagram", "requires_media": true, "post_approval_reply": true },
+  "metrics": [
+    "published",
+    "wall_seconds_total",
+    "wall_seconds_first_turn",
+    "wall_seconds_per_turn",
+    "user_turns",
+    "scripted_replies",
+    "llm_calls",
+    "input_tokens",
+    "cached_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "cost_usd",
+    "provider_cost_usd",
+    "tool_calls",
+    "distinct_tools",
+    "duplicate_reads",
+    "dead_end_calls",
+    "longest_silent_gap_seconds",
+    "turns_until_first_approval",
+    "approvals_requested",
+    "approvals_allowed",
+    "post_approval"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      { "id": "asked_once", "check": "The agent asked the person for at most one thing (the account, a confirmation) and did not repeat a question already answered in the chat." },
+      { "id": "showed_preview", "check": "Before asking for approval, the agent put the exact caption and the exact media in the chat." },
+      { "id": "explained_tracking", "check": "The agent said how the post's effect will be measured (the task's GA4 organic-social sessions window) or why it cannot be." }
+    ]
+  },
+  "tags": ["scenario", "plan-task", "social", "instagram", "approval"]
+}

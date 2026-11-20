@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "id": "mb-blog-draft",
+  "title": "A blog post saved as a draft, not published",
+  "version": 1,
+  "description": "The post is written and saved unpublished on the connected store's blog. On a store that is a write the person approves; the card must carry an unpublished article, and nothing is published.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": [
+      {
+        "service": "shopify",
+        "platform": "shopify",
+        "account": "the emulated store (make lane-connect-all)"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Write a 400-word blog post, \"How to store cold brew at home (notes {nonce})\", and save it as a draft on our store's blog. Do not publish it.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes, save it as a draft. Do not publish.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 600,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "saved_the_draft",
+        "type": "tool_called",
+        "tools": [
+          "create_blog_post",
+          "integration_change"
+        ],
+        "args": {
+          "*": "store cold brew[^\"]{0,40}{nonce}"
+        },
+        "max": 1,
+        "why": "No draft was saved to the blog, or the article was written more than once."
+      },
+      {
+        "id": "not_saved_published",
+        "type": "tool_not_called",
+        "tools": [
+          "create_blog_post",
+          "integration_change",
+          "publish_content"
+        ],
+        "args": {
+          "*": "isPublished[\\\\\"']*\\s*:\\s*true|\\bpublished[\\\\\"']*\\s*:\\s*true|publishDate|publishedAt[\\\\\"']*\\s*:\\s*[\\\\\"']*\\d"
+        },
+        "why": "The article was created published."
+      },
+      {
+        "id": "saved_unpublished",
+        "type": "tool_called",
+        "tools": [
+          "create_blog_post",
+          "integration_change"
+        ],
+        "args": {
+          "*": "isPublished[\\\\\"']*\\s*:\\s*false|\\bpublished[\\\\\"']*\\s*:\\s*false|published_at[\\\\\"']*\\s*:\\s*null|\"status[\\\\\"']*:\\s*[\\\\\"']*draft"
+        },
+        "why": "The article was saved without saying it is unpublished: a store shows a new article unless told not to."
+      },
+      {
+        "id": "did_not_publish",
+        "type": "tool_not_called",
+        "tools": [
+          "publish_content"
+        ],
+        "why": "The post was published."
+      },
+      {
+        "id": "one_write_only",
+        "type": "approval",
+        "min": 0,
+        "max": 1,
+        "why": "The person was asked to approve more than the one draft."
+      },
+      {
+        "id": "said_it_is_a_draft",
+        "type": "reply",
+        "pattern": "\\bdraft\\b|\\bunpublished\\b|not published",
+        "scope": "final",
+        "why": "The person was not told the post is saved as a draft."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "cms",
+    "draft",
+    "approval"
+  ]
+}

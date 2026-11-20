@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "id": "google-ads-performance-review",
+  "title": "Review 30 days of Google Ads and pick a campaign to pause",
+  "version": 2,
+  "description": "One typed request in a fresh chat: pull the last 30 days of Google Ads performance and say which campaign to pause and why. Read-only: the fixture is the Magister Marketing project (magistermarketing.com) with its own Google Ads customer cloned onto the lane by make lane-clone, read through the analytics pulls (source google_ads) or a live GAQL read. The outcome is read from the machine transcript, never from the reply: every number the agent states must appear in the Google Ads results it read (rounded, or a percentage of two of them), and the campaign it names must exist in those results; the internal customer (5596093325, not a manager account) held no campaigns on 2026-10-21, so until one exists the honest answer is that nothing ran and there is nothing to pause, and the run passes when the agent read the account and invented neither a number nor a campaign. The responder answers a question with 'Yes, go ahead.' at most twice; the run ends at the end of the turn after the last reply, or at 15 minutes.",
+  "fixture": {
+    "website": "https://magistermarketing.com/",
+    "brand": "Magister Marketing",
+    "project_slug": "magister-marketing",
+    "owner_email": "bench-mm@magistermarketing.com",
+    "model": "openai/gpt-6-luna",
+    "connections": [
+      {
+        "service": "google_ads",
+        "platform": "google_ads",
+        "account": "the brand's own customer 5596093325, cloned by make lane-clone"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "review",
+      "kind": "message",
+      "text": "Pull the last 30 days of our Google Ads performance and tell me which campaign to pause and why.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "deny": [
+      {
+        "id": "no-spend",
+        "actions": [
+          "integration_spend",
+          "integration_change",
+          "integration_delete",
+          "activate_ad_campaign",
+          "pause_ad_campaign",
+          "create_ad_campaign"
+        ],
+        "note": "benchmark: read-only review, no changes"
+      }
+    ],
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes, go ahead.",
+    "max_replies": 2
+  },
+  "stop": {
+    "budget_seconds": 900,
+    "settle_quiet_seconds": 20
+  },
+  "outcome": {
+    "kind": "answer_grounded",
+    "tools": [
+      "read_analytics_snapshots",
+      "read_analytics_breakdown",
+      "query_metric",
+      "get_analytics_view",
+      "fetch_integration_data",
+      "integration_read",
+      "get_ad_analytics",
+      "list_ad_campaigns",
+      "read",
+      "exec",
+      "read_asset"
+    ],
+    "source": "google_ads",
+    "entity": {
+      "keys": [
+        "dimension",
+        "campaign",
+        "campaign_name",
+        "campaignName",
+        "campaign.name",
+        "campaign.id",
+        "campaign.resourceName",
+        "campaign.resource_name",
+        "campaign_id",
+        "campaignId"
+      ],
+      "label": "a campaign from the Google Ads rows"
+    },
+    "numbers": {
+      "allow_derived_percentages": true
+    },
+    "paths": "(^|[\\s/'\"])data/(ga4|gsc|google_ads|paid_social|posthog|stripe)/"
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "wall_seconds_first_turn",
+    "wall_seconds_per_turn",
+    "user_turns",
+    "scripted_replies",
+    "llm_calls",
+    "longest_llm_call_seconds",
+    "input_tokens",
+    "cached_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "cost_usd",
+    "provider_cost_usd",
+    "tool_calls",
+    "distinct_tools",
+    "duplicate_reads",
+    "dead_end_calls",
+    "longest_silent_gap_seconds",
+    "approvals_requested"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "one_campaign_one_reason",
+        "check": "The reply named one campaign to pause and gave the metric that condemns it (cost per conversion, spend with no conversions, CTR) against the others."
+      },
+      {
+        "id": "no_action_taken",
+        "check": "The agent did not pause, edit or create anything; it only recommended."
+      },
+      {
+        "id": "no_pointless_questions",
+        "check": "The agent did not ask the person which account or window to use when the connected data already answers."
+      }
+    ]
+  },
+  "tags": [
+    "scenario",
+    "ads",
+    "google-ads",
+    "read-only"
+  ]
+}

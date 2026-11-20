@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "id": "shopify-page-update",
+  "title": "Add a flood-damage FAQ to the store's About page",
+  "version": 1,
+  "description": "A plan task started from the Plan tab's Work on button: add a short flood-damage FAQ (three questions) to the About page of the connected Shopify development store (magister-lanes.myshopify.com, claimed by the lane with make lane-shopify and installed from the store's admin). Magister edits Shopify pages through the Admin GraphQL read (magister_integration_read, pages query) and one approval-gated change (magister_integration_change, pageUpdate). Before every repetition the runner restores the page body to the baseline below through the lane Gateway as the owner, so each run starts from the same page. The outcome is read back from the store through the lane Gateway, never from the reply: the page body changed, it gained at least three new question sentences, the new text mentions flood, and exactly one approval card was requested and allowed. The responder allows the card and answers a question about the page with 'use the existing About page'. The run stops once the page shows the section and the agent has answered, or at 25 minutes.",
+  "fixture": {
+    "website": "https://www.artworkssandiego.com/",
+    "brand": "ArtWorks San Diego",
+    "project_slug": "artworks-san-diego-2",
+    "owner_email": "bench-s1@magistermarketing.com",
+    "model": "openai/gpt-6-luna",
+    "connections": [
+      { "service": "shopify", "platform": "shopify", "account": "magister-lanes.myshopify.com (development store)" }
+    ],
+    "plan_item": {
+      "title": "Add a flood-damage FAQ to the store's About page",
+      "description": null,
+      "task_prompt": "Add a short flood-damage FAQ to the Shopify store's About page: three questions San Diego collectors ask after a flood, each with a two-sentence answer drawn from the site's flood guidance (no new service claims). Read the page as it is now and keep everything already on it; if it already has a flood-damage FAQ section, replace that section. Save the page with one approval at the moment of saving. Use the existing About page; do not create a new page.",
+      "section_key": "move_3",
+      "phase": "this_month",
+      "aarrr_stage": "Activation",
+      "channel": "Website",
+      "priority_score": 60.0,
+      "effort": "low",
+      "confidence": "medium",
+      "expected_impact": "Answers the flood questions collectors arrive with on the store's About page, where the audit found no flood guidance.",
+      "owner_kind": "agent",
+      "required_connections": ["shopify"],
+      "workflow_slug": null,
+      "due_in_days": 14,
+      "task_contract_version": 1,
+      "task_contract": {
+        "kpi": null,
+        "goal": "The store's About page carries a short, factual flood-damage FAQ (three questions) alongside its existing content.",
+        "kind": "ship",
+        "steps": [
+          "Read the About page as it is now through the connected Shopify store (pages query) and keep its existing content.",
+          "Write three flood-damage questions collectors ask, each with a two-sentence answer consistent with the site's flood guidance.",
+          "If the page already has a flood-damage FAQ section, replace it; otherwise append the new section under its own heading.",
+          "Save the page with one pageUpdate, requesting approval at the moment of saving.",
+          "Read the page back and confirm the section is there."
+        ],
+        "inputs": {
+          "page": "The existing About page (handle: about) of the connected store.",
+          "heading": "Flood-damage FAQ",
+          "content_source": "Only the site's published flood guidance; no unverified service claims."
+        },
+        "measure": {
+          "scope": { "page": "/pages/about", "channel": null, "campaign_id": null },
+          "metric": "sessions",
+          "source": "ga4",
+          "window_days": 28
+        },
+        "version": 1,
+        "audience": "Museums, galleries, fine art collectors, and estates in the San Diego area.",
+        "evidence": ["brand.profile", "channel.website.opportunity.0"],
+        "fallback": "If the Shopify connection, the About page or the save approval is unavailable, keep the FAQ as a file and report the blocker without creating a page.",
+        "done_when": [
+          "The About page shows a Flood-damage FAQ section with three questions and answers.",
+          "Everything that was on the page before is still there.",
+          "Exactly one approval was requested, at the moment of saving."
+        ],
+        "deliverable": "The updated About page on the connected Shopify store.",
+        "destination": "The About page of the connected Shopify store (magister-lanes.myshopify.com).",
+        "verification": [
+          "Read the page back through the store and count the questions.",
+          "Compare the rest of the page with the version read at the start."
+        ],
+        "approval_gate": "One approval at the moment of saving the page.",
+        "idempotency_key": "plan-task:v1:7c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5",
+        "capability_hints": ["shopify", "Website", "magister_integration_change"],
+        "measurement_window": null
+      },
+      "evidence_refs": {
+        "source": "llm_synthesis",
+        "evidence": [
+          {
+            "ref": "brand.profile",
+            "source": "scrape_context",
+            "summary": "ArtWorks San Diego: fine art services including emergency removal, transport and storage for museums, galleries, collectors and estates.",
+            "raw_path": "scrape_context.brand_profile"
+          },
+          {
+            "ref": "channel.website.opportunity.0",
+            "source": "health_score.tabs",
+            "summary": "The store's About page has no flood or water-damage guidance although the site's flood prompt is a top AI-search opportunity.",
+            "raw_path": "health_score.tabs.website.opportunities[0]"
+          }
+        ],
+        "source_key": "move_3.task_1",
+        "evidence_refs": ["brand.profile", "channel.website.opportunity.0"],
+        "estimated_monthly_spend_cents": null
+      }
+    }
+  },
+  "turns": [
+    { "id": "brief", "kind": "task_brief", "when": "always" },
+    { "id": "continue", "kind": "continue", "when": "not_published" }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [
+      {
+        "id": "which-page",
+        "match": "which page|create (a |the )?(new )?page|no about page|cannot find (an |the )?about|could not find (an |the )?about|page (handle|title)\\?",
+        "reply": "Use the existing About page (handle: about); do not create a new one."
+      }
+    ],
+    "default_reply": "Yes, go ahead.",
+    "max_replies": 2
+  },
+  "stop": { "budget_seconds": 1500, "settle_quiet_seconds": 20 },
+  "outcome": {
+    "kind": "shopify_page_section",
+    "post_approval_reply": true,
+    "page": {
+      "service": "shopify",
+      "handle": "about",
+      "title": "About",
+      "reset_body": "<p>ArtWorks San Diego handles fine art the way museums do: climate-controlled transport, custom crating, installation and secure storage for galleries, collectors and estates across San Diego County.</p><p>When the unexpected happens, our emergency team removes, stabilizes and stores artwork so it can be assessed by a conservator. Call us before you move anything.</p>"
+    },
+    "section": { "min_questions": 3, "keywords": ["flood", "water"] },
+    "approvals_expected": 1
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "wall_seconds_first_turn",
+    "wall_seconds_per_turn",
+    "user_turns",
+    "scripted_replies",
+    "llm_calls",
+    "longest_llm_call_seconds",
+    "input_tokens",
+    "cached_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "cost_usd",
+    "provider_cost_usd",
+    "tool_calls",
+    "distinct_tools",
+    "duplicate_reads",
+    "dead_end_calls",
+    "longest_silent_gap_seconds",
+    "turns_until_first_approval",
+    "approvals_requested",
+    "approvals_allowed",
+    "post_approval"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      { "id": "read_before_write", "check": "The agent read the page before proposing a change and kept the existing content intact." },
+      { "id": "showed_section", "check": "The three questions and answers were in the chat before the approval card." },
+      { "id": "closed_the_loop", "check": "After approval the agent read the page back, gave its URL and closed the task." }
+    ]
+  },
+  "tags": ["scenario", "plan-task", "shopify", "website", "approval"]
+}

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "id": "mb-memory-preference",
+  "title": "A stated rule is saved and then followed",
+  "version": 1,
+  "description": "The person states two standing rules, then asks for copy. The rules are saved to the brand's memory and the copy follows them.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Two rules for everything you write for us from now on: never use exclamation marks, and call our buyers \"members\", never \"customers\". Remember both.",
+      "when": "always"
+    },
+    {
+      "id": "t2",
+      "kind": "message",
+      "text": "Write a two-sentence Instagram caption for members about this week's cold brew restock.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 0
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "exclamation_rule_saved",
+        "type": "state",
+        "rows": "memory",
+        "where": {
+          "text": "exclamation"
+        },
+        "min": 1,
+        "why": "The no-exclamation-marks rule was acknowledged in chat and saved nowhere."
+      },
+      {
+        "id": "members_rule_saved",
+        "type": "state",
+        "rows": "memory",
+        "where": {
+          "text": "members"
+        },
+        "min": 1,
+        "why": "The members-not-customers rule was acknowledged in chat and saved nowhere."
+      },
+      {
+        "id": "wrote_the_caption",
+        "type": "reply",
+        "pattern": "cold brew",
+        "scope": "final",
+        "why": "The caption was never written."
+      },
+      {
+        "id": "no_exclamation_marks",
+        "type": "reply",
+        "pattern": "!",
+        "scope": "final",
+        "present": false,
+        "why": "The caption breaks the rule it was just given."
+      },
+      {
+        "id": "does_not_say_customers",
+        "type": "reply",
+        "pattern": "\\bcustomers?\\b",
+        "scope": "final",
+        "unless": "rather than|instead of|never|\\bnot\\b|per your|rule",
+        "present": false,
+        "why": "The caption uses the word the person ruled out."
+      }
+    ],
+    "state": [
+      {
+        "name": "memory",
+        "table": "brand_memory",
+        "select": "id,text,source,created_at",
+        "cleanup": "delete"
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "memory"
+  ]
+}

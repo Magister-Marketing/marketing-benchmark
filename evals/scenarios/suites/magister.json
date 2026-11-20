@@ -1,0 +1,43 @@
+{
+  "id": "magister",
+  "title": "Magister benchmark",
+  "description": "The tasks only Magister can run: the brand's connected data, actions a person approves, workflows, memory, the plan and the Library. One brand with every integration on a lane's emulators (make lane-connect-all isolated=1); each scenario is graded on what the lane recorded.",
+  "scenarios": [
+    "mb-search-check-in",
+    "mb-traffic-chart",
+    "mb-ads-review",
+    "mb-store-sales",
+    "mb-email-results",
+    "mb-web-research-cited",
+    "mb-plan-next",
+    "mb-email-needs-approval",
+    "mb-email-approved",
+    "mb-social-post-approved",
+    "mb-social-post-denied",
+    "mb-ads-campaign-draft",
+    "mb-blog-draft",
+    "mb-product-seo-update",
+    "mb-owner-stated-fact",
+    "mb-workflow-weekly",
+    "mb-one-off-not-workflow",
+    "mb-memory-preference",
+    "mb-library-brief",
+    "mb-plan-add-task",
+    "mb-not-connected"
+  ],
+  "exclusive": [
+    "mb-email-needs-approval",
+    "mb-email-approved",
+    "mb-social-post-approved",
+    "mb-social-post-denied",
+    "mb-ads-campaign-draft",
+    "mb-blog-draft",
+    "mb-product-seo-update",
+    "mb-owner-stated-fact",
+    "mb-workflow-weekly",
+    "mb-one-off-not-workflow",
+    "mb-memory-preference",
+    "mb-library-brief",
+    "mb-plan-add-task"
+  ]
+}

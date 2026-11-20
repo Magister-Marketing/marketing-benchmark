@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "mb-library-brief",
+  "title": "A deliverable is saved where the person can open it",
+  "version": 1,
+  "description": "A written deliverable is not left in the chat: it is saved under the brand's files and the reply says where.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": []
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Write a one-page creative brief for our spring sale campaign and save it to the Library so my designer can open it.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": false,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Use your best judgement and go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 480,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "saved_a_file",
+        "type": "tool_called",
+        "tools": [
+          "write",
+          "edit",
+          "promote_artifact"
+        ],
+        "args": {
+          "*": "\"(path|file_path|destination_path)\": \"(/data/\\.openclaw/workspace/)?resources/[^\"]+\""
+        },
+        "why": "The brief exists only in the chat, or was written outside the brand's files."
+      },
+      {
+        "id": "said_where_it_is",
+        "type": "reply",
+        "pattern": "resources/|library",
+        "scope": "final",
+        "why": "The person was not told where the file is."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": []
+  },
+  "tags": [
+    "magister-benchmark",
+    "library"
+  ]
+}
