@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Skills: the six skill files the "with skills" arm pastes into a prompt are
+  refreshed, unchanged, to marketingskills 2.8.23 (commit `2c38021`,
+  2026-11-20). They were copies from 2026-08-31 (2.8.16), three months behind
+  the pack Magister's machines run, so a "with skills" run and a Magister run
+  were not using the same skills. `copywriting`, `analytics`, `emails` and
+  `ad-creative` changed; `cro` and `site-architecture` did not. Runs made
+  before this used the older copies (each run folder keeps the prompts it
+  sent).
 - Runner: the ceiling retry (one call with the output cap doubled, after an
   empty reply cut off at the cap) never asks for more than a candidate's new
   optional `model_max_output_tokens`, and makes no call when the cap is

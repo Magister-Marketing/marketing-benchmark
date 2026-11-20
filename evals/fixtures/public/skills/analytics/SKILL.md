@@ -1,8 +1,8 @@
 ---
 name: analytics
-description: "Set up or audit tracking — GA4, GTM, Mixpanel, Segment; tracking plans, event naming, UTM conventions, conversion and attribution debugging. Rate metrics divide matching closed windows — never full-period spend by partial-period results."
+description: "Set up or audit tracking — GA4, GTM, Mixpanel, Segment; tracking plans, event naming, UTM conventions, conversion and attribution debugging. Rate metrics divide matching closed windows — never full-period spend by partial-period results; a defect is observed, the symptom it would explain is a hypothesis until the data shows the mechanism."
 metadata:
-  version: 2.2.0
+  version: 2.3.2
 ---
 
 # Analytics Tracking
@@ -16,6 +16,9 @@ If `.agents/product-marketing.md` exists (or `.claude/product-marketing.md`, or 
 
 **Apply the project's brand:**
 If `BRAND.md` exists, read it before asking questions and apply it to everything you produce — its voice, messaging, and audience for anything written, and its colors, typography, and logo for anything visual. Never ask for a brand fact it already answers. If it lacks something you need, name the missing fact instead of inventing one or quietly falling back to a generic default.
+
+**Use the numbers the brand has already connected:**
+If `INTEGRATIONS.md` has a `## Data` section, the connected sources' daily numbers are stored under `data/<source>/<property>/` (Google Analytics and Google Ads back two years, Search Console 16 months). Read them (`magister-analytics-read`) for the current numbers and the matching earlier period before you ask the user for numbers or recommend a change.
 
 Before implementing tracking, understand:
 
@@ -73,6 +76,25 @@ Before implementing tracking, understand:
   from the goal the brief states — the launch target, audience, revenue, or
   positioning objective — not only from what is operationally easiest.
   Name which stated goal each option serves and what it trades away.
+
+### 8. Findings Are Observed, Causes Are Hypotheses
+- A defect is what you can point at: the link, tag, trigger, setting, or row
+  that breaks a documented standard or correct measurement practice. Report
+  it as a finding with its location and the standard it breaks.
+- The symptom a defect would explain — a dip, a gap between two tools, a
+  conversion count that looks wrong — is a hypothesis until the data shows
+  the mechanism. Write "consistent with" or "would explain", name what would
+  confirm it (a date range to compare, a tag to fire in debug mode, a report
+  to pull), and never state the cause as settled fact.
+- Something is clean only when it meets every documented standard. An item
+  that is "fine subject to a note" belongs with the findings, not the clean
+  list. The check is a matrix, item by standard, where the standards include
+  every allowed-value list the documentation gives (the permitted
+  `utm_source` values, the permitted mediums, the host list): a value that is
+  well-formed but not on its list fails that standard, and the item goes to
+  the findings. Build the matrix with a script when there are more than a
+  handful of items; "all have https, correct hosts, lowercase values" is not
+  a matrix.
 
 ---
 
