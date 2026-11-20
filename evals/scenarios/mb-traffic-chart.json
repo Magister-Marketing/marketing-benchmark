@@ -74,6 +74,39 @@
         "why": "Asked for a chart, the person got text."
       },
       {
+        "id": "bars_are_the_data",
+        "type": "grounded",
+        "sources": [
+          {
+            "tools": [
+              "read_analytics_snapshots",
+              "read_analytics_breakdown",
+              "query_metric",
+              "fetch_integration_data",
+              "integration_read",
+              "get_analytics_view",
+              "get_ad_analytics",
+              "list_ad_campaigns",
+              "get_social_analytics",
+              "read_asset",
+              "describe_analytics_chart"
+            ]
+          },
+          {
+            "tools": [
+              "read",
+              "exec"
+            ],
+            "args": {
+              "*": "(^|[\\s/'\"])data/[a-z0-9_]+/|audits/|['\"]data['\"]"
+            }
+          }
+        ],
+        "scope": "rendered",
+        "min": 3,
+        "why": "The chart's values are not the figures the agent read."
+      },
+      {
         "id": "did_not_say_not_connected",
         "type": "reply",
         "pattern": "(is|are|was|were)(n.t| not) connected|not (yet )?connected|needs? to be connected|connect (your|the) [a-z ]{0,30}(account|property|store)",

@@ -327,7 +327,7 @@
               "where": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
               "pattern": { "type": "string", "minLength": 1 },
               "present": { "description": "false: the pattern must not appear.", "type": "boolean" },
-              "scope": { "description": "final: only the agent's words after the person's last message.", "enum": ["all", "final"] },
+              "scope": { "description": "final: only the agent's words after the person's last message. rendered: only the tables and charts it drew.", "enum": ["all", "final", "rendered"] },
               "min": { "type": "integer", "minimum": 0 },
               "max": { "type": "integer", "minimum": 0 }
             }

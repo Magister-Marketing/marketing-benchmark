@@ -321,3 +321,21 @@ def test_cited_links_must_come_from_a_search_result():
     bad = [good[0], message("assistant", "See https://example.com/rtd-report and https://example.net/invented-study.", "2026-11-20T06:01:00Z")]
     assert verdict(record([found], messages=good), check)["passed"]
     assert not verdict(record([found], messages=bad), check)["passed"]
+
+
+def test_a_charts_bars_are_figures_and_can_be_checked_on_their_own():
+    rows = envelope(receipt={"rows": [{"channel": "Direct", "sessions": 1800}, {"channel": "Organic Search", "sessions": 1747}]})
+    real = json.dumps({"root": "c", "elements": {"c": {"type": "BarChart", "props": {"data": [
+        {"channel": "Direct", "sessions": 1800}, {"channel": "Organic Search", "sessions": 1747}]}}}})
+    fake = real.replace("1800", "2600").replace("1747", "2410")
+    check = {"id": "bars_from_data", "type": "grounded", "tools": ["read_analytics_snapshots"], "scope": "rendered",
+             "min": 2, "unbacked_max": 0}
+
+    def chat_with(chart):
+        return [message("user", "chart it", "2026-11-20T06:00:00Z"),
+                message("assistant", "About 9,999 sessions in all.", "2026-11-20T06:00:30Z"),
+                message("ui_spec", chart, "2026-11-20T06:00:40Z")]
+
+    # The sentence's own figure is outside the rendered scope; only the bars are read.
+    assert verdict(record(reads(rows), messages=chat_with(real)), check)["passed"]
+    assert not verdict(record(reads(rows), messages=chat_with(fake)), check)["passed"]

@@ -228,6 +228,8 @@ def matching_approvals(record: dict[str, Any], check: dict[str, Any]) -> list[di
 def _spec_strings(value: Any, out: list[str]) -> None:
     if isinstance(value, str):
         out.append(value)
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        out.append(str(value))  # a chart's bars are numbers, and a person reads them
     elif isinstance(value, dict):
         for item in value.values():
             _spec_strings(item, out)
@@ -237,8 +239,8 @@ def _spec_strings(value: Any, out: list[str]) -> None:
 
 
 def spec_words(content: Any) -> str:
-    """Every string inside a block the agent rendered (a table, a chart, a
-    choice): what a person reads off it."""
+    """Every string and number inside a block the agent rendered (a table, a
+    chart, a choice): what a person reads off it."""
     if isinstance(content, str):
         try:
             content = json.loads(content)
@@ -253,18 +255,18 @@ def agent_words(record: dict[str, Any], scope: str = "all") -> str:
     """The agent's visible words in order, with the blocks it rendered
     itself. The Gateway's own cards (approval, result, file) carry a
     ``kind`` and are not the agent's words. ``final``: only what came after
-    the last message from the person."""
+    the last message from the person. ``rendered``: only the blocks it drew."""
     rows = [row for row in (record.get("rows") or {}).get("chat_messages") or [] if isinstance(row, dict)]
     rows.sort(key=lambda row: (str(row.get("created_at") or ""), row.get("block_index") or 0))
     if scope == "final":
         last_user = max((index for index, row in enumerate(rows) if row.get("role") == "user"), default=-1)
         rows = rows[last_user + 1:]
-    elif scope != "all":
-        raise CheckSpecError(f"reply scope must be all or final, not {scope!r}")
+    elif scope not in ("all", "rendered"):
+        raise CheckSpecError(f"scope must be all, final or rendered, not {scope!r}")
     parts: list[str] = []
     for row in rows:
         meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-        if row.get("role") == "assistant":
+        if row.get("role") == "assistant" and scope != "rendered":
             parts.append(str(row.get("content") or ""))
         elif row.get("role") == "ui_spec" and not meta.get("kind"):
             parts.append(spec_words(row.get("content")))
