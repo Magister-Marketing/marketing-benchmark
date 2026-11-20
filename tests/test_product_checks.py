@@ -699,3 +699,23 @@ def test_a_script_counts_only_when_it_computes_from_a_figure_that_was_read():
     assert not verdict(record([read, filed], messages=said), grounded)["passed"]
     computed = call("exec", {"command": "python3 -c 'print(1482*7 - 375)'"}, "9999\n")
     assert verdict(record([read, computed], messages=said), grounded)["passed"]
+
+
+def test_a_link_a_read_page_lists_relative_to_itself_is_a_source():
+    """2026-11-20: the agent read a newswire's search page and cited a release it
+    lists. The page writes its own links without a host, so the citation read
+    as invented."""
+    page = json.dumps({"url": "https://www.prnewswire.com/search/news/?keyword=coffee", "finalUrl": "https://www.prnewswire.com/search/news/?keyword=coffee",
+                       "status": 200, "text": "More news about: [Real Milk](/news/real-milk/)\n\n /news-releases/java-monster-brings-cocoa-302895468.html\n\n 11/20/2026 and/or $5/month"})
+    fetched = call("web_fetch", {"url": "https://www.prnewswire.com/search/news/?keyword=coffee"}, page)
+    cited = {"id": "real", "type": "cited", "tools": ["web_fetch"], "min": 1, "unbacked_max": 0}
+
+    def reply(link):
+        return [message("user", "Cite it.", "2026-11-20T06:00:00Z"), message("assistant", f"See [the release]({link}).", "2026-11-20T06:01:00Z")]
+
+    assert verdict(record([fetched], messages=reply("https://www.prnewswire.com/news-releases/java-monster-brings-cocoa-302895468.html")), cited)["passed"]
+    assert verdict(record([fetched], messages=reply("https://www.prnewswire.com/news/real-milk/")), cited)["passed"]
+    # The same path on another site, or a path the page does not list, is not what was read.
+    assert not verdict(record([fetched], messages=reply("https://example.com/news-releases/java-monster-brings-cocoa-302895468.html")), cited)["passed"]
+    assert not verdict(record([fetched], messages=reply("https://www.prnewswire.com/news-releases/made-up-999.html")), cited)["passed"]
+    assert not verdict(record([fetched], messages=reply("https://www.prnewswire.com/month")), cited)["passed"]

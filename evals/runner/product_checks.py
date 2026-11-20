@@ -442,6 +442,24 @@ def links(text: str, *, stated: bool = False) -> set[str]:
     return found - {""}
 
 
+# A page's link to itself, written without its host ("/news-releases/x.html"): a path after a space, a bracket
+# or a quote, never the slash inside a word, a date or a price.
+RELATIVE_LINK = re.compile(r"(?<![\w:/.$])/(?!/)[A-Za-z0-9][^\s)\]<>\"'`*|\\]*")
+
+
+def page_links(call: dict[str, Any]) -> set[str]:
+    """The links a call returned or was asked for. A page that was read lists
+    its own pages without a host: those are resolved against the page."""
+    text = _text(call.get("result_text"))
+    found = links(text) | links(_text(call.get("args")))
+    page = re.search(r'"(?:finalUrl|url)"\s*:\s*"(https?://[^"]+)"', text[:800])
+    base = page.group(1) if page else dig(call.get("args"), "url")
+    if isinstance(base, str) and base:
+        host = _link_key(base).split("/")[0].split("?")[0]
+        found |= {_link_key(host + raw) for raw in RELATIVE_LINK.findall(text)}
+    return found - {""}
+
+
 def _unbacked_bound(check: dict[str, Any]) -> int | None:
     bound = check.get("unbacked_max")
     if bound is not None and (not isinstance(bound, int) or bound < 0):
@@ -614,7 +632,7 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
             for item in source_calls(record, check):
                 if re.search(r'"status"\s*:\s*[45]\d\d\b', _text(item.get("result_text"))[:400]):
                     continue  # a page that answered 404 was not read, whatever its address
-                available |= links(_text(item.get("result_text"))) | links(_text(item.get("args")))
+                available |= page_links(item)
         backed, unbacked = sorted(said & available), sorted(said - available)
         ok = _within(len(backed), low, high) and (loose is None or len(unbacked) <= loose)
         result.update(passed=ok, found=len(backed),
