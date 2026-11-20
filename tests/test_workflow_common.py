@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from eval_runner import workflows
+from eval_runner import bench, workflows
 from eval_runner.workflows import common
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +26,26 @@ def reference_and_facts(workflow: str) -> tuple[object, str, dict]:
     module = workflows.module_for(workflow)
     reference = module.reference_answer()
     return module, reference, module.facts(reference)
+
+
+def scores_as_the_reference(workflow: str, text: str) -> None:
+    """The reply's facts are the reference's, and every programmatic check is at 1.0."""
+    module, _reference, clean = reference_and_facts(workflow)
+    assert module.facts(text) == clean
+    task = next(task for task in TASKS if task.get("workflow") == workflow)
+    results = bench.programmatic_results(task, bench.measured_facts(task, text))
+    assert results and all(item["pass"] and item["score"] == 1.0 for item in results.values())
+
+
+def as_list(names: list[str], marker: str) -> str:
+    """The names as list items: "- ", "* ", "+ ", or numbered as "1." or "1)"."""
+    if marker in ("1.", "1)"):
+        return "\n".join(f"{number}{marker[1]} {name}" for number, name in enumerate(names, 1))
+    return "\n".join(f"{marker}{name}" for name in names)
+
+
+MARKERS = ["- ", "* ", "+ ", "1.", "1)"]
+SIGN_OFFS = ["Let me know if you want any changes.", "Happy to adjust any of these, just say which one."]
 
 
 def test_every_file_task_is_covered():
@@ -80,9 +100,11 @@ def test_the_last_mention_with_something_in_it_wins():
     for closing in ("- a.csv\n", "### a.csv\n\n\n", "**a.csv**\n```\n```\n", "### a.csv\n### b.csv\n"):
         text = draft_then_final + "\n" + closing
         assert common.tables(text, ["a.csv", "b.csv"])["a.csv"] == [{"k": "3", "v": "4"}], closing
-    # A file mentioned only with nothing under it is present but empty, not missing.
-    assert common.tables("Files:\n- a.csv\n- b.csv\n", ["a.csv", "b.csv", "c.csv"]) == {
+    # A file named only with nothing under it is present but empty, not missing; a
+    # name in a list is a mention, not a file.
+    assert common.tables("### a.csv\n### b.csv\n", ["a.csv", "b.csv", "c.csv"]) == {
         "a.csv": [], "b.csv": [], "c.csv": None}
+    assert common.tables("Files:\n- a.csv\n- b.csv\n", ["a.csv", "b.csv"]) == {"a.csv": None, "b.csv": None}
 
 
 def test_the_document_reader_keeps_the_last_document_with_text():
@@ -90,5 +112,65 @@ def test_the_document_reader_keeps_the_last_document_with_text():
     assert common.sections(text, ["a.md"]) == {"a.md": "final"}
     for closing in ("- a.md\n", "### a.md\n\n\n", "**a.md**\n```\n```\n", "### a.md\n### b.md\n"):
         assert common.sections(text + "\nFiles:\n" + closing, ["a.md", "b.md"])["a.md"] == "final", closing
-    assert common.sections("Files:\n- a.md\n- b.md\n", ["a.md", "b.md", "c.md"]) == {
+    assert common.sections("### a.md\n### b.md\n", ["a.md", "b.md", "c.md"]) == {
         "a.md": "", "b.md": "", "c.md": None}
+    assert common.sections("Files:\n- a.md\n- b.md\n", ["a.md", "b.md"]) == {"a.md": None, "b.md": None}
+
+
+@pytest.mark.parametrize("marker", MARKERS)
+@pytest.mark.parametrize("workflow", FILE_TASKS)
+def test_a_list_of_the_files_with_a_sentence_after_it_changes_nothing(workflow, marker):
+    """A model often ends with "Files delivered:", a list of the names and a
+    sign-off, or opens with the list before the files. A name in a list is a
+    mention: it neither replaces a file nor starts one."""
+    _module, reference, _clean = reference_and_facts(workflow)
+    listing = as_list(NAME_LINE.findall(reference), marker)
+    for sign_off in SIGN_OFFS:
+        scores_as_the_reference(workflow, f"{reference}\n\nFiles delivered:\n{listing}\n\n{sign_off}\n")
+        scores_as_the_reference(workflow, f"{reference}\n\nFiles delivered:\n\n{listing}\n{sign_off}\n")
+        scores_as_the_reference(workflow, f"I will deliver:\n{listing}\n\n{sign_off}\n\n{reference}")
+
+
+@pytest.mark.parametrize("marker", MARKERS)
+@pytest.mark.parametrize("workflow", FILE_TASKS)
+def test_files_named_as_list_items_are_still_read(workflow, marker):
+    """A list item followed by a code fence, or by a table row, starts a file."""
+    _module, reference, _clean = reference_and_facts(workflow)
+    names = NAME_LINE.findall(reference)
+    listed = reference
+    for name in names:
+        listed = listed.replace(f"### {name}\n", as_list([name], marker) + "\n", 1)
+    assert not NAME_LINE.search(listed)
+    scores_as_the_reference(workflow, listed)
+    spaced = re.sub(r"^((?:[-*+]|\d[.)]) [^\n]+)\n(```|~~~)", r"\1\n\n\2", listed, flags=re.MULTILINE)
+    assert spaced != listed
+    scores_as_the_reference(workflow, spaced)
+    # Unfenced, the first line must read as a table row (a comma or a pipe), so a
+    # one-column file keeps its fence: a lone word could as well be a sign-off.
+    unfenced = re.sub(r"^((?:[-*+]|\d[.)]) [^\n]+\.csv)\n```[a-z]*\n([^\n]*[,|].*?)\n```$", r"\1\n\2", listed,
+                      flags=re.MULTILINE | re.DOTALL)
+    assert unfenced != listed
+    scores_as_the_reference(workflow, unfenced)
+    assert common.tables("- a.csv\nid\nC1\n", ["a.csv"]) == {"a.csv": None}
+    assert common.tables("- a.csv\n```csv\nid\nC1\n```\n", ["a.csv"]) == {"a.csv": [{"id": "C1"}]}
+
+
+def test_list_item_names_and_their_lookahead_are_fast():
+    import time
+
+    started = time.perf_counter()
+    for text in (
+        "- keywords.csv\n" * 100_000,
+        "- keywords.csv\n\n" * 60_000 + "x,y\n",
+        "1. keywords.csv\n" + "\n" * 200_000 + "a,b\n" * 10,
+        "* asset-01.md\n" * 100_000 + "```\nx\n```\n",
+        ("- keywords.csv\n" + " " * 150 + "\n") * 50_000,
+        "+ " + "a" * 150_000 + ".csv\n```\n",
+    ):
+        common.tables(text, ["keywords.csv", "ads.csv"])
+        common.sections(text, ["asset-01.md", "keywords.csv"])
+    for workflow in FILE_TASKS:
+        module, reference, _clean = reference_and_facts(workflow)
+        names = NAME_LINE.findall(reference)
+        module.facts(as_list(names, "- ") * 1 + "\n" + ("\n".join(f"- {names[0]}" for _ in range(50_000))) + "\n" + reference)
+    assert time.perf_counter() - started < 5

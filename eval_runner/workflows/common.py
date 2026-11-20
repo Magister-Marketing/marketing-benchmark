@@ -22,14 +22,54 @@ _MAX_MARKER_LINE = 200
 _FENCES = ("```", "~~~")
 
 
+def _list_marker(core: str) -> int:
+    """The length of the list marker a stripped line opens with ("- ", "* ",
+    "+ ", "1. ", "12) "), or 0 when it is not a list item."""
+    if core[:1] in ("-", "*", "+") and core[1:2] in (" ", "\t"):
+        return 2
+    head = core[:10]
+    digits = len(head) - len(head.lstrip("0123456789"))
+    if 1 <= digits <= 9 and core[digits:digits + 1] in (".", ")") and core[digits + 1:digits + 2] in (" ", "\t"):
+        return digits + 2
+    return 0
+
+
+def _next_text(lines: list[str], index: int) -> str | None:
+    """The first line with text after lines[index], or None."""
+    for following in range(index + 1, len(lines)):
+        if lines[following].strip():
+            return lines[following]
+    return None
+
+
+def _table_row(line: str) -> bool:
+    """Whether a line reads as a CSV or Markdown table row, not a sentence: it
+    holds a comma or a pipe and does not end the way a sentence ends."""
+    core = line.strip()
+    return ("," in core or "|" in core) and core[-1:] not in (".", "!", "?")
+
+
+def _starts_file(lines: list[str], index: int, tabular: bool) -> bool:
+    """Whether the naming line at lines[index] starts a file. A heading, bold,
+    backticks, "File: x" or the bare name always does. A list item ("- x.csv",
+    "1. x.csv") does only when the next line with text opens a code fence or,
+    for a table, is a table row: otherwise it is a name in a list (the files
+    delivered, the files to come) and starts nothing."""
+    if not _list_marker(lines[index].strip()):
+        return True
+    following = _next_text(lines, index)
+    if following is None:
+        return False
+    return _is_fence(following) or (tabular and _table_row(following))
+
+
 def file_named(line: str) -> str | None:
     """The file a line names, or None: "### keywords.csv", "**keywords.csv**",
-    "- `keywords.csv`:", "File: keywords.csv"."""
+    "- `keywords.csv`:", "1. keywords.csv", "File: keywords.csv"."""
     if len(line) > _MAX_MARKER_LINE:
         return None
     core = line.strip().lstrip("#").strip()
-    if core[:2] in ("- ", "* "):
-        core = core[2:]
+    core = core[_list_marker(core):]
     core = core.strip("*_` \t")
     if core[:4].lower() == "file" and core[4:].lstrip()[:1] in (":", "="):
         core = core[4:].lstrip()[1:]
@@ -125,15 +165,18 @@ def tables(text: str, names: list[str]) -> dict[str, list[dict[str, str]] | None
     the next heading or the next file; blank lines between the name and the
     file are skipped. A file given twice is read where it was last given with
     something in it: a draft earlier in the reply does not shadow the final
-    one, and a closing list of the file names does not empty them. A file
-    only ever named with nothing under it is present but empty."""
+    one, and a closing list of the file names does not empty them. A name
+    given as a list item starts a file only when a code fence or a table row
+    follows it (``_starts_file``); otherwise it is a mention, though like any
+    naming line it still ends an unfenced file above it. A file only ever
+    named with nothing under it is present but empty."""
     wanted = {name.lower() for name in names}
     lines = text.splitlines()
     found: dict[str, list[str]] = {}
     index = 0
     while index < len(lines):
         name = file_named(lines[index])
-        if name not in wanted:
+        if name not in wanted or not _starts_file(lines, index, tabular=True):
             index += 1
             continue
         index += 1
@@ -185,12 +228,12 @@ _ANY_FILE_NAME = re.compile(
 
 def named_file(line: str) -> str | None:
     """The file a line names, of any kind a reply carries, or None:
-    "### asset-01.md", "**asset-01.md**", "- `asset-01.md`:", "File: notes.txt"."""
+    "### asset-01.md", "**asset-01.md**", "- `asset-01.md`:", "2. asset-02.md",
+    "File: notes.txt"."""
     if len(line) > _MAX_MARKER_LINE:
         return None
     core = line.strip().lstrip("#").strip()
-    if core[:2] in ("- ", "* "):
-        core = core[2:]
+    core = core[_list_marker(core):]
     core = core.strip("*_` \t")
     if core[:4].lower() == "file" and core[4:].lstrip()[:1] in (":", "="):
         core = core[4:].lstrip()[1:]
@@ -246,9 +289,12 @@ def sections(text: str, names: list[str]) -> dict[str, str | None]:
     through ``_document`` (inside its code fence when it has one). A file
     given twice is read where it was last given with text: a draft earlier in
     the reply does not shadow the final one, and a closing list of the file
-    names does not empty them. A file only ever named with no text under it
-    is present but empty (""). One pass over the lines, nothing matched
-    against more than a bounded line, so no reply can stall it."""
+    names does not empty them. A name given as a list item starts a document
+    only when a code fence follows it (``_starts_file``); otherwise it is a
+    mention, which still ends the document above it as any naming line does.
+    A file only ever named with no text under it is present but empty ("").
+    Nothing is matched against more than a bounded line, and each blank run is
+    looked past once, so no reply can stall it."""
     wanted = {name.lower() for name in names}
     found: dict[str, str] = {}
 
@@ -261,11 +307,13 @@ def sections(text: str, names: list[str]) -> dict[str, str | None]:
 
     current_name: str | None = None
     current: list[str] = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
         name = named_file(line)
         if name is not None:
             keep(current_name, current)
-            current_name, current = (name if name in wanted else None), []
+            starts = name in wanted and _starts_file(lines, index, tabular=False)
+            current_name, current = (name if starts else None), []
             continue
         if current_name is not None:
             current.append(line)
