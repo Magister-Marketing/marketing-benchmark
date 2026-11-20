@@ -258,7 +258,7 @@
   "claude-opus-5-5-medium": {
     "model": "anthropic/claude-opus-5-5",
     "reasoning_effort": "medium",
-    "max_output_tokens": 32000,
+    "max_output_tokens": 65536,
     "pricing": {
       "input_per_mtok": 4.0,
       "output_per_mtok": 20.0
