@@ -45,6 +45,7 @@ CHECK_TYPES = ("tool_called", "tool_not_called", "approval", "state", "reply", "
 FIGURE = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.])\d+\.\d+|(?<![\w.])\d{3,}")
 YEAR = re.compile(r"^(19|20)\d\d$")
 LINK = re.compile(r"https?://[^\s)\]>\"'`*|]+")
+UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
 DEFAULT_FLAGS = re.IGNORECASE | re.DOTALL
 
 
@@ -275,9 +276,14 @@ def agent_words(record: dict[str, Any], scope: str = "all") -> str:
 
 # ── Figures, drawn blocks, named rows ─────────────────────────────────────────
 
-def figures(text: str) -> set[str]:
+def figures(text: str, *, stated: bool = False) -> set[str]:
     """The figures in a text, commas dropped and trailing zeros trimmed, so
-    "1,204" and "1204.0" are one figure. A year is not a figure."""
+    "1,204" and "1204.0" are one figure. A year is not a figure. With
+    ``stated`` (the agent's own words), a link or an id is not a figure the
+    agent stated: a "connect it here" link carries a port and a project id
+    (2026-11-20: an honest "Mailchimp isn't connected" failed on :3022)."""
+    if stated:
+        text = UUID.sub(" ", LINK.sub(" ", text or ""))
     found: set[str] = set()
     for raw in FIGURE.findall(text or ""):
         value = raw.replace(",", "")
@@ -434,7 +440,7 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
         loose = _unbacked_bound(check)
         words = agent_words(record, check.get("scope", "all"))
         if kind == "grounded":
-            said, available, noun = figures(words), result_figures(record, check), "figure"
+            said, available, noun = figures(words, stated=True), result_figures(record, check), "figure"
         else:
             said, noun = links(words), "link"
             available = set()

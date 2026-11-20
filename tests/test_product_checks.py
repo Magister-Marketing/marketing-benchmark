@@ -314,6 +314,10 @@ def test_unbacked_max_refuses_figures_no_result_holds():
               message("assistant", "Mailchimp is not connected, so I have no list figures for the last 30 days.", "2026-11-20T06:01:00Z")]
     made_up = [honest[0], message("assistant", "Your list grew by 1,482 subscribers (6.4%).", "2026-11-20T06:01:00Z")]
     assert verdict(record(messages=honest), check)["passed"]
+    # The way in is a link with a port and a project id: neither is a figure it stated.
+    linked = [honest[0], message("assistant", "Mailchimp isn't connected. [Connect Mailchimp](http://bench.localhost:3022/"
+                                 "integrations?project=1c95f439-a3bf-4e17-9d95-44924f6a60de&open=mailchimp).", "2026-11-20T06:01:00Z")]
+    assert verdict(record(messages=linked), check)["passed"]
     result = verdict(record(messages=made_up), check)
     assert not result["passed"] and "not in any result" in result["checks"][0]["detail"]
 

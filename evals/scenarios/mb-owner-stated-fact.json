@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "id": "mb-owner-stated-fact",
+  "title": "A fact the owner states about their own shop is written, not questioned",
+  "version": 1,
+  "description": "The owner states something only they know (how fast their orders ship) and asks for it on a store page. A direct statement from the person the brand belongs to is the highest source there is: the change is made, through its approval card, without asking for a document to back it.",
+  "fixture": {
+    "website": "https://emulated-store.test/",
+    "brand": "Emulated Store",
+    "project_slug": "magister-bench",
+    "owner_email": "bench-emu@magistermarketing.com",
+    "model": "openai/gpt-6.2-sol",
+    "connections": [
+      {
+        "service": "shopify",
+        "platform": "shopify",
+        "account": "the emulated store (make lane-connect-all)"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "t1",
+      "kind": "message",
+      "text": "Update the SEO description of our Classic Tee product page so it says orders ship within 2 business days. Keep it under 155 characters.",
+      "when": "always"
+    }
+  ],
+  "responder": {
+    "approve_approvals": true,
+    "replies": [],
+    "reply_when": "question",
+    "default_reply": "Yes, that is our shipping time. Go ahead.",
+    "max_replies": 1
+  },
+  "stop": {
+    "budget_seconds": 600,
+    "settle_quiet_seconds": 15
+  },
+  "outcome": {
+    "kind": "product_checks",
+    "checks": [
+      {
+        "id": "made_the_change",
+        "type": "approval",
+        "match": {
+          "*": "2 business days|two business days"
+        },
+        "decision": "allowed",
+        "executed": true,
+        "min": 1,
+        "max": 1,
+        "why": "The owner stated a fact about their own shop and asked for a change; it was withheld."
+      },
+      {
+        "id": "said_it_is_done",
+        "type": "reply",
+        "pattern": "\\b(updated|saved|changed|live|done)\\b",
+        "scope": "final",
+        "why": "After the change, the person was not told it landed."
+      },
+      {
+        "id": "did_not_ask_for_proof",
+        "type": "reply",
+        "pattern": "(confirm|verify|proof|evidence|document|policy page)[^.?!]{0,80}\\?|doesn.t (verify|confirm|state)|isn.t (verified|stated|supported)|left [^.]{0,60}unchanged",
+        "scope": "all",
+        "present": false,
+        "required": false,
+        "why": "It asked the owner to prove their own shipping time."
+      }
+    ]
+  },
+  "metrics": [
+    "passed",
+    "outcome_summary",
+    "wall_seconds_total",
+    "user_turns",
+    "llm_calls",
+    "tool_calls",
+    "cost_usd",
+    "approvals_requested",
+    "approvals_allowed"
+  ],
+  "experience": {
+    "status": "stub",
+    "criteria": [
+      {
+        "id": "no_caveat_lecture",
+        "check": "The reply does not lecture the owner about substantiating their own shipping time."
+      }
+    ]
+  },
+  "tags": [
+    "magister-benchmark",
+    "approval",
+    "shopify",
+    "owner-facts"
+  ]
+}

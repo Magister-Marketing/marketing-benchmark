@@ -22,7 +22,7 @@
     {
       "id": "t1",
       "kind": "message",
-      "text": "Update the SEO description of our Classic Tee product page so it says the tee is 100% organic cotton. Keep it under 155 characters.",
+      "text": "Change the SEO title of our Classic Tee product page to exactly: Classic Tee | Everyday Heavyweight Tee",
       "when": "always"
     }
   ],
@@ -30,7 +30,7 @@
     "approve_approvals": true,
     "replies": [],
     "reply_when": "question",
-    "default_reply": "Yes, go ahead with that description.",
+    "default_reply": "Yes, go ahead with that title.",
     "max_replies": 1
   },
   "stop": {
@@ -44,16 +44,16 @@
         "id": "card_carried_the_change",
         "type": "approval",
         "match": {
-          "*": "organic cotton"
+          "*": "Everyday Heavyweight Tee"
         },
         "min": 1,
-        "why": "No approval card carried the new description."
+        "why": "No approval card carried the new title."
       },
       {
         "id": "change_ran_once",
         "type": "approval",
         "match": {
-          "*": "organic cotton"
+          "*": "Everyday Heavyweight Tee"
         },
         "decision": "allowed",
         "executed": true,

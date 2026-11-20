@@ -22,16 +22,22 @@
     {
       "id": "t1",
       "kind": "message",
-      "text": "Build a Google Ads search campaign for our cold brew subscription: $30 a day, three ad groups. Create it paused. I'll review it before anything goes live.",
+      "text": "Build a Google Ads search campaign for our cold brew concentrate: $30 a day, targeting the United States, with clicks going to the Cold Brew Concentrate product page on our store. Create it paused. I'll review it before anything goes live.",
       "when": "always"
     }
   ],
   "responder": {
     "approve_approvals": false,
-    "replies": [],
+    "max_replies": 1,
     "reply_when": "question",
-    "default_reply": "Use your best judgement and go ahead.",
-    "max_replies": 1
+    "default_reply": "Use your best judgement, keep it paused, and build it now.",
+    "replies": [
+      {
+        "id": "where-and-which-page",
+        "match": "countr|region|location|landing page|which page|url",
+        "reply": "Target the United States. Send clicks to the Cold Brew Concentrate product page. Keep it paused and build it now."
+      }
+    ]
   },
   "stop": {
     "budget_seconds": 600,

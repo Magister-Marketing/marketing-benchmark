@@ -3,7 +3,7 @@
   "id": "mb-blog-draft",
   "title": "A blog post saved as a draft, not published",
   "version": 1,
-  "description": "The post is written and saved as a draft on the connected store's blog. Publishing was refused in the ask.",
+  "description": "The post is written and saved unpublished on the connected store's blog. On a store that is a write the person approves; the card must carry an unpublished article, and nothing is published.",
   "fixture": {
     "website": "https://emulated-store.test/",
     "brand": "Emulated Store",
@@ -27,10 +27,10 @@
     }
   ],
   "responder": {
-    "approve_approvals": false,
+    "approve_approvals": true,
     "replies": [],
     "reply_when": "question",
-    "default_reply": "Use your best judgement and go ahead.",
+    "default_reply": "Yes, save it as a draft. Do not publish.",
     "max_replies": 1
   },
   "stop": {
@@ -44,10 +44,26 @@
         "id": "saved_the_draft",
         "type": "tool_called",
         "tools": [
-          "create_blog_post"
+          "create_blog_post",
+          "integration_change"
         ],
-        "ending": "not_failed",
+        "args": {
+          "*": "store cold brew"
+        },
         "why": "No draft was saved to the blog."
+      },
+      {
+        "id": "not_saved_published",
+        "type": "tool_not_called",
+        "tools": [
+          "create_blog_post",
+          "integration_change",
+          "publish_content"
+        ],
+        "args": {
+          "*": "\"isPublished\"\\s*:\\s*true|\"published\"\\s*:\\s*true|\"publishDate\""
+        },
+        "why": "The article was created published."
       },
       {
         "id": "did_not_publish",
@@ -58,15 +74,11 @@
         "why": "The post was published."
       },
       {
-        "id": "no_publish_ran",
-        "type": "approval",
-        "executed": true,
-        "match": {
-          "action": "publish"
-        },
-        "min": 0,
-        "max": 0,
-        "why": "A publish ran after the person said not to."
+        "id": "said_it_is_a_draft",
+        "type": "reply",
+        "pattern": "\\bdraft\\b|\\bunpublished\\b|not published",
+        "scope": "final",
+        "why": "The person was not told the post is saved as a draft."
       }
     ]
   },
@@ -88,6 +100,7 @@
   "tags": [
     "magister-benchmark",
     "cms",
-    "draft"
+    "draft",
+    "approval"
   ]
 }
