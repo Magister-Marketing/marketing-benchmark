@@ -100,6 +100,49 @@ clarification may retain the task id only when the exact older prompt is
 archived with a reason and the new rubric intentionally supports both; a
 change to graded behavior or fixture contract requires a new task id.
 
+`answers` may carry `"single_number": true`. Without it the first number on an
+answer line is the answer, the last line carrying a label wins, and a label
+with nothing after it reads the line below: `A1: 749 / 12,480 = 6.00%` reads
+749, and a banded check scores the slip as a wrong figure. The tasks that do
+not set it parse as they always have. A task that sets it tells the candidate
+to write the number alone, and is read by these rules:
+
+- **The answer block.** A run is a sequence of answer lines in rising label
+  order with nothing but blank lines between them. The block is the run with
+  the most answer lines. Between runs of the same length it is a run most of
+  whose lines are the number alone, with no word left once the number is
+  taken out, over one that is not; then the one with more lines that read as
+  a number; then the later one. A labelled line in a note (`A1: sum of 8
+  rows`) is a run of one and cannot override the block. A list of method
+  notes that repeats every label loses to a block written as asked, before
+  it or after it, even when one line of the block cannot be read: a note
+  carries working, or words around its one number (`A1: total cost of the 70
+  search terms`). A draft loses to the final block after it, also when the
+  final block marks a line (`A3: $1,636.90 (corrected)`). What is left: a
+  block with words on half its lines or more (`A1: 7 URLs` throughout) is
+  not written as asked, and a clean draft before it, or a notes list after
+  it with one number on every line, is read in its place. A line of
+  commentary between two answer lines splits the block, and only its largest
+  piece is read.
+- **A line is an answer only when it carries exactly one number.** A currency
+  sign, thousands separators, a percent sign and a unit word are fine. A
+  label with nothing after it is a blank answer and never borrows the next
+  line. Only a colon may follow the label.
+- **A minus sign is read however it is typed** when it stands directly before
+  the number: a hyphen, the minus sign U+2212, the non-breaking and
+  full-width hyphens, and an en dash that opens the value (`–6.6%`). After a
+  word or between two numbers an en dash is punctuation, and an em dash
+  always is.
+- **Left unparsed, on purpose:** a second number on the line (working, a
+  range such as `7-8`, a ratio written `3.14:1`, a bracketed footnote such as
+  `35,901.46 [1]`, `0.209 (2-sided)`), scientific notation (`2.09e-1`), a
+  number in words, a rounded `11.4k` or `11.4 million`, a decimal comma
+  (`3,14`), and the `[...]` or `<...>` placeholder idiom. `12.480` reads as
+  12.48: a full stop is always the decimal point.
+
+An unparsed line fails its criterion as absence. It can never be called an
+invented figure by the oracle, because an absent answer is not a wrong one.
+
 Three optional fields cover a task whose input a harness must *deliver*
 rather than inline:
 
@@ -149,12 +192,66 @@ rather than inline:
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
 | development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
+| development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
+| development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
+| development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
+| development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
+| development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
+| development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
 stable winner, and one week of missing conversions that must be treated
 as missing, not zero), so the analysis task is graded against oracle
 numbers, not vibes.
+
+The last six tasks were added on 2026-11-17. Version 1 of each was a local
+draft, attempted once by one agent and discarded; the versions here answer
+the reviews that followed. What is checked: every program-checked figure, and
+every figure the judge is given, is recomputed by separate code in the tests.
+What is not: the judged criteria are not calibrated. No judge has been tested
+on these tasks against responses with known errors and clean controls, so a
+judged verdict on them has not been measured against a known answer. All
+brands and data in them are invented. Two files keep them honest:
+
+- `task_references.py` computes each task's figures from the sources in a
+  recorded prompt. The judge receives them as its reference totals, and the
+  task files' `near` targets are the same numbers. Its `VERSION` is recorded
+  in `grading.json` as `task_reference_version`. A prompt whose sources
+  cannot be read grades without a reference and raises a `RuntimeWarning`
+  that says so.
+- `scripts/gen_more_tasks.py` writes the fixtures (seeded, so a rerun
+  reproduces the same bytes) and pins everything a program decides in a task
+  file: each programmatic condition with its target and tolerance, the
+  `answers` field, each critical criterion's oracle list, the definition and
+  answer lines the prompt must carry, and the wording of every check that
+  states a band or a figure taken from the data (a keyword, a search term, a
+  visitor count, the order of the issue types, the numbers of a policy).
+  That wording is rendered from the same computed values, so it cannot go
+  stale. `--sync` writes all of it; `--check` reports every difference.
+
+`tests/test_more_tasks.py` is the second key. It recomputes every target and
+every figure of the judge's reference from the committed fixtures with
+separate code, and it writes out the bands and the oracle lists again, so a
+band changed in the generator and synced into a task file still fails until
+it is changed in the test as well.
+
+Three rules these tasks follow, each learned from a review:
+
+- A judged criterion asks only for what the prompt or a fixture asks for.
+  A professional standard that is wanted (a summary in plain words, the
+  shortest negative that blocks a theme) is stated in the prompt, never in
+  the rubric alone. A prompt asks for the work without pointing at the trap.
+- An answer is in a critical criterion's oracle list only when it is a plain
+  sum, count or rate under an explicit filter, with no planted trap inside it
+  and a zero band at least a tenth of its value. A planted trap therefore
+  costs its own criterion. A listed figure beyond its zero band still scores
+  the whole attempt zero: that is what the list is for.
+- Each criterion tests one thing, so one error is not charged twice.
+
+Two more tasks drafted with these, `social-calendar-limits` and
+`positioning-from-competitors`, read free text by pattern and are not part of
+the set.
 
 ### Calibration discipline
 
@@ -185,7 +282,7 @@ repo root:
 ./eval.py gpt-5.6-luna-medium gpt-5.6-terra-medium gpt-5.6-sol-medium
 ./eval.py claude-sonnet-5 --tools          # web-search arm
 ./eval.py claude-haiku-4-5 --no-skills -y  # baseline arm, no prompt
-./eval.py claude-sonnet-5 --split holdout  # untouched-task check
+./eval.py claude-sonnet-5 --split holdout  # the split kept out of tuning (see docs/TASKS.md)
 ./eval.py claude-sonnet-5 --repetitions 3  # explicitly request three runs/task
 ```
 
@@ -218,7 +315,9 @@ python3 -m eval_runner.bench report --run eval_runner/results/<run-id>
 
 # Calibrate a new rubric against old prompts without overwriting v1 evidence.
 # --current-rubric accepts only the current prompt or an explicitly archived,
-# rubric-compatible historical prompt.
+# rubric-compatible historical prompt. A run made through an agent harness
+# (claude-code, magister-agent) is accepted when its saved prompt ends with
+# "Task:" and then the whole direct assembly of that prompt and its sources.
 python3 -m eval_runner.bench grade --run eval_runner/results/<run-id> \
   --current-rubric --label candidate-rubric
 python3 -m eval_runner.bench report --run eval_runner/results/<run-id> --label candidate-rubric
@@ -245,7 +344,8 @@ generates the response, so results remain comparable:
 | Harness | Generator | Status |
 |---|---|---|
 | `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
-| Coding agents | Claude Code, Codex CLI | planned; adapt from `evals/runner/adapters/` |
+| `claude-code` | Headless Claude Code: stock tools, optionally a skills plugin and MCP servers (`eval_runner/claude_code.py`) | available |
+| Other coding agents | Codex CLI | planned; adapt from `evals/runner/adapters/` |
 | `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; the only harness that runs `decoy` tasks |
 
 Rules that keep the ladder honest:
@@ -256,6 +356,118 @@ Rules that keep the ladder honest:
 - The judge, rubric, and configured run count are identical for every harness.
 - Every run records its harness and arms (`run.json`), so any two runs can
   be compared attempt-for-attempt.
+
+## The Claude Code harness
+
+`direct-api` asks a model one question. `claude-code` gives the same task to
+the Claude Code agent as a person would use it, and writes the same run
+directory, so `grade` and `report` read it unchanged.
+
+```sh
+# the stock agent: a shell, file tools, web search
+python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high \
+    --repetitions 3 --env-file ~/keys.env --yes
+
+# with a skills plugin installed, as a user installs one; the model decides what to open
+# (choosing the skill is part of the task, so the prompt never names one)
+python -m eval_runner.claude_code run --candidate claude-haiku-5-5-high --repetitions 3 \
+    --plugin-dir ~/src/marketingskills --env-file ~/keys.env --yes
+
+# with MCP servers attached (Claude Code's own mcpServers JSON; its contents stay out of the run)
+python -m eval_runner.claude_code run ... --mcp-config ~/magister-mcp.json
+
+# with the person's own files (exports, a brief) saved into the working folder and named in the prompt
+python -m eval_runner.claude_code run ... --files-dir ~/exports
+
+# a task set kept outside this repository (its answers are someone's real numbers)
+MARKETING_BENCH_TASKS_DIR=~/private-tasks python -m eval_runner.claude_code run ...
+
+python -m eval_runner.bench grade --run eval_runner/results/<run> --env-file ~/keys.env
+python -m eval_runner.bench report --run eval_runner/results/<run>
+python scripts/compare-arms.py --arm "Claude Code=eval_runner/results/<run>" \
+    --arm "Claude Code + skills=eval_runner/results/<run>" --arm "Magister=<run>"
+```
+
+What every attempt gets:
+
+- **Its own folders and nothing of yours.** A fresh working, configuration,
+  home and temp folder per attempt, and its own copy of any plugin; no
+  CLAUDE.md, memory, settings, plugins, hooks or MCP servers from the machine
+  it runs on. The session's own list of what it loaded is kept as
+  `agent_inventory` in `run.json`. Attempts cannot see each other: the
+  folders live under a short private path in `/tmp`, because Claude Code
+  falls back to a temp folder every session shares when the one it is given
+  has a long path, and an attempt whose shell did not use its own is recorded
+  as an error.
+- **The sources as files.** Each supplied source is inline in the prompt, as
+  for every harness, and also saved in the working folder, with one sentence
+  saying so.
+- **Claude Code's shell sandbox, on.** Every shell command runs without
+  asking, may write only inside the attempt's folders, may reach the package
+  registries and nothing else, cannot read your home folder, the shared temp
+  folders or another attempt, and has no API key in its environment. Nor can
+  it read what the run keeps, wherever that lives: this checkout and its
+  tasks (which hold the expected answers), an MCP config, the key file, the
+  given files' folder and the plugins' sources. Web search and web fetch
+  stay on. A
+  file-tool call outside the attempt's folders is refused; refusals are
+  counted per attempt (`guardrail_kinds`).
+- **The same preamble as the Magister agent harness:** draft only, treat the
+  sources as current, deliver the answer in the reply.
+
+Per attempt the run records the model calls, the tools called, the skills
+opened (`skill_reads`), tokens, the cost Claude Code reports, the raw event
+stream (`transcripts/`) and any files the agent wrote (`artifacts/`, never
+graded). The reply that is graded is everything the agent said to the person,
+in order, as the Magister harness records its agent's reply.
+
+What a run refuses or records instead of guessing:
+
+- **Stopping it stops its sessions.** Ctrl-C, `kill` or a closed terminal
+  ends every session in flight and every shell command it started (a session
+  leads its own process group and each of its commands another, so nothing
+  else would), removes the attempts' folders, and still writes `run.json` and
+  `attempts.jsonl`: finished attempts as they ended, the rest as errors
+  (`the run was stopped during this attempt`, `not dispatched: the run was
+  stopped`). A run started with `nohup` keeps running when its terminal
+  closes, and once a run is stopping nothing interrupts the record of it. A
+  session that ends by itself leaves nothing running: in headless mode
+  Claude Code waits for a command it put in the background (measured).
+- **One attempt's failure is its own.** An exception in one job is that
+  attempt's `error`; the other attempts are recorded as usual.
+- **An MCP arm needs its server.** An attempt whose `--mcp-config` server did
+  not report `connected` when the session started, and none of whose tools
+  then answered, is an error, not an answer:
+  an expired or refused token would otherwise be graded as the arm that has
+  the server. The config's credentials are taken out of everything the run
+  keeps, as the API key is: a value whose name says it is one
+  (`Authorization`, `GITHUB_TOKEN`, `--api-key`, `?token=`) or that is shaped
+  like a token, in a server's headers, environment, address and arguments.
+  Files the agent wrote are kept with the same values taken out. Ordinary
+  values stay, so a reply reaches the judge as written: nothing
+  under eight characters is touched, nor a short lowercase word even under a
+  credential's name ("password", a mode called "production"). This is a
+  backstop that has to guess; what protects a config is that it never enters
+  the run directory and the shell cannot read it. Do not put a real
+  credential that is a plain short word in a config you benchmark with.
+- **The model is the one asked for:** the requested id, or that id with a
+  release date, and nothing that merely starts with it.
+- **A retried attempt's cost is a lower bound** (`cost_unknown`): the first
+  session left no receipt.
+- **No instructions from the folders above an attempt.** Claude Code loads
+  `CLAUDE.md` and `.claude` from every folder above the working folder, and
+  the attempts sit under a temp folder anyone on the machine can write to.
+  Sessions run with `--setting-sources user` (the attempt's own, empty), so
+  such a file is not read; one that is there when the run starts also stops
+  it, so you hear about it.
+- **Before the first session:** a given file that would take a supplied
+  source's place, or another given file's, whatever its case, stops the run.
+- **`skills_included` is false on every arm.** It means skill text pasted
+  into the prompt; a plugin is installed, and `agent.plugins` records it.
+
+It needs the `claude` CLI on the PATH and an `ANTHROPIC_API_KEY`; sessions
+are billed to that key, about one to three cents a task on Haiku 5.5. Tasks
+that need a prior turn (`decoy`) are left out, as on `direct-api`.
 
 ## Deliberately deferred
 

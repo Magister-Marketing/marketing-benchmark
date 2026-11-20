@@ -107,13 +107,86 @@ Magister agent on an internal test project, so it cannot be reproduced from
 this repository alone — its prompts, answers, and verdicts are published on
 the board like every other configuration.
 
+### Agent arms
+
+`eval.py` asks a model one question. To give the same tasks to an agent with
+a shell, files and web search, run them through Claude Code
+(`python -m eval_runner.claude_code run`), with or without a skills plugin or
+MCP servers attached. Setup, what each attempt is given, and how to compare
+runs are in the [runner reference](eval_runner/README.md#the-claude-code-harness).
+
+### Benchmark a new model and put it on the site
+
+When a model comes out, one command runs it on the results site's tasks,
+grades it with the site's judge, adds it to the site's data, and drafts a
+post for X. It needs a checkout of the site
+([marketing-benchmark-web](https://github.com/Magister-Marketing/marketing-benchmark-web)),
+which sets the tasks and the judge, and Python 3.11 or newer (`PYTHON=.venv/bin/python`).
+
+```bash
+# 1. See the plan and the cost estimate; spends nothing
+make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web dry_run=1
+
+# 2. Run it: one call per task with the skills in the prompt, 3 attempts each
+make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web \
+    env_file=.env.local confirm=SPEND
+
+# also without the skills, or another number of attempts per task
+make bench-model model=gpt-6.1-sol-high web=... plain=1 reps=3 env_file=... confirm=SPEND
+
+# 3. Check every claim on the site against the new data, then commit it there
+cd ../marketing-benchmark-web && pnpm build
+```
+
+What it does:
+
+- **Refuses a model that is not in `eval_runner/models.json`** and says what
+  an entry needs (`model`, `pricing`, and `reasoning_effort` for an effort
+  variant). Add it there, run `python -m eval_runner.bench validate`, then
+  rerun.
+- **Prints an estimate before spending**: the last comparable run's recorded
+  cost (the newest run on the site in the same setup that is on disk, or
+  `like=<run folder>`), scaled by how the model's list prices compare with
+  that run's model's over the same tokens, plus that run's judge cost. Nothing
+  runs without `confirm=SPEND`.
+- **Runs, grades and reports** with `./eval.py <model> --tools [--no-skills]
+  --tasks <the site's tasks> --repetitions N --judge <the site's judge> -y`.
+- **Exports each graded run to the site**: `report.json` copied unchanged to
+  `data/runs/<run id>.json`, and one entry added to
+  `data/experiments/20261118-model-board/meta.json` with its setup, the judge
+  from `grading.json`, and any attempt lost to a run error with the runner's
+  record of it. The model then has a page at `/models/<model id>` with a card
+  X shows when the page is posted. It refuses a run graded by another judge,
+  one missing any of the site's tasks, and a second run of a model in the same
+  setup (take the old one out first if the new one replaces it).
+- **Writes `tweet.txt` next to the run**: under 280 characters, every number
+  read from the site's data as the model's page reads it (score, rank,
+  attempts that met every requirement, cost per task, and the reference
+  models that have a run), with the page's address. Every other run on the
+  board that is on disk gets its draft rewritten too, since a new run moves
+  their ranks ("#4 of 6"); it finds them in this checkout's results, sibling
+  checkouts' and any folder in `BENCH_RESULTS_DIRS`, and lists the runs it
+  could not find.
+
+`make bench-model export=<run folder> web=...` does the export and the draft
+alone, for a run already graded; it spends nothing.
+
+**Inside Magister.** `inside=1 magister=<Magister monorepo checkout>` runs the
+same tasks through the Magister agent on a test lane instead (`lane=bench` by
+default) by calling that checkout's `make lane-bench`, then exports the run
+the same way, with the test lane and Gateway revision it ran on. The model
+must first be in Magister's own model catalog on the lane's build:
+`lane-bench` enables it in the lane's catalog and stops if the lane's Gateway
+does not know it. Run the one-call benchmark first, so the model's page has
+its single-call numbers beside the Magister run.
+
 ## Eval options
 
 | Option | Meaning |
 |---|---|
 | `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
 | `--split development` | Run tasks used for improving and checking the benchmark. |
-| `--split holdout` | Run the untouched final-test tasks. |
+| `--split holdout` | Run the tasks kept out of tuning. [docs/TASKS.md](docs/TASKS.md) records which of them have had results read. |
 | `--repetitions 3` | Ask for three answers per model and task. All three must pass. The default is one. |
 | `--no-skills` | Leave the marketingskills guidance out of the prompt (see the skills provenance note above). |
 | `--tools` | Allow the answering model to use provider-hosted web search. |

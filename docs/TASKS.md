@@ -44,6 +44,36 @@ performance on an untouched test.
 | [Quarterly paid-media review, decoy file](../eval_runner/tasks/ads-ledger-analysis-decoy.json) | The same review, after a look-alike "preliminary" export with the same name, shape, and dates but different numbers was shared one turn earlier for reference | Computing from the file this request supplied, not the one already sitting in the workspace; every figure from the wrong file is outside the zero-credit band, so the oracle scores it 0. Runs only on a harness that can send a prior turn (the Magister agent), never on the direct-model arms | 13 |
 | [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritized defect list across UTM links, GTM/GA4 tags, and consent defaults | Finding all twelve planted defects (Performance Max counts separately from search) without flagging the conforming decoys | 18 |
 
+Added on 2026-11-17 (the first draft was run once and discarded; the judged checks of these versions are not calibrated yet):
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Technical SEO triage](../eval_runner/tasks/seo-technical-triage.json) | A prioritised fix list from a 165-URL site crawl, with six labeled figures | Counting five issue types exactly while leaving correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) unflagged, and ordering the issue types by the traffic of the pages each affects | 14 |
+| [Search terms review](../eval_runner/tasks/search-terms-negatives.json) | Negative keywords by theme, terms to keep, and terms to promote, from a month of search terms | Blocking what the business does not sell without blocking its own brand name, two converting terms, or product searches with too few clicks to judge | 12 |
+| [A/B test readout](../eval_runner/tasks/ab-test-readout.json) | A readout and recommendation for a pricing-page test, with seven labeled figures | Seeing that the test was read early and that the visitor split is not the planned 50/50, and not shipping on a secondary metric | 17 |
+| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a keyword export, the site's pages and competitor outlines for three candidate topics | Picking the topic the numbers support when the highest-volume keyword has buying intent and already ranks on another page | 15 |
+| [Re-engagement programme](../eval_runner/tasks/lifecycle-reengagement.json) | An audience with counts, segments and a three-email flow, from a 260-row subscriber export and an email policy | Leaving out everyone without consent, including past buyers, and following the policy's offer, cadence and sunset rules | 15 |
+| [Monthly report](../eval_runner/tasks/monthly-report-reconcile.json) | A founder-ready report with six labeled figures, from ad, analytics and order exports that disagree | Reconciling double-fired events, refunds, test orders and platform over-claiming into one set of real results | 15 |
+
+The three tasks from Content brief down were drafted as holdout tasks. Their
+recorded answers have been read and one rubric was changed because of what
+they showed, so by the rule under "Holdout tasks" they are development
+tasks, and no held-out result is claimed from them. In these six tasks every
+figure a program checks is recomputed by separate code in the tests; the
+checks a judge makes are not calibrated yet.
+
+Known limits of those six tasks:
+
+- To fix in their next prompt version: an answer written with a full stop as
+  the thousands separator (`12.480`) is read as 12.48, because a full stop is
+  always the decimal point. The prompts say thousands separators are fine
+  without saying which; they should say "a comma as thousands separator".
+- To fix in the next rubric version of the A/B test readout: the critical
+  criterion says a readout may state the expected count per variant under the
+  planned 50/50 split (11,750). That a readout fails when it gives that count
+  as the sample size the plan required of each variant (18,000) is said only
+  in the judge's reference, not in the criterion's own text.
+
 ## Holdout tasks
 
 These are the final-exam set. Their purpose is to show whether a benchmark
@@ -52,10 +82,15 @@ holdout answer is inspected, that task should be moved into development and
 replaced before another untouched-result claim.
 
 The August 25, 2026 runs inspected both earlier holdout batches, so all seven
-of those tasks now sit in the development table above. This batch is built on
-what those runs taught: detection tasks whose authoritative facts sit in the
-prompt saturate quickly, while infeasibility traps and dense interacting
-constraints discriminate. The current untouched set:
+of those tasks now sit in the development table above. The batch below was
+built on what those runs taught: detection tasks whose authoritative facts
+sit in the prompt saturate quickly, while infeasibility traps and dense
+interacting constraints discriminate.
+
+These four are not untouched: the 2026-11-16 runs graded them and their
+results were read. They remain the holdout split for now, so a
+`--split holdout` result is a result on tasks whose answers have been seen.
+The holdout split:
 
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|

@@ -182,5 +182,77 @@
       "input_per_mtok": 4.0,
       "output_per_mtok": 20.0
     }
+  },
+  "gpt-6.2-sol-high": {
+    "model": "openai/gpt-6.2-sol",
+    "reasoning_effort": "high",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "gpt-6.2-astra-high": {
+    "model": "openai/gpt-6.2-astra",
+    "reasoning_effort": "high",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 8.0,
+      "output_per_mtok": 40.0
+    }
+  },
+  "gpt-6.2-sol-xhigh": {
+    "model": "openai/gpt-6.2-sol",
+    "reasoning_effort": "xhigh",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "gpt-6.2-sol-medium": {
+    "model": "openai/gpt-6.2-sol",
+    "reasoning_effort": "medium",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "gpt-6.2-sol-low": {
+    "model": "openai/gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    }
+  },
+  "gpt-6-luna-xhigh": {
+    "model": "openai/gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 0.1,
+      "output_per_mtok": 0.5
+    }
+  },
+  "gpt-6-luna-high": {
+    "model": "openai/gpt-6-luna",
+    "reasoning_effort": "high",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 0.1,
+      "output_per_mtok": 0.5
+    }
+  },
+  "gpt-6-luna-medium": {
+    "model": "openai/gpt-6-luna",
+    "reasoning_effort": "medium",
+    "text_verbosity": "medium",
+    "pricing": {
+      "input_per_mtok": 0.1,
+      "output_per_mtok": 0.5
+    }
   }
 }

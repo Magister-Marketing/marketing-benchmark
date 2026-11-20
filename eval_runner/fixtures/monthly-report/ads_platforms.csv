@@ -1,0 +1,31 @@
+week_start,platform,campaign,spend_usd,platform_conversions,platform_revenue_usd
+2026-05-01,Google,Brand Search,527.32,39,5035.52
+2026-05-01,Google,Shopping,203.17,8,805.36
+2026-05-01,Google,Non-brand Search,378.50,11,1264.43
+2026-05-01,Meta,Prospecting,283.59,7,876.87
+2026-05-01,Meta,Retargeting,234.82,13,1554.40
+2026-05-01,TikTok,Spark Ads,342.59,7,852.21
+2026-05-04,Google,Brand Search,289.96,20,1991.49
+2026-05-04,Google,Shopping,333.79,15,1665.79
+2026-05-04,Google,Non-brand Search,514.88,14,1385.84
+2026-05-04,Meta,Prospecting,536.17,11,1555.02
+2026-05-04,Meta,Retargeting,432.30,22,2762.42
+2026-05-04,TikTok,Spark Ads,239.16,4,442.82
+2026-05-11,Google,Brand Search,347.68,27,3529.28
+2026-05-11,Google,Shopping,495.31,19,2530.43
+2026-05-11,Google,Non-brand Search,417.16,11,1318.61
+2026-05-11,Meta,Prospecting,507.22,14,1514.85
+2026-05-11,Meta,Retargeting,456.10,24,2307.25
+2026-05-11,TikTok,Spark Ads,524.34,10,1316.07
+2026-05-18,Google,Brand Search,346.64,26,3425.93
+2026-05-18,Google,Shopping,428.93,16,2069.30
+2026-05-18,Google,Non-brand Search,382.03,10,1195.64
+2026-05-18,Meta,Prospecting,227.81,6,720.18
+2026-05-18,Meta,Retargeting,505.19,27,3798.79
+2026-05-18,TikTok,Spark Ads,299.94,6,708.66
+2026-05-25,Google,Brand Search,369.82,24,2467.92
+2026-05-25,Google,Shopping,436.89,17,1746.42
+2026-05-25,Google,Non-brand Search,329.11,9,1029.13
+2026-05-25,Meta,Prospecting,227.91,5,616.40
+2026-05-25,Meta,Retargeting,464.05,26,3018.62
+2026-05-25,TikTok,Spark Ads,353.56,6,691.31

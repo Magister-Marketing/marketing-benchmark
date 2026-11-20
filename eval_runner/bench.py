@@ -33,6 +33,7 @@ import json
 import math
 import os
 import re
+import urllib.parse
 import shlex
 import sys
 import uuid
@@ -40,18 +41,27 @@ from pathlib import Path
 
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from eval_runner import brand_assets, providers, reference_facts, response_facts  # type: ignore
+    from eval_runner import (  # type: ignore
+        brand_assets, providers, reference_facts, response_facts, task_references,
+    )
 else:
-    from . import brand_assets, providers, reference_facts, response_facts
+    from . import brand_assets, providers, reference_facts, response_facts, task_references
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
-TASKS_DIR = EVAL_RUNNER_DIR / "tasks"
+# A task set that cannot live in this repository (one whose answers are a
+# brand's real numbers, say) is read from wherever this names instead.
+TASKS_DIR = Path(os.environ.get("MARKETING_BENCH_TASKS_DIR") or EVAL_RUNNER_DIR / "tasks")
 MODELS_FILE = EVAL_RUNNER_DIR / "models.json"
 RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
 REPETITIONS_DEFAULT = 1
 HARNESS_ID = "direct-api"
+# Harnesses that hand the task to an agent wrapped in a preamble of their own.
+# The wrapped prompt ends with this marker and then the task's direct assembly
+# without skill files; nothing follows it.
+AGENT_HARNESSES = ("claude-code", "magister-agent")
+AGENT_TASK_MARKER = "\n\nTask:\n"
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -274,6 +284,8 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         or answers["count"] < 1
     ):
         raise ValueError(f"{path.name}: answers needs a positive integer count")
+    if answers is not None and not isinstance(answers.get("single_number", False), bool):
+        raise ValueError(f"{path.name}: answers.single_number must be a boolean")
     harnesses = task.get("harnesses")
     if harnesses is not None and (
         not isinstance(harnesses, list)
@@ -857,8 +869,11 @@ def build_judge_prompt(
 
 
 def judge_source_reference(task: dict, exact_prompt: str) -> dict:
-    return (reference_facts.ledger_reference(exact_prompt)
-            if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy") else {})
+    if task.get("id") in ("ads-ledger-analysis", "ads-ledger-analysis-decoy"):
+        return reference_facts.ledger_reference(exact_prompt)
+    # The data tasks of November 2026: totals from the recorded sources, or
+    # {} for every other task and for a prompt that cannot be read.
+    return task_references.task_reference(task.get("id"), exact_prompt)
 
 
 class _ResponseHTMLParser(HTMLParser):
@@ -908,6 +923,7 @@ class _ResponseHTMLParser(HTMLParser):
         self._anchor_href: str | None = None
         self._anchor_text: list[str] = []
         self.book_cta_hrefs: list[str] = []
+        self.element_ids: set[str] = set()
 
     def handle_decl(self, decl: str) -> None:
         if decl.strip().lower() == "doctype html":
@@ -915,7 +931,10 @@ class _ResponseHTMLParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        attrs_by_name = {name.lower(): value for name, value in attrs}
+        attrs_by_name: dict[str, str | None] = {}
+        for name, value in attrs:  # a browser keeps the first of two attributes with one name
+            attrs_by_name.setdefault(name.lower(), value)
+        ancestors = list(self.stack)
         if (
             self.stack
             and self.stack[-1] == "head"
@@ -954,7 +973,7 @@ class _ResponseHTMLParser(HTMLParser):
             for name in attrs_by_name
         )
         self.active_content += sum(
-            bool(value) and value.lstrip().lower().startswith("javascript:")
+            bool(value) and _link_target(value).lower().startswith("javascript:")
             for value in attrs_by_name.values()
         )
         if re.fullmatch(r"h[1-6]", tag):
@@ -964,6 +983,11 @@ class _ResponseHTMLParser(HTMLParser):
         if tag == "a":
             self._anchor_href = attrs_by_name.get("href")
             self._anchor_text = []
+        # What a template or a textarea holds is text or inert markup, not an element a link can reach.
+        reachable = not any(parent in {"template", "textarea"} for parent in ancestors)
+        for anchor_name in (attrs_by_name.get("id"), attrs_by_name.get("name") if tag == "a" else None):
+            if anchor_name and reachable:
+                self.element_ids.add(anchor_name)
         style = attrs_by_name.get("style")
         if style:
             self.css_chunks.append(style)
@@ -981,7 +1005,9 @@ class _ResponseHTMLParser(HTMLParser):
         if tag == "html":
             self.html_end_count += 1
         if tag == "a" and self._anchor_href is not None:
-            if " ".join("".join(self._anchor_text).split()) == "Book a consultation":
+            # The phrase anywhere in the link's text, as `book_cta_count` counts it in the page's:
+            # "Book a consultation →" is the CTA too.
+            if "Book a consultation" in " ".join("".join(self._anchor_text).split()):
                 self.book_cta_hrefs.append(self._anchor_href)
             self._anchor_href = None
             self._anchor_text = []
@@ -1019,7 +1045,37 @@ def _css_resource_reference_count(css_text: str) -> int:
     return url_count + string_imports
 
 
-def _html_facts(response_text: str) -> dict:
+# The destination a task's brief supplies for the page's primary CTA. A task
+# that is not here supplies none.
+_HTML_CTA_TARGETS = {"landing-page-repair": "/consultations/harborline"}
+
+
+def _link_target(href: str | None) -> str:
+    """An href as a browser reads it: ASCII tabs and newlines dropped, and the
+    spellings of "this page" (`./#x`, `?#x`) reduced to the fragment."""
+    target = re.sub(r"[\t\n\r]", "", href or "").strip()
+    return re.sub(r"^(?:\./)?\??(?=#)", "", target)
+
+
+def _dead_link(href: str | None, element_ids: set[str]) -> bool:
+    """A link a visitor cannot follow: an empty destination, a bare `#`,
+    script, or a jump to a place the page does not have. (An `<a>` with no
+    href at all is a placeholder, not a link: it is never counted as one.)"""
+    target = _link_target(href)
+    if not target or target == "#" or target.lower().startswith("javascript:"):
+        return True
+    return target.startswith("#") and urllib.parse.unquote(target[1:]) not in element_ids
+
+
+def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
+    """What can be counted in an HTML deliverable. `cta_target` is the
+    destination the task's brief supplies for the primary CTA; the two
+    target facts exist only then. A task whose brief supplies none gets the
+    CTA's own links instead (2026-11-19: the page task was handed
+    `book_cta_all_targeted: False` against the repair task's URL, a
+    destination its brief never gives, and the judge, told to trust measured
+    facts, wrote "not targeted" into its verdict on every page). Every fact
+    here is a count or a flag, never text from the response."""
     parser = _ResponseHTMLParser()
     parse_exception = False
     try:
@@ -1040,7 +1096,7 @@ def _html_facts(response_text: str) -> dict:
         r"(?is)<!doctype\s+html\s*>\s*<html(?:\s[^>]*)?>.*</html>\s*",
         stripped,
     ))
-    return {
+    facts = {
         "html_complete": bool(
             parser.doctype_count == 1
             and parser.html_start_count == 1
@@ -1063,13 +1119,25 @@ def _html_facts(response_text: str) -> dict:
         "book_cta_anchor_count": len(parser.book_cta_hrefs),
         "book_cta_all_instances_are_anchors": bool(parser.book_cta_hrefs)
         and book_cta_count == len(parser.book_cta_hrefs),
-        "book_cta_target_count": sum(
-            href == "/consultations/harborline" for href in parser.book_cta_hrefs
-        ),
-        "book_cta_all_targeted": bool(parser.book_cta_hrefs) and all(
-            href == "/consultations/harborline" for href in parser.book_cta_hrefs
-        ),
     }
+    if cta_target is None:
+        # Counts only: the judge is told to trust this block, so no string the
+        # candidate wrote (an href is one) may be copied into it.
+        dead = [_dead_link(href, parser.element_ids) for href in parser.book_cta_hrefs]
+        in_page = [_link_target(href).startswith("#") for href in parser.book_cta_hrefs]
+        facts["book_cta_dead_link_count"] = sum(dead)
+        facts["book_cta_in_page_link_count"] = sum(
+            here and not broken for here, broken in zip(in_page, dead)
+        )
+        facts["book_cta_other_link_count"] = sum(
+            not here and not broken for here, broken in zip(in_page, dead)
+        )
+    else:
+        facts["book_cta_target_count"] = sum(href == cta_target for href in parser.book_cta_hrefs)
+        facts["book_cta_all_targeted"] = bool(parser.book_cta_hrefs) and all(
+            href == cta_target for href in parser.book_cta_hrefs
+        )
+    return facts
 
 
 _GAUNTLET_LIMITS = {
@@ -1102,6 +1170,70 @@ def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, li
             continue
         values[label].append(match.group(2).strip().strip("*_`\"'“”‘’").strip())
     return values
+
+
+def _label_line(names: tuple[str, ...]) -> re.Pattern[str]:
+    """A line that labels one of `names`, with its same-line value as group 1.
+
+    A label opens its line, after an optional bullet, list number or heading
+    mark, and may be bold. A note may follow it in brackets ("(87
+    characters)", "*(87 characters)*"), then the value after a colon, an em or
+    en dash or a spaced hyphen, or nothing. A label word inside a longer label
+    ("**CTA note:**") or a sentence ("Primary text runs past…") is no label.
+    """
+    alternatives = "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in names)
+    return re.compile(
+        r"(?im)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?(?:#{1,6}[ \t]+)?(?:\*\*|__)?(?:"
+        + alternatives
+        + r")(?:\*\*|__)?[ \t]*(?:\([^\r\n)]*\)|\*\([^\r\n)]*\)\*|_\([^\r\n)]*\)_)?[ \t]*"
+        r"(?:(?::|[—–]|-(?=[ \t]))(?:\*\*|__)?[ \t]*([^\r\n]*)|(?:\*\*|__)?[ \t]*$)"
+    )
+
+
+# A note on a label's line about the field's length ("87 characters", "98 /
+# 104 chars"), not the field itself: its text is on the next line.
+_LENGTH_NOTE = re.compile(
+    r"(?i)[(\[]?\s*(?:about|approx\.?|~)?\s*\d+(?:\s*/\s*\d+)*\s*(?:characters?|chars?)\b"
+)
+
+
+def _field_values(response_text: str, name: str, fields: tuple[str, ...]) -> list[str]:
+    """The values of every field labelled `name`, in order, for a task whose
+    prompt asks for the labelled `fields` without fixing how a label is
+    written: "**Primary text:** …", "**Primary text** (87): …", "**Primary
+    text** — 87 characters" over its text, and a bare "**CTA**" over its value
+    all count. When the label's line holds no value, or only a length note,
+    the value is the next non-empty line, unless that line labels another
+    field: then the field is empty (a checklist line, not a field).
+    2026-11-19: the earlier pattern wanted the colon straight after the label,
+    so 21 of 248 saved answers, each with three labelled concepts, scored as
+    having none.
+    """
+    any_label = _label_line(fields)
+    values: list[str] = []
+    for match in _label_line((name,)).finditer(response_text):
+        value = (match.group(1) or "").strip()
+        if not value.strip("*_` ") or _LENGTH_NOTE.match(value):
+            following = response_text[match.end():].splitlines()
+            line = next((line for line in following if line.strip()), "")
+            value = "" if any_label.match(line) else line.strip()
+        values.append(value.strip("*_`\"'“”‘’ ").strip())
+    return values
+
+
+_AD_CTA = "Explore the Arc Clip Lamp"
+# Words a line uses to speak about all the concepts at once, and that ad copy
+# does not ("across the room" and "every evening" are copy).
+_AD_AUDIT = re.compile(
+    r"(?i)\b(?:all three|all 3|each concept|every concept|across (?:all three|all 3|the three|concepts))\b"
+)
+# A length remark anywhere in a line ("under 125 characters", "(87 chars)").
+_LENGTH_REMARK = re.compile(
+    r"(?i)[(\[]?\s*(?:about|approx\.?|~|under|over|at most|max\.?)?\s*\d+(?:\s*/\s*\d+)*\s*(?:characters?|chars?)\b[)\]]?"
+)
+# The approved CTA quoted inside a longer line ("… use “Explore the Arc Clip
+# Lamp” exactly"): a sentence about the CTA, not one.
+_AD_CTA_QUOTED = re.compile(r"[\"“”'‘’`*]" + re.escape(_AD_CTA) + r"[\"“”'‘’`*]")
 
 
 def _dollar_amount_counts(text: str, expected: float) -> tuple[int, int]:
@@ -1194,6 +1326,109 @@ def _unsupportable_claims_facts(response_text: str) -> dict:
     }
 
 
+_SINGLE_ANSWER_LABEL = re.compile(
+    r"^[ \t>]*(?:#{1,6}[ \t]*)?(?:[-*][ \t]*|\d{1,3}[.)][ \t]*)?[*_`]*A(\d{1,3})[*_`]*[ \t]*[:：][*_]*[ \t]*(.*)$",
+    re.IGNORECASE,
+)
+_SINGLE_ANSWER_NUMBER = re.compile(r"-?(?:\d(?:[\d,]*\d)?(?:\.\d+)?|\.\d+)")
+# U+2212 minus sign, U+2010 hyphen, U+2011 non-breaking hyphen, U+FE63 small and U+FF0D full-width hyphen-minus.
+_MINUS_SIGNS = {ord(sign): "-" for sign in "\u2212\u2010\u2011\ufe63\uff0d"}
+
+
+def _single_number(value: str) -> float | None:
+    """The one number on an answer line, or None when the line is not that.
+
+    Read as a number: a currency sign, thousands separators, a percent sign,
+    a unit word, and a minus sign directly before the number (a hyphen, the
+    minus sign U+2212, or an en dash that opens the value). Left unparsed, on
+    purpose: a line with a second number on it (working, a range, a ratio
+    such as 3.14:1, a bracketed footnote, scientific notation), a number in
+    words, a rounded "11.4k" or "11.4 million", a decimal comma, and the
+    `[...]` or `<...>` placeholder idiom.
+    """
+    value = value.strip()
+    # `A5: [blocked -- final-28-day spend unavailable]` is a placeholder in
+    # the prompt's own `<...>` idiom, not an answer.
+    if not value or value[0] in "[<":
+        return None
+    # A minus sign, however it is typed: the minus sign itself and the other
+    # hyphens anywhere, an en dash only where the value starts (after a word
+    # or between two numbers it is punctuation). "-$12" is minus twelve dollars.
+    value = value.translate(_MINUS_SIGNS)
+    value = re.sub(r"^([^\w–—-]*)–(?=[$€£]?\.?\d)", r"\1-", value)
+    value = re.sub(r"-([$€£])[ \t]?(?=\.?\d)", r"\1-", value)
+    numbers = list(_SINGLE_ANSWER_NUMBER.finditer(value))
+    if len(numbers) != 1:
+        return None
+    token = numbers[0].group(0)
+    if re.match(r"[ \t]?(?:[kKmMbB]\b|thousand|million|billion)", value[numbers[0].end():]):
+        return None
+    if not re.fullmatch(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d+)?", token):
+        return None
+    try:
+        return float(token.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _number_alone(value: str) -> bool:
+    """Whether an answer line is the number and nothing but symbols around it.
+
+    `$1,234.50`, `6.00%` and `**7**` are; `7 URLs` and `total cost of the 70
+    search terms` are not: a letter or a digit is left once the number is
+    taken out.
+    """
+    return not re.search(r"[^\W_]", _SINGLE_ANSWER_NUMBER.sub("", value.translate(_MINUS_SIGNS), count=1))
+
+
+def _single_number_answers(response_text: str, count: int) -> dict[int, float]:
+    """The answer block of a task that sets `answers.single_number`.
+
+    A run is a sequence of answer lines in rising label order (A1, A2, ...)
+    with nothing but blank lines between them. The block is the run with the
+    most answer lines. Between runs of the same length it is a run most of
+    whose lines are the number alone, as the prompt asks, over one that is
+    not; then the one with more lines that read as a number; then the later
+    one.
+
+    So a stray labelled line ("A1: sum of 8 rows" in a note) is a run of one
+    that cannot override a block. A list of method notes that repeats every
+    label, before the block or after it, loses to a block written as asked,
+    even one with a line the parser cannot read: a note carries working, or
+    words around its one number. A draft loses to the final block after it,
+    also when the final block marks a line ("A3: $1,636.90 (corrected)").
+
+    What is left: a block with words on half its lines or more ("A1: 7 URLs"
+    throughout) is not written as asked. A clean draft before it, or a notes
+    list after it with one number on every line, is read in its place. A
+    label with nothing after it is a blank answer: it never borrows the next
+    line.
+    """
+    runs: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] | None = None
+    for line in response_text.splitlines():
+        match = _SINGLE_ANSWER_LABEL.match(line)
+        if match:
+            index = int(match.group(1))
+            if not 1 <= index <= count:
+                continue  # some other label: not an answer, and not a break either
+            if current is None or index <= current[-1][0]:
+                current = []
+                runs.append(current)
+            current.append((index, match.group(2)))
+        elif line.strip():
+            current = None
+    block: dict[int, float] = {}
+    best = (0, False, 0)
+    for run in runs:
+        read = {index: number for index, value in run if (number := _single_number(value)) is not None}
+        alone = sum(1 for index, value in run if index in read and _number_alone(value))
+        key = (len(run), 2 * alone > len(run), len(read))
+        if key >= best:  # the later run wins a tie
+            block, best = read, key
+    return block
+
+
 def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # Backward-compatible one-argument form for callers that only need generic facts.
     if response_text is None:
@@ -1203,9 +1438,13 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         "word_count": len(response_text.split()),
         "character_count": len(response_text),
     }
-    hash_checks = response_facts.sha256_examples(response_text)
-    if hash_checks:
-        facts["sha256_example_checks"] = hash_checks
+    # The hash-example check quotes the response's own strings, and this block
+    # is the one the judge is told to trust: only a task whose prompt or rubric
+    # is about hashing gets it (and the one-argument form, which has no task).
+    if task is None or re.search(r"sha-?256", json.dumps([task.get("prompt"), task.get("rubric")]), re.IGNORECASE):
+        hash_checks = response_facts.sha256_examples(response_text)
+        if hash_checks:
+            facts["sha256_example_checks"] = hash_checks
     answers = (task or {}).get("answers")
     if answers:
         # Labeled answer-block lines (`A3: $1,234.56`). The last occurrence of
@@ -1215,24 +1454,28 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         # line is absent or carries no number, and `near` conditions score a
         # None fact as 0 rather than erroring.
         count = answers["count"]
-        parsed: dict[int, float] = {}
-        for match in re.finditer(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
-            response_text,
-        ):
-            index = int(match.group(1))
-            if not 1 <= index <= count:
-                continue
-            value = match.group(2).strip()
-            # `A5: [blocked -- final-28-day spend unavailable]` is a
-            # placeholder in the prompt's own `<...>` idiom, not an answer.
-            # The 2026-09-02 honest-abstention run parsed `-28` out of one
-            # and counted it as a parsed answer.
-            if value[:1] in "[<":
-                continue
-            number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
-            if number:
-                parsed[index] = float(number.group(0).replace(",", ""))
+        if answers.get("single_number"):
+            # The task's prompt asks for the number alone on each answer line.
+            parsed = _single_number_answers(response_text, count)
+        else:
+            parsed: dict[int, float] = {}
+            for match in re.finditer(
+                r"(?im)^\s*(?:[-*]\s*)?(?:\*\*|__)?A(\d+)(?:\*\*|__)?\s*[:.]\s*(.+)$",
+                response_text,
+            ):
+                index = int(match.group(1))
+                if not 1 <= index <= count:
+                    continue
+                value = match.group(2).strip()
+                # `A5: [blocked -- final-28-day spend unavailable]` is a
+                # placeholder in the prompt's own `<...>` idiom, not an answer.
+                # The 2026-09-02 honest-abstention run parsed `-28` out of one
+                # and counted it as a parsed answer.
+                if value[:1] in "[<":
+                    continue
+                number = re.search(r"-?\d[\d,]*(?:\.\d+)?", value)
+                if number:
+                    parsed[index] = float(number.group(0).replace(",", ""))
         facts["answer_count"] = len(parsed)
         for index in range(1, count + 1):
             facts[f"answer_q{index}"] = parsed.get(index)
@@ -1258,23 +1501,30 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         ))
         facts["h2_count"] = markdown_h2s + html_h2s
     elif task_id == "ad-creatives":
-        facts["primary_text_field_count"] = len(re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?Primary\s+text"
-            r"(?:\s*\([^\r\n)]*\))?\s*:(?:\*\*)?",
-            response_text,
-        ))
-        cta_values = re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?CTA\s*:(?:\*\*)?"
-            r"[^\S\r\n]*(?:\r?\n[\t ]*)?([^\r\n]+)",
-            response_text,
+        fields = ("Primary text", "Headline", "Description", "CTA",
+                  "Visual direction", "Audience insight", "Test hypothesis")
+        approved = (_AD_CTA, _AD_CTA + ".")
+        # An answer's own audit is not a field of a fourth concept: a Primary
+        # text "value" that is only a remark about length ("all three under
+        # 125 characters"), and a CTA line that speaks about every concept or
+        # quotes the approved CTA inside a sentence ("All three use “Explore
+        # the Arc Clip Lamp” exactly."). Copy itself may say "all three" ("One
+        # light handles all three."), so Primary text is judged by length
+        # remarks only. A wrong CTA is never an audit, so it still counts.
+        facts["primary_text_field_count"] = sum(
+            1 for value in _field_values(response_text, "Primary text", fields)
+            if value and not (
+                _LENGTH_REMARK.search(value) and len(_LENGTH_REMARK.sub(" ", value).split()) < 4
+            )
         )
+        cta_values = [
+            value for value in _field_values(response_text, "CTA", fields)
+            if value in approved or not (_AD_AUDIT.search(value) or _AD_CTA_QUOTED.search(value))
+        ]
         facts["cta_field_count"] = len(cta_values)
-        facts["approved_cta_field_count"] = sum(
-            value.strip().strip("*_`\"'“”‘’") == "Explore the Arc Clip Lamp"
-            for value in cta_values
-        )
+        facts["approved_cta_field_count"] = sum(value in approved for value in cta_values)
     elif task_id in ("landing-page", "landing-page-repair"):
-        facts.update(_html_facts(response_text))
+        facts.update(_html_facts(response_text, cta_target=_HTML_CTA_TARGETS.get(task_id)))
     elif task_id == "platform-limits-gauntlet":
         facts.update(_platform_gauntlet_facts(response_text))
     elif task_id == "unsupportable-claims-brief":
@@ -1683,6 +1933,19 @@ def _resolve_recorded_prompt(
         assembled = _prompt_candidate(task, prompt_text, run_meta["skills_included"])
         if hashlib.sha256(assembled.encode()).hexdigest() == recorded_hash:
             return saved_prompt or assembled, version
+    # An agent harness (Claude Code, the Magister bridge) wraps the task in its
+    # own preamble, so its recorded prompt never hashes to the direct assembly.
+    # Its saved prompt is tied to the attempt evidence above; the task is this
+    # one when that prompt ends with the harness's task marker and then a
+    # candidate's whole direct assembly (the task text and every supplied
+    # source), with nothing after it. Containing the assembly is not enough: a
+    # task that has since lost its opening, the end of its last source, or a
+    # whole source is still contained in what the run recorded. Any other
+    # harness, named or not, keeps the hash rule above.
+    if saved_prompt is not None and run_meta.get("harness") in AGENT_HARNESSES:
+        for version, prompt_text in candidates:
+            if saved_prompt.endswith(AGENT_TASK_MARKER + _prompt_candidate(task, prompt_text, False)):
+                return saved_prompt, version
     raise SystemExit(
         f"{task['id']}: recorded prompt is not the current or an explicitly "
         "rubric-compatible historical version; a changed prompt requires a new task id"
@@ -1967,6 +2230,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
         "judge_protocol_version": JUDGE_PROTOCOL_VERSION,
         "judge_instructions": JUDGE_INSTRUCTIONS,
         "source_reference_version": reference_facts.VERSION,
+        "task_reference_version": task_references.VERSION,
         "label": label,
         "task_source": task_source,
         "judge_usage": judge_usage,
@@ -3816,9 +4080,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         for model_id in model_ids
     }
     repetitions_per_model = repetitions * len(task_ids)
+    # A grading made with the current task files takes each task's split from
+    # them too: a task moved out of holdout since the run must not be reported
+    # as held out. Any other grading keeps the split the run recorded.
+    current_splits = (
+        {task_id: task.get("split") for task_id, task in report_tasks.items()}
+        if grading_meta.get("task_source") == "current"
+        else {}
+    )
     task_splits = {
         task_id: (
-            run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
+            current_splits.get(task_id)
+            or run_meta.get("task_manifest", {}).get(task_id, {}).get("split")
             or report_tasks.get(task_id, {}).get("split")
             or "development"
         )
@@ -3962,8 +4235,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             "",
             "### Score by task split",
             "",
-            "Development scores are calibration evidence. Holdout scores are the",
-            "unseen-task check and should not be tuned after inspecting outputs.",
+            "Development scores are calibration evidence. The holdout split is kept",
+            "out of tuning; docs/TASKS.md records which holdout tasks have had",
+            "results read.",
             "",
             "| Model | Development | Holdout |",
             "|---|---|---|",

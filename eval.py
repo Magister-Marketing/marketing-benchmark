@@ -5,7 +5,7 @@
     ./eval.py claude-sonnet-5 --tools                # with web search
     ./eval.py claude-haiku-4-5 --no-skills -y        # baseline arm, no prompt
     ./eval.py gpt-5.6-sol --tasks headline,blog-post # a task subset
-    ./eval.py claude-sonnet-5 --split holdout         # untouched-task check
+    ./eval.py claude-sonnet-5 --split holdout         # the split kept out of tuning
     ./eval.py claude-sonnet-5 --repetitions 3         # explicitly run each task 3x
 
 The current execution harness is `direct-api`, and every new run records that
