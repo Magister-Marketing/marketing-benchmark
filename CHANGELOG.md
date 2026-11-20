@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Tasks: workflow task `outbound-sequence` (development split): a 200-lead
+  list, an outbound standard and a facts sheet in; exclusions with reasons,
+  assignments by segment and country group, and 30 emails across 10
+  sequences out, with merge fields allowed only where every lead has a
+  value.
 - Tasks: workflow task `launch-trafficking` (development split): a launch
   brief, platform specs, a tracking standard and a landing-page list in; a
   budget by channel and week, 114 text fields across 36 assets and a tracked

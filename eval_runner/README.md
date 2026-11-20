@@ -201,6 +201,7 @@ rather than inline:
 | development | `search-account-build` | a workflow task: five dependent files for a new search account from a 208-keyword export and a seven-step account standard; 18 of its 19 checks are a program's, counted against a reference its own module computes |
 | development | `lifecycle-program` | a workflow task: five agreeing files for a lifecycle email programme from a 300-customer export and a written policy (suppression, segments, holdout, flows, send times by timezone, copy rules); 19 of its 20 checks are a program's |
 | development | `launch-trafficking` | a workflow task: a launch brief, platform specs and a tracking standard in; a budget, 114 text fields across 36 assets and 36 tracked URLs out; 18 of its 19 checks are a program's |
+| development | `outbound-sequence` | a workflow task: a 200-lead list, an outbound standard and product facts in; exclusions with reasons, segment and country-group assignments and 30 emails across 10 sequences out; 21 of its 22 checks are a program's |
 | development | `headline-forecast`, `headline-forecast-unpublished` | 100 pairs of headlines each from real tests with a clear winner (Upworthy Research Archive, CC BY 4.0): pick the one that got the higher click rate and say how sure; graded on picks right (a coin flip scores nothing, nine in ten passes) and on the Brier score of the stated confidence |
 
 The ad-performance CSV has planted, exactly computable findings

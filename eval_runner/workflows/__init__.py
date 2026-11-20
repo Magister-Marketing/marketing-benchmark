@@ -22,6 +22,7 @@ MODULES = {
     "headline-forecast-unpublished": "eval_runner.workflows.headline_forecast",
     "lifecycle-program": "eval_runner.workflows.lifecycle_program",
     "launch-trafficking": "eval_runner.workflows.launch_trafficking",
+    "outbound-sequence": "eval_runner.workflows.outbound_sequence",
 }
 
 

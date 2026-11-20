@@ -1,0 +1,297 @@
+{
+  "id": "outbound-sequence",
+  "title": "Cold outbound sequences from a lead list",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "outbound-sequence",
+  "fixtures": [
+    "eval_runner/fixtures/outbound-sequence/product_facts.md",
+    "eval_runner/fixtures/outbound-sequence/outbound_standard.md",
+    "eval_runner/fixtures/outbound-sequence/leads.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Brackenfold is starting cold outbound email. Turn the supplied lead list into ready-to-load sequences, following the supplied outbound standard exactly and using only the supplied product facts.\n\nDeliver three files in your reply. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes. A body is one line: never put a line break inside it, and write \" / \" between its paragraphs.\n\n### excluded.csv\nlead_id,reason\nEvery lead the standard excludes, with the reason code from Step 1.\n\n### assignments.csv\nlead_id,segment,country_group\nEvery lead that is not excluded, with its segment code from Step 2 and its country group code from Step 3.\n\n### sequences.csv\nsegment,country_group,step,send_day,subject,body\nOne row per email: every step of the sequence of each segment and country group that has at least one assigned lead. `step` is the step number and `send_day` the day from Step 4. Write merge fields as {{name}}; they are filled when the emails are sent.\n\nEvery lead in leads.csv appears exactly once, in excluded.csv or in assignments.csv, and no lead_id appears that is not in leads.csv.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of leads excluded>\nA2: <number of leads assigned>\nA3: <emails the first full run sends: for each assigned lead, the number of steps in its sequence, added up>\n\nThis is a plan for review. Send nothing, load nothing into any tool and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "three_files",
+        "check": "All three files (excluded.csv, assignments.csv, sequences.csv) are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_lead_once",
+        "check": "Every one of the list's 200 leads appears exactly once across excluded.csv and assignments.csv, and no lead_id appears that is not in the list. Full credit for none missing, repeated or invented; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_lead_accounting_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_excluded_count",
+        "check": "A1 states how many leads the standard excludes. Full credit for the exact figure; zero credit 5 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 54,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "a2_assigned_count",
+        "check": "A2 states how many leads the standard assigns to a sequence. Full credit for the exact figure; zero credit 10 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 146,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "a3_total_emails",
+        "check": "A3 states how many emails the first full run sends: every assigned lead times the steps of its own sequence, the restricted group's shorter sequences included. Full credit for the exact figure; zero credit 25 or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 420,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 25
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "exclusions_right",
+        "check": "The leads excluded are exactly the ones Step 1 excludes: none emailed that should be excluded, none excluded that should be emailed. Full credit for no difference; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_exclusion_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "exclusion_reasons",
+        "check": "Every excluded lead carries the code of the first Step 1 reason that applies to it. Full credit for none wrong or missing; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_reason_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "segments_right",
+        "check": "Every assigned lead is in the segment Step 2 gives it. Full credit for none wrong or missing; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_segment_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "country_groups_right",
+        "check": "Every assigned lead is in the country group Step 3 gives it. Full credit for none wrong or missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_country_group_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "sequences_complete",
+        "check": "sequences.csv has exactly one row for every step of every sequence Step 4 calls for (the restricted group's two steps only, and no sequence for a segment and country group with no assigned lead). Full credit for none missing, repeated or extra; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_sequence_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "send_days_right",
+        "check": "Every step is sent on the day Step 4 gives it, the restricted group's minimum gap applied. Full credit for none wrong or missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_send_day_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "subjects_within_limits",
+        "check": "Every email has a subject of at most 45 characters as written that does not start with Re:, Fwd: or Fw:. Full credit for none missing, over or faked as a reply; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_subject_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "subjects_unique",
+        "check": "No two emails of the programme share a subject, case, spacing, punctuation and merge fields aside. Full credit for none repeated or missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_repeated_subject_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "bodies_within_limit",
+        "check": "Every email has a body of at most 110 words. Full credit for none missing or over; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_body_limit_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "bodies_end_with_footer",
+        "check": "Every body ends with the standard's unsubscribe sentence followed by the postal address, word for word. Full credit for none missing or out of place; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_footer_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "country_sentences_right",
+        "check": "Every restricted email carries the legitimate-interest sentence and every canada email the Canadian line, word for word, and no other email carries either. Full credit for none missing or misplaced; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_country_line_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "no_forbidden_phrases",
+        "check": "No subject or body uses a phrase the standard forbids. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_forbidden_phrase_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "merge_fields_known",
+        "check": "Every merge field is one the standard allows ({{first_name}}, {{company}}, {{industry}}). Full credit for none other; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_unknown_merge_field_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "merge_fields_safe",
+        "check": "No email uses a merge field that some lead of its sequence has no value for, and every body opens with the greeting Step 6 gives its sequence (Hi {{first_name}}, or Hi there,). Full credit for none wrong; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_merge_fallback_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "claims_from_facts",
+        "check": "Every email cites exactly one proof point, and every figure in its subject and body is one the product facts state, the postal address aside. Full credit for none wrong; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_claim_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "emails_written_for_their_segment",
+        "check": "Judge the sequences.csv rows only. The emails are written for their segment and step: across segments they differ in substance (the problem they open with, the angle, the ask), and within a sequence each step brings something the one before did not, not one email with a word swapped. The same segment and step may share copy across country groups. It fails if most rows are the same template, or if sequences.csv is missing."
+      }
+    ]
+  }
+}
