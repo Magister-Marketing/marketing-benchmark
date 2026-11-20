@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Tasks: workflow task `lifecycle-program` (development split): a 300-customer
+  export and a written policy in; suppression with reasons, segments, the
+  holdout, 24 emails and a send-time schedule out. A program counts every
+  customer, flow step, send time and copy rule against the reference its
+  module computes.
 - Tasks: two **forecast tasks**, `headline-forecast` and
   `headline-forecast-unpublished` (development split). Each is 100 pairs of
   headlines from real tests in the Upworthy Research Archive (CC BY 4.0;
