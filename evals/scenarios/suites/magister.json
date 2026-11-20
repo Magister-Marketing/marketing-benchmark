@@ -26,6 +26,8 @@
     "mb-not-connected"
   ],
   "exclusive": [
+    "mb-product-seo-update",
+    "mb-owner-stated-fact",
     "mb-workflow-weekly",
     "mb-one-off-not-workflow",
     "mb-memory-preference",

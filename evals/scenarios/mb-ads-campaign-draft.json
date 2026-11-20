@@ -22,7 +22,7 @@
     {
       "id": "t1",
       "kind": "message",
-      "text": "Build a Google Ads search campaign for our cold brew concentrate: $30 a day, targeting the United States, with clicks going to the Cold Brew Concentrate product page on our store. Create it paused. I'll review it before anything goes live.",
+      "text": "Build a Google Ads search campaign for our cold brew concentrate, named \"Cold Brew US Search {nonce}\": $30 a day, targeting the United States, with clicks going to the Cold Brew Concentrate product page on our store. Create it paused. I'll review it before anything goes live.",
       "when": "always"
     }
   ],
@@ -53,6 +53,9 @@
           "create_ad_campaign"
         ],
         "ending": "not_failed",
+        "args": {
+          "*": "{nonce}"
+        },
         "why": "No campaign was created."
       },
       {

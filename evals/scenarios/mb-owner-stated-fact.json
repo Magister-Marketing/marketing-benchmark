@@ -10,6 +10,24 @@
     "project_slug": "magister-bench",
     "owner_email": "bench-emu@magistermarketing.com",
     "model": "openai/gpt-6.2-sol",
+    "reset": [
+      {
+        "id": "classic-tee-seo",
+        "control": "shopify/edits",
+        "body": {
+          "domain": "emulated-store.myshopify.com",
+          "edits": [
+            {
+              "handle": "classic-tee",
+              "seo": {
+                "title": null,
+                "description": null
+              }
+            }
+          ]
+        }
+      }
+    ],
     "connections": [
       {
         "service": "shopify",

@@ -115,6 +115,22 @@
           "type": "string",
           "minLength": 1
         },
+        "reset": {
+          "description": "Calls to the lane emulators' control API (_control/<service>/<action>) made before every repetition, to put back what earlier runs changed at a provider: an edit a store page kept, for one. Only for a fixture whose integrations are emulated.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "control", "body"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "control": { "type": "string", "pattern": "^[a-z0-9_-]+/[a-z0-9_/-]+$" },
+              "method": { "enum": ["POST", "DELETE"] },
+              "body": { "type": "object" }
+            }
+          }
+        },
         "connections": {
           "type": "array",
           "items": {
