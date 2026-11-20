@@ -27,6 +27,7 @@ from evals.runner.scenario_metrics import (
     render_table,
     summarize,
 )
+from evals.runner.scenario_outcomes import CAVEATED_KINDS, SCORER_CAVEAT
 
 
 def _records(run_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
@@ -107,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     shas = sorted({str(m.get("gateway_sha") or "")[:9] for m in after["replays"]} - {""})
     models = sorted({str(m.get("model") or "") for m in after["replays"]} - {""})
     out = [f"## {title}", "", f"run: {args.run}  gateway: {', '.join(shas) or '—'}  model: {', '.join(models) or '—'}", ""]
+    caveat = SCORER_CAVEAT if (scenario.get("outcome") or {}).get("kind") in CAVEATED_KINDS else None
+    if caveat:
+        out += [f"**Outcome verdicts here are not a pass rate:** {caveat}.", ""]
     out.append(render_run(after))
     comparison = None
     if before is not None:
@@ -117,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     text = "\n".join(out) + "\n"
     payload = {
         "scenario_id": scenario.get("id"),
+        "caveat": caveat,
         "run_dir": str(args.run),
         "before_dir": str(args.before) if args.before else None,
         "summary": after["summary"],

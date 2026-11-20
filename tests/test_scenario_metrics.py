@@ -237,6 +237,10 @@ def test_report_cli_writes_summary(tmp_path: Path, record: dict, capsys: pytest.
     assert "| Published (with media) | yes ✓media | yes ✓media | yes ✓media | 2/2 |" in out
     assert "### Before → after (means)" in out
     assert (run / "summary.json").exists() and (run / "summary.md").exists()
+    # An earlier scorer kind: the report says its verdicts are not a pass rate, above the table.
+    assert out.index("**Outcome verdicts here are not a pass rate:**") < out.index("| Metric |")
+    assert "pull/27" in json.loads((run / "summary.json").read_text())["caveat"]
+    assert "not a pass rate" in (run / "summary.md").read_text()
     assert (run / "rep-1" / "metrics.json").exists()
     loaded = load_run(run, write=False)
     assert loaded["origin"] is not None and len(loaded["replays"]) == 2

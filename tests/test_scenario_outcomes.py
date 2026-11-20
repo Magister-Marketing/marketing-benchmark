@@ -9,6 +9,8 @@ import pytest
 
 from evals.runner.scenario_metrics import compute_metrics, render_table, summarize
 from evals.runner.scenario_outcomes import (
+    CAVEATED_KINDS,
+    SCORER_CAVEAT,
     card_facts,
     check_ad_campaign_draft,
     check_answer_grounded,
@@ -534,6 +536,25 @@ def test_evaluate_dispatches_and_metrics_render_the_verdict() -> None:
     assert social["passed"] and social["terminal"] and social["summary"] == "published with media" and social["post_approval"] == []
     with pytest.raises(ValueError):
         evaluate({"outcome": {"kind": "nope"}}, {"rows": {}})
+
+
+@pytest.mark.parametrize("name", [
+    "share-flood-guide-instagram", "analytics-weekly-check-in", "google-ads-performance-review",
+    "google-ads-campaign-draft", "shopify-page-update",
+])
+def test_every_verdict_of_an_earlier_kind_carries_its_caveat(name: str) -> None:
+    """The five earlier scenarios' scorers have open defects (the review on pull
+    request 27): a pass from one of them must never read as a plain pass."""
+    scenario = _scenario(name)
+    assert scenario["outcome"]["kind"] in CAVEATED_KINDS
+    outcome = evaluate(scenario, {"outcome": {"published": True}, "rows": {"approvals": []}})
+    assert outcome["caveat"] == SCORER_CAVEAT and "pull/27" in outcome["caveat"]
+
+
+def test_no_scenario_of_the_suite_uses_a_caveated_kind() -> None:
+    suite = json.loads((REPO_ROOT / "evals/scenarios/suites/magister.json").read_text())
+    kinds = {_scenario(entry if isinstance(entry, str) else entry["id"])["outcome"]["kind"] for entry in suite["scenarios"]}
+    assert kinds == {"product_checks"} and not kinds & CAVEATED_KINDS
 
 
 # ── Rendered specs and questions ──────────────────────────────────────────────

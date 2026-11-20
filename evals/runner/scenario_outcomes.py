@@ -1026,12 +1026,28 @@ def post_approval_reply(record: dict[str, Any], approval: dict[str, Any], *, liv
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
+# The four kinds written before ``product_checks``. An independent review
+# reproduced 13 defects in them, most of them false passes (an empty reply
+# passes the ads review, invented figures pass the number check, a wiped page
+# passes the page edit), and none is fixed. Their verdicts still tell two runs
+# of one scenario apart; they are not a pass rate to quote. Every result of
+# these kinds says so, and the report prints it above the table.
+CAVEATED_KINDS = frozenset({"social_post_published", "answer_grounded", "ad_campaign_draft", "shopify_page_section"})
+SCORER_CAVEAT = (
+    "this outcome kind has known false passes and false fails, listed in the review on "
+    "https://github.com/Magister-Marketing/marketing-benchmark/pull/27: compare runs with it, "
+    "do not quote its pass rate; the Magister suite (evals/scenarios/suites/magister.json) "
+    "checks the same asks with product_checks"
+)
+
+
 def evaluate(scenario: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
     """The record's outcome for the scenario's kind: ``passed`` is the verdict,
     ``terminal`` tells the runner the run's question is answered, ``summary``
     is one line for the table, and ``post_approval`` reports every decided
     card's follow-through. A social outcome keeps the runner's provider read
-    (``published``, ``live_url``) and gains the extras."""
+    (``published``, ``live_url``) and gains the extras. A kind in
+    ``CAVEATED_KINDS`` also returns ``caveat``."""
     spec = scenario["outcome"]
     kind = spec["kind"]
     if kind == "social_post_published":
@@ -1050,6 +1066,8 @@ def evaluate(scenario: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]
     else:
         raise ValueError(f"unknown outcome kind {kind!r}")
     result["kind"] = kind
+    if kind in CAVEATED_KINDS:
+        result["caveat"] = SCORER_CAVEAT
     result["post_approval"] = [
         post_approval_reply(record, approval, live_url=result.get("live_url"))
         for approval in approvals(record) if approval.get("decided_at")

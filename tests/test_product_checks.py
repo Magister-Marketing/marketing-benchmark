@@ -245,6 +245,7 @@ def test_the_scorer_routes_the_kind():
     scenario = {"outcome": {"kind": "product_checks", "checks": [{"id": "a", "type": "reply", "pattern": "done"}]}}
     result = scenario_outcomes.evaluate(scenario, record())
     assert result["kind"] == "product_checks" and result["passed"] and result["post_approval"] == []
+    assert "caveat" not in result
 
 
 # ── Figures from the data, drawn blocks, named rows ───────────────────────────
