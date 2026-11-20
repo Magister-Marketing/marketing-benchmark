@@ -48,6 +48,30 @@
     "checks": [
       {
         "id": "built_the_campaign",
+        "type": "any",
+        "why": "No campaign was created.",
+        "of": [
+          {
+            "type": "tool_called",
+            "tools": [
+              "create_ad_campaign"
+            ],
+            "args": {
+              "*": "{nonce}"
+            }
+          },
+          {
+            "type": "tool_called",
+            "tools": [
+              "integration_read",
+              "list_ad_campaigns"
+            ],
+            "result": "Cold Brew US Search {nonce}[^}]{0,200}PAUSED|PAUSED[^}]{0,200}Cold Brew US Search {nonce}"
+          }
+        ]
+      },
+      {
+        "id": "asked_for_one_campaign",
         "type": "tool_called",
         "tools": [
           "create_ad_campaign"
@@ -55,8 +79,9 @@
         "args": {
           "*": "{nonce}"
         },
+        "ending": "any",
         "max": 1,
-        "why": "No campaign was created, or more than one was."
+        "why": "The campaign was created more than once."
       },
       {
         "id": "budget_is_30_a_day",
@@ -64,6 +89,7 @@
         "tools": [
           "create_ad_campaign"
         ],
+        "ending": "any",
         "args": {
           "budget_amount": "^30(\\.0+)?$",
           "budget_type": "daily"

@@ -22,7 +22,7 @@
     {
       "id": "t1",
       "kind": "message",
-      "text": "Write a 400-word blog post, \"How to store cold brew at home\", and save it as a draft on our store's blog. Do not publish it.",
+      "text": "Write a 400-word blog post, \"How to store cold brew at home (notes {nonce})\", and save it as a draft on our store's blog. Do not publish it.",
       "when": "always"
     }
   ],
@@ -48,7 +48,7 @@
           "integration_change"
         ],
         "args": {
-          "*": "store cold brew"
+          "*": "store cold brew[^\"]{0,40}{nonce}"
         },
         "max": 1,
         "why": "No draft was saved to the blog, or the article was written more than once."

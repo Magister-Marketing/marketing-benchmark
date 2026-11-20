@@ -26,11 +26,18 @@
     "mb-not-connected"
   ],
   "exclusive": [
+    "mb-email-needs-approval",
+    "mb-email-approved",
+    "mb-social-post-approved",
+    "mb-social-post-denied",
+    "mb-ads-campaign-draft",
+    "mb-blog-draft",
     "mb-product-seo-update",
     "mb-owner-stated-fact",
     "mb-workflow-weekly",
     "mb-one-off-not-workflow",
     "mb-memory-preference",
+    "mb-library-brief",
     "mb-plan-add-task"
   ]
 }

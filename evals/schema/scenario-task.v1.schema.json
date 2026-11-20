@@ -326,7 +326,7 @@
             "required": ["id", "type"],
             "properties": {
               "id": { "$ref": "#/$defs/id" },
-              "type": { "enum": ["tool_called", "tool_not_called", "approval", "state", "reply", "grounded", "cited", "rendered", "names_row"] },
+              "type": { "enum": ["tool_called", "tool_not_called", "approval", "state", "reply", "grounded", "cited", "rendered", "names_row", "any"] },
               "why": { "description": "What a person loses when this fails; printed beside a failure.", "type": "string", "minLength": 1 },
               "required": { "description": "false: reported, never the reason a run fails.", "type": "boolean" },
               "tools": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
@@ -338,6 +338,7 @@
               "executed": { "type": "boolean" },
               "rows": { "description": "The outcome.state read to look in.", "type": "string", "minLength": 1 },
               "field": { "description": "names_row: the row field whose text the reply must contain.", "type": "string", "minLength": 1 },
+              "of": { "description": "any: two or more checks (without ids), one of which must pass: one fact that can be true in more than one way.", "type": "array", "minItems": 2, "items": { "type": "object", "required": ["type"] } },
               "sources": { "description": "grounded, cited: the successful calls whose results count, as groups of tools with optional args; in place of tools.", "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["tools"], "properties": { "tools": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }, "args": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } }, "result": { "type": "string", "minLength": 1 }, "derived": { "description": "A script: its output counts only when the command carries a figure another source's result holds.", "type": "boolean" } } } },
               "unbacked_max": { "description": "grounded, cited: how many figures or links the reply may state that no result holds.", "type": "integer", "minimum": 0 },
               "components": { "description": "rendered: the component types that count (Table, BarChart, LineChart, ...).", "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },

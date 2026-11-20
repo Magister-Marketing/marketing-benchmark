@@ -567,3 +567,21 @@ def test_the_lead_is_where_a_recommendation_is_read():
     check = {"id": "real_task", "type": "names_row", "rows": "plan_items", "field": "title"}
     assert verdict(record(messages=said, state=state), check)["passed"]            # anywhere in the reply
     assert not verdict(record(messages=said, state=state), {**check, "scope": "lead"})["passed"]
+
+
+def test_one_fact_can_be_true_in_more_than_one_way():
+    """A create call that timed out while the campaign was made, then read back
+    from the account, is a campaign that was built."""
+    created = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope())
+    timed_out = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope(ok=False, state="failed"))
+    read_back = call("magister_integration_read", {"service": "google_ads"},
+                     envelope(receipt={"results": [{"campaign": {"name": "Cold Brew ab12cd", "status": "PAUSED"}}]}))
+    built = {"id": "built", "type": "any", "of": [
+        {"type": "tool_called", "tools": ["create_ad_campaign"], "args": {"name": "ab12cd"}},
+        {"type": "tool_called", "tools": ["integration_read", "list_ad_campaigns"], "result": "ab12cd"}]}
+    assert verdict(record([created]), built)["passed"]
+    assert verdict(record([timed_out, read_back]), built)["passed"]
+    result = verdict(record([timed_out]), built)
+    assert not result["passed"] and "1:" in result["checks"][0]["detail"] and "2:" in result["checks"][0]["detail"]
+    with pytest.raises(pc.CheckSpecError):
+        verdict(record(), {"id": "x", "type": "any", "of": [{"type": "reply", "pattern": "a"}]})

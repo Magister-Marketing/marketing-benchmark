@@ -39,7 +39,7 @@ ALLOW_DECISIONS = frozenset({"manual_allow", "auto_yolo", "auto_custom", "auto_c
 EXECUTED_STATES = frozenset({"succeeded", "executed", "completed", "done"})
 PENDING_STATES = frozenset({"needs_approval", "pending_approval", "awaiting_approval", "pending", "queued", "running"})
 CHECK_TYPES = ("tool_called", "tool_not_called", "approval", "state", "reply", "grounded", "cited", "rendered",
-               "names_row")
+               "names_row", "any")
 # A figure worth matching in the agent's words: a number with thousands
 # separators, a decimal, three or more digits, or a two-digit percentage.
 # "Top 5", "30 days" and "28-day window" are in every skill and every result.
@@ -512,6 +512,21 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
     if kind not in CHECK_TYPES:
         raise CheckSpecError(f"check {check_id!r}: unknown type {kind!r}")
     result: dict[str, Any] = {"id": check_id, "type": kind, "required": check.get("required", True) is not False}
+    if kind == "any":
+        # One fact, more than one way it can be true: a campaign is built when
+        # the create call ended ok, or when the call timed out and the agent
+        # then read the campaign back from the account.
+        ways = check.get("of")
+        if not isinstance(ways, list) or len(ways) < 2 or not all(isinstance(way, dict) for way in ways):
+            raise CheckSpecError(f"check {check_id!r}: 'of' must list at least two checks")
+        results = [run_check(record, {"id": f"{check_id}.{index}", **way}) for index, way in enumerate(ways, start=1)]
+        met = [item for item in results if item["passed"]]
+        result.update(passed=bool(met), found=len(met),
+                      detail=(f"way {met[0]['id'].rsplit('.', 1)[1]}: {met[0]['detail']}" if met
+                              else "; ".join(f"{item['id'].rsplit('.', 1)[1]}: {item['detail']}" for item in results)))
+        if check.get("why"):
+            result["why"] = check["why"]
+        return result
     if kind in ("tool_called", "tool_not_called"):
         # sources: any of several tool groups, each with its own argument
         # filter (a hosted read, or a file read of a data folder: never a
