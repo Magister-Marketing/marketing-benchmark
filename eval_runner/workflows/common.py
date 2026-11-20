@@ -122,9 +122,11 @@ def tables(text: str, names: list[str]) -> dict[str, list[dict[str, str]] | None
     header (lower case, underscores). None for a file the reply does not
     carry. A file is the lines under the line that names it, inside a code
     fence when there is one, else up to the first blank line after its rows,
-    the next heading or the next file. A file given twice is read where it
-    was given last: a draft earlier in the reply does not shadow the final
-    one."""
+    the next heading or the next file; blank lines between the name and the
+    file are skipped. A file given twice is read where it was last given with
+    something in it: a draft earlier in the reply does not shadow the final
+    one, and a closing list of the file names does not empty them. A file
+    only ever named with nothing under it is present but empty."""
     wanted = {name.lower() for name in names}
     lines = text.splitlines()
     found: dict[str, list[str]] = {}
@@ -135,6 +137,8 @@ def tables(text: str, names: list[str]) -> dict[str, list[dict[str, str]] | None
             index += 1
             continue
         index += 1
+        # Outside a fence, only lines with text are kept, so a non-empty body
+        # has text: blank lines before the first one are skipped, not kept.
         body: list[str] = []
         fenced = False
         while index < len(lines):
@@ -148,11 +152,15 @@ def tables(text: str, names: list[str]) -> dict[str, list[dict[str, str]] | None
             if not fenced:
                 if file_named(line) or _is_heading(line):
                     break
-                if not line.strip() and body:
-                    break
+                if not line.strip():
+                    index += 1
+                    if body:
+                        break
+                    continue
             body.append(line)
             index += 1
-        found[name] = body
+        if name not in found or any(line.strip() for line in body):
+            found[name] = body
     return {name: (_rows(found[name.lower()]) if name.lower() in found else None) for name in names}
 
 
@@ -236,19 +244,30 @@ def sections(text: str, names: list[str]) -> dict[str, str | None]:
     that names it, or None for a file the reply does not carry. A document is
     the lines after its name up to the next line that names any file, read
     through ``_document`` (inside its code fence when it has one). A file
-    given twice is read where it was given last: a draft earlier in the reply
-    does not shadow the final one. One pass over the lines, nothing matched
+    given twice is read where it was last given with text: a draft earlier in
+    the reply does not shadow the final one, and a closing list of the file
+    names does not empty them. A file only ever named with no text under it
+    is present but empty (""). One pass over the lines, nothing matched
     against more than a bounded line, so no reply can stall it."""
     wanted = {name.lower() for name in names}
-    found: dict[str, list[str]] = {}
-    current: list[str] | None = None
+    found: dict[str, str] = {}
+
+    def keep(name: str | None, lines: list[str]) -> None:
+        if name is None:
+            return
+        document = _document(lines)
+        if name not in found or document:
+            found[name] = document
+
+    current_name: str | None = None
+    current: list[str] = []
     for line in text.splitlines():
         name = named_file(line)
         if name is not None:
-            current = None
-            if name in wanted:
-                current = found[name] = []
+            keep(current_name, current)
+            current_name, current = (name if name in wanted else None), []
             continue
-        if current is not None:
+        if current_name is not None:
             current.append(line)
-    return {name: (_document(found[name.lower()]) if name.lower() in found else None) for name in names}
+    keep(current_name, current)
+    return {name: found.get(name.lower()) for name in names}
