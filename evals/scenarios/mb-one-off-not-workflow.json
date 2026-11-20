@@ -90,9 +90,16 @@
         "why": "Nothing was read from the connected property: a skill file is not the data."
       },
       {
+        "id": "answered_with_the_queries",
+        "type": "reply",
+        "pattern": "\\A(?=.*best tees)(?=.*organic cotton tee)(?=.*(?:emulated store|tee sizing))",
+        "scope": "final",
+        "why": "The answer does not list the property's own queries."
+      },
+      {
         "id": "did_not_say_not_connected",
         "type": "reply",
-        "pattern": "(search console|gsc)[^.!?\\n]{0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(search console|gsc)",
+        "pattern": "(search console|gsc)(?:(?!\\bis connected\\b)[^.!?\\n(]){0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(search console|gsc)",
         "scope": "all",
         "present": false,
         "why": "The account is connected; telling the person to connect it sends them in a circle."

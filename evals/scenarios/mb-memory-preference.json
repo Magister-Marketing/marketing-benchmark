@@ -31,7 +31,7 @@
     "replies": [],
     "reply_when": "question",
     "default_reply": "Use your best judgement and go ahead.",
-    "max_replies": 1
+    "max_replies": 0
   },
   "stop": {
     "budget_seconds": 480,

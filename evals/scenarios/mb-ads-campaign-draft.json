@@ -70,10 +70,9 @@
         "tools": [
           "create_ad_campaign"
         ],
-        "args": {
-          "*": "{nonce}"
-        },
-        "distinct": "result.resource_id",
+        "ending": "any",
+        "result": "\"ok\": true|timed? ?out|deadline",
+        "distinct": "args.idempotency_key",
         "min": 0,
         "max": 1,
         "why": "More than one campaign was created."
@@ -90,6 +89,18 @@
           "budget_type": "daily"
         },
         "why": "The campaign was not built at $30 a day."
+      },
+      {
+        "id": "no_other_budget",
+        "type": "tool_not_called",
+        "tools": [
+          "create_ad_campaign"
+        ],
+        "ending": "not_failed",
+        "args": {
+          "budget_amount": "!^30(\\.0+)?$"
+        },
+        "why": "A campaign was created at another budget than the $30 a day asked for."
       },
       {
         "id": "never_switched_on",

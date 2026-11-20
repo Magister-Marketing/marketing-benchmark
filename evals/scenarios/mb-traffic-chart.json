@@ -95,7 +95,7 @@
       {
         "id": "did_not_say_not_connected",
         "type": "reply",
-        "pattern": "(google analytics|ga4|analytics)[^.!?\\n]{0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(google analytics|ga4|analytics)",
+        "pattern": "(google analytics|ga4|analytics)(?:(?!\\bis connected\\b)[^.!?\\n(]){0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(google analytics|ga4|analytics)",
         "scope": "all",
         "present": false,
         "why": "The account is connected; telling the person to connect it sends them in a circle."

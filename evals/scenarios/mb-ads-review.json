@@ -99,7 +99,7 @@
       {
         "id": "did_not_say_not_connected",
         "type": "reply",
-        "pattern": "(google ads|ads account)[^.!?\\n]{0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(google ads|ads account)",
+        "pattern": "(google ads|ads account)(?:(?!\\bis connected\\b)[^.!?\\n(]){0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(google ads|ads account)",
         "scope": "all",
         "present": false,
         "why": "The account is connected; telling the person to connect it sends them in a circle."

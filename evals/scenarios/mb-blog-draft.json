@@ -67,6 +67,18 @@
         "why": "The article was created published."
       },
       {
+        "id": "saved_unpublished",
+        "type": "tool_called",
+        "tools": [
+          "create_blog_post",
+          "integration_change"
+        ],
+        "args": {
+          "*": "isPublished[\\\\\"']*\\s*:\\s*false|\\bpublished[\\\\\"']*\\s*:\\s*false|published_at[\\\\\"']*\\s*:\\s*null|\"status[\\\\\"']*:\\s*[\\\\\"']*draft"
+        },
+        "why": "The article was saved without saying it is unpublished: a store shows a new article unless told not to."
+      },
+      {
         "id": "did_not_publish",
         "type": "tool_not_called",
         "tools": [

@@ -39,8 +39,8 @@
         "type": "approval",
         "match": {
           "action": "^publish_social_post$",
-          "arguments.post_snapshot.content": "{nonce}",
-          "arguments.post_snapshot.platforms": "\"platform\": \"linkedin\""
+          "arguments.post_snapshot.content": "^Cold brew restock is live\\. Batch {nonce} ships this week\\.$",
+          "arguments.post_snapshot.platforms": "^\\[\\{[^{}]*\"platform\": \"linkedin\"[^{}]*\\}\\]$"
         },
         "decision": "approved_by_person",
         "executed": true,

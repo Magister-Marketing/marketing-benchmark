@@ -62,7 +62,7 @@
         "id": "made_the_change",
         "type": "approval",
         "match": {
-          "arguments": "\"seo\": \\{[^{}]*\"description\": \"[^\"]*100%[^\".]{0,24}organic cotton"
+          "arguments": "seo\\\\*\"?\\s*:\\s*\\{[^{}]*?description\\\\*\"?\\s*:\\s*\\\\*\"[^\"\\\\]*100%[^\".\\\\]{0,24}organic cotton"
         },
         "decision": "approved_by_person",
         "executed": true,

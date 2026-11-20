@@ -41,29 +41,48 @@ PENDING_STATES = frozenset({"needs_approval", "pending_approval", "awaiting_appr
 CHECK_TYPES = ("tool_called", "tool_not_called", "approval", "state", "reply", "grounded", "cited", "rendered",
                "names_row", "any")
 # A figure worth matching in the agent's words: a number with thousands
-# separators, a decimal, three or more digits, or a two-digit percentage.
-# "Top 5", "30 days" and "28-day window" are in every skill and every result.
+# separators, a decimal, or three or more digits. "Top 5", "30 days" and
+# "28-day window" are in every skill and every result, and so is any
+# two-digit number, a rate included (a result's timestamps alone hold dozens:
+# an invented "34%" was "in the results" about half the time).
 # A group of three digits is a thousands group only when no digit follows it.
 FIGURE = re.compile(
     r"(?<![\w.,])\d{1,3}(?:,\d{3})+(?!\d)(?:\.\d+)?"
     r"|(?<![\w.,])\d+\.\d+"
     r"|(?<![\w.,])\d{3,}"
-    r"|(?<![\w.,])\d{2}(?=\s?%)"
 )
 # Every run of digits, with its decimals: how a result is read, where a CSV
 # row's commas separate values ("2026-11-19,753,12136" holds 753 and 12136).
 PLAIN_NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")
 # Dates, whose parts are not figures anyone stated.
+# A month is its name or its abbreviation, whole: "decreased 1,204" and
+# "Marketing 753" are not dates. A year is one a report could be about.
+MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?"
+         r"|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?")
+YEAR = r"(?:199\d|20[0-3]\d)"
 DATE = re.compile(
-    r"\b\d{4}-\d{2}-\d{2}\b"
-    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:\s?[–-]\s?(?:[a-z]+\.?\s+)?\d{1,2})?(?:,?\s+(?:19|20)\d\d)?"
-    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(?:19|20)\d\d\b"
-    r"|\b(?:in|since|during|for|of|from|to|through|until|by)\s+(?:19|20)\d\d\b",
+    r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+    rf"|\b{MONTH}\s+\d{{1,2}}(?:\s?[–-]\s?(?:{MONTH}\s+)?\d{{1,2}})?(?:,?\s+{YEAR})?\b"
+    rf"|\b{MONTH}\s+{YEAR}\b"
+    rf"|\b(?:in|since|during|for|of|from|to|through|until|by)\s+{YEAR}\b",
     re.IGNORECASE,
 )
-LINK = re.compile(r"https?://[^\s)\]>\"'`*|]+")
-# A link written without its scheme ("example.com/report").
-BARE_LINK = re.compile(r"(?<![\w/@.-])(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|gov|edu|dev|ai|app|info)(?:/[^\s)\]>\"'`*|]*)?", re.IGNORECASE)
+A_YEAR = re.compile(YEAR)
+LINK = re.compile(r"https?://[^\s)\]<>\"'`*|]+")
+# A link written without its scheme, with its path ("example.com/report"). A
+# bare "Amazon.com" is a company's name, not a citation.
+BARE_LINK = re.compile(r"(?<![\w/@.-])(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|gov|edu|dev|ai|app|info)(?:\.[a-z]{2})?/[^\s)\]<>\"'`*|]+", re.IGNORECASE)
+# Query parameters that say where a reader came from, never which page it is.
+TRACKING = re.compile(r"^(?:utm_\w+|fbclid|gclid|msclkid|mc_[ce]id|ref|ref_src|source|oc|hl|gl|ceid|ved|usg|sa|si|feature|igshid)$", re.IGNORECASE)
+# What the machine returns in place of a tool's result when it refuses to run
+# the call: the turn budget (magister-openclaw extensions/magister-memory/
+# turn-budget.ts) and the loop detector's circuit breaker (src/agents/
+# tool-loop-detection.ts). No error flag comes with it.
+VETOED = re.compile(
+    r"\s*(?:You have worked \d+ minutes? \(\d+ tool calls?\) without replying\."
+    r"|CRITICAL: (?:attempted unavailable tool\b|\S+ has repeated identical no-progress outcomes\b"
+    r"|Called \S+ with identical arguments and no progress\b"
+    r"|You are alternating between repeated tool-call patterns\b))")
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
 # A long run of digits is an id (an account, a campaign), not a figure.
 ID_DIGITS = 7
@@ -161,13 +180,18 @@ def call_ending(call: dict[str, Any]) -> str:
     """How a call ended: ``ok``, ``failed`` or ``pending`` (it is waiting on
     an approval card or still running). A call with no result yet is
     ``pending``; a native tool (read, write, exec) is ``ok`` unless the
-    machine flagged it."""
+    machine flagged it or answered in its place (a veto)."""
     if call.get("is_error"):
         return "failed"
     data = envelope(call)
     if data is None:
         text = str(call.get("result_text") or "")
-        if hosted(call.get("tool")) != str(call.get("tool") or "") and text.lstrip().startswith("{"):
+        is_hosted = hosted(call.get("tool")) != str(call.get("tool") or "")
+        if VETOED.match(text) or (is_hosted and text.strip() and not text.lstrip().startswith("{")):
+            # The machine answered in place of the tool (or a hosted action
+            # answered with something that is no envelope): the call did not run.
+            return "failed"
+        if is_hosted and text.lstrip().startswith("{"):
             # A hosted action's envelope that was cut off before it closed: read its head.
             head = text[:600]
             if re.search(r'"state"\s*:\s*"(failed|error|denied|refused)"', head):
@@ -369,9 +393,10 @@ def source_calls(record: dict[str, Any], check: dict[str, Any]) -> list[dict[str
         read = set()
         for call in found:
             read |= figures(_text(call.get("result_text")))
-        read = {value for value in read if len(value.replace(".", "")) >= 3}  # "30" is in every command
+        # "30" is in every command, and so is the year: a date in a comment or a file name computes nothing.
+        read = {value for value in read if len(value.replace(".", "")) >= 3 and not A_YEAR.fullmatch(value)}
         for call in derived:
-            if figures(_text(call.get("args"))) & read:
+            if figures(_text(call.get("args")), stated=True) & read:
                 found.append(call)
     return found
 
@@ -396,12 +421,15 @@ def result_figures(record: dict[str, Any], check: dict[str, Any]) -> set[str]:
 
 
 def _link_key(raw: str) -> str:
-    """A link as its host and path: no scheme, no www, no query or fragment,
-    no trailing slash or punctuation. A source cited without its tracking
-    parameters is the same source."""
+    """A link as its host, path and the query that says which page it is: no
+    scheme, no www, no fragment, no trailing slash or punctuation, no
+    tracking parameters. A source cited without its tracking parameters is
+    the same source; ``watch?v=A`` and ``watch?v=B`` are not."""
     text = re.sub(r"^https?://", "", raw.strip().rstrip(".,;:!?"), flags=re.IGNORECASE)
-    text = re.sub(r"^www\.", "", text, flags=re.IGNORECASE)
-    return text.split("#")[0].split("?")[0].rstrip("/").lower()
+    text = re.sub(r"^www\.", "", text, flags=re.IGNORECASE).split("#")[0]
+    path, _, query = text.partition("?")
+    kept = sorted(part for part in query.split("&") if part and not TRACKING.match(part.split("=")[0]))
+    return (path.rstrip("/") + ("?" + "&".join(kept) if kept else "")).lower()
 
 
 def links(text: str, *, stated: bool = False) -> set[str]:
@@ -519,11 +547,17 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
         ways = check.get("of")
         if not isinstance(ways, list) or len(ways) < 2 or not all(isinstance(way, dict) for way in ways):
             raise CheckSpecError(f"check {check_id!r}: 'of' must list at least two checks")
-        results = [run_check(record, {"id": f"{check_id}.{index}", **way}) for index, way in enumerate(ways, start=1)]
-        met = [item for item in results if item["passed"]]
+        for way in ways:
+            # A way that holds when nothing happened makes the whole check hold always.
+            if (way.get("type") in ("tool_not_called", "any") or way.get("min") == 0 or way.get("max") == 0
+                    or way.get("present") is False):
+                raise CheckSpecError(f"check {check_id!r}: a way of 'any' must be something that happened "
+                                     "(not tool_not_called, min 0, max 0 or present false)")
+        results = [(index, run_check(record, {**way, "id": f"{check_id}.{index}"})) for index, way in enumerate(ways, start=1)]
+        met = [(index, item) for index, item in results if item["passed"]]
         result.update(passed=bool(met), found=len(met),
-                      detail=(f"way {met[0]['id'].rsplit('.', 1)[1]}: {met[0]['detail']}" if met
-                              else "; ".join(f"{item['id'].rsplit('.', 1)[1]}: {item['detail']}" for item in results)))
+                      detail=(f"way {met[0][0]}: {met[0][1]['detail']}" if met
+                              else "; ".join(f"{index}: {item['detail']}" for index, item in results)))
         if check.get("why"):
             result["why"] = check["why"]
         return result
@@ -578,6 +612,8 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
             said, noun = links(words, stated=True), "link"
             available = set()
             for item in source_calls(record, check):
+                if re.search(r'"status"\s*:\s*[45]\d\d\b', _text(item.get("result_text"))[:400]):
+                    continue  # a page that answered 404 was not read, whatever its address
                 available |= links(_text(item.get("result_text"))) | links(_text(item.get("args")))
         backed, unbacked = sorted(said & available), sorted(said - available)
         ok = _within(len(backed), low, high) and (loose is None or len(unbacked) <= loose)
@@ -633,7 +669,14 @@ def check_product(record: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any
     ids = [check.get("id") for check in checks if isinstance(check, dict)]
     if len(ids) != len(checks) or len(set(ids)) != len(ids):
         raise CheckSpecError("every check needs its own id")
-    results = [run_check(record, check) for check in checks]
+    try:
+        results = [run_check(record, check) for check in checks]
+    except CheckSpecError:
+        raise
+    except (AttributeError, IndexError, KeyError, TypeError, re.error) as exc:
+        # Anything a malformed check trips over is the scenario's bug: the
+        # runner catches a spec error and still writes the record of a paid chat.
+        raise CheckSpecError(f"a check is malformed: {type(exc).__name__}: {exc}") from exc
     required = [item for item in results if item["required"]]
     if not required:
         raise CheckSpecError("at least one check must be required")

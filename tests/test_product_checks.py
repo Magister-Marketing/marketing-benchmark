@@ -253,7 +253,9 @@ def test_stated_figures_leave_out_dates_ids_links_and_small_counts():
     said = ("Clicks rose to 1,204 (4.73% CTR, 34% opens) from 987 on Nov 19, 2026; 2,048 visits in 2025; "
             "3 queries over 28 days at position 7.60; account 4000000001; see http://x.localhost:3022/a?project="
             "1c95f439-a3bf-4e17-9d95-44924f6a60de")
-    assert pc.figures(said, stated=True) == {"1204", "4.73", "34", "987", "2048", "7.6"}
+    # "34% opens" is not one: a two-digit number is in every result (a timestamp alone holds several),
+    # so a made-up rate was "in the results" about half the time.
+    assert pc.figures(said, stated=True) == {"1204", "4.73", "987", "2048", "7.6"}
 
 
 def test_a_charts_numbers_are_never_read_as_years():
@@ -603,3 +605,97 @@ def test_a_create_replayed_with_the_same_key_is_one_thing_not_two():
     assert verdict(record([nameless]), once)["passed"]
     with pytest.raises(pc.CheckSpecError):
         verdict(record([first]), {**once, "distinct": "reply.x"})
+
+
+# ── What the review of 580a6ca found ──────────────────────────────────────────
+
+VETO = ("You have worked 1 minute (26 tool calls) without replying. Reply now with what you have, "
+        "and ask one question if you are blocked.")
+
+
+def test_a_call_the_machine_vetoed_did_not_run():
+    """The turn budget and the loop detector answer in place of the tool, with a
+    sentence and no error flag. 16 such calls were in the recorded runs, read as ok."""
+    for tool in ("magister_integration_change", "write", "web_fetch"):
+        assert pc.call_ending(call(tool, result=VETO)) == "failed", tool
+    looped = "CRITICAL: Called exec with identical arguments and no progress 20 times. This appears to be a stuck polling loop."
+    assert pc.call_ending(call("exec", result=looped)) == "failed"
+    # A hosted action answers with an envelope: any other text in its place is not a result.
+    assert pc.call_ending(call("magister_create_plan_item", result="upstream said no")) == "failed"
+    # A native tool's plain output is its result, and a warning that lets the call run is not a veto.
+    assert pc.call_ending(call("exec", result="1482\n")) == "ok"
+    assert pc.call_ending(call("exec", result="WARNING: You have called exec 10 times with identical arguments")) == "ok"
+
+    real = call("magister_integration_change", {"key": "a"}, envelope(resource_id="article-1"))
+    vetoed = call("magister_integration_change", {"key": "a"}, VETO)
+    once = {"id": "saved", "type": "tool_called", "tools": ["integration_change"], "max": 1}
+    assert verdict(record([vetoed, real]), once)["passed"]       # vetoed then done is one write, not two
+    assert not verdict(record([vetoed]), once)["passed"]         # vetoed alone saved nothing
+    one_thing = {**once, "distinct": "result.resource_id", "min": 0}
+    assert verdict(record([vetoed, real]), one_thing)["passed"]
+
+
+def test_a_vetoed_or_failed_fetch_is_not_a_source():
+    said = [message("user", "Cite it.", "2026-11-20T06:00:00Z"),
+            message("assistant", "See [the report](https://example.org/report).", "2026-11-20T06:01:00Z")]
+    cited = {"id": "real", "type": "cited", "tools": ["web_fetch"], "min": 1}
+    vetoed = call("web_fetch", {"url": "https://example.org/report"}, VETO)
+    missing = call("web_fetch", {"url": "https://example.org/report"}, json.dumps({"url": "https://example.org/report", "status": 404, "text": "Not Found"}))
+    found = call("web_fetch", {"url": "https://example.org/report"}, json.dumps({"url": "https://example.org/report", "status": 200, "text": "The report"}))
+    assert not verdict(record([vetoed], messages=said), cited)["passed"]
+    assert not verdict(record([missing], messages=said), cited)["passed"]
+    assert verdict(record([found], messages=said), cited)["passed"]
+
+
+def test_links_are_compared_as_a_reader_would():
+    # The part of a link that says which page it is stays; tracking does not.
+    assert pc._link_key("https://www.youtube.com/watch?v=REAL") != pc._link_key("https://youtube.com/watch?v=INVENTED")
+    assert pc._link_key("https://news.example.com/a/b?utm_source=x&oc=5") == pc._link_key("news.example.com/a/b")
+    assert pc._link_key("https://example.com/p?id=7&utm_campaign=z") == pc._link_key("https://example.com/p?id=7")
+    # A feed's markup is not part of its link.
+    assert pc.links("<link>https://example.com/story</link>") == {"example.com/story"}
+    # A company's name is not a citation; a path written without its scheme is.
+    assert pc.links("Amazon.com and Target carry it.", stated=True) == set()
+    assert pc.links("See thegrocer.co.uk/news/rtd-coffee for more.", stated=True) == {"thegrocer.co.uk/news/rtd-coffee"}
+
+
+def test_any_takes_a_way_that_carries_an_id_and_refuses_a_way_that_cannot_fail():
+    done = call("magister_create_ad_campaign", {"name": "x"}, envelope(resource_id="c1"))
+    ways = {"id": "built", "type": "any", "of": [
+        {"id": "by_create", "type": "tool_called", "tools": ["create_ad_campaign"]},
+        {"type": "tool_called", "tools": ["list_ad_campaigns"], "result": "PAUSED"}]}
+    got = verdict(record([done]), ways)
+    assert got["passed"] and got["checks"][0]["detail"].startswith("way 1")
+    for never_fails in ({"type": "tool_not_called", "tools": ["x"]}, {"type": "tool_called", "tools": ["x"], "min": 0},
+                        {"type": "reply", "pattern": "x", "present": False}):
+        with pytest.raises(pc.CheckSpecError):
+            verdict(record([done]), {**ways, "of": [ways["of"][0], never_fails]})
+
+
+def test_a_malformed_check_is_always_a_spec_error_never_a_crash():
+    """The runner catches a spec error and still writes the record of a paid chat."""
+    with pytest.raises(pc.CheckSpecError):
+        verdict(record(state={"t": [{"a": 1}]}), {"id": "x", "type": "state", "rows": "t", "where": "not a mapping"})
+    with pytest.raises(pc.CheckSpecError):
+        pc.check_product({"rows": {"state": {"t": [{"a": 1}]}}}, {"checks": [{"id": "x", "type": "state", "rows": "t", "where": ["a"]}]})
+
+
+def test_a_word_that_starts_like_a_month_does_not_eat_the_figure_after_it():
+    assert pc.figures("Clicks decreased 1,204 and CTR declined 4.73%.", stated=True) == {"1204", "4.73"}
+    assert pc.figures("Marketing 753, up to 2048.", stated=True) == {"753", "2048"}
+    assert pc.figures("On March 14, 2026 and in 2025; Dec 3 to Dec 9.", stated=True) == set()
+
+
+def test_a_script_counts_only_when_it_computes_from_a_figure_that_was_read():
+    read = call("magister_integration_read", {"service": "gsc"}, json.dumps({"ok": True, "status": {"state": "succeeded"},
+                "rows": [{"date": "2026-11-17", "clicks": 1482}, {"date": "2026-11-10", "clicks": 1204}]}))
+    said = [message("user", "How much did clicks change?", "2026-11-20T06:00:00Z"),
+            message("assistant", "Clicks rose by 9,999.", "2026-11-20T06:01:00Z")]
+    grounded = {"id": "g", "type": "grounded", "min": 1, "sources": [{"tools": ["integration_read"]}, {"tools": ["exec"], "derived": True}]}
+    # The date is in every result; a command that only carries it computed nothing from what was read.
+    dated = call("exec", {"command": "echo 9999 # 2026-11-17"}, "9999\n")
+    filed = call("exec", {"command": "cat resources/reports/x-2026-11-17.md"}, "9999\n")
+    assert not verdict(record([read, dated], messages=said), grounded)["passed"]
+    assert not verdict(record([read, filed], messages=said), grounded)["passed"]
+    computed = call("exec", {"command": "python3 -c 'print(1482*7 - 375)'"}, "9999\n")
+    assert verdict(record([read, computed], messages=said), grounded)["passed"]

@@ -62,7 +62,7 @@
         "id": "change_ran_once",
         "type": "approval",
         "match": {
-          "arguments": "\"seo\": \\{[^{}]*\"title\": \"Classic Tee \\| Everyday Heavyweight Tee\""
+          "arguments": "seo\\\\*\"?\\s*:\\s*\\{[^{}]*?title\\\\*\"?\\s*:\\s*\\\\*\"Classic Tee \\| Everyday Heavyweight Tee\\\\*\""
         },
         "decision": "approved_by_person",
         "executed": true,
@@ -84,7 +84,7 @@
           "integration_change"
         ],
         "args": {
-          "*": "\"product\": \\{[^{}]*\"title\": \"|\"input\": \\{[^{}]*\"title\": \""
+          "*": "(?:product|input)\\\\*\"?\\s*:\\s*\\{(?:[^{}]|\\{[^{}]*\\})*?(?<![A-Za-z])title\\\\*\"?\\s*:"
         },
         "why": "The product itself was renamed; only its SEO title was to change."
       },
