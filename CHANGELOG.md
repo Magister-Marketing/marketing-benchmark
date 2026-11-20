@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Tasks: workflow task `price-change-rollout` (development split): a price
+  change, a plan rename and a longer trial rolled through 14 assets, where
+  everything the brief changes must change and nothing else may. Adds a
+  reader for named non-CSV files to the workflow tools.
 - Tasks: workflow task `outbound-sequence` (development split): a 200-lead
   list, an outbound standard and a facts sheet in; exclusions with reasons,
   assignments by segment and country group, and 30 emails across 10
