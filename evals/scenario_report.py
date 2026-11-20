@@ -27,7 +27,9 @@ from evals.runner.scenario_metrics import (
     render_table,
     summarize,
 )
-from evals.runner.scenario_outcomes import CAVEATED_KINDS, SCORER_CAVEAT
+from evals.runner.scenario_outcomes import caveat_for
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _records(run_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
@@ -49,7 +51,15 @@ def load_run(run_dir: Path, *, write: bool = True) -> dict[str, Any]:
     columns: list[tuple[str, dict[str, Any]]] = []
     replays: list[dict[str, Any]] = []
     origin: dict[str, Any] | None = None
+    # What says which scorer read these records: the scenario saved with the
+    # run, each record's own outcome, and (for a folder with neither, such as
+    # one repetition or a harvested origin chat) this checkout's scenario file.
+    scored_as: list[dict[str, Any] | None] = [scenario.get("outcome")]
     for rep_dir, record in _records(run_dir):
+        scored_as.append(record.get("outcome"))
+        spec = REPO_ROOT / "evals" / "scenarios" / f"{record.get('scenario_id')}.json"
+        if spec.exists():
+            scored_as.append(json.loads(spec.read_text()).get("outcome"))
         metrics = compute_metrics(record)
         if write:
             (rep_dir / "metrics.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
@@ -65,7 +75,7 @@ def load_run(run_dir: Path, *, write: bool = True) -> dict[str, Any]:
         columns.append((f"mean of {len(replays)}", _mean_column(summary, replays)))
     return {
         "dir": run_dir, "scenario": scenario, "metric_ids": metric_ids, "columns": columns,
-        "replays": replays, "origin": origin, "summary": summary,
+        "replays": replays, "origin": origin, "summary": summary, "caveat": caveat_for(*scored_as),
     }
 
 
@@ -108,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     shas = sorted({str(m.get("gateway_sha") or "")[:9] for m in after["replays"]} - {""})
     models = sorted({str(m.get("model") or "") for m in after["replays"]} - {""})
     out = [f"## {title}", "", f"run: {args.run}  gateway: {', '.join(shas) or '—'}  model: {', '.join(models) or '—'}", ""]
-    caveat = SCORER_CAVEAT if (scenario.get("outcome") or {}).get("kind") in CAVEATED_KINDS else None
+    caveat = after["caveat"] or (before["caveat"] if before else None)
     if caveat:
         out += [f"**Outcome verdicts here are not a pass rate:** {caveat}.", ""]
     out.append(render_run(after))

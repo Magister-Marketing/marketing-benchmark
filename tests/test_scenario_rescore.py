@@ -62,3 +62,17 @@ def test_a_clean_run_exits_zero_and_a_malformed_check_exits_two(tmp_path, monkey
     (tmp_path / "repo" / "evals" / "scenarios" / "s.json").write_text(json.dumps(broken))
     assert rs.main([str(run)]) == 2
     capsys.readouterr()
+
+
+def test_the_total_of_an_earlier_outcome_kind_is_not_printed_as_a_pass_rate(tmp_path, monkeypatch, capsys):
+    """The five earlier scenarios' scorers have open defects: a total over one of them says so."""
+    run = run_dir(tmp_path, monkeypatch, [record("s", 1, outcome={"published": True})])
+    assert rs.main([str(run)]) == 0
+    assert "not a pass rate" not in capsys.readouterr().out  # product_checks: a plain total
+    earlier = scenario()
+    earlier["outcome"] = {"kind": "social_post_published"}
+    for path in (tmp_path / "repo" / "evals" / "scenarios" / "s.json", run / "s" / "scenario.json"):
+        path.write_text(json.dumps(earlier))
+    assert rs.main([str(run)]) == 0
+    out = capsys.readouterr().out
+    assert "total: 1/1 scored attempts passed" in out and "not a pass rate for s:" in out and "pull/27" in out

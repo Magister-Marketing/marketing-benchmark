@@ -1041,6 +1041,13 @@ SCORER_CAVEAT = (
 )
 
 
+def caveat_for(*outcomes_or_specs: dict[str, Any] | None) -> str | None:
+    """The caveat when any of these is of an earlier kind: a scenario's
+    ``outcome`` spec, or a result ``evaluate`` returned. A report or a total
+    printed over such a result says this beside it."""
+    return SCORER_CAVEAT if any((item or {}).get("kind") in CAVEATED_KINDS for item in outcomes_or_specs) else None
+
+
 def evaluate(scenario: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
     """The record's outcome for the scenario's kind: ``passed`` is the verdict,
     ``terminal`` tells the runner the run's question is answered, ``summary``

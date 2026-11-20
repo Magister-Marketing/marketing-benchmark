@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from evals import scenario_rescore
+from evals.runner import scenario_outcomes
 
 
 def attempts(run_dir: Path) -> list[dict[str, Any]]:
@@ -44,6 +45,7 @@ def attempts(run_dir: Path) -> list[dict[str, Any]]:
             "run": run_dir.name,
             "status": row["status"],
             "why": row.get("why"),
+            "caveat": (row.get("outcome") or {}).get("caveat"),
             "failed_checks": [
                 check["id"] for check in (row.get("outcome") or {}).get("checks") or []
                 if check["required"] and not check["passed"]
@@ -104,6 +106,8 @@ def _setting(label: str, run_dirs: list[Path]) -> dict[str, Any]:
             {"scenario": row["scenario"], "repetition": row["repetition"], "run": row["run"], "checks": row["failed_checks"]}
             for row in scored if row["status"] == "failed"
         ],
+        # Scenarios scored by an earlier outcome kind: their counts are not a pass rate.
+        "caveated_scenarios": sorted({row["scenario"] for row in scored if row["caveat"]}),
     }
 
 
@@ -123,7 +127,13 @@ def summarize(settings: dict[str, list[Path]]) -> dict[str, Any]:
             "description": spec.get("description") or "",
             "tags": [tag for tag in spec.get("tags") or [] if tag != "magister-benchmark"],
         })
-    return {"schema_version": 1, "scenarios": scenarios, "settings": blocks}
+    caveated = sorted({scenario_id for block in blocks for scenario_id in block["caveated_scenarios"]})
+    return {
+        "schema_version": 1,
+        "caveat": f"{', '.join(caveated)}: {scenario_outcomes.SCORER_CAVEAT}" if caveated else None,
+        "scenarios": scenarios,
+        "settings": blocks,
+    }
 
 
 def render(summary: dict[str, Any]) -> str:
@@ -150,6 +160,8 @@ def render(summary: dict[str, Any]) -> str:
     if failures:
         lines += ["", "failed attempts (the required checks each one failed)"]
         lines += [f"  {label} {f['scenario']} rep {f['repetition']}: {', '.join(f['checks']) or 'no required check named'}" for label, f in failures]
+    if summary["caveat"]:
+        lines += ["", f"not a pass rate for {summary['caveat']}"]
     return "\n".join(lines) + "\n"
 
 

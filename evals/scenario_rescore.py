@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
           + (f" ({100 * passed / len(scored):.1f}%)" if scored else "")
           + f", {every}/{len(by_scenario)} scenarios passed every attempt"
           + (f"; {len(left_out)} of {len(rows)} record(s) NOT SCORED" if left_out else ""))
+    caveated = sorted({row["scenario"] for row in scored if row["outcome"].get("caveat")})
+    if caveated:
+        print(f"\nnot a pass rate for {', '.join(caveated)}: {scenario_outcomes.SCORER_CAVEAT}")
     if any(row["status"] == "malformed" for row in rows):
         return 2
     return 1 if left_out or passed < len(scored) else 0

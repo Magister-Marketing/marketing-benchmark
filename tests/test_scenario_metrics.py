@@ -244,3 +244,46 @@ def test_report_cli_writes_summary(tmp_path: Path, record: dict, capsys: pytest.
     assert (run / "rep-1" / "metrics.json").exists()
     loaded = load_run(run, write=False)
     assert loaded["origin"] is not None and len(loaded["replays"]) == 2
+
+
+def _write_run(root: Path, name: str, record: dict, scenario: dict | None) -> Path:
+    run = root / name
+    (run / "rep-1").mkdir(parents=True)
+    (run / "rep-1" / "record.json").write_text(json.dumps(record))
+    if scenario is not None:
+        (run / "scenario.json").write_text(json.dumps(scenario))
+    return run
+
+
+def test_report_caveat_follows_the_records_not_only_the_scenario_file(
+    tmp_path: Path, record: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A folder with no scenario.json (one repetition, a harvested origin chat)
+    still says its verdict is of an earlier kind: the record's own outcome, or
+    the checkout's scenario for the record's id, names the kind."""
+    page = {"kind": "shopify_page_section", "passed": True, "summary": "page changed"}
+    by_outcome = _write_run(tmp_path, "by-outcome", {**record, "scenario_id": "not-in-this-checkout", "outcome": page}, None)
+    assert report_main([str(by_outcome)]) == 0
+    assert "not a pass rate" in capsys.readouterr().out
+    assert "pull/27" in json.loads((by_outcome / "summary.json").read_text())["caveat"]
+    # No outcome kind on the record either: its scenario id is one of the five earlier scenarios.
+    by_id = _write_run(tmp_path, "by-id", record, None)
+    assert record["scenario_id"] == "share-flood-guide-instagram" and "kind" not in record["outcome"]
+    assert report_main([str(by_id / "rep-1")]) == 0
+    assert "not a pass rate" in capsys.readouterr().out
+
+
+def test_report_has_no_caveat_for_a_suite_scenario_and_takes_one_from_the_earlier_run(
+    tmp_path: Path, record: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    suite_scenario = json.loads((REPO_ROOT / "evals/scenarios/mb-ads-review.json").read_text())
+    checked = {**record, "scenario_id": "mb-ads-review", "outcome": {"kind": "product_checks", "passed": True, "summary": "5/5 checks"}}
+    after = _write_run(tmp_path, "after", checked, suite_scenario)
+    assert report_main([str(after)]) == 0
+    assert "not a pass rate" not in capsys.readouterr().out
+    assert json.loads((after / "summary.json").read_text())["caveat"] is None
+    # Beside an earlier run of an earlier kind, the comparison's pass rates carry the caveat.
+    earlier = _write_run(tmp_path, "earlier", record, json.loads(
+        (REPO_ROOT / "evals/scenarios/share-flood-guide-instagram.json").read_text()))
+    assert report_main([str(after), "--before", str(earlier)]) == 0
+    assert "not a pass rate" in capsys.readouterr().out

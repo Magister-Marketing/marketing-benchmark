@@ -107,3 +107,17 @@ def test_a_folder_that_is_not_a_suite_run_is_refused(repo):
     (repo / "empty").mkdir()
     with pytest.raises(SystemExit):
         suite_report.main([f"low={repo / 'empty'}"])
+
+
+def test_a_scenario_of_an_earlier_outcome_kind_carries_its_caveat_into_the_table_and_the_file(repo, capsys):
+    earlier = scenario("a")
+    earlier["outcome"] = {"kind": "social_post_published"}
+    (repo / "repo" / "evals" / "scenarios" / "a.json").write_text(json.dumps(earlier))
+    run = suite_run(repo, "run", [record("a", 1, outcome={"published": True}), record("b", 1)])
+    summary = suite_report.summarize({"low": [run]})
+    assert summary["settings"][0]["caveated_scenarios"] == ["a"]
+    assert summary["caveat"].startswith("a: ") and "pull/27" in summary["caveat"]
+    assert "not a pass rate for a:" in suite_report.render(summary)
+    # The suite's own kind: no caveat anywhere.
+    plain = suite_report.summarize({"low": [suite_run(repo, "plain", [record("b", 1)])]})
+    assert plain["caveat"] is None and "not a pass rate" not in suite_report.render(plain)
