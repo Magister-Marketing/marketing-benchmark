@@ -55,8 +55,8 @@ Added on 2026-11-17 (the first draft was run once and discarded; the judged chec
 | [Re-engagement programme](../eval_runner/tasks/lifecycle-reengagement.json) | An audience with counts, segments and a three-email flow, from a 260-row subscriber export and an email policy | Leaving out everyone without consent, including past buyers, and following the policy's offer, cadence and sunset rules | 15 |
 | [Monthly report](../eval_runner/tasks/monthly-report-reconcile.json) | A founder-ready report with six labeled figures, from ad, analytics and order exports that disagree | Reconciling double-fired events, refunds, test orders and platform over-claiming into one set of real results | 15 |
 | [Search account build](../eval_runner/tasks/search-account-build.json) | Five files for a new Google Ads account: keywords by campaign and ad group, exclusions with reasons, negatives, daily budgets and one ad per ad group, from a 208-keyword export and an account standard | Applying seven steps of rules to every keyword without one slip: the first matching rule wins, an exclusion beats the brand name, budgets are scaled to a cap and then floored, and each ad has limits, required words and banned ones | 19 |
-| [Which headline won?](../eval_runner/tasks/headline-forecast.json) | A pick and a confidence for each of 40 pairs of headlines from real tests, where one beat the other by a wide margin | Telling which headline people really clicked more, and knowing how sure to be: a coin flip scores nothing, 70% passes | 4 |
-| [Which headline won? Never published](../eval_runner/tasks/headline-forecast-unpublished.json) | The same for 40 pairs of headlines the publisher did not go on to use | The same, where no headline can be recognised from having spread on the web | 4 |
+| [Which headline won?](../eval_runner/tasks/headline-forecast.json) | A pick and a confidence for each of 100 pairs of headlines from real tests, where one beat the other by a wide margin | Telling which headline people really clicked more, and knowing how sure to be: a coin flip scores nothing, nine right in ten passes | 4 |
+| [Which headline won? Never published](../eval_runner/tasks/headline-forecast-unpublished.json) | The same for 100 pairs of headlines the publisher did not go on to use | The same, where no headline can be recognised from having spread on the web | 4 |
 
 The three tasks from Content brief down were drafted as holdout tasks. Their
 recorded answers have been read and one rubric was changed because of what
@@ -84,7 +84,11 @@ not work against a brief. Each pair is two headlines from one real test on
 Upworthy's site, with the same story, image and excerpt and visitors assigned
 at random, where the click rates differed at p < 0.001. A program counts the
 picks that match the record and scores the stated confidence; the one judged
-check is that the reply did not claim to look the tests up. The pairs come
+check is that the reply did not claim to look the tests up. Both bars are one
+reference forecaster, right nine times in ten and saying 90, with credit in a
+straight line up from a coin flip with no opinion. Count one model's result on
+a set as good to about four points either way: that is what 100 pairs give.
+The pairs come
 from the Upworthy Research Archive (Matias, Munger, Le Quere and Ebersole,
 2021; CC BY 4.0): `eval_runner/fixtures/headline-forecast/NOTICE.md` has the
 source, the licence and how the pairs were chosen. The archive is public, so

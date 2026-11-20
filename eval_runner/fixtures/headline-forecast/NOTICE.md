@@ -31,4 +31,7 @@ Which tests qualify:
   went on to publish, so a model cannot score by recognising a headline that
   spread on the web.
 
-40 pairs each, the winner on side A in exactly 20.
+100 pairs each, the winner on side A in exactly 50, and no test in both
+files. `scripts/build_headline_pairs.py` is how they were derived; each row's
+`source_test_id` is the archive's `clickability_test_id`, so any pair and its
+rates can be checked against the archive.

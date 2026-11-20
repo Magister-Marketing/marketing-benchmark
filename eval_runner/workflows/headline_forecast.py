@@ -1,7 +1,7 @@
 """Workflow tasks: which headline won?
 
 Every other task grades work against a brief. These two grade a judgment
-against what happened. Each holds 40 pairs of headlines from real tests on
+against what happened. Each holds 100 pairs of headlines from real tests on
 Upworthy's site (the same story, image and excerpt, a different headline,
 visitors assigned at random), where the two headlines' click rates differed
 at p < 0.001. The candidate picks the one that got the higher click rate and
@@ -34,19 +34,24 @@ SETS = {
     "headline-forecast": "clear",
     "headline-forecast-unpublished": "unpublished",
 }
-# A pick is right at least this often to pass, and a coin flip scores nothing.
-PASS_SHARE = 0.70
+# Both bars are one reference forecaster: right nine times in ten on pairs
+# with a wide gap, and saying 90. Credit runs in a straight line from what a
+# coin flip with no opinion earns (nothing) up to that forecaster.
+# On 2026-11-20 a first bar of 70% was met by GPT-6.2 Sol, Claude Opus 5.5
+# and Gemini 4 Neon alike on both sets (28 to 35 right of 40), so it told
+# them apart no better than the tasks it was written to add to.
+PASS_SHARE = 0.90
 CHANCE_SHARE = 0.50
-# The Brier score of saying "50" to everything, times 1,000: what stated
-# confidence has to beat to be worth anything.
+# Brier scores times 1,000: saying "50" to everything, and the reference
+# forecaster's (0.9 x 0.1^2 + 0.1 x 0.9^2).
 BRIER_OF_NO_OPINION = 250
-BRIER_TO_PASS = 220
+BRIER_TO_PASS = round(1000 * PASS_SHARE * (1 - PASS_SHARE))
 
 _MAX_LINE = 200
-# "P07: A 65", "**P7** - B (80%)", "P07. A, 0.7". One bounded pattern on a
+# "P007: A 65", "**P7** - B (80%)", "P007. A, 0.7". One bounded pattern on a
 # line already cut to _MAX_LINE characters.
 _ANSWER = re.compile(
-    r"^[\s>*_`#-]{0,12}P0?(\d{1,2})[\s*_`]{0,6}[:.\-)][\s*_`]{0,6}([AB])(?![A-Za-z])"
+    r"^[\s>*_`#-]{0,12}P(\d{1,3})[\s*_`]{0,6}[:.\-)][\s*_`]{0,6}([AB])(?![A-Za-z])"
     r"(?:[^0-9\n]{0,24}?(\d{1,3}(?:\.\d{1,4})?))?",
     re.IGNORECASE,
 )

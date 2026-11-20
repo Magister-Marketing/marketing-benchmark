@@ -3,12 +3,13 @@
 ## Unreleased
 
 - Tasks: two **forecast tasks**, `headline-forecast` and
-  `headline-forecast-unpublished` (development split). Each is 40 pairs of
+  `headline-forecast-unpublished` (development split). Each is 100 pairs of
   headlines from real tests in the Upworthy Research Archive (CC BY 4.0;
-  `eval_runner/fixtures/headline-forecast/NOTICE.md`): pick the headline that
-  got the higher click rate and say how sure. A program counts the picks
-  that match the record (a coin flip scores nothing, 70% passes) and scores
-  the stated confidence by its Brier score. The second set holds only
+  `eval_runner/fixtures/headline-forecast/NOTICE.md`,
+  `scripts/build_headline_pairs.py`): pick the headline that got the higher
+  click rate and say how sure. A program counts the picks that match the
+  record (a coin flip scores nothing, nine in ten passes) and scores the
+  stated confidence by its Brier score. The second set holds only
   headlines that were not the ones published, as a control for a model
   recognising a headline that spread.
 - Tasks: the first **workflow task**, `search-account-build` (development

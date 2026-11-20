@@ -39,14 +39,14 @@ def answer(workflow: str, right: int, confidence: int = 70, answered: int | None
 def test_the_generated_files_are_current_and_two_sets_share_no_test():
     assert gen_workflow_tasks.drift() == []
     tests = [{pair["source_test_id"] for pair in forecast.pairs(w)} for w in WORKFLOWS]
-    assert len(tests[0]) == len(tests[1]) == 40 and not tests[0] & tests[1]
+    assert len(tests[0]) == len(tests[1]) == 100 and not tests[0] & tests[1]
 
 
 @pytest.mark.parametrize("workflow", WORKFLOWS)
 def test_the_pairs_are_what_the_notice_says(workflow):
     pairs = forecast.pairs(workflow)
-    assert [pair["id"] for pair in pairs] == [f"P{n:02d}" for n in range(1, 41)]
-    assert sum(pair["answer"] == "A" for pair in pairs) == 20            # the winner's side says nothing
+    assert [pair["id"] for pair in pairs] == [f"P{n:03d}" for n in range(1, 101)]
+    assert sum(pair["answer"] == "A" for pair in pairs) == 50            # the winner's side says nothing
     assert all(float(pair["p_value"]) < 0.001 for pair in pairs)
     assert all(float(pair["winner_rate"]) > float(pair["loser_rate"]) for pair in pairs)
     # The archive's authors advise against tests from 2013-06-25 to 2014-01-10.
@@ -74,12 +74,13 @@ def test_the_task_file_pins_the_bars_the_module_computes(workflow):
     spec = task(workflow)
     bars = forecast.bars(workflow)
     by_id = {c["id"]: c for section in spec["rubric"].values() for c in section}
-    assert by_id["every_pair_answered"]["programmatic"]["equals"] == bars["pairs"] == 40
+    assert by_id["every_pair_answered"]["programmatic"]["equals"] == bars["pairs"] == 100
     band = by_id["picks_the_winner"]["programmatic"]
-    assert band["near"] - band["tolerance"]["full"] == bars["to_pass"] == 28
-    assert band["near"] - band["tolerance"]["zero"] == bars["chance"] == 20
+    assert band["near"] - band["tolerance"]["full"] == bars["to_pass"] == 90
+    assert band["near"] - band["tolerance"]["zero"] == bars["chance"] == 50
     brier = by_id["confidence_means_something"]["programmatic"]["tolerance"]
-    assert (brier["full"], brier["zero"]) == (forecast.BRIER_TO_PASS, forecast.BRIER_OF_NO_OPINION)
+    assert (brier["full"], brier["zero"]) == (forecast.BRIER_TO_PASS, forecast.BRIER_OF_NO_OPINION) == (90, 250)
+    assert f"The supplied file holds {bars['pairs']} pairs" in spec["prompt"]
     assert f"{bars['to_pass']} or more of {bars['pairs']}" in by_id["picks_the_winner"]["check"]
 
 
@@ -95,17 +96,22 @@ def test_what_the_picks_earn(workflow):
         got = results(workflow, answer(workflow, right, confidence, answered))
         return {name: (item["pass"], round(item["score"], 3)) for name, item in got.items()}
 
-    assert score(28)["picks_the_winner"] == (True, 1.0)                  # 70%: the bar
-    assert score(27)["picks_the_winner"] == (False, 0.875)
-    assert score(24)["picks_the_winner"] == (False, 0.5)                 # 60%: half way from a coin flip to the bar
-    assert score(20)["picks_the_winner"] == (False, 0.0)                 # a coin flip
-    assert score(12)["picks_the_winner"] == (False, 0.0)
+    assert score(90)["picks_the_winner"] == (True, 1.0)                  # nine in ten: the bar
+    assert score(89)["picks_the_winner"] == (False, 0.975)
+    assert score(80)["picks_the_winner"] == (False, 0.75)
+    assert score(70)["picks_the_winner"] == (False, 0.5)                 # half way from a coin flip to the bar
+    assert score(50)["picks_the_winner"] == (False, 0.0)                 # a coin flip
+    assert score(30)["picks_the_winner"] == (False, 0.0)
     # Saying 50 to everything is no opinion: it earns nothing for confidence, however many picks are right.
-    assert score(40, confidence=50)["confidence_means_something"] == (False, 0.0)
-    assert score(30, confidence=75)["confidence_means_something"][0] is True      # 0.75: Brier 0.188
-    assert score(24, confidence=95)["confidence_means_something"] == (False, 0.0)  # sure and wrong
+    assert score(100, confidence=50)["confidence_means_something"] == (False, 0.0)
+    # Right nine times in ten and saying 90 is the bar: Brier 0.09.
+    assert score(90, confidence=90)["confidence_means_something"] == (True, 1.0)
+    # Right eight times in ten: saying 80 (0.16) earns more than hedging at 60 (0.20) or overclaiming at 99 (0.196).
+    hedged, honest, sure = (score(80, confidence=c)["confidence_means_something"][1] for c in (60, 80, 99))
+    assert honest == 0.562 and honest > hedged and honest > sure          # (250 - 160) / (250 - 90), to three places
+    assert score(60, confidence=95)["confidence_means_something"] == (False, 0.0)  # sure and wrong
     # Leaving pairs out never beats answering them.
-    half = score(20, answered=20)
+    half = score(50, answered=50)
     assert half["every_pair_answered"] == (False, 0.0) and half["confidence_means_something"] == (False, 0.0)
     assert half["picks_the_winner"] == (False, 0.0)
 
@@ -114,10 +120,11 @@ def test_how_an_answer_line_is_read():
     read = forecast.picks("\n".join([
         "P01: A 70", "**P2** - B (80%)", "P03. a, 0.65", "> P4: B", "- P05: A  95 because of the curiosity gap",
         "P06: C 70", "P07: Both 50", "P08: A 30", "P09: B 100", "P41x", "Pair 10: A 80", "P11: Absolutely B 90",
+        "P100: A 88", "P012: B 71", "P1000: A 90",
         "P01: B 90",   # the last line for a pair is its answer
     ]))
     assert read == {1: ("B", 90.0), 2: ("B", 80.0), 3: ("A", 65.0), 4: ("B", 50.0), 5: ("A", 95.0),
-                    8: ("A", 50.0), 9: ("B", 100.0)}
+                    8: ("A", 50.0), 9: ("B", 100.0), 100: ("A", 88.0), 12: ("B", 71.0)}
     # A long or odd line is read in a blink.
     import time
     started = time.perf_counter()
