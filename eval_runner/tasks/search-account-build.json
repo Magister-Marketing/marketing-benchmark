@@ -1,0 +1,258 @@
+{
+  "id": "search-account-build",
+  "title": "Build a search account from a keyword export",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "search-account-build",
+  "fixtures": [
+    "eval_runner/fixtures/search-account-build/business_facts.md",
+    "eval_runner/fixtures/search-account-build/account_rules.md",
+    "eval_runner/fixtures/search-account-build/keyword_export.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ad-creative/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Tidewater is opening a Google Ads search account. Build it from the supplied keyword export, following the supplied account standard exactly and using only the supplied business facts.\n\nDeliver five files in your reply. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### keywords.csv\nkeyword,campaign,ad_group,match_type\nEvery keyword you target, written exactly as it is in the export.\n\n### excluded.csv\nkeyword,reason\nEvery keyword you exclude, with the reason code from Step 1 of the standard.\n\n### negatives.csv\nlevel,scope,negative,match_type\n`level` is `account` or `ad_group`. `scope` is `account` for an account-level negative, and the ad group's full name for one inside an ad group.\n\n### budgets.csv\ncampaign,daily_budget\nOne row per campaign that has keywords, in dollars and cents.\n\n### ads.csv\nad_group,h1,h2,h3,d1,d2\nOne row per ad group that has keywords.\n\nEvery keyword in the export appears exactly once, in keywords.csv or in excluded.csv, and no keyword appears that is not in the export.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of keywords you target>\nA2: <number of keywords you exclude>\nA3: <total of the daily budgets, in dollars>\n\nThis is a build plan for review. Create nothing in any ad account and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "five_files",
+        "check": "All five files (keywords.csv, excluded.csv, negatives.csv, budgets.csv, ads.csv) are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_keyword_once",
+        "check": "Every one of the export's 208 keywords appears exactly once across keywords.csv and excluded.csv, and no keyword appears that is not in the export. Full credit for none missing, repeated or invented; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_keyword_accounting_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_targeted_count",
+        "check": "A1 states how many keywords the standard targets. Full credit for the exact figure; zero credit 10 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 179,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "a2_excluded_count",
+        "check": "A2 states how many keywords the standard excludes. Full credit for the exact figure; zero credit 6 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 29,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 6
+          }
+        }
+      },
+      {
+        "id": "a3_budget_total",
+        "check": "A3 states the total of the daily budgets the standard produces. Full credit within 1%; zero credit beyond 25% off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 100.89,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0.01,
+            "zero": 0.25
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "targeting_exact",
+        "check": "The keywords targeted are exactly the ones Step 1 leaves in: none excluded that should be targeted, none targeted that should be excluded. Full credit for no difference; zero credit at 12 or more.",
+        "programmatic": {
+          "fact": "workflow_targeting_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 12
+          }
+        }
+      },
+      {
+        "id": "exclusion_reasons",
+        "check": "Every excluded keyword carries the reason code of the first Step 1 theme that matches it. Full credit for none wrong or missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_reason_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "campaigns_right",
+        "check": "Every targeted keyword is in the campaign Step 2 gives it. Full credit for none wrong or missing; zero credit at 15 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_campaign_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 15
+          }
+        }
+      },
+      {
+        "id": "ad_groups_right",
+        "check": "Every targeted keyword is in the ad group Step 3 gives it, named as the standard names it. Full credit for none wrong or missing; zero credit at 20 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_ad_group_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 20
+          }
+        }
+      },
+      {
+        "id": "match_types_right",
+        "check": "Every targeted keyword has the match type Step 4 gives it. Full credit for none wrong or missing; zero credit at 20 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_match_type_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 20
+          }
+        }
+      },
+      {
+        "id": "account_negatives_right",
+        "check": "The account-level negatives are exactly the Step 1 terms that match a keyword in the export, each as phrase match, and no others. Full credit for none missing, extra or mistyped; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_account_negative_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "general_negatives_right",
+        "check": "Each General ad group carries exactly the negatives Step 5 gives it, each as phrase match, and no other ad group carries any. Full credit for none missing, extra or mistyped; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_general_negative_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "budgets_right",
+        "check": "Every campaign with keywords has the daily budget Step 6 produces, within 1% (2 cents at the least), and no other campaign has a row. Full credit for none wrong or missing; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_budget_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "one_ad_per_ad_group",
+        "check": "ads.csv has exactly one row for every ad group that has keywords and none for any other. Full credit for none missing, repeated or extra; zero credit at 6 or more.",
+        "programmatic": {
+          "fact": "workflow_ad_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 6
+          }
+        }
+      },
+      {
+        "id": "ads_within_limits",
+        "check": "Every headline is present and at most 30 characters, and every description present and at most 90. Full credit for none missing or over; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_ad_limit_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "ads_say_what_they_must",
+        "check": "In every ad, headline 1 names what the campaign sells in the standard's words, headline 2 contains Tidewater, one headline names the ad group where the standard asks for it, and one description carries the shipping offer exactly as the business facts word it. Full credit for none missing; zero credit at 10 or more.",
+        "programmatic": {
+          "fact": "workflow_ad_required_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "ads_say_nothing_they_must_not",
+        "check": "No ad uses a banned word, states a price that is not that campaign's advertised price, repeats a headline, or shares its first headline with another ad group. Full credit for none; zero credit at 6 or more.",
+        "programmatic": {
+          "fact": "workflow_ad_copy_violation_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 6
+          }
+        }
+      },
+      {
+        "id": "ads_written_for_their_ad_group",
+        "check": "Judge the ads.csv rows only. The ads are written for the searches of their own ad group: across ad groups the headlines and descriptions differ in substance, not one sentence with the ad group's name swapped in. It fails if most rows are the same template, or if ads.csv is missing."
+      }
+    ]
+  }
+}

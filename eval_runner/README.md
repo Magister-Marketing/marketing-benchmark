@@ -198,6 +198,7 @@ rather than inline:
 | development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
 | development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
 | development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
+| development | `search-account-build` | a workflow task: five dependent files for a new search account from a 208-keyword export and a seven-step account standard; 18 of its 19 checks are a program's, counted against a reference its own module computes |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
