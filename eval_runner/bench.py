@@ -1847,6 +1847,54 @@ def apply_scoring_rules(
     return adjusted
 
 
+# A verdict longer than this is not repaired: it is not a verdict.
+_MAX_REPAIRED_VERDICT_CHARS = 60_000
+
+
+def _escape_evidence_quotes(text: str) -> str:
+    """A verdict whose `evidence` strings quote the response with bare double
+    quotes in them, made into JSON again.
+
+    `evidence` is the judge's one free-text field, and a judge quoting copy
+    that itself has double quotes in it (a CSV cell, a headline in quotes)
+    writes them unescaped: the whole verdict then fails to parse, the same
+    way on every retry. Each evidence value is taken to run from its opening
+    quote to the last quote that is followed by the object's closing brace,
+    before the next criterion; the bare quotes and line breaks inside are
+    escaped. Nothing else is touched, so `pass` is still the judge's own.
+    Plain string scanning: the text is a model's output."""
+    if len(text) > _MAX_REPAIRED_VERDICT_CHARS:
+        return text
+    out: list[str] = []
+    pos = 0
+    key = '"evidence"'
+    while True:
+        at = text.find(key, pos)
+        if at < 0:
+            break
+        colon = text.find(":", at + len(key))
+        start = text.find('"', colon + 1) if colon >= 0 else -1
+        if start < 0:
+            break
+        following = text.find('"id"', start)
+        limit = following if following >= 0 else len(text)
+        end = -1
+        quote = text.rfind('"', start + 1, limit)
+        while quote > start:
+            if text[quote + 1:limit].lstrip().startswith("}"):
+                end = quote
+                break
+            quote = text.rfind('"', start + 1, quote)
+        if end < 0:
+            break
+        value = text[start + 1:end]
+        value = re.sub(r'(?<!\\)"', r'\\"', value).replace("\r", " ").replace("\n", " ")
+        out += [text[pos:start + 1], value]
+        pos = end
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def parse_judge_json(raw: str) -> dict:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
@@ -1856,7 +1904,10 @@ def parse_judge_json(raw: str) -> dict:
         start, end = text.find("{"), text.rfind("}")
         if start >= 0 and end > start:
             text = text[start : end + 1]
-    verdict = json.loads(text)
+    try:
+        verdict = json.loads(text)
+    except json.JSONDecodeError:
+        verdict = json.loads(_escape_evidence_quotes(text))
     if not isinstance(verdict, dict):
         raise ValueError("judge JSON root must be an object")
     if not isinstance(verdict.get("completed"), bool):

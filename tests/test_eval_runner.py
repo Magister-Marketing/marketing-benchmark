@@ -107,6 +107,35 @@ def test_parse_judge_json_variants():
         bench.parse_judge_json('{"criteria": "wrong shape"}')
 
 
+def test_a_verdict_whose_evidence_quotes_copy_with_quotes_in_it_still_parses():
+    """Run 20261120-215543-fcd79b09: both graded launch-trafficking replies
+    failed to parse four times running, at the same column. The judge had
+    quoted a CSV cell, quotes and all, inside its evidence string."""
+    raw = (
+        '{"completed": true, "self_report": "complete", "criteria": ['
+        '{"id": "a", "pass": false, "evidence": "The row reads "Offer ends Mar 31, 2027. New accounts only." twice."},\n'
+        ' {"id": "b", "pass": true, "evidence": "Two lines:\nthe second says "ok" } and stops."}]}'
+    )
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(raw)
+    verdict = bench.parse_judge_json(raw)
+    assert [(c["id"], c["pass"]) for c in verdict["criteria"]] == [("a", False), ("b", True)]
+    assert verdict["criteria"][0]["evidence"] == (
+        'The row reads "Offer ends Mar 31, 2027. New accounts only." twice.'
+    )
+    assert verdict["criteria"][1]["evidence"] == 'Two lines: the second says "ok" } and stops.'
+    # A verdict that was valid is returned as it was, escaped quotes included.
+    valid = {"completed": True, "criteria": [{"id": "a", "pass": True, "evidence": 'says "x"'}]}
+    assert bench.parse_judge_json(json.dumps(valid)) == valid
+    # What cannot be made a verdict still fails, and fast on a long input.
+    import time
+    started = time.perf_counter()
+    for hostile in ('{"evidence": "' + '"' * 50_000, '"evidence":' * 5_000, '{"evidence": "' + 'a" } ' * 9_000):
+        with pytest.raises((ValueError, json.JSONDecodeError)):
+            bench.parse_judge_json(hostile)
+    assert time.perf_counter() - started < 3
+
+
 @pytest.mark.parametrize("payload", [
     [],
     {"completed": "false", "criteria": []},
