@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Tasks: workflow task `launch-trafficking` (development split): a launch
+  brief, platform specs, a tracking standard and a landing-page list in; a
+  budget by channel and week, 114 text fields across 36 assets and a tracked
+  URL for each asset out.
 - Tasks: workflow task `lifecycle-program` (development split): a 300-customer
   export and a written policy in; suppression with reasons, segments, the
   holdout, 24 emails and a send-time schedule out. A program counts every
