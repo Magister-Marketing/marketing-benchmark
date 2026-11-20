@@ -1058,7 +1058,8 @@ def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
     CTA's own links instead (2026-11-19: the page task was handed
     `book_cta_all_targeted: False` against the repair task's URL, a
     destination its brief never gives, and the judge, told to trust measured
-    facts, wrote "not targeted" into its verdict on every page)."""
+    facts, wrote "not targeted" into its verdict on every page). Every fact
+    here is a count or a flag, never text from the response."""
     parser = _ResponseHTMLParser()
     parse_exception = False
     try:
@@ -1104,9 +1105,16 @@ def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
         and book_cta_count == len(parser.book_cta_hrefs),
     }
     if cta_target is None:
-        facts["book_cta_hrefs"] = ", ".join(sorted({href or "(empty)" for href in parser.book_cta_hrefs})) or "(none)"
-        facts["book_cta_dead_link_count"] = sum(
-            _dead_link(href, parser.element_ids) for href in parser.book_cta_hrefs
+        # Counts only: the judge is told to trust this block, so no string the
+        # candidate wrote (an href is one) may be copied into it.
+        dead = [_dead_link(href, parser.element_ids) for href in parser.book_cta_hrefs]
+        in_page = [(href or "").strip().startswith("#") for href in parser.book_cta_hrefs]
+        facts["book_cta_dead_link_count"] = sum(dead)
+        facts["book_cta_in_page_link_count"] = sum(
+            here and not broken for here, broken in zip(in_page, dead)
+        )
+        facts["book_cta_other_link_count"] = sum(
+            not here and not broken for here, broken in zip(in_page, dead)
         )
     else:
         facts["book_cta_target_count"] = sum(href == cta_target for href in parser.book_cta_hrefs)
