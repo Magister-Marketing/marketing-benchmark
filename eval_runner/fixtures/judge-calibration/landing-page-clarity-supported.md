@@ -1208,7 +1208,7 @@
             </div>
           </div>
 
-          <div class="next-step-action">
+          <div class="next-step-action" id="booking">
             <a href="#booking" class="primary-cta-btn">Book a consultation</a>
             <p style="font-size: 0.85rem; color: var(--color-text-light);">
               Direct client payment ($160) • Non-clinical educational coaching • No recurring subscription

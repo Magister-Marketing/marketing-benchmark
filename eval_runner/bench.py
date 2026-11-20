@@ -33,6 +33,7 @@ import json
 import math
 import os
 import re
+import urllib.parse
 import shlex
 import sys
 import uuid
@@ -930,7 +931,10 @@ class _ResponseHTMLParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        attrs_by_name = {name.lower(): value for name, value in attrs}
+        attrs_by_name: dict[str, str | None] = {}
+        for name, value in attrs:  # a browser keeps the first of two attributes with one name
+            attrs_by_name.setdefault(name.lower(), value)
+        ancestors = list(self.stack)
         if (
             self.stack
             and self.stack[-1] == "head"
@@ -969,7 +973,7 @@ class _ResponseHTMLParser(HTMLParser):
             for name in attrs_by_name
         )
         self.active_content += sum(
-            bool(value) and value.lstrip().lower().startswith("javascript:")
+            bool(value) and _link_target(value).lower().startswith("javascript:")
             for value in attrs_by_name.values()
         )
         if re.fullmatch(r"h[1-6]", tag):
@@ -979,8 +983,10 @@ class _ResponseHTMLParser(HTMLParser):
         if tag == "a":
             self._anchor_href = attrs_by_name.get("href")
             self._anchor_text = []
+        # What a template or a textarea holds is text or inert markup, not an element a link can reach.
+        reachable = not any(parent in {"template", "textarea"} for parent in ancestors)
         for anchor_name in (attrs_by_name.get("id"), attrs_by_name.get("name") if tag == "a" else None):
-            if anchor_name:
+            if anchor_name and reachable:
                 self.element_ids.add(anchor_name)
         style = attrs_by_name.get("style")
         if style:
@@ -999,7 +1005,9 @@ class _ResponseHTMLParser(HTMLParser):
         if tag == "html":
             self.html_end_count += 1
         if tag == "a" and self._anchor_href is not None:
-            if " ".join("".join(self._anchor_text).split()) == "Book a consultation":
+            # The phrase anywhere in the link's text, as `book_cta_count` counts it in the page's:
+            # "Book a consultation →" is the CTA too.
+            if "Book a consultation" in " ".join("".join(self._anchor_text).split()):
                 self.book_cta_hrefs.append(self._anchor_href)
             self._anchor_href = None
             self._anchor_text = []
@@ -1042,13 +1050,21 @@ def _css_resource_reference_count(css_text: str) -> int:
 _HTML_CTA_TARGETS = {"landing-page-repair": "/consultations/harborline"}
 
 
+def _link_target(href: str | None) -> str:
+    """An href as a browser reads it: ASCII tabs and newlines dropped, and the
+    spellings of "this page" (`./#x`, `?#x`) reduced to the fragment."""
+    target = re.sub(r"[\t\n\r]", "", href or "").strip()
+    return re.sub(r"^(?:\./)?\??(?=#)", "", target)
+
+
 def _dead_link(href: str | None, element_ids: set[str]) -> bool:
-    """A link a visitor cannot follow: no destination, a bare `#`, script,
-    or a jump to a place the page does not have."""
-    target = (href or "").strip()
+    """A link a visitor cannot follow: an empty destination, a bare `#`,
+    script, or a jump to a place the page does not have. (An `<a>` with no
+    href at all is a placeholder, not a link: it is never counted as one.)"""
+    target = _link_target(href)
     if not target or target == "#" or target.lower().startswith("javascript:"):
         return True
-    return target.startswith("#") and target[1:] not in element_ids
+    return target.startswith("#") and urllib.parse.unquote(target[1:]) not in element_ids
 
 
 def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
@@ -1108,7 +1124,7 @@ def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
         # Counts only: the judge is told to trust this block, so no string the
         # candidate wrote (an href is one) may be copied into it.
         dead = [_dead_link(href, parser.element_ids) for href in parser.book_cta_hrefs]
-        in_page = [(href or "").strip().startswith("#") for href in parser.book_cta_hrefs]
+        in_page = [_link_target(href).startswith("#") for href in parser.book_cta_hrefs]
         facts["book_cta_dead_link_count"] = sum(dead)
         facts["book_cta_in_page_link_count"] = sum(
             here and not broken for here, broken in zip(in_page, dead)
@@ -1422,9 +1438,13 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         "word_count": len(response_text.split()),
         "character_count": len(response_text),
     }
-    hash_checks = response_facts.sha256_examples(response_text)
-    if hash_checks:
-        facts["sha256_example_checks"] = hash_checks
+    # The hash-example check quotes the response's own strings, and this block
+    # is the one the judge is told to trust: only a task whose prompt or rubric
+    # is about hashing gets it (and the one-argument form, which has no task).
+    if task is None or re.search(r"sha-?256", json.dumps([task.get("prompt"), task.get("rubric")]), re.IGNORECASE):
+        hash_checks = response_facts.sha256_examples(response_text)
+        if hash_checks:
+            facts["sha256_example_checks"] = hash_checks
     answers = (task or {}).get("answers")
     if answers:
         # Labeled answer-block lines (`A3: $1,234.56`). The last occurrence of
