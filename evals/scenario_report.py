@@ -32,6 +32,18 @@ from evals.runner.scenario_outcomes import caveat_for
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+# A folder with no scenario.json, records with no outcome kind, and a scenario
+# id this checkout does not have: nothing says which scorer gave the verdict.
+UNKNOWN_KIND = (
+    "nothing here says which outcome kind scored these records (no scenario.json, no kind on the "
+    "record, no such scenario in this checkout): read the verdict as unverified"
+)
+
+
+def kinds_known(scored_as: list[Any]) -> bool:
+    return any(isinstance(item, dict) and item.get("kind") for item in scored_as)
+
+
 def _records(run_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
     if (run_dir / "record.json").exists():
         return [(run_dir, json.loads((run_dir / "record.json").read_text()))]
@@ -55,8 +67,10 @@ def load_run(run_dir: Path, *, write: bool = True) -> dict[str, Any]:
     # run, each record's own outcome, and (for a folder with neither, such as
     # one repetition or a harvested origin chat) this checkout's scenario file.
     scored_as: list[dict[str, Any] | None] = [scenario.get("outcome")]
+    has_verdict = False
     for rep_dir, record in _records(run_dir):
         scored_as.append(record.get("outcome"))
+        has_verdict = has_verdict or (isinstance(record.get("outcome"), dict) and bool(record["outcome"]))
         spec = REPO_ROOT / "evals" / "scenarios" / f"{record.get('scenario_id')}.json"
         if spec.exists():
             scored_as.append(json.loads(spec.read_text()).get("outcome"))
@@ -75,7 +89,8 @@ def load_run(run_dir: Path, *, write: bool = True) -> dict[str, Any]:
         columns.append((f"mean of {len(replays)}", _mean_column(summary, replays)))
     return {
         "dir": run_dir, "scenario": scenario, "metric_ids": metric_ids, "columns": columns,
-        "replays": replays, "origin": origin, "summary": summary, "caveat": caveat_for(*scored_as),
+        "replays": replays, "origin": origin, "summary": summary,
+        "caveat": caveat_for(*scored_as) or (UNKNOWN_KIND if has_verdict and not kinds_known(scored_as) else None),
     }
 
 

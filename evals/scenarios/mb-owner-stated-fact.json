@@ -3,7 +3,7 @@
   "id": "mb-owner-stated-fact",
   "title": "A fact the owner states about their own shop is written, not questioned",
   "version": 1,
-  "description": "The owner states what their own product is made of and asks for it on the product's page. The store's data says 'heavyweight organic cotton'; the owner says '100% organic cotton'. A direct statement from the person the brand belongs to is the highest source there is, and nothing supplied contradicts it: the change is made, through its approval card, without asking for a document to back it. (Asked to say orders ship within 2 business days, the agent wrote it 3 times of 3; this absolute is the case it refused on 2026-11-20.)",
+  "description": "The owner states what their own product is made of and asks for it on the product's page. The store's data says 'heavyweight organic cotton'; the owner says '100% organic cotton'. A direct statement from the person the brand belongs to is the highest source there is, and nothing supplied contradicts it: the change is made, through its approval card, without asking for a document to back it.",
   "fixture": {
     "website": "https://emulated-store.test/",
     "brand": "Emulated Store",

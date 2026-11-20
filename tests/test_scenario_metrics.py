@@ -287,3 +287,20 @@ def test_report_has_no_caveat_for_a_suite_scenario_and_takes_one_from_the_earlie
         (REPO_ROOT / "evals/scenarios/share-flood-guide-instagram.json").read_text()))
     assert report_main([str(after), "--before", str(earlier)]) == 0
     assert "not a pass rate" in capsys.readouterr().out
+
+
+def test_report_says_when_nothing_names_the_scorer_and_survives_a_malformed_outcome(
+    tmp_path: Path, record: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    unknown = _write_run(tmp_path, "unknown", {**record, "scenario_id": "not-in-this-checkout"}, None)
+    assert report_main([str(unknown)]) == 0
+    assert "read the verdict as unverified" in capsys.readouterr().out
+    # No verdict at all (a harvested chat nobody scored): nothing to caveat.
+    bare = {key: value for key, value in record.items() if key != "outcome"}
+    unscored = _write_run(tmp_path, "unscored", {**bare, "scenario_id": "not-in-this-checkout"}, None)
+    assert report_main([str(unscored)]) == 0
+    out = capsys.readouterr().out
+    assert "unverified" not in out and "not a pass rate" not in out
+    odd = _write_run(tmp_path, "odd", {**record, "scenario_id": "mb-ads-review", "outcome": "passed"}, None)
+    assert report_main([str(odd)]) == 0
+    capsys.readouterr()
