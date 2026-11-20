@@ -594,8 +594,9 @@ joined by hyphens: `FH-RST-MF-A` is the Restaurants Meta feed ad, variant A.
 ## Final URLs
 
 A final URL is the audience's landing page, then `?`, then these parameters
-joined by `&`, in this order. Every value is lower case, words joined by
-underscores, no spaces. No other parameters, and no `#` fragment.
+joined by `&`, in any order: their order has no effect on tracking. Every
+value is lower case, words joined by underscores, no spaces. No other
+parameters, and no `#` fragment.
 
 1. `utm_source` and 2. `utm_medium`, by channel:
 
@@ -729,13 +730,12 @@ def facts(response_text: str, workflow: str = TASK_ID) -> dict:
     unknown_ids: set[str] = set()
     bad_asset_ids: set[str] = set()
     seen_fields: set[tuple[str, str]] = set()
-    asset_rows = repeated_fields = extra_fields = 0
+    repeated_fields = extra_fields = 0
     for row in found["assets.csv"] or []:
         raw = _raw_id(common.cell(row, "asset_id", "id"))
         key = _canon_id(raw)
         if not key:
             continue
-        asset_rows += 1
         field = _field_key(common.cell(row, "field", "field_name"))
         if (key, field) in seen_fields:
             repeated_fields += 1
@@ -791,13 +791,12 @@ def facts(response_text: str, workflow: str = TASK_ID) -> dict:
     traffic_seen: set[str] = set()
     unknown_traffic: set[str] = set()
     bad_traffic_ids: set[str] = set()
-    traffic_rows = repeated_traffic = 0
+    repeated_traffic = 0
     for row in found["trafficking.csv"] or []:
         raw = _raw_id(common.cell(row, "asset_id", "id"))
         key = _canon_id(raw)
         if not key:
             continue
-        traffic_rows += 1
         if key in traffic_seen:
             repeated_traffic += 1
             continue
@@ -826,7 +825,9 @@ def facts(response_text: str, workflow: str = TASK_ID) -> dict:
         else:
             url_errors += not (base_ok and params_ok)
 
-    n_assets = len(ref["assets"])
+    # Every asset missing from a file (a missing file is all of them) is an
+    # error in both id checks, so neither is passed by leaving rows out.
+    missing_ids = len(set(expected) - present) + len(set(expected) - set(urls))
     return {
         "workflow_missing_file_count": sum(1 for name in FILES if found[name] is None),
         "workflow_budget_row_error_count": budget_errors,
@@ -837,12 +838,8 @@ def facts(response_text: str, workflow: str = TASK_ID) -> dict:
         "workflow_copy_violation_count": copy_violations,
         "workflow_audience_message_missing_count": audience_errors,
         "workflow_reused_copy_count": reused,
-        # A file with no rows has no ids to be unique or well formed: each of
-        # its assets counts as an error, so leaving it out earns nothing.
-        "workflow_duplicate_asset_id_count": (
-            (repeated_fields if asset_rows else n_assets) + (repeated_traffic if traffic_rows else n_assets)),
-        "workflow_asset_id_format_error_count": (
-            (len(bad_asset_ids) if asset_rows else n_assets) + (len(bad_traffic_ids) if traffic_rows else n_assets)),
+        "workflow_duplicate_asset_id_count": repeated_fields + repeated_traffic + missing_ids,
+        "workflow_asset_id_format_error_count": len(bad_asset_ids) + len(bad_traffic_ids) + missing_ids,
         "workflow_trafficking_row_error_count": len(set(expected) - set(urls)) + len(unknown_traffic),
         "workflow_url_error_count": url_errors,
         "workflow_fallback_page_error_count": fallback_errors,

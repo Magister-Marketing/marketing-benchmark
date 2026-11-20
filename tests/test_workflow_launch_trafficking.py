@@ -349,17 +349,41 @@ def test_asset_ids_repeated_or_out_of_format():
         "workflow_asset_id_format_error_count": 1}
     assert changed(swap(REFERENCE, row, row.replace(",meta,feed,", ",facebook,feed,"))) == {
         "workflow_asset_id_format_error_count": 1}
-    # Segments in the wrong order are another id altogether.
+    # Segments in the wrong order are another id altogether, and the asset's own id is then missing.
     assert changed(swap(REFERENCE, line, line.replace("FH-RST-MF-A", "FH-MF-RST-A"))) == {
-        "workflow_asset_id_format_error_count": 1, "workflow_trafficking_row_error_count": 2,
-        "workflow_url_error_count": 1}
+        "workflow_asset_id_format_error_count": 2, "workflow_duplicate_asset_id_count": 1,
+        "workflow_trafficking_row_error_count": 2, "workflow_url_error_count": 1}
+
+
+def test_ids_are_checked_for_every_asset_not_only_the_rows_given():
+    """One row in each file is not 36 assets with well-formed, unique ids: an
+    asset missing from a file is an error in both id checks, there."""
+    one_each = "\n".join([
+        "### assets.csv", "asset_id,channel,placement,audience,variant,field,text",
+        asset_line("FH-RST-MF-A", "headline"), "",
+        "### trafficking.csv", "asset_id,final_url", traffic_line("FH-RST-MF-A"), ""])
+    facts = task_module.facts(one_each)
+    n_assets = len(task_module.reference()["assets"])
+    assert facts["workflow_asset_id_format_error_count"] == 2 * (n_assets - 1)
+    assert facts["workflow_duplicate_asset_id_count"] == 2 * (n_assets - 1)
+    passed = results(one_each)
+    assert passed["asset_ids_in_format"]["score"] == passed["asset_ids_unique"]["score"] == 0.0
+    # A missing file is every asset missing from it; a missing asset counts once per file it is missing from.
+    assert task_module.facts("")["workflow_asset_id_format_error_count"] == 2 * n_assets
+    assert task_module.facts("")["workflow_duplicate_asset_id_count"] == 2 * n_assets
+    assert changed(swap(REFERENCE, traffic_line("FH-RST-MF-A") + "\n", "")) == {
+        "workflow_trafficking_row_error_count": 1, "workflow_url_error_count": 1,
+        "workflow_asset_id_format_error_count": 1, "workflow_duplicate_asset_id_count": 1}
 
 
 def test_trafficking_rows_missing_and_extra():
+    # An asset left out of a file also has no id there to be well formed or unique.
+    ids = {"workflow_asset_id_format_error_count": 1, "workflow_duplicate_asset_id_count": 1}
     assert changed(swap(REFERENCE, traffic_line("FH-RST-LF-A") + "\n", "")) == {
-        "workflow_trafficking_row_error_count": 1, "workflow_url_error_count": 1}
+        "workflow_trafficking_row_error_count": 1, "workflow_url_error_count": 1, **ids}
     assert changed(swap(REFERENCE, traffic_line("FH-CLN-LF-A") + "\n", "")) == {
-        "workflow_trafficking_row_error_count": 1, "workflow_url_error_count": 1, "workflow_fallback_page_error_count": 1}
+        "workflow_trafficking_row_error_count": 1, "workflow_url_error_count": 1, "workflow_fallback_page_error_count": 1,
+        **ids}
     extra = traffic_line("FH-RST-MF-A").replace("FH-RST-MF-A", "FH-RST-MF-C")
     assert changed(swap(REFERENCE, "asset_id,final_url\n", f"asset_id,final_url\n{extra}\n")) == {
         "workflow_trafficking_row_error_count": 1, "workflow_asset_id_format_error_count": 1}
@@ -386,6 +410,20 @@ def test_urls_compared_part_by_part():
     assert changed(with_url(meta, meta_url.replace("/shifts/retail", "/shifts"))) == {"workflow_url_error_count": 1}
 
 
+def test_the_standard_and_the_checker_agree_the_parameters_may_come_in_any_order():
+    standard = (REPO_ROOT / task_module.FIXTURE_DIR / "tracking_standard.md").read_text()
+    final_urls = standard[standard.index("## Final URLs"):standard.index("## Landing pages")]
+    assert "in this order" not in final_urls and "in any order" in final_urls
+    for asset_id in ("FH-RST-GS-A", "FH-CLN-EL-B"):
+        url = task_module.reference()["urls"][asset_id]
+        base, query = url.split("?")
+        params = query.split("&")
+        orders = [params[shift:] + params[:shift] for shift in range(1, len(params))] + [params[::-1]]
+        for order in orders:
+            assert order != params
+            assert changed(with_url(asset_id, base + "?" + "&".join(order))) == {}, order
+
+
 def test_the_page_that_is_not_live_is_never_linked():
     clinic = "FH-CLN-EL-B"
     url = task_module.reference()["urls"][clinic]
@@ -409,7 +447,7 @@ def test_a_field_or_an_asset_left_out():
         "workflow_asset_coverage_error_count": 1, "workflow_field_coverage_error_count": 3,
         "workflow_field_over_limit_count": 3, "workflow_required_string_missing_count": 3,
         "workflow_copy_violation_count": 1, "workflow_audience_message_missing_count": 1,
-        "workflow_reused_copy_count": 3}
+        "workflow_reused_copy_count": 3, "workflow_asset_id_format_error_count": 1, "workflow_duplicate_asset_id_count": 1}
     extra = csv_line(["FH-RST-GS-A", "google", "search", "restaurants", "A", "headline_6", "Kitchen Rotas Made Easy"])
     head = "asset_id,channel,placement,audience,variant,field,text\n"
     assert changed(swap(REFERENCE, head, head + extra + "\n")) == {"workflow_field_coverage_error_count": 1}

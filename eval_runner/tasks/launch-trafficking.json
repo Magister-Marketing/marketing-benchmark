@@ -159,7 +159,7 @@
       },
       {
         "id": "asset_ids_in_format",
-        "check": "Every asset id is written exactly as the standard builds it, in capitals and hyphens, and in assets.csv it is the id of the channel, placement, audience and variant its own row names. Full credit for none wrong; zero credit at 4 or more.",
+        "check": "Every asset id is written exactly as the standard builds it, in capitals and hyphens, and in assets.csv it is the id of the channel, placement, audience and variant its own row names. An asset missing from either file counts as wrong there. Full credit for none wrong; zero credit at 4 or more.",
         "programmatic": {
           "fact": "workflow_asset_id_format_error_count",
           "near": 0,
@@ -172,7 +172,7 @@
       },
       {
         "id": "asset_ids_unique",
-        "check": "No asset id is given twice in trafficking.csv, and no field of an asset is given twice in assets.csv. Full credit for none repeated; zero credit at 4 or more.",
+        "check": "No asset id is given twice in trafficking.csv, and no field of an asset is given twice in assets.csv. An asset missing from either file counts as an error there. Full credit for none repeated or missing; zero credit at 4 or more.",
         "programmatic": {
           "fact": "workflow_duplicate_asset_id_count",
           "near": 0,

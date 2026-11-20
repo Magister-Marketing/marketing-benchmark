@@ -23,8 +23,9 @@ joined by hyphens: `FH-RST-MF-A` is the Restaurants Meta feed ad, variant A.
 ## Final URLs
 
 A final URL is the audience's landing page, then `?`, then these parameters
-joined by `&`, in this order. Every value is lower case, words joined by
-underscores, no spaces. No other parameters, and no `#` fragment.
+joined by `&`, in any order: their order has no effect on tracking. Every
+value is lower case, words joined by underscores, no spaces. No other
+parameters, and no `#` fragment.
 
 1. `utm_source` and 2. `utm_medium`, by channel:
 
