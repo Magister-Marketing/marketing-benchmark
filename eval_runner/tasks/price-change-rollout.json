@@ -189,7 +189,7 @@
     "best_practices": [
       {
         "id": "notice_where_required",
-        "check": "The pricing page section, the FAQ, the sales one-pager and the help article each carry the brief's notice. Full credit for none without it; zero credit at 2 or more.",
+        "check": "The pricing page section, the FAQ, the sales one-pager and the help article each end with the brief's notice, as a paragraph of its own after everything else; the notice at the top, in the middle or run onto another paragraph is not where it is required. Full credit for none without it in its place; zero credit at 2 or more.",
         "programmatic": {
           "fact": "workflow_notice_missing_count",
           "near": 0,

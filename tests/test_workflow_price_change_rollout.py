@@ -320,6 +320,35 @@ def test_the_notice_missing_reworded_repeated_or_misplaced():
     assert changed(edit("asset-06", "for 30 days.", f"for 30 days.\n{reworded}")) == {"workflow_notice_misplaced_count": 1}
 
 
+NOTICE_ASSETS = [asset.id for asset in task_module.ASSETS if asset.kind in task_module.NOTICE_TYPES]
+
+
+@pytest.mark.parametrize("asset_id", NOTICE_ASSETS)
+def test_the_notice_ends_its_asset_as_a_paragraph_of_its_own(asset_id):
+    """The brief: each of the four assets ends with the notice, "as a paragraph
+    of its own after everything else in the asset". Word for word elsewhere is
+    not where it is required."""
+    notice = task_module.NOTICE
+    body = task_module.expected(asset_id)
+    assert body.split("\n\n")[-1] == notice
+    rest = body[:-len("\n\n" + notice)]
+    paragraphs = rest.split("\n\n")
+    assert len(paragraphs) >= 2
+    misplaced = {
+        "at the top": notice + "\n\n" + rest,
+        "in the middle": "\n\n".join(paragraphs[:1] + [notice] + paragraphs[1:]),
+        "run onto the last paragraph, on its line": rest + " " + notice,
+        "run onto the last paragraph, on a line of its own": rest + "\n" + notice,
+    }
+    for where, moved in misplaced.items():
+        assert changed(edit(asset_id, body, moved)) == {"workflow_notice_missing_count": 1}, where
+    # Where it belongs, a line break inside it or emphasis around it is still the notice in its place.
+    for fine in (rest + "\n\n" + notice.replace("; ", ";\n"), rest + "\n\n*" + notice + "*", rest + "\n\n\n" + notice):
+        assert changed(edit(asset_id, body, fine)) == {}, fine
+    # At the end and at the top as well: given twice, which its own check counts, and in its place.
+    assert changed(edit(asset_id, body, notice + "\n\n" + body)) == {"workflow_notice_not_verbatim_count": 1}
+
+
 def test_fields_over_their_limits():
     assert changed(edit("asset-08", "$119/mo", "$119/month")) == {"workflow_limit_error_count": 1}
     assert changed(edit("asset-08", "Headline: ", "Title: ")) == {

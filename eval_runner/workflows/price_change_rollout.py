@@ -661,6 +661,22 @@ def _notice_count(text: str) -> tuple[int, int]:
     return exact, variants
 
 
+_WORD_CHAR = re.compile(r"[A-Za-z0-9]")
+
+
+def _notice_ends(text: str) -> bool:
+    """Whether a (normalised) asset ends with the notice as a paragraph of its
+    own, as the brief places it: the lines after its last blank line hold the
+    notice word for word and no other word (a line break inside it, or
+    emphasis around it, aside)."""
+    lines = text.split("\n")
+    start = len(lines)
+    while start > 0 and lines[start - 1].strip():
+        start -= 1
+    last = "\n".join(lines[start:])
+    return bool(_NOTICE_RE.search(last)) and not _WORD_CHAR.search(_NOTICE_RE.sub(" ", last))
+
+
 def field(text: str, label: str) -> str | None:
     """The value of a field line ("Headline: ...", "**Body:** ..."), or None."""
     want = label.lower() + ":"
@@ -846,7 +862,10 @@ def facts(response_text: str, workflow: str = TASK_ID) -> dict[str, int]:
             out["workflow_grandfather_error_count"] += _GRANDFATHER_ANCHOR in collapsed.translate(_ASCII_LOWER)
         exact, variants = _notice_count(copy)
         if notice:
-            out["workflow_notice_missing_count"] += exact == 0 and variants == 0
+            # Not where the brief requires it: absent, or there word for word
+            # but not as the asset's last paragraph on its own. A reworded
+            # notice is counted by not_verbatim and is not located.
+            out["workflow_notice_missing_count"] += (exact == 0 and variants == 0) or (exact > 0 and not _notice_ends(copy))
             out["workflow_notice_not_verbatim_count"] += exact > 1 or variants > 0
         else:
             out["workflow_notice_misplaced_count"] += exact + variants > 0
