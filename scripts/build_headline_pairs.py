@@ -43,8 +43,12 @@ MIN_IMPRESSIONS = 1000
 P_MAX = 0.001
 PAIRS = 100
 SELECT_SEED = 20261120
-# ISO weeks of the tests the archive's authors advise against using.
-DISCOURAGED_WEEKS = (201326, 201402)
+# The weeks of the tests the archive's authors advise against using
+# (2013-06-25 to 2014-01-10), as the archive's test_week counts them: weeks
+# start on Sunday (strftime %U), so they are 201325 (from 2013-06-23) to
+# 201401 (to 2014-01-11). In ISO weeks they would be 201326 to 201402, which
+# left in a test created on 2013-06-28.
+DISCOURAGED_WEEKS = (201325, 201401)
 
 
 def two_sided_p(c1: int, n1: int, c2: int, n2: int) -> float:

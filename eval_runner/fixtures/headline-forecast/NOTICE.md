@@ -25,7 +25,10 @@ Which tests qualify:
 - the gap between the two is at p < 0.001 (strict, because best against
   worst of several arms is a picked contrast);
 - the test did not run between 2013-06-25 and 2014-01-10, which the
-  archive's authors advise against for confirmatory use;
+  archive's authors advise against for confirmatory use: no test from the
+  archive's weeks 201325 to 201401 (its `test_week` starts on Sunday, so
+  these run from 2013-06-23 to 2014-01-11), and none created in that window
+  by its id's timestamp;
 - for `pairs_unpublished.jsonl`, neither headline was the test's top
   performer or flagged as its winner: these are not the versions Upworthy
   went on to publish, so a model cannot score by recognising a headline that

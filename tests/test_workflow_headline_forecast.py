@@ -2,6 +2,7 @@
 candidate never sees it, and the score is what the picks earned."""
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
+import build_headline_pairs  # noqa: E402
 import gen_workflow_tasks  # noqa: E402
 from eval_runner import bench  # noqa: E402
 from eval_runner.workflows import headline_forecast as forecast  # noqa: E402
@@ -49,8 +51,16 @@ def test_the_pairs_are_what_the_notice_says(workflow):
     assert sum(pair["answer"] == "A" for pair in pairs) == 50            # the winner's side says nothing
     assert all(float(pair["p_value"]) < 0.001 for pair in pairs)
     assert all(float(pair["winner_rate"]) > float(pair["loser_rate"]) for pair in pairs)
-    # The archive's authors advise against tests from 2013-06-25 to 2014-01-10.
-    assert not any(201326 <= int(pair["test_week"]) <= 201402 for pair in pairs)
+    # The archive's authors advise against tests from 2013-06-25 to 2014-01-10. A test's id is a
+    # MongoDB ObjectId, whose first 8 hex digits are when it was created, in Unix seconds.
+    window = (datetime(2013, 6, 25, tzinfo=timezone.utc), datetime(2014, 1, 10, 23, 59, 59, tzinfo=timezone.utc))
+    created = {pair["source_test_id"]: datetime.fromtimestamp(int(pair["source_test_id"][:8], 16), timezone.utc)
+               for pair in pairs}
+    assert not [test for test, when in created.items() if window[0] <= when <= window[1]]
+    # The archive's test_week is Sunday-start (strftime %U), so the window is weeks 201325 to 201401.
+    assert build_headline_pairs.DISCOURAGED_WEEKS == (201325, 201401)
+    assert [datetime.strftime(day, "%Y%U") for day in window] == ["201325", "201401"]
+    assert not any(201325 <= int(pair["test_week"]) <= 201401 for pair in pairs)
     assert all(pair["a"] and pair["b"] and pair["a"] != pair["b"] for pair in pairs)
 
 
@@ -122,10 +132,18 @@ def test_how_an_answer_line_is_read():
         "P01: A 70", "**P2** - B (80%)", "P03. a, 0.65", "> P4: B", "- P05: A  95 because of the curiosity gap",
         "P06: C 70", "P07: Both 50", "P08: A 30", "P09: B 100", "P41x", "Pair 10: A 80", "P11: Absolutely B 90",
         "P100: A 88", "P012: B 71", "P1000: A 90",
+        "P13: a question headline wins",  # a note, not a pick: the side is a capital A or B
+        "p14: B 60",                      # the P may be either case
         "P01: B 90",   # the last line for a pair is its answer
     ]))
-    assert read == {1: ("B", 90.0), 2: ("B", 80.0), 3: ("A", 65.0), 4: ("B", 50.0), 5: ("A", 95.0),
-                    8: ("A", 50.0), 9: ("B", 100.0), 100: ("A", 88.0), 12: ("B", 71.0)}
+    assert read == {1: ("B", 90.0), 2: ("B", 80.0), 4: ("B", 50.0), 5: ("A", 95.0),
+                    8: ("A", 50.0), 9: ("B", 100.0), 100: ("A", 88.0), 12: ("B", 71.0), 14: ("B", 60.0)}
+    assert forecast.picks("P5: a question headline wins\nP6: b-side headlines lose") == {}
+    # A note about a pair the answer lines leave out does not answer it.
+    workflow = WORKFLOWS[0]
+    lines = forecast.reference_answer(workflow).splitlines()
+    noted = "\n".join(line for line in lines if not line.startswith("P005:")) + "\n\nP5: a question headline wins\n"
+    assert forecast.facts(noted, workflow)["workflow_forecast_answered_count"] == 99
     # A long or odd line is read in a blink.
     import time
     started = time.perf_counter()

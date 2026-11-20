@@ -49,11 +49,12 @@ BRIER_TO_PASS = round(1000 * PASS_SHARE * (1 - PASS_SHARE))
 
 _MAX_LINE = 200
 # "P007: A 65", "**P7** - B (80%)", "P007. A, 0.7". One bounded pattern on a
-# line already cut to _MAX_LINE characters.
+# line already cut to _MAX_LINE characters. The side is a capital A or B, so a
+# note such as "P5: a question headline wins" is not read as a pick; only the
+# P may be either case.
 _ANSWER = re.compile(
-    r"^[\s>*_`#-]{0,12}P(\d{1,3})[\s*_`]{0,6}[:.\-)][\s*_`]{0,6}([AB])(?![A-Za-z])"
+    r"^[\s>*_`#-]{0,12}[Pp](\d{1,3})[\s*_`]{0,6}[:.\-)][\s*_`]{0,6}([AB])(?![A-Za-z])"
     r"(?:[^0-9\n]{0,24}?(\d{1,3}(?:\.\d{1,4})?))?",
-    re.IGNORECASE,
 )
 
 
@@ -103,7 +104,7 @@ def picks(response_text: str) -> dict[int, tuple[str, float]]:
                 value *= 100
             if 50 <= value <= 100:
                 confidence = value
-        found[int(match.group(1))] = (match.group(2).upper(), confidence)
+        found[int(match.group(1))] = (match.group(2), confidence)
     return found
 
 

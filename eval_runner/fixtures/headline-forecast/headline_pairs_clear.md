@@ -2,118 +2,118 @@
 
 ## P001
 
-A: It's a Bunch Of Funny Fake Video Messages. But The Real Message is Sobering.
-B: I Laughed At These Stoner Dudes Chronicling Their Day. Not A Happy Ending, TBH
+A: Why Parents Who Avoid Talking To Their Kids About Drugs Are Probably Failing Them Miserably
+B: How Every Parent's Nightmare Is Preventable With Two Chairs
 
 ## P002
 
-A: The Most Important Performance Of The Grammys Wasn't Even Music. It Was This Woman's Moving Speech.
-B: A Domestic Abuse And Trafficking Survivor Took The Stage At The Grammys And Millions Heard Her Story
+A: This New Fitness Craze Is Just Too Badass For Words
+B: I Never Thought This Sport Looked Fun Until Now
 
 ## P003
 
-A: Getting Paid 2 Cents Wouldn't Make Much A Difference In Anyone's Life, Except Theirs
-B: Eva Longoria Brings Stephen Colbert A Tomato. I Didn't Expect It To Get As Serious As It Got.
+A: One Is Greener, One Is Cleaner. Which Is Better?
+B: If You Can Dry Your Hands Without Thinking Of This Video Every Time, I'll Be Genuinely Surprised
 
 ## P004
 
-A: The Naked Bodies Seem Practically Wholesome Compared To The Last 7 Seconds. That's The Point.
-B: So Many Scenes In This Video Are Censored. The Last 1 Isn’t, But It’s The Most Disturbing By Far.
+A: When Life Hands You Lemons, Beat Prostate Cancer
+B: A Super Solid Reminder Of How To Act When Things Don't Go Your Way
 
 ## P005
 
-A: If You Have Ever Seen Porn, It's Really Important You Watch This. Even If You Haven't, Watch This.
-B: If You Like The Internet, It's Really Important You Watch This. If You Hate It, I'd Still Watch This.
+A: Dudes Have Spent Over 100 Years Trying To Prevent Women From Learning The Real Meaning Of This Word
+B: 3 Ways To Tell If You Are A Secret Feminist And Just Didn't Realize It
 
 ## P006
 
-A: It Took Him The Better Part Of 50 Years, But I'd Say His Announcement Was Right On Time
-B: See How A High School Responded When Their Principal Announced That He’s Gay
+A: Silencing Any Group Of People Is Awful - Unless The People Use Silence In The Right Way
+B: Silencing Gay People Takes Work. Here's A Guy That Figured Out How To Do It In The Best Way Possible
 
 ## P007
 
-A: A 6-Year-Old Girl Uses A Ton Of Marijuana For A Really Good Reason. She Might Make You Cry Too.
-B: Why Is The Drug That's Saving This 6-Year-Old Girl's Life Illegal In Most States?
+A: They Almost Had To Stop Filming What They Think Will Change America Forever. Almost.
+B: These Women Filmmakers Want To Make The World A More Equal Place. They Almost Had To Stop. Almost.
 
 ## P008
 
-A: Make Sure No One Is Around You When You Watch This Video, Because You'll Probably Scream The F-Word
-B: 3 Minutes That'll Make You Think, 'Oh, We're Screwed.' But Actually, We're Not. (If We Get Serious.)
+A: He Hands Over His License And Registration With A University ID For The Most Heart-Wrenching Reason
+B: What Some Black Men Have To Do To Convince Cops They're "One Of The Good Ones"
 
 ## P009
 
-A: This Dude’s Grandmother Will Disprove All Your Stereotypes About Middle Easterners
-B: Maz Always Gets The Same 3 Questions: Are You A Terrorist? Do You Own An Oil Well? Why So Hairy?
+A: Ellen, Pink, And Queen Latifah Destroy A Ridiculous Argument That No One Should Ever Make EVER
+B: Describe What Women Can Do In One Word. (Hint: The Word Is 'Anything')
 
 ## P010
 
-A: What Women Are Really Thinking When Strange Men Tell Them To Smile (It's Why We Smile Anyway)
-B: A Comedian Gets Real, Totally Nails The Scary Reason Why Women Smile When Strange Men Tell Them To
+A: If You Think You Have To Be Black To Answer Questions About Dreadlocks, You're Missing Something Big
+B: What He Has To Say About White People With Dreadlocks Isn't What Some Of You Might Expect
 
 ## P011
 
-A: This Guy Needs You To Help Him Out Of A (Strawberry) Jam
-B: I Wouldn't Eat That If I Were You... It's Not Poison Or Anything, It's Just...
+A: It's Finally (Almost) Here! A Guarantee That You're Buying Responsible Food
+B: A Way To Make Sure My Favorite Strawberry Margaritas Are Only Irresponsible If I Want Them To Be
 
 ## P012
 
-A: WHOA: 4 Questions That Got 120 Rapists To Admit They Were Rapists
-B: Asking 4 Questions In The Right Way Gets Some Normal Dudes To Admit They're Actually Awful People
+A: This Woman Stripped Her Dress Off While Onstage In The Name Of Feminism. Point Well Made.
+B: This Woman Went On And On For 3 Minutes About What She Does To Get Ready For The Day
 
 ## P013
 
-A: 2 Nerd Guys Shut Down The Fake Geek Girl Myth With The Kind Of Logic Vulcans Would Be Proud Of
-B: There Are Dudes Out There Who Think Girls Are Only Pretending To Like Comics To Be Cool. Seriously?
+A: How A Lawyer Defended The Theory Of Evolution With Both Science Hands Tied Behind His Back
+B: Remember When Tennessee Put Evolution On Trial? Cheers To You, History!
 
 ## P014
 
-A: It's Really Cool That You Studied Abroad. But The Way You Talk About Your Trip? Not So Cool.
-B: Here's How To Make Your Study Abroad Trip Sound Really Obnoxious
+A: See How A High School Responded When Their Principal Announced That He’s Gay
+B: It Took Him The Better Part Of 50 Years, But I'd Say His Announcement Was Right On Time
 
 ## P015
 
-A: A Foul Mouthed Wrestler Gave A Verbal Sleeper Hold On The Gay Marriage Debate
-B: It Only Took 1 Second For A Foul Mouth Wrestler To Give His Thoughts On Gay Marriage
+A: A Corroded Pipe Caused The Explosion In This Town. Now Corroded Rules Could Cause Another Disaster.
+B: If This Sorta Thing Doesn't Make You Worry About Local Politics, I Really Don't Know What Will
 
 ## P016
 
-A: I Really Hope The Parents Of These People Get To See What They Said Here. They'd Probably Cry.
-B: What These Students Said About Their Dreams And Their Future Is Enough To Make Any Parent Proud
+A: She Had A Great Hunt. But Then The Tables Got Turned.
+B: They Just Want To Help Save Animals, But It Turns Out The People Need A Little Help Too
 
 ## P017
 
-A: 1 In 3 Porn Viewers Is A Woman. So Naturally, Feminist Porn Should Be A Thing.
-B: PROBLEM: You Like Porn, But Not How It Depicts Women. I Have A Solution For You.
+A: The One Thing That Should Never Ever Go Off The Rails
+B: Here's Facts About Some Trains That Will Stay With You Every Time You Drive Over Tracks From Now On
 
 ## P018
 
-A: Eat The Dots. Chase The Hunger Monsters. All In A Day's Fun For Some Kids.
-B: You Probably Can't Beat This Kids Game. But That's Kinda The Point.
+A: Why Tell Women They Should Stop Talking About Harassment? Does It Hurt Your Innocent Ears?
+B: Some Dude Told Her He Doesn't Want To Hear Her Feminist Rants. Bad Move Bro.
 
 ## P019
 
-A: We Asked Men If They Think Women Should Have Equal Rights. Unsurprisingly, They Said Yes.
-B: Watch Men Learn What Feminism Means And Then Realize They're Feminists
+A: She Doesn't Care What You Call Her. But She WILL Call You On Your BS.
+B: He Doesn't Fit Into A Single Category — But That's Sure Not Slowing Him Down
 
 ## P020
 
-A: Here's Why Some People Can't Put Their Money In The Bank
-B: It's Not The Money They Need. It's A Place To Store It.
+A: These Before-And-Afters Will Make You Question Everything About How Our Economy Works
+B: They Called It A 'Hurricane Without Water.' Here's What Caused The Storm.
 
 ## P021
 
-A: A White Girl Said She Was Shoved. A Black Boy Denied It. Guess Who Went To The Principal's Office?
-B: 8 Boys Share Explain What It's Like To Live In Shackles And Boxes
+A: My German Friend Thinks Our System Of Tipping Is Absurd. Here's Some Stuff To Back That Up.
+B: 10% Of Tipped Workers are HOW Old?
 
 ## P022
 
-A: Have You Ever Looked At Someone Who Was Trans And Thought 'Wow, They're Really Passing'?
-B: Why We Need To Stop Turning Certain People's Humanity Into A Magic Trick
+A: Just In Case You Need Help Figuring Out Whether A Dude Is A Real Man, Here's A Handy Chart
+B: Wonder What Makes A Guy A Real Man? I Found The Answer.
 
 ## P023
 
-A: She Doesn't Care What You Call Her. But She WILL Call You On Your BS.
-B: He Doesn't Fit Into A Single Category — But That's Sure Not Slowing Him Down
+A: We Asked Men If They Think Women Should Have Equal Rights. Unsurprisingly, They Said Yes.
+B: Watch Men Learn What Feminism Means And Then Realize They're Feminists
 
 ## P024
 
@@ -122,18 +122,18 @@ B: We're Teaching Kids History, But We're Leaving This Entire Bit Out?
 
 ## P025
 
-A: A Striking Film About Child Slavery, A Little Girl Who Wanted To Help, And What We Can All Do
-B: Child Slavery Is A Big Issue. It Might Seem Hard To Help. But We Can. This 9-Year-Old Sure Did.
+A: This Woman Needs Your Help In A Very Real War She's Fighting That's Not Metaphorical
+B: She’s Fighting For Her Rights Against An Enemy That Doesn’t Play By The Rules
 
 ## P026
 
-A: Education Is Cheaper Than Prison, And Educated People Are Less Likely To BE In Prison. And Other Facts.
-B: Turns Out, Educating People Is Cheaper Than Sending Them To Prison. Who Knew?! (Sarcasm Mode /Off).
+A: It Goes Mostly Unnoticed And Unchecked. It Breaks My Heart Regularly.
+B: Lauryn Hill Rewrote The Lyrics To A Song In ’The Sound Of Music’. It’s My New Favorite Thing.
 
 ## P027
 
-A: You Should See What This Woman Sees Every Day. It's Gorgeous And Really Messed Up.
-B: You Don't Have To Be In NYC To Know Why Thousands Of People Are Marching In The Streets
+A: It's Hard To Imagine These Kids Behind Bars. Then Again, Maybe It's Not.
+B: If You Could Build A School Or A Jail, Which Would You Pick? A Lot Of People Have Already Decided.
 
 ## P028
 
@@ -142,18 +142,18 @@ B: You know the stories about transgender children with horrible endings? This i
 
 ## P029
 
-A: Slow Down. Here's Everything You Need To Know About Fasting.
-B: Ever Wonder What Happens To Your Body When You Fast?
+A: Do You Like Traveling? Your Sneezes Sure Do, With Or Without You. But Mostly Without.
+B: Watching A Sneeze In Slow Motion Is Disgusting And Kind Of Beautiful
 
 ## P030
 
-A: The Keys To Understanding The World Lie In The Smallest, Most Basic Things We See And Do Every Day
-B: Why You Shouldn't Ignore The Things Your Brain Refuses To Forget
+A: A Boy Is Killed. A School Is On The Brink. And The Explosions Just Keep On Coming.
+B: This Song Used To Make Me Feel Patriotic. Now It Just Makes Me Feel Sick.
 
 ## P031
 
-A: Here's A Funny, Sad, Funny Look At Trying To Get A Movie Made These Days
-B: Here's The Depressing And Hilarious Reason We'll Never Have A Great Superheroine Movie
+A: Do Animals Care About Morality? The Evidence Definitely Surprised Me.
+B: 2 Monkeys Were Paid Unequally; See What Happens Next — And Hear The Rest Of The Story
 
 ## P032
 
@@ -167,33 +167,33 @@ B: The Taliban Just Got Owned By A 15-Year-Old Girl
 
 ## P034
 
-A: I Never Thought This Sport Looked Fun Until Now
-B: This New Fitness Craze Is Just Too Badass For Words
+A: She went to war. Then she battled PTSD at home. But this helps.
+B: She went to war but felt weird when she got home. Then she found this.
 
 ## P035
 
-A: The Rich People Getting Richer Are Making A Fatal Mistake. This Doesn’t Bother Me Even A Little.
-B: If There Was Endless Everything, We’d Be Under Their Thumbs Forever. But There Isn’t. Ha, Ha.
+A: If The Skeptics Won't Listen to Thousands of Scientists Maybe They Should Try A Stand-Up Comedian
+B: Baby Polar Bear: 'What Use Is All This Fur If There's No Ice?' Mama Bear: 'Hush Up And Adapt'.
 
 ## P036
 
-A: She Found Herself Pregnant But Decided Not To Be A Mother Right Now. Her Words Are Powerful.
-B: I Want To Make This Rooftop A Judgment-Free Zone Because You Should Hear What She Says Up There
+A: The Parents Of This Gay Man Reacted Horribly To His Coming Out. The Internet Responded With Love.
+B: The Parents Of One Man Reacted Horribly To His Coming Out. The Internet Responded With Love.
 
 ## P037
 
-A: Finger Penetration When She Wasn't Expecting It. Is That Rape?
-B: This Is Why It's Important To Feel Empowered To Say 'No'
+A: Her Body Type Is So Ignored In The Magazines That We Don’t Even Notice It’s Missing? Ah, Now I See.
+B: When It Comes To Body Image In The Media, Here's One Type That We Don't Even Notice Missing
 
 ## P038
 
-A: A Former Coney Island ‘Freak’ Describes The Control A Body Can Have On Stage
-B: The Doctors Thought His Mom Would Reject Him. I Bet They Were Surprised With Her Reaction.
+A: The 10 Words I've Stopped Saying That Are Making The World A Friendlier Place
+B: The 10 Phrases I've Stopped Saying And The People Who Appreciate Me For It
 
 ## P039
 
-A: She Got A Birthday Card From Her Mom, But The Name On It Broke Her Heart
-B: A Birthday Card From Her Mom Should've Made Her Smile, But It Broke Her Heart Instead
+A: I Thought I Knew About Birth Control, But These 2 Ladies Just Proved Me Wrong
+B: Whoa, Birth Control, Just How Do You Do It?!
 
 ## P040
 
@@ -202,8 +202,8 @@ B: He Climbs On His Desk, Insults His Teacher, And Leaves The Whole Class Speech
 
 ## P041
 
-A: What He Has To Say About White People With Dreadlocks Isn't What Some Of You Might Expect
-B: If You Think You Have To Be Black To Answer Questions About Dreadlocks, You're Missing Something Big
+A: Make Sure No One Is Around You When You Watch This Video, Because You'll Probably Scream The F-Word
+B: 3 Minutes That'll Make You Think, 'Oh, We're Screwed.' But Actually, We're Not. (If We Get Serious.)
 
 ## P042
 
@@ -217,13 +217,13 @@ B: Why The Illuminati Think Matt Damon Is A Wanker
 
 ## P044
 
-A: A 13-Year-Old Came Out To His Best Bro And The Response Gave Me All The Feels
-B: Did You See The Heartwarming Coming Out Of A 13-Year-Old And His Best Friend? You Should.
+A: Some Don't Like It When He Sees His Mom. But To Him? Pure Joy. Why Keep Her From Him?
+B: Going To Jail *Should* Be The Worst Part Of Their Life. It's So Not. Not At All.
 
 ## P045
 
-A: 30 Seconds Of Talking Cats That'll Make You Smile
-B: In 30 Seconds These Talking Cats Will Make You Smile Than The 'Air Bud' Franchise Ever Did
+A: A 13-Year-Old Came Out To His Best Bro And The Response Gave Me All The Feels
+B: Did You See The Heartwarming Coming Out Of A 13-Year-Old And His Best Friend? You Should.
 
 ## P046
 
@@ -232,13 +232,13 @@ B: She Lists 10 Things Every Woman Should Know. #3 Makes Me Weak At The Knees.
 
 ## P047
 
-A: She Needed To OWN Who She Was, But This Has Nothing To Do With The Oprah Winfrey Network
-B: She’s ‘Legally Obligated’ To Let You Know You’ll Be A Lesbian After Hearing Her. I Like This Woman.
+A: Who Is This Kid? Why Does He Sound So Weird? And How'd He Get To Be So Awesome?
+B: It Takes A Few Seconds To Get Used To This Kid's Voice. That's When You Notice His Words.
 
 ## P048
 
-A: A Female Journalist Gives A Priceless Answer To Questions Never Asked Of A Male Journalist
-B: Here's An Epic Response To Someone Criticizing A Newscaster For All The Wrong Reasons
+A: A Hospital In Pennsylvania Has An Incredible Secret, And She's The Reason
+B: They Only Talk For 4 Minutes And 45 Seconds, But By The End I'm So Hungry.
 
 ## P049
 
@@ -247,23 +247,23 @@ B: Have Long Hair? I Bet You're Sick Of Strangers Telling You To Do What This To
 
 ## P050
 
-A: If There Were Only 35 Humans Left On Earth Would We Ignore Warnings Like This?
-B: Animal Prints Never Hurt Nobody, But Sometimes What We Do Does
+A: For Some, It’s No Sex Before Marriage. For Them, It’s No Sex Until …
+B: For Some, It’s Sex In Any City. For Them It's Sexless In The City.
 
 ## P051
 
-A: Childbirth Hurts But It Should Never Do This To The Mother Or Her Baby
-B: Fewer Moms Are Dying In Childbirth, And Here's A Promising Reason Why
+A: She Shoved A Horrible, Painful Photo In Front Of Her Child. Listen To One Mom Explain Why.
+B: The Picture That One Mother Wants To Make Sure Her Son Never Forgets
 
 ## P052
 
-A: How A Widower Is Proving 45 Years Of True Love Is More Powerful Than Bigotry
-B: 2 Vets Together For 45 Years. After 1 Dies, The Other's Told The Marriage Was Fake
+A: He's Got 36 Problems, But Being Hopeless Ain't One
+B: Watch The First 2:30 If You Want To Be Outraged. Watch The Last 1:30 If You Want To Know Hope.
 
 ## P053
 
-A: 2 Famous Sisters Had Struggled With Mental Illness. 1 Survived. Here's How.
-B: An Oscar Winning Actress And Her Famous Sister Struggled With Depression. 1 Survived. Here's How.
+A: Here's The Depressing And Hilarious Reason We'll Never Have A Great Superheroine Movie
+B: Here's A Funny, Sad, Funny Look At Trying To Get A Movie Made These Days
 
 ## P054
 
@@ -282,8 +282,8 @@ B: I Think I Speak For Everyone When I Say, 'Please Keep Your Genitals Out Of Ou
 
 ## P057
 
-A: Why Robot-Driven Cars Could Be The Best Thing Possible Thing For Humanity.
-B: You Know Those Jerks That Merge Into Traffic At The Last Moment? You Should Be One Of Those Jerks.
+A: Why Do We Always Need To, Have To, Must Know, What Someone’s Mixed With?
+B: Questions You Should Never Ask Your Biracial Bestie Unless You Want These Priceless Responses
 
 ## P058
 
@@ -292,163 +292,163 @@ B: Why do men touch women's bodies without asking — men like Joe Biden and Joh
 
 ## P059
 
-A: John Oliver Goes Off On An Epic, Hilarious Rant About Two Of The Most Important, Boring Words Ever
-B: John Oliver Calls Out President Obama On His Poor Staffing Choices, With Hilarious Showmanship
+A: 50+ Pretty Shocking Facts That Make Things Harder For Every Woman You Have Ever Met Ever
+B: The Not-So-Secret Feminist Agenda And How It Could Impact You
 
 ## P060
 
-A: I’m Not Going To 'Trick' You Into Watching This. It's Hard To Watch. But It’s Real For Many Women.
-B: Every 15 Seconds, A Woman Is Beaten By Her Partner Or Husband. Stop. Read That Again.
+A: When A Black Actor Can't 'Act Black', What Does He Do?
+B: Presenting Thugs: The Musical
 
 ## P061
 
-A: The Three Adorable Things That James Gandolfini Was Afraid Of — You May Remember Him Differently Now
-B: Everybody's Favorite Mafia Boss Talks About Why It's Okay To Be Scared
+A: A Doctor Has Spent Several Decades Dressing Up Like A Homeless Man. The Reason Is Fantastic.
+B: You Know That Quote About Being The Change You Wish To See? I Just Watched A Man Who IS The Change.
 
 ## P062
 
-A: The Most Honest And Awful Corporate Ad I Have Ever Laid My Eyes On. No, They Aren't Drunk. I Swear.
-B: If Real Corporations Were As Honest As This Fake One, We'd Know Where They Stand On The Apocolypse
+A: He's Been Hiding In Plain Sight For 18 Years Because We're Too Uncomfortable To Accept Him
+B: He Hasn't Seen His Mother In 18 Years. Because Our Laws Are Awful.
 
 ## P063
 
-A: Ho Hum. Just Another Guy Trying To Make Beer From Yeast Scraped Off Of Ancient Whale Bones.
-B: He Spent His Days Collecting Bones. After 1 Or 2 Beers, It Hit Him.
+A: If You're Scared About The Earth Boiling Over, Follow Me: Take A Deep Breath. Breathe Out. There.
+B: If Earth Got 2 Degrees Warmer, Many Species Would Die. Should We Freak Out? No. Quite The Opposite.
 
 ## P064
 
-A: He Accepted That He Was Going To Be Murdered … That’s When He Really Started Living
-B: If You Were About To Die, Would Your Last Thoughts Be About Money?
+A: A Long List Of Foods That We Might Never Get To Eat Again
+B: Let's Figure Out This Bees Disappearing Thing Because I Will Not Stand For A World Without Apples
 
 ## P065
 
-A: A Woman Who Seemed To Have It All Found Something Big Missing In Her Recipe For Success
-B: Why The Definition Of 'Success' Could Use A Few More Letter Zzzzzzzz's
+A: No One Should Have To Deal With This. Not On The Bus. Not On The Train. Not On The Street. Not Ever.
+B: When The Daily Commute Becomes A Battlefield, What Do You Do? Write A Powerful Poem And Speak It.
 
 ## P066
 
-A: Why Your Kids May Be Robots And How That’s Pretty Awesome
-B: The Next Step in Human Evolution Is Creepy, Scary, And Kind Of Awesome
+A: Why The Definition Of 'Success' Could Use A Few More Letter Zzzzzzzz's
+B: A Woman Who Seemed To Have It All Found Something Big Missing In Her Recipe For Success
 
 ## P067
 
-A: They Feed Millions Every Day, But Sometimes Not Their Own Families. They Need More.
-B: 3 Reasons Why Ronald McDonald Isn't Very Cheerful Today
+A: Could you support your family if you were injured on the job? Depends where you live.
+B: Their life-changing injuries are identical. But their compensation couldn't be more different.
 
 ## P068
 
-A: Chances Are If You Have A Little Melanin In America, You Only Have A Little Money Too
-B: Watch A Matriarch Raise A Family Then Have That Family Turn On Her. Till Her Granddaughter Comes In.
+A: What Does Juggling Have To Do With Meditation?
+B: 10 Minutes A Day Could Change Your Perspective On All The Things
 
 ## P069
 
-A: Their life-changing injuries are identical. But their compensation couldn't be more different.
-B: Could you support your family if you were injured on the job? Depends where you live.
+A: Remember Those Troubled Kids In School? Turns Out They Weren't Actually Troubled.
+B: Teamwork And Leadership Are Overrated — There Is Definitely An 'I' In 'Team'
 
 ## P070
-
-A: Ladies: Did You Know 'The Wizard Of Oz' Is Actually A Cautionary Tale For You?
-B: 'The Wizard Of Oz': A Story About How Women Can't Be Trusted To Fend For Themselves?
-
-## P071
-
-A: Teamwork And Leadership Are Overrated — There Is Definitely An 'I' In 'Team'
-B: Remember Those Troubled Kids In School? Turns Out They Weren't Actually Troubled.
-
-## P072
 
 A: If My Dentist Caught Me Showing People This, He'd Slap Me In The Face
 B: Is That A Soda In Your Pocket, Or Are You Just Happy To See An Early Grave?
 
+## P071
+
+A: The Naked Bodies Seem Practically Wholesome Compared To The Last 7 Seconds. That's The Point.
+B: So Many Scenes In This Video Are Censored. The Last 1 Isn’t, But It’s The Most Disturbing By Far.
+
+## P072
+
+A: A 15-Year-Old With A Huge Brain And An Even Bigger Heart Blows MIT Away
+B: Not Your Average Radio DJ: A 15-Year-Old Hacks It Together To Help Out His Community
+
 ## P073
 
-A: Promoting Medical Marijuana Legalization Requires Creativity. And Hilarious Song And Dance.
-B: You Know That Last Scene From Grease? These People Just Took That And Made It Even Better.
+A: Asking 4 Questions In The Right Way Gets Some Normal Dudes To Admit They're Actually Awful People
+B: WHOA: 4 Questions That Got 120 Rapists To Admit They Were Rapists
 
 ## P074
-
-A: I Have No Idea How This Video Isn't Getting Sued, But It's Got A Good Environmental Message
-B: You Know What Isn't Grrrrrrrreat? Goddamn Climate Change.
-
-## P075
-
-A: A Way To Make Sure My Favorite Strawberry Margaritas Are Only Irresponsible If I Want Them To Be
-B: It's Finally (Almost) Here! A Guarantee That You're Buying Responsible Food
-
-## P076
 
 A: Two Abortion Protesters Decided To Yell At This Guy's Wife. They Probably Shouldn't Have Done That.
 B: Emotional Husband’s Powerful Confrontation With Abortion Protestors
 
+## P075
+
+A: I Wouldn't Eat That If I Were You... It's Not Poison Or Anything, It's Just...
+B: This Guy Needs You To Help Him Out Of A (Strawberry) Jam
+
+## P076
+
+A: I Know You've Heard This Song. But Have You Ever Really Tried To Imagine It?
+B: It's Time To Stop Imagining This World And Begin Building It. Will The Dreamer Wake Up In 2015?
+
 ## P077
 
-A: A Painful Show About Her Life Performed In Front Of The People Responsible For That Pain
-B: What Would The Performance Of Your Life Look Like? Would It Be This Well-Attended?
+A: What Do Prisoners Want? I'll Give You A Hint: Every American Child Gets It For Free.
+B: We Already Threw One Book At Them, Why Can't We Do It Again?
 
 ## P078
 
-A: It's Time To Stop Imagining This World And Begin Building It. Will The Dreamer Wake Up In 2015?
-B: I Know You've Heard This Song. But Have You Ever Really Tried To Imagine It?
+A: Not That People Who Are Offended By Others Not Speaking 'American' Deserve Recognition, But...Facts!
+B: You Know What's Outrageous? That People Were Outraged Over A Coke Ad. Listen To A Reporter Explain.
 
 ## P079
 
-A: We Already Threw One Book At Them, Why Can't We Do It Again?
-B: What Do Prisoners Want? I'll Give You A Hint: Every American Child Gets It For Free.
+A: If You’ve Ever Done Something Horrible, She Wants You To Google It For A Very Good Reason
+B: Her 3 Reasons Not To Commit Suicide Are Incredibly Funny (Because They’re Incredibly True)
 
 ## P080
-
-A: What Does Two Men In Spandex Straddling Eachother Say To *You* About The Olympics?
-B: Canada Makes A Great Point About The Olympics In Thirty Seconds
-
-## P081
-
-A: Do Animals Care About Morality? The Evidence Definitely Surprised Me.
-B: 2 Monkeys Were Paid Unequally; See What Happens Next — And Hear The Rest Of The Story
-
-## P082
 
 A: The One Time I'm OK With A Heckler Ruining A Speech Advocating Marriage Equality
 B: These Gay Dads Wanted To Give A Speech On Marriage Equality And What They Got Instead Was Hilarious
 
-## P083
+## P081
+
+A: Some People Call Them Cons. Others Call Them Inmates. She Wants You To See Them As People.
+B: In 2 Minutes, She'll Take You From 'Have No Clue' To 'OMG, I Can't Believe We Do This'
+
+## P082
 
 A: Step 1: Put Down The Sign. Step 2: Apply Cold Water To Burn.
 B: These Homophobic Signs Just Got Pretty Gay
 
+## P083
+
+A: Patton Oswalt Proves That A Good Filibuster Doesn't Have To Be Boring
+B: This Is What Democracy Looks Like When A Nerd Does It
+
 ## P084
 
-A: This Is What Democracy Looks Like When A Nerd Does It
-B: Patton Oswalt Proves That A Good Filibuster Doesn't Have To Be Boring
+A: One Of The Most Famous Women In Film Blew The Lid Off Of Her Past Without A Drop Of Shame
+B: Jane Fonda Starts This Interview With How She Used To Wonder If She Should Have Been A Man
 
 ## P085
 
-A: A Lesson From A 4-year-old About Rape Culture
-B: How A 4-Year-Old Can School Us About Rape Culture
+A: The First 2 Seconds Made Me Gasp. The Other 28? Holy Crap.
+B: See Why We Have Absolutely Ridiculous Standards When It Comes To Sports In 30 Seconds
 
 ## P086
 
-A: You Know How We Often Stereotype Kids And Babies Based On Gender? Here's How Dumb That Is.
-B: The Gender Stereotyping We Often Do With Kids Looks As Ridiculous As It Is When Done With Adults
+A: DOES Beyonce's Song About Sex In The Back Of A Limo Tie To Teen Pregnancy? Hmm ... How About Prom?
+B: These Two Stars Are Married And Have A Child. So What's So Immoral About What They're Doing?
 
 ## P087
 
-A: This Teacher Made A Video About His Star Student Trying To Get Into College. She's Not Getting In.
-B: He Made A Video About His Star Student Trying To Get Into College. Too Bad She Wasn't Born Here.
+A: Child Slavery Is A Big Issue. It Might Seem Hard To Help. But We Can. This 9-Year-Old Sure Did.
+B: A Striking Film About Child Slavery, A Little Girl Who Wanted To Help, And What We Can All Do
 
 ## P088
 
-A: Going To Jail *Should* Be The Worst Part Of Their Life. It's So Not. Not At All.
-B: Some Don't Like It When He Sees His Mom. But To Him? Pure Joy. Why Keep Her From Him?
+A: You Don’t Have To Put Your Money Where Your Mouth Is — Just Don't Fork It Over To Wall Street. Okay?
+B: They Put Two Guys In A Room And Made Them Argue Passive-Aggressively For 90 Seconds Or So
 
 ## P089
 
-A: Plankton, People. Plankton! Don't Know What I'm Talking About? That's Just 1/3 Of The Problem.
-B: Make Sure No One Is Around You When You Watch This Video, Because You'll Probably Scream The F-Word
+A: One Model Explains Why Style Is Not Just About The Wigs She Wears Or The Clothes She Flaunts
+B: A Model Was Asked To Take Everything Off To Prove A Point About What's Actually Underneath
 
 ## P090
 
-A: Do You Like Traveling? Your Sneezes Sure Do, With Or Without You. But Mostly Without.
-B: Watching A Sneeze In Slow Motion Is Disgusting And Kind Of Beautiful
+A: Why Robot-Driven Cars Could Be The Best Thing Possible Thing For Humanity.
+B: You Know Those Jerks That Merge Into Traffic At The Last Moment? You Should Be One Of Those Jerks.
 
 ## P091
 
@@ -462,23 +462,23 @@ B: The Random Internet Quote Guaranteed To Give You The Chills
 
 ## P093
 
-A: Americans Love To Make It Rain... On The Prison Industry
-B: Commit A Felony In America And You'll See Just How Much The Country Cares About You
+A: When Armed Resistance To Law Enforcement Is Patriotism, Doesn’t It Seem A Bit uʍop ǝpᴉsdn?
+B: If Cliven Bundy Was Anything But White, He’d Be In Prison Right Now. Or Worse.
 
 ## P094
 
-A: The South Will Rise Again? I Certainly Hope So, Because A Lot Of It Has Nowhere To Go But Up.
-B: One Map That Makes Me Think Twice Before Moving To A Southern State
+A: Fewer Moms Are Dying In Childbirth, And Here's A Promising Reason Why
+B: Childbirth Hurts But It Should Never Do This To The Mother Or Her Baby
 
 ## P095
 
-A: How Every Parent's Nightmare Is Preventable With Two Chairs
-B: Why Parents Who Avoid Talking To Their Kids About Drugs Are Probably Failing Them Miserably
+A: There was a time in our history when the United States bombed its own citizens. Not kidding.
+B: Paint Creek, Matewan, and the Battle Of Blair Mountain: The mine country wars.
 
 ## P096
 
-A: Which Footage Is More Moving — World War Ll Pilot Surviving A Plane Crash, Or That Same Pilot Seeing It For The First Time 50 Years Later?
-B: Watch An 83-Year-Old World War ll Vet Shave Off About 50 Years In 15 Seconds
+A: How Yogurt Commercials Are Totally Sexist
+B: Female Stereotypes, Right After Your Commercial Break Full Of Female Stereotypes
 
 ## P097
 
@@ -492,8 +492,8 @@ B: Why Is Canada Deliberately Getting Rid Of Good Luck?
 
 ## P099
 
-A: If You Had A Body Part Growing Somewhere You Felt It Shouldnt, Would You Just Leave It There?
-B: The First 8 Words Caught Me By Surprise. The Rest? Floored Me.
+A: Americans Love To Make It Rain... On The Prison Industry
+B: Commit A Felony In America And You'll See Just How Much The Country Cares About You
 
 ## P100
 
