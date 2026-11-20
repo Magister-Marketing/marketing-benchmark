@@ -1118,6 +1118,70 @@ def _labeled_field_values(response_text: str, labels: list[str]) -> dict[str, li
     return values
 
 
+def _label_line(names: tuple[str, ...]) -> re.Pattern[str]:
+    """A line that labels one of `names`, with its same-line value as group 1.
+
+    A label opens its line, after an optional bullet, list number or heading
+    mark, and may be bold. A note may follow it in brackets ("(87
+    characters)", "*(87 characters)*"), then the value after a colon, an em or
+    en dash or a spaced hyphen, or nothing. A label word inside a longer label
+    ("**CTA note:**") or a sentence ("Primary text runs past…") is no label.
+    """
+    alternatives = "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in names)
+    return re.compile(
+        r"(?im)^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?(?:#{1,6}[ \t]+)?(?:\*\*|__)?(?:"
+        + alternatives
+        + r")(?:\*\*|__)?[ \t]*(?:\([^\r\n)]*\)|\*\([^\r\n)]*\)\*|_\([^\r\n)]*\)_)?[ \t]*"
+        r"(?:(?::|[—–]|-(?=[ \t]))(?:\*\*|__)?[ \t]*([^\r\n]*)|(?:\*\*|__)?[ \t]*$)"
+    )
+
+
+# A note on a label's line about the field's length ("87 characters", "98 /
+# 104 chars"), not the field itself: its text is on the next line.
+_LENGTH_NOTE = re.compile(
+    r"(?i)[(\[]?\s*(?:about|approx\.?|~)?\s*\d+(?:\s*/\s*\d+)*\s*(?:characters?|chars?)\b"
+)
+
+
+def _field_values(response_text: str, name: str, fields: tuple[str, ...]) -> list[str]:
+    """The values of every field labelled `name`, in order, for a task whose
+    prompt asks for the labelled `fields` without fixing how a label is
+    written: "**Primary text:** …", "**Primary text** (87): …", "**Primary
+    text** — 87 characters" over its text, and a bare "**CTA**" over its value
+    all count. When the label's line holds no value, or only a length note,
+    the value is the next non-empty line, unless that line labels another
+    field: then the field is empty (a checklist line, not a field).
+    2026-11-19: the earlier pattern wanted the colon straight after the label,
+    so 21 of 248 saved answers, each with three labelled concepts, scored as
+    having none.
+    """
+    any_label = _label_line(fields)
+    values: list[str] = []
+    for match in _label_line((name,)).finditer(response_text):
+        value = (match.group(1) or "").strip()
+        if not value.strip("*_` ") or _LENGTH_NOTE.match(value):
+            following = response_text[match.end():].splitlines()
+            line = next((line for line in following if line.strip()), "")
+            value = "" if any_label.match(line) else line.strip()
+        values.append(value.strip("*_`\"'“”‘’ ").strip())
+    return values
+
+
+_AD_CTA = "Explore the Arc Clip Lamp"
+# Words a line uses to speak about all the concepts at once, and that ad copy
+# does not ("across the room" and "every evening" are copy).
+_AD_AUDIT = re.compile(
+    r"(?i)\b(?:all three|all 3|each concept|every concept|across (?:all three|all 3|the three|concepts))\b"
+)
+# A length remark anywhere in a line ("under 125 characters", "(87 chars)").
+_LENGTH_REMARK = re.compile(
+    r"(?i)[(\[]?\s*(?:about|approx\.?|~|under|over|at most|max\.?)?\s*\d+(?:\s*/\s*\d+)*\s*(?:characters?|chars?)\b[)\]]?"
+)
+# The approved CTA quoted inside a longer line ("… use “Explore the Arc Clip
+# Lamp” exactly"): a sentence about the CTA, not one.
+_AD_CTA_QUOTED = re.compile(r"[\"“”'‘’`*]" + re.escape(_AD_CTA) + r"[\"“”'‘’`*]")
+
+
 def _dollar_amount_counts(text: str, expected: float) -> tuple[int, int]:
     amounts = [
         float(raw.replace(",", ""))
@@ -1379,21 +1443,28 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         ))
         facts["h2_count"] = markdown_h2s + html_h2s
     elif task_id == "ad-creatives":
-        facts["primary_text_field_count"] = len(re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?Primary\s+text"
-            r"(?:\s*\([^\r\n)]*\))?\s*:(?:\*\*)?",
-            response_text,
-        ))
-        cta_values = re.findall(
-            r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?CTA\s*:(?:\*\*)?"
-            r"[^\S\r\n]*(?:\r?\n[\t ]*)?([^\r\n]+)",
-            response_text,
+        fields = ("Primary text", "Headline", "Description", "CTA",
+                  "Visual direction", "Audience insight", "Test hypothesis")
+        approved = (_AD_CTA, _AD_CTA + ".")
+        # An answer's own audit is not a field of a fourth concept: a Primary
+        # text "value" that is only a remark about length ("all three under
+        # 125 characters"), and a CTA line that speaks about every concept or
+        # quotes the approved CTA inside a sentence ("All three use “Explore
+        # the Arc Clip Lamp” exactly."). Copy itself may say "all three" ("One
+        # light handles all three."), so Primary text is judged by length
+        # remarks only. A wrong CTA is never an audit, so it still counts.
+        facts["primary_text_field_count"] = sum(
+            1 for value in _field_values(response_text, "Primary text", fields)
+            if value and not (
+                _LENGTH_REMARK.search(value) and len(_LENGTH_REMARK.sub(" ", value).split()) < 4
+            )
         )
+        cta_values = [
+            value for value in _field_values(response_text, "CTA", fields)
+            if value in approved or not (_AD_AUDIT.search(value) or _AD_CTA_QUOTED.search(value))
+        ]
         facts["cta_field_count"] = len(cta_values)
-        facts["approved_cta_field_count"] = sum(
-            value.strip().strip("*_`\"'“”‘’") == "Explore the Arc Clip Lamp"
-            for value in cta_values
-        )
+        facts["approved_cta_field_count"] = sum(value in approved for value in cta_values)
     elif task_id in ("landing-page", "landing-page-repair"):
         facts.update(_html_facts(response_text))
     elif task_id == "platform-limits-gauntlet":
