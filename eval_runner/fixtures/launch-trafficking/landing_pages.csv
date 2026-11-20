@@ -1,0 +1,4 @@
+audience,url,status,notes
+restaurants,https://www.fernhollow.example/shifts/restaurants,live,
+clinics,https://www.fernhollow.example/shifts/clinics,draft,Waiting on legal review
+retail,https://www.fernhollow.example/shifts/retail,live,

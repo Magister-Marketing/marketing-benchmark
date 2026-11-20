@@ -20,6 +20,7 @@ MODULES = {
     "search-account-build": "eval_runner.workflows.search_account_build",
     "headline-forecast": "eval_runner.workflows.headline_forecast",
     "headline-forecast-unpublished": "eval_runner.workflows.headline_forecast",
+    "launch-trafficking": "eval_runner.workflows.launch_trafficking",
 }
 
 
