@@ -25,8 +25,7 @@ from eval_runner import workflows  # noqa: E402
 def planned() -> dict[Path, str]:
     """Every generated file, by its path in the repository."""
     files: dict[Path, str] = {}
-    for workflow in workflows.MODULES:
-        module = workflows.module_for(workflow)
+    for module in {workflows.module_for(workflow) for workflow in workflows.MODULES}:
         for name, text in module.fixtures().items():
             files[REPO_ROOT / module.FIXTURE_DIR / name] = text
     return files

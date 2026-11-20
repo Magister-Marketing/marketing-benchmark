@@ -1,0 +1,62 @@
+{
+  "id": "headline-forecast",
+  "title": "Which headline won? 40 real tests",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "headline-forecast",
+  "fixtures": [
+    "eval_runner/fixtures/headline-forecast/headline_pairs_clear.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "Between 2013 and 2015 the publisher Upworthy tested headlines on its own site. Visitors saw the same story with the same image and excerpt and one of several headlines, assigned at random, and the share who clicked was recorded.\n\nThe supplied file holds 40 pairs of headlines. Each pair comes from one test: the best and the worst headline of that test by click rate, and the gap between them was wide.\n\nFor every pair, say which headline got the higher click rate, A or B, and how sure you are, as a whole number from 50 (a coin flip) to 100 (certain).\n\nAnswer with exactly one line per pair, in order, in this format, with nothing else on the line:\n\nP01: A 70\n\nYou may write a short note on what you looked for before the answer lines. The answer lines are what is graded.\n\nWork from the headlines alone. Look nothing up and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "every_pair_answered",
+        "check": "All 40 pairs have an answer line with a pick of A or B.",
+        "programmatic": {
+          "fact": "workflow_forecast_answered_count",
+          "equals": 40
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "picks_the_winner",
+        "check": "The pick matches the headline that really got the higher click rate. Full credit at 28 or more of 40 (70%); zero credit at 20 or fewer, which is what a coin flip scores.",
+        "programmatic": {
+          "fact": "workflow_forecast_correct_count",
+          "near": 40,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 12,
+            "zero": 20
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "confidence_means_something",
+        "check": "The stated confidence is worth having: the mean squared error of the confidence placed on the real winner (the Brier score, times 1,000) is 220 or less. Zero credit at 250 or more, which is what saying 50 to every pair scores. A pair with no pick counts as a wrong pick held with full confidence.",
+        "programmatic": {
+          "fact": "workflow_forecast_brier_x1000",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 220,
+            "zero": 250
+          }
+        }
+      },
+      {
+        "id": "from_the_headlines_alone",
+        "negative": true,
+        "check": "The reply does not claim to have looked up these tests, their results or the headlines' real performance, and cites no click figure for any pair. Reasoning about what makes a headline work is fine."
+      }
+    ]
+  }
+}

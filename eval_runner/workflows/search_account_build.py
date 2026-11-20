@@ -529,7 +529,7 @@ def _group_key(text: str) -> str:
     return re.sub(r"\s*\|\s*", " | ", common.norm(text).replace("-", " "))
 
 
-def facts(response_text: str) -> dict:
+def facts(response_text: str, workflow: str = TASK_ID) -> dict:
     """Counts of what a reply got wrong. Every count measures work against the
     reference, so a missing file is that many errors, never zero: a reply that
     leaves a deliverable out earns nothing on its checks."""
