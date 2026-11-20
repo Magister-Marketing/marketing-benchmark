@@ -197,12 +197,12 @@
       }
     },
     "outcome": {
-      "description": "What the run must have done, read from rows, receipts, the machine transcript and the provider, never from the agent's prose. social_post_published: a post live on the account (scenario 1). answer_grounded: every number in the reply appears in the recorded results of the listed read tools (rounded, or derivable as a percentage of two of them) and the reply names an entity (a page, a query, a campaign) present in those results. ad_campaign_draft: a complete written draft, a budget-bounded paused approval card the responder denied, and nothing executed. shopify_page_section: the store page gained the section (read back through the lane Gateway) after exactly the expected number of approvals.",
+      "description": "What the run must have done, read from rows, receipts, the machine transcript and the provider, never from the agent's prose. social_post_published: a post live on the account (scenario 1). answer_grounded: every number in the reply appears in the recorded results of the listed read tools (rounded, or derivable as a percentage of two of them) and the reply names an entity (a page, a query, a campaign) present in those results. ad_campaign_draft: a complete written draft, a budget-bounded paused approval card the responder denied, and nothing executed. shopify_page_section: the store page gained the section (read back through the lane Gateway) after exactly the expected number of approvals. product_checks: a list of facts a correct run leaves behind (tool calls by how they ended, approval cards by their stored row and arguments, rows read back from the lane, the agent's words), each required unless it says otherwise; scored by evals/runner/product_checks.py.",
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["social_post_published", "answer_grounded", "ad_campaign_draft", "shopify_page_section"] },
+        "kind": { "enum": ["social_post_published", "answer_grounded", "ad_campaign_draft", "shopify_page_section", "product_checks"] },
         "platform": { "type": "string", "minLength": 1 },
         "requires_media": { "type": "boolean" },
         "post_approval_reply": {
@@ -298,13 +298,66 @@
             "keywords": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
           }
         },
-        "approvals_expected": { "type": "integer", "minimum": 0 }
+        "approvals_expected": { "type": "integer", "minimum": 0 },
+        "checks": {
+          "description": "product_checks only: the facts to check, in the order they are reported. args, match and where map a field path (a.b.0.c, or * for the whole value) to a pattern that must match; a pattern that starts with ! must not.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "type"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "type": { "enum": ["tool_called", "tool_not_called", "approval", "state", "reply"] },
+              "why": { "description": "What a person loses when this fails; printed beside a failure.", "type": "string", "minLength": 1 },
+              "required": { "description": "false: reported, never the reason a run fails.", "type": "boolean" },
+              "tools": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "args": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+              "result": { "description": "A pattern the call's result text must match.", "type": "string", "minLength": 1 },
+              "ending": { "description": "How the call ended, read from the action envelope: tool_called defaults to ok, tool_not_called to any.", "enum": ["ok", "failed", "pending", "not_failed", "any"] },
+              "match": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+              "decision": { "description": "by_person: a card a person decided, either way, not one a policy let through.", "enum": ["pending", "allowed", "denied", "by_person", "any"] },
+              "executed": { "type": "boolean" },
+              "rows": { "description": "The outcome.state read to look in.", "type": "string", "minLength": 1 },
+              "where": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+              "pattern": { "type": "string", "minLength": 1 },
+              "present": { "description": "false: the pattern must not appear.", "type": "boolean" },
+              "scope": { "description": "final: only the agent's words after the person's last message.", "enum": ["all", "final"] },
+              "min": { "type": "integer", "minimum": 0 },
+              "max": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "state": {
+          "description": "product_checks only: rows the runner reads back from the lane after the chat, for state checks. Each read is scoped to the fixture's project (or its team, or the run's chat session) and, unless since_start is false, to rows created after the run started.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "table", "select"],
+            "properties": {
+              "name": { "$ref": "#/$defs/id" },
+              "table": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+              "select": { "type": "string", "minLength": 1 },
+              "scope": { "enum": ["project", "team", "session"] },
+              "scope_column": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+              "since_start": { "type": "boolean" },
+              "since_column": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+              "filters": { "type": "object", "additionalProperties": { "type": "string" } },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+              "cleanup": { "description": "Take the rows back after the run is scored, so the next run starts from the same brand (the select must include id). workflow: the schedule comes off the machine (select cron_job_id too) and the row goes inactive. delete: the rows are deleted from the lane.", "enum": ["workflow", "delete"] }
+            }
+          }
+        }
       },
       "allOf": [
         { "if": { "properties": { "kind": { "const": "social_post_published" } } }, "then": { "required": ["platform", "requires_media"] } },
         { "if": { "properties": { "kind": { "const": "answer_grounded" } } }, "then": { "required": ["tools", "entity"] } },
         { "if": { "properties": { "kind": { "const": "ad_campaign_draft" } } }, "then": { "required": ["draft", "card"] } },
-        { "if": { "properties": { "kind": { "const": "shopify_page_section" } } }, "then": { "required": ["page", "section", "approvals_expected"] } }
+        { "if": { "properties": { "kind": { "const": "shopify_page_section" } } }, "then": { "required": ["page", "section", "approvals_expected"] } },
+        { "if": { "properties": { "kind": { "const": "product_checks" } } }, "then": { "required": ["checks"] } }
       ]
     },
     "metrics": {

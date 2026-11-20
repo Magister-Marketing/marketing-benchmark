@@ -36,6 +36,16 @@ except ImportError:  # loaded by path from another checkout (the monorepo's scen
     _spec.loader.exec_module(_metrics)  # type: ignore[union-attr]
     _sorted_messages, parse_ts = _metrics._sorted_messages, _metrics.parse_ts
 
+try:
+    from evals.runner import product_checks
+except ImportError:  # loaded by path, as above
+    import importlib.util as _importlib_util
+    from pathlib import Path as _Path
+
+    _spec = _importlib_util.spec_from_file_location("product_checks", _Path(__file__).with_name("product_checks.py"))
+    product_checks = _importlib_util.module_from_spec(_spec)
+    _spec.loader.exec_module(product_checks)  # type: ignore[union-attr]
+
 MAGISTER_PREFIX = "magister_"
 ALLOW_SUFFIX = "allow"
 DENY_SUFFIX = "deny"
@@ -1035,6 +1045,8 @@ def evaluate(scenario: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]
         result = check_ad_campaign_draft(record, spec)
     elif kind == "shopify_page_section":
         result = check_shopify_page_section(record, spec)
+    elif kind == "product_checks":
+        result = product_checks.check_product(record, spec)
     else:
         raise ValueError(f"unknown outcome kind {kind!r}")
     result["kind"] = kind
