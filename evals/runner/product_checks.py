@@ -541,8 +541,10 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
             where, _, path = str(check["distinct"]).partition(".")
             if where not in ("result", "args") or not path:
                 raise CheckSpecError(f"check {check_id!r}: distinct must be result.<path> or args.<path>")
-            values = {_text(dig(envelope(call) if where == "result" else call.get("args"), path)) for call in calls}
-            count = len(values - {""})
+            values = [_text(dig(envelope(call) if where == "result" else call.get("args"), path)) for call in calls]
+            # A call that names nothing at the path is its own thing: two creates
+            # whose results carry no id must not count as none.
+            count = len(set(values) - {""}) + values.count("")
         result.update(passed=_within(count, low, high), found=count,
                       detail=", ".join(sorted({hosted(call.get("tool")) for call in calls})) or "no matching call")
     elif kind == "approval":

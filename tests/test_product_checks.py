@@ -597,5 +597,9 @@ def test_a_create_replayed_with_the_same_key_is_one_thing_not_two():
     assert verdict(record([first, replay]), once)["passed"]
     assert not verdict(record([first, second]), once)["passed"]
     assert not verdict(record([first, replay]), {**once, "distinct": None})["passed"]  # by calls it is two
+    # A create whose result names no resource is counted as its own campaign, never as none.
+    nameless = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope())
+    assert not verdict(record([nameless, nameless]), once)["passed"]
+    assert verdict(record([nameless]), once)["passed"]
     with pytest.raises(pc.CheckSpecError):
         verdict(record([first]), {**once, "distinct": "reply.x"})
