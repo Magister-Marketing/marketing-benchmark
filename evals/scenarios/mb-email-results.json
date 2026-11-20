@@ -41,26 +41,6 @@
     "kind": "product_checks",
     "checks": [
       {
-        "id": "read_the_campaigns",
-        "type": "tool_called",
-        "tools": [
-          "read_analytics_snapshots",
-          "read_analytics_breakdown",
-          "query_metric",
-          "fetch_integration_data",
-          "integration_read",
-          "get_analytics_view",
-          "get_ad_analytics",
-          "list_ad_campaigns",
-          "get_social_analytics",
-          "read_asset",
-          "describe_analytics_chart",
-          "read",
-          "exec"
-        ],
-        "why": "Nothing was read from the email platform."
-      },
-      {
         "id": "figures_from_the_data",
         "type": "grounded",
         "sources": [
@@ -81,7 +61,8 @@
           },
           {
             "tools": [
-              "read"
+              "read",
+              "exec"
             ],
             "args": {
               "*": "(^|[\\s/'\"])data/[a-z0-9_]+/|audits/|['\"]data['\"]"
@@ -90,7 +71,8 @@
           {
             "tools": [
               "exec"
-            ]
+            ],
+            "derived": true
           }
         ],
         "min": 2,
@@ -99,7 +81,7 @@
       {
         "id": "did_not_say_not_connected",
         "type": "reply",
-        "pattern": "(is|are|was|were)(n.t| not) connected|not (yet )?connected|needs? to be connected|connect (your|the) [a-z ]{0,30}(account|property|store)",
+        "pattern": "(klaviyo|email platform)[^.!?\\n]{0,60}((is|are|was)(n.t| not) connected|not (yet |currently )?connected|needs? to be connected)|connect (your |the |a )?(klaviyo|email platform)",
         "scope": "all",
         "present": false,
         "why": "The account is connected; telling the person to connect it sends them in a circle."

@@ -50,7 +50,8 @@
         "args": {
           "*": "store cold brew"
         },
-        "why": "No draft was saved to the blog."
+        "max": 1,
+        "why": "No draft was saved to the blog, or the article was written more than once."
       },
       {
         "id": "not_saved_published",
@@ -61,7 +62,7 @@
           "publish_content"
         ],
         "args": {
-          "*": "\"isPublished\"\\s*:\\s*true|\"published\"\\s*:\\s*true|\"publishDate\""
+          "*": "isPublished[\\\\\"']*\\s*:\\s*true|\\bpublished[\\\\\"']*\\s*:\\s*true|publishDate|publishedAt[\\\\\"']*\\s*:\\s*[\\\\\"']*\\d"
         },
         "why": "The article was created published."
       },
@@ -72,6 +73,13 @@
           "publish_content"
         ],
         "why": "The post was published."
+      },
+      {
+        "id": "one_write_only",
+        "type": "approval",
+        "min": 0,
+        "max": 1,
+        "why": "The person was asked to approve more than the one draft."
       },
       {
         "id": "said_it_is_a_draft",

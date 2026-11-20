@@ -39,7 +39,8 @@
         "type": "names_row",
         "rows": "plan_items",
         "field": "title",
-        "why": "The task it recommended is not in the plan."
+        "scope": "lead",
+        "why": "The task it recommended is not an open task in the plan."
       },
       {
         "id": "left_the_plan_alone",
@@ -47,7 +48,8 @@
         "tools": [
           "recompile_marketing_plan",
           "create_plan_item",
-          "update_plan_item"
+          "update_plan_item",
+          "update_plan_item_status"
         ],
         "why": "A question about the plan changed the plan."
       },

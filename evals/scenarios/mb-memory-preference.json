@@ -41,14 +41,31 @@
     "kind": "product_checks",
     "checks": [
       {
-        "id": "rule_saved_to_memory",
+        "id": "exclamation_rule_saved",
         "type": "state",
         "rows": "memory",
         "where": {
-          "text": "exclamation|members"
+          "text": "exclamation"
         },
         "min": 1,
-        "why": "The rules were acknowledged in chat and saved nowhere."
+        "why": "The no-exclamation-marks rule was acknowledged in chat and saved nowhere."
+      },
+      {
+        "id": "members_rule_saved",
+        "type": "state",
+        "rows": "memory",
+        "where": {
+          "text": "members"
+        },
+        "min": 1,
+        "why": "The members-not-customers rule was acknowledged in chat and saved nowhere."
+      },
+      {
+        "id": "wrote_the_caption",
+        "type": "reply",
+        "pattern": "cold brew",
+        "scope": "final",
+        "why": "The caption was never written."
       },
       {
         "id": "no_exclamation_marks",
@@ -63,6 +80,7 @@
         "type": "reply",
         "pattern": "\\bcustomers?\\b",
         "scope": "final",
+        "unless": "rather than|instead of|never|\\bnot\\b|per your|rule",
         "present": false,
         "why": "The caption uses the word the person ruled out."
       }

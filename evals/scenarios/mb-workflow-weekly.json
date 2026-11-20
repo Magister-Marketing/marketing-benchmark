@@ -43,15 +43,18 @@
         "why": "No workflow was created, or more than one was."
       },
       {
-        "id": "it_is_scheduled",
+        "id": "runs_mondays_at_nine_pacific",
         "type": "state",
         "rows": "workflows",
         "where": {
-          "schedule": "\\S",
-          "is_active": "true"
+          "schedule.cron": "^0 9 \\* \\* (1|MON)$",
+          "schedule.timezone": "^(America/Los_Angeles|US/Pacific|PST8PDT)$",
+          "is_active": "^true$",
+          "schedule_paused": "!true",
+          "cron_job_id": "\\S"
         },
         "min": 1,
-        "why": "The workflow exists but nothing will run it on Mondays."
+        "why": "The workflow is not scheduled for Mondays at 9am Pacific, or its schedule is not live."
       },
       {
         "id": "said_when_it_runs",

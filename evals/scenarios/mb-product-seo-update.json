@@ -59,25 +59,34 @@
     "kind": "product_checks",
     "checks": [
       {
-        "id": "card_carried_the_change",
-        "type": "approval",
-        "match": {
-          "*": "Everyday Heavyweight Tee"
-        },
-        "min": 1,
-        "why": "No approval card carried the new title."
-      },
-      {
         "id": "change_ran_once",
         "type": "approval",
         "match": {
-          "*": "Everyday Heavyweight Tee"
+          "arguments": "\"seo\": \\{[^{}]*\"title\": \"Classic Tee \\| Everyday Heavyweight Tee\""
         },
-        "decision": "allowed",
+        "decision": "approved_by_person",
         "executed": true,
         "min": 1,
         "max": 1,
-        "why": "The approved change did not run, or ran more than once."
+        "why": "The SEO title was not set to exactly the text asked for by a change the person approved, or it ran twice."
+      },
+      {
+        "id": "nothing_else_changed",
+        "type": "approval",
+        "min": 1,
+        "max": 1,
+        "why": "The person was asked to approve a second change nobody asked for."
+      },
+      {
+        "id": "product_not_renamed",
+        "type": "tool_not_called",
+        "tools": [
+          "integration_change"
+        ],
+        "args": {
+          "*": "\"product\": \\{[^{}]*\"title\": \"|\"input\": \\{[^{}]*\"title\": \""
+        },
+        "why": "The product itself was renamed; only its SEO title was to change."
       },
       {
         "id": "said_it_is_done",

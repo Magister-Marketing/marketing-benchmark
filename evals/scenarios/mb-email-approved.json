@@ -40,18 +40,26 @@
         "match": {
           "*": "sam-{nonce}@example\\.com"
         },
-        "decision": "allowed",
+        "decision": "approved_by_person",
         "executed": true,
         "min": 1,
         "max": 1,
-        "why": "The approved send did not run, or ran more than once."
+        "why": "The send the person approved did not run, or ran more than once."
+      },
+      {
+        "id": "one_card_only",
+        "type": "approval",
+        "min": 1,
+        "max": 1,
+        "why": "The person was asked to approve something else as well."
       },
       {
         "id": "email_recorded",
         "type": "state",
         "rows": "emails",
         "where": {
-          "to_address": "sam-{nonce}@example\\.com"
+          "to_address": "sam-{nonce}@example\\.com",
+          "status": "sent|delivered"
         },
         "min": 1,
         "max": 1,

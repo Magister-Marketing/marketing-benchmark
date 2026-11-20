@@ -209,11 +209,19 @@ def test_an_advisory_check_is_reported_and_never_fails_the_run():
     assert [item["passed"] for item in result["checks"]] == [True, False]
 
 
-def test_the_summary_names_what_failed_and_the_score_is_the_share_that_passed():
+def test_the_summary_names_what_failed_and_a_failed_run_scores_nothing():
+    """A share of checks met is no score: an agent that answers "OK." to
+    everything meets every "did not do X" check there is."""
     result = verdict(record(), {"id": "a", "type": "reply", "pattern": "done"},
                      {"id": "b", "type": "tool_called", "tools": ["write"]})
-    assert not result["passed"] and result["failed"] == ["b"] and result["score"] == 0.5
+    assert not result["passed"] and result["failed"] == ["b"] and result["score"] == 0.0
+    assert (result["checks_met"], result["checks_required"]) == (1, 2)
     assert result["summary"] == "1/2 checks; failed: b"
+    idle = verdict(record(messages=[message("user", "q", "2026-11-20T06:00:00Z"), message("assistant", "OK.", "2026-11-20T06:01:00Z")]),
+                   {"id": "no_send", "type": "tool_not_called", "tools": ["send_email"]},
+                   {"id": "no_card", "type": "approval", "min": 0, "max": 0},
+                   {"id": "did_it", "type": "tool_called", "tools": ["create_workflow"]})
+    assert idle["score"] == 0.0 and idle["checks_met"] == 2
 
 
 @pytest.mark.parametrize("checks", [
@@ -241,9 +249,27 @@ def test_the_scorer_routes_the_kind():
 
 # ── Figures from the data, drawn blocks, named rows ───────────────────────────
 
-def test_figures_ignore_years_and_lone_digits_and_fold_formatting():
-    assert pc.figures("Clicks rose to 1,204 (4.73% CTR) from 987 in 2026; 3 queries, 28 days, position 7.60") == {
-        "1204", "4.73", "987", "7.6"}
+def test_stated_figures_leave_out_dates_ids_links_and_small_counts():
+    said = ("Clicks rose to 1,204 (4.73% CTR, 34% opens) from 987 on Nov 19, 2026; 2,048 visits in 2025; "
+            "3 queries over 28 days at position 7.60; account 4000000001; see http://x.localhost:3022/a?project="
+            "1c95f439-a3bf-4e17-9d95-44924f6a60de")
+    assert pc.figures(said, stated=True) == {"1204", "4.73", "34", "987", "2048", "7.6"}
+
+
+def test_a_charts_numbers_are_never_read_as_years():
+    chart = json.dumps({"root": "c", "elements": {"c": {"type": "BarChart", "props": {"data": [
+        {"channel": "Direct", "sessions": 2048}, {"channel": "Search", "sessions": 1950}, {"channel": "Email", "sessions": 2011}]}}}})
+    assert pc.figures(pc.spec_words(chart), stated=True) == {"2048", "1950", "2011"}
+
+
+def test_a_csv_rows_values_are_read_between_its_commas():
+    """"2026-11-19,753,12136" is a date, 753 and 12136: not the number 19,753,121."""
+    found = pc.figures("date,clicks,impressions\n2026-11-19,753,12136\n2025-07-23,34,523")
+    assert {"753", "12136", "523", "34"} <= found and "19753121" not in found
+    data = call("read", {"path": "data/gsc/2026-11-19/daily.csv"}, "date,clicks,impressions\n2026-11-19,753,12136")
+    said = [message("user", "q", "2026-11-20T06:00:00Z"), message("assistant", "753 clicks on 12,136 impressions.", "2026-11-20T06:01:00Z")]
+    check = {"id": "from_data", "type": "grounded", "sources": [{"tools": ["read"], "args": {"*": "data/gsc/"}}], "min": 2}
+    assert verdict(record([data], messages=said), check)["passed"]
 
 
 def reads(result):
@@ -367,3 +393,177 @@ def test_a_turn_held_on_a_card_may_end_without_words_only_when_the_scenario_says
     assert not pc.check_product(held, {"kind": "product_checks", "checks": checks})["passed"]
     result = pc.check_product(held, {"kind": "product_checks", "checks": checks, "reply_required": False})
     assert result["passed"] and result["summary"] == "1/1 checks"
+
+
+# ── Each rule on its own: a test that still passes with the rule removed proves nothing ──
+
+def held(tool="magister_send_agent_email"):
+    """The envelope a call held on an approval card really gets from the Gateway."""
+    return call(tool, {"to": ["dana@example.com"]}, json.dumps({
+        "ok": False, "operation_id": "op_1", "resource_id": None,
+        "status": {"state": "running", "terminal": False, "poll_after_seconds": 5},
+        "side_effect": "external_write", "receipt": {"approval_state": "pending"}, "artifacts": [],
+        "error": {"code": "approval_required", "message": "Waiting for approval."}}))
+
+
+def test_a_call_held_on_a_card_is_pending_though_its_envelope_says_ok_false():
+    assert pc.call_ending(held()) == "pending"
+    rec = record([held()])
+    assert verdict(rec, {"id": "a", "type": "tool_called", "tools": ["send_agent_email"], "ending": "pending"})["passed"]
+    assert verdict(rec, {"id": "a", "type": "tool_called", "tools": ["send_agent_email"], "ending": "not_failed"})["passed"]
+    assert not verdict(rec, {"id": "a", "type": "tool_called", "tools": ["send_agent_email"], "ending": "failed"})["passed"]
+    assert not verdict(rec, {"id": "a", "type": "tool_called", "tools": ["send_agent_email"]})["passed"]
+
+
+@pytest.mark.parametrize("ok, state, terminal, ending", [
+    (True, "failed", True, "failed"),          # the state decides, whatever ok says
+    (False, "succeeded", True, "failed"),      # and ok false alone is a failure
+    (True, "needs_approval", True, "pending"),  # a pending state alone
+    (True, "succeeded", False, "pending"),      # not terminal alone
+    (True, "succeeded", True, "ok"),
+])
+def test_how_a_call_ended_is_read_from_each_part_of_the_envelope(ok, state, terminal, ending):
+    assert pc.call_ending(call("magister_create_workflow", result=envelope(ok=ok, state=state, terminal=terminal))) == ending
+
+
+def test_not_failed_does_not_let_a_failed_call_through():
+    failed = call("magister_create_ad_campaign", result=envelope(ok=False, state="failed"))
+    assert not verdict(record([failed]), {"id": "a", "type": "tool_called", "tools": ["create_ad_campaign"],
+                                          "ending": "not_failed"})["passed"]
+
+
+def test_a_failed_envelope_cut_off_before_it_closed_is_still_failed():
+    cut = call("magister_integration_read", result='{\n  "ok": false,\n  "status": {\n    "state": "failed",\n    "terminal": true')
+    assert pc.call_ending(cut) == "failed"
+    assert pc.call_ending(call("read", {"path": "a"}, "{ not json at all")) == "ok"  # a file that starts with a brace
+
+
+def test_executed_and_decision_are_each_checked_on_their_own():
+    ran = card(decision="manual_allow", execution="succeeded")
+    approved_not_run = card(decision="manual_allow", execution="not_started")
+    wanted = {"id": "ran", "type": "approval", "decision": "allowed", "executed": True}
+    assert verdict(record(approvals=[ran]), wanted)["passed"]
+    assert not verdict(record(approvals=[approved_not_run]), wanted)["passed"]            # same decision, did not run
+    assert not verdict(record(approvals=[card(decision="pending", execution="succeeded")]), wanted)["passed"]  # ran, not allowed
+    for state in ("failed", "running", "not_started", "queued"):
+        assert pc.approval_executed(card(execution=state)) is False, state
+    denied = {"id": "no", "type": "approval", "decision": "denied"}
+    assert verdict(record(approvals=[card(decision="manual_deny")]), denied)["passed"]
+    assert not verdict(record(approvals=[ran]), denied)["passed"]
+    assert not verdict(record(approvals=[card()]), denied)["passed"]
+
+
+def test_a_policy_approving_is_not_a_person_approving():
+    """Allow-all approves a card with no person involved: "allowed" counts it, approved_by_person does not."""
+    auto = record(approvals=[card(decision="auto_yolo", execution="succeeded")])
+    person = record(approvals=[card(decision="manual_allow", execution="succeeded")])
+    yes = {"id": "yes", "type": "approval", "decision": "approved_by_person", "executed": True}
+    assert verdict(person, yes)["passed"] and not verdict(auto, yes)["passed"]
+    assert verdict(auto, {**yes, "decision": "allowed"})["passed"]
+    assert not verdict(record(approvals=[card(decision="manual_deny")]), yes)["passed"]
+
+
+def test_a_script_grounds_a_figure_only_when_it_computes_from_what_was_read():
+    read = call("magister_read_analytics_breakdown", {"kind": "top_products"}, envelope(receipt={"rows": [{"revenue": 6459}]}))
+    today = call("magister_read_analytics_snapshots", {"metric": "revenue"}, envelope(receipt={"rows": [{"revenue": 119}]}))
+    script = call("exec", {"command": "python3 - <<'PY'\nprint(6459 - 119)\nPY"}, "6340")
+    made_up = call("exec", {"command": "echo 1482 6.4"}, "1482 6.4")
+    skill = call("exec", {"command": "cat /data/.openclaw/skills/ads-math/SKILL.md"}, "Break-even ROAS 2.35 at 1,482 orders")
+    check = {"id": "from_data", "type": "grounded", "min": 1, "sources": [
+        {"tools": ["read_analytics_breakdown", "read_analytics_snapshots"]}, {"tools": ["exec"], "derived": True}]}
+
+    def says(text, *calls):
+        return verdict(record(list(calls), messages=[message("user", "q", "2026-11-20T06:00:00Z"),
+                                                     message("assistant", text, "2026-11-20T06:01:00Z")]), check)
+
+    assert says("Classic Tee earned $6,340.", read, today, script)["passed"]
+    assert not says("Your list grew by 1,482.", read, today, made_up)["passed"]   # a script that computed from nothing
+    assert not says("About 1,482 orders.", read, today, skill)["passed"]          # a skill file printed by a script
+    assert not says("Classic Tee earned $6,340.", script)["passed"]               # nothing was read at all
+
+
+def test_data_was_read_can_be_any_of_several_kinds_of_read_but_never_a_skill():
+    check = {"id": "read", "type": "tool_called", "sources": [
+        {"tools": ["read_analytics_snapshots"]}, {"tools": ["read", "exec"], "args": {"*": "data/gsc/"}}]}
+    skill = call("read", {"path": "/data/.openclaw/skills/analytics/SKILL.md"}, "text")
+    assert not verdict(record([skill]), check)["passed"]
+    assert verdict(record([call("exec", {"command": "head data/gsc/queries.csv"}, "q,clicks")]), check)["passed"]
+    assert verdict(record([call("magister_read_analytics_snapshots", result=envelope())]), check)["passed"]
+    assert not verdict(record([call("magister_read_analytics_snapshots", result=envelope(ok=False, state="failed"))]), check)["passed"]
+
+
+def test_a_claim_inside_a_denial_is_not_the_claim():
+    check = {"id": "no_claim", "type": "reply", "present": False,
+             "pattern": r"\b(is|was|has been) (live|posted|published)\b|\bI(.ve| have)? (posted|published)\b",
+             "unless": r"\b(not|n.t|nothing|never|no)\b"}
+
+    def says(text):
+        return verdict(record(messages=[message("user", "post it", "2026-11-20T06:00:00Z"),
+                                        message("assistant", text, "2026-11-20T06:01:00Z")]), check)["passed"]
+
+    assert says("Nothing was published. The draft is unchanged.")
+    assert says("The post wasn't published, and I haven't posted anything else.")
+    assert not says("Your post is now live. It was published at 9:02.")
+    assert not says("Nothing else changed. The post was published.")  # the denial is in another sentence
+
+
+def test_a_reply_before_the_last_message_is_still_read_by_default():
+    """A false claim made before a scripted follow-up must not slip out of scope."""
+    rec = record(messages=[
+        message("user", "Post it.", "2026-11-20T06:00:00Z"),
+        message("assistant", "Your post is now live. Share it elsewhere too?", "2026-11-20T06:01:00Z"),
+        message("user", "No, hold it.", "2026-11-20T06:02:00Z"),
+        message("assistant", "Understood.", "2026-11-20T06:03:00Z")])
+    claim = {"id": "no_claim", "type": "reply", "present": False, "pattern": r"\bis now live\b"}
+    assert not verdict(rec, claim)["passed"]
+    assert verdict(rec, {**claim, "scope": "final"})["passed"]  # which is why a must-be-absent check reads everything
+
+
+def test_a_task_is_named_by_its_own_words_not_by_the_words_every_task_shares():
+    """2026-11-20: "I'd improve the decaf product page next" named "Improve the tote product page"."""
+    titles = ["Improve the tote product page", "Improve the decaf product listing", "Rewrite and structure the homepage",
+              "Explain the store on the homepage", "Publish a factual shopper FAQ"]
+    decaf = "I'd improve the decaf product page next."
+    assert pc.names(decaf, titles[1], titles) and not pc.names(decaf, titles[0], titles)
+    assert pc.names("**Rewrite the Shopify homepage first.**", titles[2], titles)
+    assert not pc.names("The homepage headline says only Emulated Store.", titles[3], titles)
+    assert not pc.names("Launch a TikTok influencer program; it will improve product awareness.", titles[0], titles)
+    assert pc.names("Next up: Publish a factual shopper FAQ.", titles[4], titles)  # the title in full
+    # Singular and plural, and -ing, are one word.
+    assert pc.names("Start by publishing the shopper FAQs.", titles[4], titles)
+
+
+def test_names_row_honours_its_where_filter():
+    state = {"plan_items": [{"title": "Rewrite and structure the homepage", "status": "completed"},
+                            {"title": "Publish a factual shopper FAQ", "status": "planned"}]}
+    said = [message("user", "what next?", "2026-11-20T06:00:00Z"),
+            message("assistant", "Rewrite the homepage structure first.", "2026-11-20T06:01:00Z")]
+    check = {"id": "real_open_task", "type": "names_row", "rows": "plan_items", "field": "title"}
+    assert verdict(record(messages=said, state=state), check)["passed"]
+    assert not verdict(record(messages=said, state=state), {**check, "where": {"status": "planned"}})["passed"]
+
+
+def test_a_source_cited_without_its_tracking_or_its_scheme_is_the_same_source_and_an_invented_one_is_seen():
+    found = call("web_search", {"query": "rtd coffee"}, envelope(receipt={"results": [{"url": "https://www.example.com/rtd-report/?utm_source=x"}]}))
+    check = {"id": "real_sources", "type": "cited", "tools": ["web_search"], "min": 1, "unbacked_max": 0}
+
+    def says(text):
+        return verdict(record([found], messages=[message("user", "q", "2026-11-20T06:00:00Z"),
+                                                 message("assistant", text, "2026-11-20T06:01:00Z")]), check)["passed"]
+
+    assert says("Cans lead growth ([report](https://example.com/rtd-report)).")
+    assert says("Cans lead growth (example.com/rtd-report).")
+    assert not says("See example.com/rtd-report and example.net/invented-study.")
+    assert says("Saved to resources/research/rtd.md, source: https://example.com/rtd-report")  # a file path is no link
+
+
+def test_the_lead_is_where_a_recommendation_is_read():
+    """2026-11-20: a reply opened with a task that is not in the plan and passed,
+    because a later sentence happened to mention one that is."""
+    state = {"plan_items": [{"title": "Explain the store on the homepage"}, {"title": "Clarify the cold-brew starter gift set"}]}
+    said = [message("user", "what next?", "2026-11-20T06:00:00Z"),
+            message("assistant", "Start with **Make the homepage cite-ready.** It is marked Ready. " + "Why: the audit found gaps. " * 20
+                    + "Later, clarify the cold-brew starter gift set.", "2026-11-20T06:01:00Z")]
+    check = {"id": "real_task", "type": "names_row", "rows": "plan_items", "field": "title"}
+    assert verdict(record(messages=said, state=state), check)["passed"]            # anywhere in the reply
+    assert not verdict(record(messages=said, state=state), {**check, "scope": "lead"})["passed"]

@@ -38,19 +38,30 @@
         "id": "card_approved_and_ran",
         "type": "approval",
         "match": {
-          "action": "social_post",
-          "*": "{nonce}"
+          "action": "^publish_social_post$",
+          "arguments.post_snapshot.content": "{nonce}",
+          "arguments.post_snapshot.platforms": "\"platform\": \"linkedin\""
         },
-        "decision": "allowed",
+        "decision": "approved_by_person",
         "executed": true,
         "min": 1,
         "max": 1,
-        "why": "The approved post did not go out, or went out more than once."
+        "why": "The LinkedIn post the person approved did not go out now, or went out more than once."
       },
       {
-        "id": "returned_a_link",
+        "id": "only_linkedin",
+        "type": "approval",
+        "match": {
+          "action": "social_post"
+        },
+        "min": 1,
+        "max": 1,
+        "why": "A second post, or a post somewhere else, was put in front of the person."
+      },
+      {
+        "id": "returned_the_post_link",
         "type": "reply",
-        "pattern": "https?://\\S+",
+        "pattern": "https?://[^\\s)]*linkedin\\.com/[^\\s)]+",
         "scope": "final",
         "why": "After publishing, the person was not given the post's link."
       }
