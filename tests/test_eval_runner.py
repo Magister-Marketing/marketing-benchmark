@@ -765,6 +765,10 @@ def test_build_request_openrouter_zdr_policy_and_web_plugin():
 def test_build_request_openrouter_model_policies_and_default_tier():
     expected = {
         "google/gemini-3.8-flash": (["google-vertex"], False),
+        "google/gemini-4-hydrogen": (["google-vertex"], False),
+        "google/gemini-4-argon": (["google-vertex"], False),
+        "google/gemini-4-carbon": (["google-vertex"], False),
+        "google/gemini-4-neon": (["google-vertex"], False),
         "z-ai/glm-5.3": (
             ["fireworks", "together", "parasail", "novita"], False
         ),
