@@ -922,6 +922,7 @@ class _ResponseHTMLParser(HTMLParser):
         self._anchor_href: str | None = None
         self._anchor_text: list[str] = []
         self.book_cta_hrefs: list[str] = []
+        self.element_ids: set[str] = set()
 
     def handle_decl(self, decl: str) -> None:
         if decl.strip().lower() == "doctype html":
@@ -978,6 +979,9 @@ class _ResponseHTMLParser(HTMLParser):
         if tag == "a":
             self._anchor_href = attrs_by_name.get("href")
             self._anchor_text = []
+        for anchor_name in (attrs_by_name.get("id"), attrs_by_name.get("name") if tag == "a" else None):
+            if anchor_name:
+                self.element_ids.add(anchor_name)
         style = attrs_by_name.get("style")
         if style:
             self.css_chunks.append(style)
@@ -1033,7 +1037,28 @@ def _css_resource_reference_count(css_text: str) -> int:
     return url_count + string_imports
 
 
-def _html_facts(response_text: str) -> dict:
+# The destination a task's brief supplies for the page's primary CTA. A task
+# that is not here supplies none.
+_HTML_CTA_TARGETS = {"landing-page-repair": "/consultations/harborline"}
+
+
+def _dead_link(href: str | None, element_ids: set[str]) -> bool:
+    """A link a visitor cannot follow: no destination, a bare `#`, script,
+    or a jump to a place the page does not have."""
+    target = (href or "").strip()
+    if not target or target == "#" or target.lower().startswith("javascript:"):
+        return True
+    return target.startswith("#") and target[1:] not in element_ids
+
+
+def _html_facts(response_text: str, *, cta_target: str | None = None) -> dict:
+    """What can be counted in an HTML deliverable. `cta_target` is the
+    destination the task's brief supplies for the primary CTA; the two
+    target facts exist only then. A task whose brief supplies none gets the
+    CTA's own links instead (2026-11-19: the page task was handed
+    `book_cta_all_targeted: False` against the repair task's URL, a
+    destination its brief never gives, and the judge, told to trust measured
+    facts, wrote "not targeted" into its verdict on every page)."""
     parser = _ResponseHTMLParser()
     parse_exception = False
     try:
@@ -1054,7 +1079,7 @@ def _html_facts(response_text: str) -> dict:
         r"(?is)<!doctype\s+html\s*>\s*<html(?:\s[^>]*)?>.*</html>\s*",
         stripped,
     ))
-    return {
+    facts = {
         "html_complete": bool(
             parser.doctype_count == 1
             and parser.html_start_count == 1
@@ -1077,13 +1102,18 @@ def _html_facts(response_text: str) -> dict:
         "book_cta_anchor_count": len(parser.book_cta_hrefs),
         "book_cta_all_instances_are_anchors": bool(parser.book_cta_hrefs)
         and book_cta_count == len(parser.book_cta_hrefs),
-        "book_cta_target_count": sum(
-            href == "/consultations/harborline" for href in parser.book_cta_hrefs
-        ),
-        "book_cta_all_targeted": bool(parser.book_cta_hrefs) and all(
-            href == "/consultations/harborline" for href in parser.book_cta_hrefs
-        ),
     }
+    if cta_target is None:
+        facts["book_cta_hrefs"] = ", ".join(sorted({href or "(empty)" for href in parser.book_cta_hrefs})) or "(none)"
+        facts["book_cta_dead_link_count"] = sum(
+            _dead_link(href, parser.element_ids) for href in parser.book_cta_hrefs
+        )
+    else:
+        facts["book_cta_target_count"] = sum(href == cta_target for href in parser.book_cta_hrefs)
+        facts["book_cta_all_targeted"] = bool(parser.book_cta_hrefs) and all(
+            href == cta_target for href in parser.book_cta_hrefs
+        )
+    return facts
 
 
 _GAUNTLET_LIMITS = {
@@ -1466,7 +1496,7 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         facts["cta_field_count"] = len(cta_values)
         facts["approved_cta_field_count"] = sum(value in approved for value in cta_values)
     elif task_id in ("landing-page", "landing-page-repair"):
-        facts.update(_html_facts(response_text))
+        facts.update(_html_facts(response_text, cta_target=_HTML_CTA_TARGETS.get(task_id)))
     elif task_id == "platform-limits-gauntlet":
         facts.update(_platform_gauntlet_facts(response_text))
     elif task_id == "unsupportable-claims-brief":

@@ -290,6 +290,49 @@ def test_html_programmatic_facts_detect_external_assets_and_heading_skips():
     assert flawed_facts["heading_order_valid"] is False
 
 
+def test_a_page_task_whose_brief_gives_no_destination_is_not_measured_against_one():
+    """The page task supplies no booking URL; the repair task supplies
+    /consultations/harborline. The judge is told to trust measured facts, so
+    "all targeted: False" against the other task's URL marked every page."""
+    tasks = bench.load_tasks()
+    page = """<!doctype html><html><head><style>a { color: #111; }</style></head>
+    <body><main><h1>Title</h1>
+    <!-- Replace #next-step with the booking URL before publishing. -->
+    <a href="#next-step">Book a consultation</a>
+    <section id="next-step"><h2>Your next step</h2></section>
+    </main></body></html>"""
+    facts = bench.measured_facts(tasks["landing-page"], page)
+    assert "book_cta_all_targeted" not in facts and "book_cta_target_count" not in facts
+    assert facts["book_cta_all_instances_are_anchors"] is True
+    assert facts["book_cta_hrefs"] == "#next-step"
+    assert facts["book_cta_dead_link_count"] == 0
+    # Every landing-page criterion still resolves its facts.
+    bench.programmatic_results(tasks["landing-page"], facts)
+
+    repair = bench.measured_facts(tasks["landing-page-repair"], page)
+    assert repair["book_cta_all_targeted"] is False and repair["book_cta_target_count"] == 0
+    assert "book_cta_dead_link_count" not in repair
+
+
+def test_a_cta_a_visitor_cannot_follow_is_counted_as_dead():
+    task = bench.load_tasks()["landing-page"]
+    shell = "<!doctype html><html><head><style>a{}</style></head><body><main><h1>T</h1>%s</main></body></html>"
+    dead = {
+        '<a href="#">Book a consultation</a>': ("#", 1),
+        '<a href="#booking">Book a consultation</a>': ("#booking", 1),
+        '<a href="">Book a consultation</a>': ("(empty)", 1),
+        '<a href="javascript:void(0)">Book a consultation</a>': ("javascript:void(0)", 1),
+        '<a href="#booking">Book a consultation</a><a name="booking"></a>': ("#booking", 0),
+        '<a href="https://example.com/book">Book a consultation</a>': ("https://example.com/book", 0),
+    }
+    for markup, (hrefs, count) in dead.items():
+        facts = bench.measured_facts(task, shell % markup)
+        assert (facts["book_cta_hrefs"], facts["book_cta_dead_link_count"]) == (hrefs, count), markup
+    button = bench.measured_facts(task, shell % "<button disabled>Book a consultation</button>")
+    assert button["book_cta_anchor_count"] == 0 and button["book_cta_hrefs"] == "(none)"
+    assert button["book_cta_all_instances_are_anchors"] is False
+
+
 def test_html_facts_accept_html5_optional_tags_and_rendered_cta_text():
     task = bench.load_tasks()["landing-page-repair"]
     html = """<!doctype html><html><head><title>Book a consultation | Harborline</title><style>body{color:#111}</style><body>
