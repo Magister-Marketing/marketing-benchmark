@@ -332,6 +332,7 @@
               "tools": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
               "args": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
               "result": { "description": "A pattern the call's result text must match.", "type": "string", "minLength": 1 },
+              "distinct": { "description": "tool_called: count distinct values at result.<path> (the action envelope) or args.<path> instead of calls, so a create replayed with the same idempotency key is one thing.", "type": "string", "pattern": "^(result|args)\\.[A-Za-z0-9_.]+$" },
               "ending": { "description": "How the call ended, read from the action envelope: tool_called defaults to ok, tool_not_called to any.", "enum": ["ok", "failed", "pending", "not_failed", "any"] },
               "match": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
               "decision": { "description": "allowed: any approving decision, a policy's included. approved_by_person: a person said yes. by_person: a person decided, either way.", "enum": ["pending", "allowed", "approved_by_person", "denied", "by_person", "any"] },

@@ -585,3 +585,17 @@ def test_one_fact_can_be_true_in_more_than_one_way():
     assert not result["passed"] and "1:" in result["checks"][0]["detail"] and "2:" in result["checks"][0]["detail"]
     with pytest.raises(pc.CheckSpecError):
         verdict(record(), {"id": "x", "type": "any", "of": [{"type": "reply", "pattern": "a"}]})
+
+
+def test_a_create_replayed_with_the_same_key_is_one_thing_not_two():
+    """2026-11-20: a second create_ad_campaign with the same idempotency key
+    answered with the same campaign. Counting calls called that a duplicate."""
+    first = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope(resource_id="googleads-1-7000000068"))
+    replay = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope(resource_id="googleads-1-7000000068"))
+    second = call("magister_create_ad_campaign", {"name": "Cold Brew ab12cd"}, envelope(resource_id="googleads-1-7000000069"))
+    once = {"id": "one_campaign", "type": "tool_called", "tools": ["create_ad_campaign"], "distinct": "result.resource_id", "max": 1}
+    assert verdict(record([first, replay]), once)["passed"]
+    assert not verdict(record([first, second]), once)["passed"]
+    assert not verdict(record([first, replay]), {**once, "distinct": None})["passed"]  # by calls it is two
+    with pytest.raises(pc.CheckSpecError):
+        verdict(record([first]), {**once, "distinct": "reply.x"})

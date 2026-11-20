@@ -533,7 +533,17 @@ def run_check(record: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
         # skill file), all of them calls that ended ok.
         calls = source_calls(record, check) if check.get("sources") else matching_calls(record, check)
         low, high = _bounds(check, default_min=1) if kind == "tool_called" else (0, 0)
-        result.update(passed=_within(len(calls), low, high), found=len(calls),
+        count = len(calls)
+        if check.get("distinct"):
+            # Count the things, not the calls: a create repeated with the same
+            # idempotency key answers with the same resource and made nothing
+            # new ("result.resource_id"; "args.<path>" reads the arguments).
+            where, _, path = str(check["distinct"]).partition(".")
+            if where not in ("result", "args") or not path:
+                raise CheckSpecError(f"check {check_id!r}: distinct must be result.<path> or args.<path>")
+            values = {_text(dig(envelope(call) if where == "result" else call.get("args"), path)) for call in calls}
+            count = len(values - {""})
+        result.update(passed=_within(count, low, high), found=count,
                       detail=", ".join(sorted({hosted(call.get("tool")) for call in calls})) or "no matching call")
     elif kind == "approval":
         cards = matching_approvals(record, check)

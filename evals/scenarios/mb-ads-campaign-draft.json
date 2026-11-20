@@ -30,14 +30,8 @@
     "approve_approvals": false,
     "max_replies": 1,
     "reply_when": "question",
-    "default_reply": "Use your best judgement, keep it paused, and build it now.",
-    "replies": [
-      {
-        "id": "where-and-which-page",
-        "match": "countr|region|location|landing page|which page|url",
-        "reply": "Target the United States. Send clicks to the Cold Brew Concentrate product page. Keep it paused and build it now."
-      }
-    ]
+    "replies": [],
+    "default_reply": "Target the United States, send clicks to the Cold Brew Concentrate product page, and keep it paused."
   },
   "stop": {
     "budget_seconds": 600,
@@ -71,7 +65,7 @@
         ]
       },
       {
-        "id": "asked_for_one_campaign",
+        "id": "one_campaign",
         "type": "tool_called",
         "tools": [
           "create_ad_campaign"
@@ -79,9 +73,10 @@
         "args": {
           "*": "{nonce}"
         },
-        "ending": "any",
+        "distinct": "result.resource_id",
+        "min": 0,
         "max": 1,
-        "why": "The campaign was created more than once."
+        "why": "More than one campaign was created."
       },
       {
         "id": "budget_is_30_a_day",
