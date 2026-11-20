@@ -162,3 +162,93 @@ def cell(row: dict[str, str], *names: str) -> str:
         if name in row:
             return row[name]
     return ""
+
+
+# ── Named documents ─────────────────────────────────────────────────────────
+# Some workflow tasks ask for documents rather than tables: each a piece of
+# copy under a line that names its file (``### asset-01.md``). A document's
+# text is compared as written, so it is returned raw.
+
+# A file of any kind a reply carries. Bounded, and only tried on a line of at
+# most _MAX_MARKER_LINE characters.
+_ANY_FILE_NAME = re.compile(
+    r"[a-z0-9][a-z0-9_.-]{0,80}\.(?:md|markdown|txt|csv|json|html|yaml|yml)", re.IGNORECASE)
+
+
+def named_file(line: str) -> str | None:
+    """The file a line names, of any kind a reply carries, or None:
+    "### asset-01.md", "**asset-01.md**", "- `asset-01.md`:", "File: notes.txt"."""
+    if len(line) > _MAX_MARKER_LINE:
+        return None
+    core = line.strip().lstrip("#").strip()
+    if core[:2] in ("- ", "* "):
+        core = core[2:]
+    core = core.strip("*_` \t")
+    if core[:4].lower() == "file" and core[4:].lstrip()[:1] in (":", "="):
+        core = core[4:].lstrip()[1:]
+    core = core.strip("*_` \t:")
+    return core.lower() if _ANY_FILE_NAME.fullmatch(core) else None
+
+
+def _fence_mark(line: str) -> str:
+    """The run of backticks or tildes a fence line opens with, or ""."""
+    core = line.lstrip()
+    if not core.startswith(_FENCES):
+        return ""
+    return core[:len(core) - len(core.lstrip(core[0]))]
+
+
+def _closes(line: str, mark: str) -> bool:
+    """Whether a line closes the fence ``mark`` opened: nothing but the mark's
+    character, at least as many times."""
+    core = line.strip()
+    return len(core) >= len(mark) and not core.strip(mark[0])
+
+
+def _document(lines: list[str]) -> str:
+    """A document's text from the lines under its name. When the lines hold a
+    code fence, the text is what is inside the first one, up to the fence line
+    that closes it: a note before or after is not the document. A lone fence
+    line after the text closes something the reply opened earlier, and the
+    text is what comes before it."""
+    first_text = next((index for index, line in enumerate(lines) if line.strip()), None)
+    opening = next((index for index, line in enumerate(lines) if _fence_mark(line)), None)
+    body = lines
+    if opening is not None:
+        mark = _fence_mark(lines[opening])
+        closing = next((index for index in range(opening + 1, len(lines)) if _closes(lines[index], mark)), None)
+        if closing is not None:
+            body = lines[opening + 1:closing]
+        elif opening == first_text:
+            body = lines[opening + 1:]
+        else:
+            body = lines[:opening]
+    start, end = 0, len(body)
+    while start < end and not body[start].strip():
+        start += 1
+    while end > start and not body[end - 1].strip():
+        end -= 1
+    return "\n".join(body[start:end])
+
+
+def sections(text: str, names: list[str]) -> dict[str, str | None]:
+    """The named documents of a reply, each as the raw text under the line
+    that names it, or None for a file the reply does not carry. A document is
+    the lines after its name up to the next line that names any file, read
+    through ``_document`` (inside its code fence when it has one). A file
+    given twice is read where it was given last: a draft earlier in the reply
+    does not shadow the final one. One pass over the lines, nothing matched
+    against more than a bounded line, so no reply can stall it."""
+    wanted = {name.lower() for name in names}
+    found: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    for line in text.splitlines():
+        name = named_file(line)
+        if name is not None:
+            current = None
+            if name in wanted:
+                current = found[name] = []
+            continue
+        if current is not None:
+            current.append(line)
+    return {name: (_document(found[name.lower()]) if name.lower() in found else None) for name in names}
