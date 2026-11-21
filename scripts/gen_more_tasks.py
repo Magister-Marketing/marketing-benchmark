@@ -69,65 +69,139 @@ def _money(value: Decimal | float) -> str:
 # --------------------------------------------------------------- seo-content-brief
 
 SEO_HEADER = ["keyword", "topic", "monthly_searches", "difficulty", "intent", "current_rank", "ranking_url"]
-# keyword, topic, monthly searches, difficulty (0-100), intent, current rank, ranking URL
+# keyword, topic, monthly searches, difficulty (0-100), intent, current rank, ranking URL.
+# The target wins on winnable clicks, not on volume: green tea has the most searches,
+# matcha the most eligible searches (most of them already ranking 4 to 10), and the
+# target topic's biggest keyword ranks fifth, so it is not the primary keyword.
 SEO_KEYWORDS = [
-    ("how to cold brew tea", "cold brew tea", 3600, 28, "informational", "", ""),
-    ("cold brew tea ratio", "cold brew tea", 1900, 19, "informational", "", ""),
-    ("how long to cold brew tea", "cold brew tea", 1600, 22, "informational", "", ""),
-    ("best tea for cold brew", "cold brew tea", 1300, 34, "commercial", "", ""),
-    ("cold brew green tea", "cold brew tea", 1000, 31, "informational", "", ""),
-    ("cold brew tea caffeine", "cold brew tea", 720, 24, "informational", "", ""),
-    ("can you cold brew tea bags", "cold brew tea", 590, 17, "informational", "", ""),
-    ("cold brew tea vs iced tea", "cold brew tea", 880, 45, "informational", "", ""),         # exactly on the difficulty limit
-    ("cold brew tea maker", "cold brew tea", 2400, 48, "transactional", "", ""),
-    ("cold brew tea recipe", "cold brew tea", 1300, 52, "informational", "", ""),
-    ("does cold brew tea go bad", "cold brew tea", 480, 15, "informational", 10, "/blog/how-long-does-brewed-tea-last"),  # the last top-10 rank
-    ("best green tea", "green tea", 14800, 62, "commercial", 4, "/guides/best-green-tea"),
+    ("what is oolong tea", "oolong tea", 4400, 38, "informational", "", ""),
+    ("oolong tea benefits", "oolong tea", 6600, 42, "informational", 5, "/collections/oolong"),
+    ("how to brew oolong tea", "oolong tea", 2900, 28, "informational", "", ""),
+    ("oolong tea caffeine", "oolong tea", 1900, 33, "informational", 14, "/blog/tea-caffeine-chart"),
+    ("oolong vs green tea", "oolong tea", 1600, 31, "informational", "", ""),
+    ("is oolong tea good for weight loss", "oolong tea", 2400, 47, "informational", "", ""),
+    ("how many times can you steep oolong", "oolong tea", 880, 22, "informational", "", ""),
+    ("oolong tea taste", "oolong tea", 1300, 25, "informational", 8, "/collections/oolong"),
+    ("best oolong tea", "oolong tea", 2900, 40, "commercial", "", ""),
+    ("milk oolong", "oolong tea", 1000, 36, "informational", "", ""),
+    ("oolong tea temperature", "oolong tea", 720, 19, "informational", "", ""),
+    ("buy oolong tea", "oolong tea", 1600, 50, "transactional", "", ""),
+    ("da hong pao", "oolong tea", 1900, 45, "informational", "", ""),                   # exactly on the difficulty limit
+    ("oolong tea side effects", "oolong tea", 1000, 46, "informational", "", ""),       # one past it
+    ("tieguanyin", "oolong tea", 2400, 39, "informational", 3, "/products/tieguanyin"),  # the last rank already won
+    ("oolong vs black tea", "oolong tea", 590, 24, "informational", 21, "/blog/tea-caffeine-chart"),  # past 20: 0%
+    ("oolong tea for digestion", "oolong tea", 480, 29, "informational", 20, "/blog/tea-and-digestion"),  # the last 1%
+    ("gongfu brewing oolong", "oolong tea", 390, 26, "informational", "", ""),
+    ("how to make matcha", "matcha", 5400, 40, "informational", 4, "/blog/matcha-guide"),  # the first rank not won
+    ("matcha vs coffee", "matcha", 4400, 35, "informational", 6, "/blog/matcha-guide"),
+    ("matcha benefits", "matcha", 8100, 44, "informational", 5, "/blog/matcha-guide"),
+    ("matcha caffeine", "matcha", 2900, 30, "informational", 2, "/blog/tea-caffeine-chart"),
+    ("how to whisk matcha", "matcha", 1600, 27, "informational", 7, "/blog/matcha-guide"),
+    ("matcha latte recipe", "matcha", 6600, 61, "informational", "", ""),
+    ("ceremonial vs culinary matcha", "matcha", 1900, 33, "informational", 9, "/blog/matcha-guide"),
+    ("matcha powder", "matcha", 12100, 66, "transactional", "", ""),
+    ("best matcha", "matcha", 6600, 55, "commercial", "", ""),
+    ("is matcha good for you", "matcha", 2400, 38, "informational", 4, "/blog/matcha-guide"),
+    ("how much matcha per cup", "matcha", 1000, 21, "informational", 10, "/blog/matcha-guide"),
+    ("matcha storage", "matcha", 590, 18, "informational", "", ""),
+    ("matcha for weight loss", "matcha", 1900, 41, "informational", 8, "/blog/matcha-guide"),
+    ("ceremonial grade matcha", "matcha", 4400, 57, "commercial", "", ""),
+    ("best green tea", "green tea", 14800, 62, "commercial", 2, "/guides/best-green-tea"),
     ("green tea benefits", "green tea", 12100, 71, "informational", "", ""),
-    ("green tea caffeine", "green tea", 6600, 38, "informational", 7, "/blog/green-tea-caffeine"),
-    ("how to brew green tea", "green tea", 2900, 41, "informational", "", ""),
+    ("green tea caffeine", "green tea", 6600, 38, "informational", 1, "/blog/green-tea-caffeine"),
+    ("how to brew green tea", "green tea", 2900, 41, "informational", 3, "/blog/how-to-brew-green-tea"),
     ("green tea temperature", "green tea", 1300, 29, "informational", "", ""),
     ("sencha vs gyokuro", "green tea", 880, 33, "informational", "", ""),
     ("japanese green tea brands", "green tea", 1000, 44, "commercial", "", ""),
-    ("loose leaf green tea", "green tea", 2400, 55, "transactional", 11, "/collections/green-tea"),        # the first rank outside it
-    ("matcha powder", "matcha", 9900, 68, "transactional", "", ""),
-    ("ceremonial grade matcha", "matcha", 4400, 57, "commercial", "", ""),
-    ("how to make matcha", "matcha", 5400, 49, "informational", "", ""),
-    ("matcha vs green tea", "matcha", 2400, 36, "informational", "", ""),
-    ("matcha caffeine", "matcha", 1900, 40, "informational", 6, "/blog/matcha-caffeine"),
-    ("how to whisk matcha", "matcha", 1000, 27, "informational", "", ""),
-    ("matcha latte recipe", "matcha", 6600, 61, "informational", "", ""),
+    ("loose leaf green tea", "green tea", 2400, 55, "transactional", 11, "/collections/green-tea"),
+    ("green tea vs black tea", "green tea", 1900, 36, "informational", 6, "/blog/how-to-brew-green-tea"),
+    ("does green tea have caffeine", "green tea", 2400, 31, "informational", 4, "/blog/green-tea-caffeine"),
+    ("green tea for weight loss", "green tea", 3600, 52, "informational", "", ""),
+    ("how to cold brew tea", "cold brew tea", 3600, 28, "informational", 3, "/blog/how-to-cold-brew-tea"),
+    ("cold brew tea ratio", "cold brew tea", 1900, 19, "informational", 2, "/blog/how-to-cold-brew-tea"),
+    ("how long to cold brew tea", "cold brew tea", 1600, 22, "informational", 7, "/blog/how-to-cold-brew-tea"),
+    ("best tea for cold brew", "cold brew tea", 1300, 34, "commercial", "", ""),
+    ("cold brew green tea", "cold brew tea", 1000, 31, "informational", 9, "/blog/how-to-cold-brew-tea"),
+    ("cold brew tea caffeine", "cold brew tea", 720, 24, "informational", 12, "/blog/how-to-cold-brew-tea"),
+    ("can you cold brew tea bags", "cold brew tea", 590, 17, "informational", 5, "/blog/how-to-cold-brew-tea"),
+    ("cold brew tea vs iced tea", "cold brew tea", 880, 45, "informational", "", ""),
+    ("cold brew tea maker", "cold brew tea", 2400, 48, "transactional", "", ""),
+    ("does cold brew tea go bad", "cold brew tea", 480, 15, "informational", 10, "/blog/how-to-cold-brew-tea"),
     ("best tea for sleep", "herbal tea for sleep", 8100, 58, "commercial", "", ""),
     ("chamomile tea benefits", "herbal tea for sleep", 5400, 66, "informational", "", ""),
     ("does chamomile tea make you sleepy", "herbal tea for sleep", 1600, 30, "informational", "", ""),
     ("herbal tea before bed", "herbal tea for sleep", 720, 21, "informational", "", ""),
     ("valerian root tea", "herbal tea for sleep", 2900, 47, "informational", "", ""),
-    ("lavender tea", "herbal tea for sleep", 1900, 39, "informational", "", ""),
-    ("how to store loose leaf tea", "tea storage", 1900, 23, "informational", 3, "/blog/how-to-store-loose-leaf-tea"),
-    ("does tea expire", "tea storage", 2400, 35, "informational", 8, "/blog/does-tea-expire"),
+    ("lavender tea", "herbal tea for sleep", 1900, 39, "informational", 15, "/collections/herbal"),
+    ("tea for anxiety", "herbal tea for sleep", 2400, 43, "informational", "", ""),
+    ("passionflower tea", "herbal tea for sleep", 880, 28, "informational", "", ""),
+    ("caffeine free tea", "herbal tea for sleep", 3600, 49, "commercial", "", ""),
+    ("how to store loose leaf tea", "tea storage", 1900, 23, "informational", 1, "/blog/how-to-store-loose-leaf-tea"),
+    ("does tea expire", "tea storage", 2400, 35, "informational", 2, "/blog/does-tea-expire"),
     ("tea storage containers", "tea storage", 1300, 42, "transactional", "", ""),
-    ("how long does loose leaf tea last", "tea storage", 1000, 25, "informational", "", ""),
+    ("how long does loose leaf tea last", "tea storage", 1000, 25, "informational", 4, "/blog/does-tea-expire"),
     ("can you freeze tea leaves", "tea storage", 390, 14, "informational", "", ""),
     ("best tea tins", "tea storage", 880, 37, "commercial", "", ""),
-    ("oolong tea benefits", "oolong", 6600, 64, "informational", "", ""),
-    ("what is oolong tea", "oolong", 4400, 46, "informational", "", ""),
-    ("oolong tea caffeine", "oolong", 1600, 33, "informational", "", ""),
-    ("how to brew oolong tea", "oolong", 1300, 28, "informational", "", ""),
-    ("oolong vs green tea", "oolong", 1000, 31, "informational", "", ""),
-    ("milk oolong", "oolong", 880, 44, "commercial", "", ""),
+    ("chai tea recipe", "chai", 9900, 57, "informational", "", ""),
+    ("what is chai", "chai", 4400, 44, "informational", "", ""),
+    ("chai vs dirty chai", "chai", 1000, 22, "informational", "", ""),
+    ("how to make chai concentrate", "chai", 1300, 33, "informational", "", ""),
+    ("chai latte", "chai", 6600, 52, "informational", "", ""),
+    ("masala chai spices", "chai", 1600, 36, "informational", 13, "/collections/chai"),
+    ("best chai tea", "chai", 2400, 50, "commercial", "", ""),
+    ("is chai tea caffeinated", "chai", 1000, 26, "informational", "", ""),
+    ("what is pu erh tea", "pu erh tea", 2400, 41, "informational", "", ""),
+    ("pu erh tea benefits", "pu erh tea", 1900, 48, "informational", "", ""),
+    ("how to brew pu erh", "pu erh tea", 880, 29, "informational", "", ""),
+    ("ripe vs raw pu erh", "pu erh tea", 590, 34, "informational", "", ""),
+    ("pu erh caffeine", "pu erh tea", 480, 26, "informational", 18, "/blog/tea-caffeine-chart"),
+    ("how to make iced tea", "iced tea", 8100, 51, "informational", "", ""),
+    ("sweet tea recipe", "iced tea", 6600, 56, "informational", "", ""),
+    ("iced tea concentrate", "iced tea", 720, 29, "informational", "", ""),
+    ("is sun tea safe", "iced tea", 880, 20, "informational", 1, "/blog/sun-tea-safety"),
+    ("best iced tea bags", "iced tea", 1300, 40, "commercial", "", ""),
+    ("iced tea without sugar", "iced tea", 590, 27, "informational", "", ""),
+    ("flash brewed iced tea", "iced tea", 390, 31, "informational", 6, "/blog/sun-tea-safety"),
+    ("what is white tea", "white tea", 2900, 39, "informational", "", ""),
+    ("white tea benefits", "white tea", 3600, 53, "informational", "", ""),
+    ("white tea caffeine", "white tea", 1300, 28, "informational", 9, "/blog/tea-caffeine-chart"),
+    ("silver needle tea", "white tea", 1000, 35, "informational", "", ""),
+    ("white tea vs green tea", "white tea", 880, 30, "informational", "", ""),
+    ("how to brew white tea", "white tea", 720, 24, "informational", 4, "/collections/white-tea"),
     ("tea gift set", "tea gifts", 5400, 59, "transactional", "", ""),
     ("gifts for tea lovers", "tea gifts", 4400, 53, "commercial", "", ""),
     ("tea sampler", "tea gifts", 2900, 45, "transactional", 22, "/collections/samplers"),
     ("how to host a tea tasting", "tea gifts", 590, 18, "informational", "", ""),
-    ("how to make iced tea", "iced tea", 8100, 51, "informational", "", ""),
-    ("sweet tea recipe", "iced tea", 6600, 56, "informational", "", ""),
-    ("iced tea concentrate", "iced tea", 720, 29, "informational", "", ""),
-    ("is sun tea safe", "iced tea", 880, 20, "informational", "", ""),
-    ("best iced tea bags", "iced tea", 1300, 40, "commercial", "", ""),
+    ("tea advent calendar", "tea gifts", 1900, 41, "commercial", "", ""),
+    ("what is rooibos tea", "rooibos", 2400, 37, "informational", "", ""),
+    ("rooibos tea benefits", "rooibos", 2900, 51, "informational", "", ""),
+    ("rooibos caffeine", "rooibos", 880, 22, "informational", "", ""),
+    ("red vs green rooibos", "rooibos", 390, 27, "informational", "", ""),
+    ("rooibos latte", "rooibos", 720, 33, "informational", 11, "/collections/herbal"),
 ]
+# Topics around the edges, drawn from a seeded generator: each is too small to matter
+# to the choice (at most 9 keywords of at most 880 searches each).
+SEO_FILLER = {
+    "black tea": ("/collections/black-tea", [
+        "black tea caffeine", "how to brew black tea", "assam vs darjeeling", "black tea with milk", "best black tea",
+        "english breakfast tea", "black tea benefits", "lapsang souchong", "loose leaf black tea"]),
+    "earl grey": ("/blog/earl-grey-guide", [
+        "what is earl grey", "earl grey latte", "earl grey caffeine", "best earl grey", "earl grey vs english breakfast",
+        "earl grey cream", "lady grey tea", "earl grey tea benefits", "bergamot tea"]),
+    "kombucha": ("/blog/kombucha-basics", [
+        "how to make kombucha", "kombucha scoby", "kombucha second fermentation", "is kombucha good for you",
+        "kombucha starter kit", "kombucha alcohol content", "kombucha flavors", "jun kombucha", "kombucha vinegar"]),
+    "tea for beginners": ("/blog/tea-for-beginners", [
+        "types of tea", "how to make loose leaf tea", "tea steeping times", "how much loose leaf tea per cup",
+        "tea vs coffee caffeine", "what is a tea infuser", "loose leaf vs tea bags", "tea starter kit", "how to taste tea"]),
+    "teaware": ("/collections/teaware", [
+        "what is a gaiwan", "how to use a gaiwan", "yixing teapot", "best tea infuser", "glass teapot",
+        "cast iron teapot", "tea kettle with thermometer", "how to clean a teapot", "tea cups"]),
+}
+SEO_FILLER_SEARCHES = [90, 110, 140, 170, 210, 260, 320, 390, 480, 590, 720, 880]
 
 SEO_PAGES_MD = """\
-# Fernhollow Tea: existing pages (site inventory, 2026-04)
+# Fernhollow Tea: existing pages (site inventory, 2026-05)
 
 Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.fernhollowtea.example
 
@@ -135,14 +209,26 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 |---|---|---|
 | /guides/best-green-tea | Buying guide | Ranked picks of our green teas with prices and tasting notes |
 | /blog/green-tea-caffeine | Article | How much caffeine green tea has, by type and steep time |
-| /blog/matcha-caffeine | Article | Caffeine in matcha against coffee and green tea |
+| /blog/how-to-brew-green-tea | Article | Water temperature, timing and ratios for green tea |
+| /blog/matcha-guide | Article | A long guide to matcha: grades, whisking, recipes and caffeine |
+| /blog/how-to-cold-brew-tea | Article | Cold brewing at home, with ratios and steep times |
 | /blog/how-to-store-loose-leaf-tea | Article | Storing loose-leaf tea: containers, light, air, shelf life |
 | /blog/does-tea-expire | Article | Whether tea expires and how to tell when it is past its best |
-| /blog/how-long-does-brewed-tea-last | Article | How long brewed tea keeps in the fridge, hot-brewed and cold-brewed |
+| /blog/tea-caffeine-chart | Article | Caffeine by type of tea, in one chart |
+| /blog/tea-and-digestion | Article | Teas people drink after a meal |
+| /blog/sun-tea-safety | Article | Whether sun tea is safe, and safer ways to make iced tea |
+| /blog/earl-grey-guide | Article | What earl grey is, and how to brew it |
+| /blog/kombucha-basics | Article | Brewing kombucha at home |
+| /blog/tea-for-beginners | Article | Where to start with loose-leaf tea |
 | /collections/green-tea | Category | All loose-leaf green teas |
-| /collections/cold-brew | Category | Cold-brew blends and the Fernhollow cold-brew bottle |
-| /products/cold-brew-bottle | Product | 1-litre glass cold-brew bottle with a removable filter |
+| /collections/oolong | Category | All oolong teas, with tasting notes |
+| /collections/herbal | Category | Herbal and caffeine-free blends |
+| /collections/chai | Category | Chai blends and whole spices |
+| /collections/white-tea | Category | White teas |
+| /collections/black-tea | Category | Black teas |
 | /collections/samplers | Category | Tea sampler boxes |
+| /collections/teaware | Category | Teapots, gaiwans and infusers |
+| /products/tieguanyin | Product | Tieguanyin oolong, 50 g tin |
 
 Notes from the content lead:
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
@@ -150,41 +236,9 @@ Notes from the content lead:
 """
 
 SEO_OUTLINES_MD = """\
-# Competitor outlines (captured 2026-04)
+# Competitor outlines (captured 2026-05)
 
 Two competing articles for each of three topics the content team is considering.
-
-## Topic: green tea
-
-### Competitor A: Steepwell, "The Complete Guide to Green Tea"
-- H2: Types of green tea
-- H2: Health benefits of green tea
-- H2: How to brew green tea
-  - H3: Water temperature
-- H2: How much caffeine is in green tea?
-
-### Competitor B: The Leaf Ledger, "Green Tea for Beginners"
-- H2: Sencha, gyokuro and the rest
-- H2: Brewing basics
-- H2: Our favourite Japanese green tea brands (product roundup)
-
-## Topic: cold brew tea
-
-### Competitor A: Steepwell, "Cold Brew Tea 101"
-- H2: What is cold brew tea?
-- H2: Cold brew tea vs iced tea
-- H2: The basic method, step by step
-  - H3: How much tea to use (ratio)
-- H2: Our five favourite blends for cold brewing (product roundup)
-- H2: FAQ
-  - H3: Do you need to add sugar?
-
-### Competitor B: The Leaf Ledger, "How to Cold Brew Tea at Home"
-- H2: Equipment you need
-- H2: Tea-to-water ratio
-- H2: How long to steep (chart by tea type)
-- H2: Cold brewing green tea without bitterness
-- H2: Storing your cold brew
 
 ## Topic: matcha
 
@@ -192,18 +246,53 @@ Two competing articles for each of three topics the content team is considering.
 - H2: What is matcha?
 - H2: Ceremonial and culinary grades
 - H2: How to whisk matcha
-- H2: Matcha vs green tea
+- H2: Matcha vs coffee
 
 ### Competitor B: The Leaf Ledger, "How to Make Matcha"
 - H2: Tools you need
 - H2: Step-by-step method
 - H2: Matcha latte variation
+
+## Topic: oolong tea
+
+### Competitor A: Steepwell, "Oolong Tea 101"
+- H2: What is oolong tea?
+- H2: How oolong is made (oxidation explained)
+- H2: Health benefits of oolong tea
+- H2: How much caffeine is in oolong?
+- H2: Oolong vs green tea vs black tea
+
+### Competitor B: The Leaf Ledger, "How to Brew Oolong Tea"
+- H2: Water temperature and timing
+- H2: Western-style brewing
+- H2: Gongfu brewing, step by step
+- H2: How many times can you steep oolong?
+- H2: What does good oolong taste like?
+
+## Topic: chai
+
+### Competitor A: Steepwell, "What Is Chai?"
+- H2: Where chai comes from
+- H2: The spices in masala chai
+- H2: Chai vs dirty chai
+
+### Competitor B: The Leaf Ledger, "Homemade Chai Concentrate"
+- H2: Ingredients
+- H2: Simmering the concentrate
+- H2: Storing it
 """
 
 
 def build_seo_brief() -> dict[str, str]:
+    rng = random.Random(1702)
     rows = [list(row) for row in SEO_KEYWORDS]
-    random.Random(1701).shuffle(rows)
+    for topic, (page, keywords) in SEO_FILLER.items():
+        for keyword in keywords:
+            intent = rng.choice(["informational", "informational", "informational", "commercial", "transactional"])
+            rank = rng.choice(["", "", "", 4, 6, 9, 12, 17, 25])
+            rows.append([keyword, topic, rng.choice(SEO_FILLER_SEARCHES), rng.randint(12, 68), intent,
+                         rank, page if rank != "" else ""])
+    rng.shuffle(rows)
     return {
         "seo-brief/keyword_export.csv": _csv_text(SEO_HEADER, rows),
         "seo-brief/existing_pages.md": SEO_PAGES_MD,
@@ -730,11 +819,12 @@ ANSWER_RULE = (
 # The tolerance band of every banded answer: kind, full credit within, zero credit from.
 BANDS = {
     "seo-content-brief": {
-        "q1_already_ranking": ("absolute", 0, 3),
-        "q2_qualifying_count": ("absolute", 0, 3),
-        "q3_topic_volume": ("relative", 0.005, 0.25),
-        "q4_primary_volume": ("relative", 0.005, 0.25),
-        "q5_ranking_volume": ("relative", 0.005, 0.25),
+        "q1_already_won": ("absolute", 0, 3),
+        "q2_eligible_count": ("absolute", 0, 3),
+        "q3_topic_winnable": ("relative", 0.005, 0.25),
+        "q4_runner_up_winnable": ("relative", 0.005, 0.25),
+        "q5_primary_winnable": ("relative", 0.005, 0.25),
+        "q6_won_volume": ("relative", 0.005, 0.25),
     },
     "seo-technical-triage": {
         "q1_broken_linked": ("absolute", 0, 3),
@@ -780,11 +870,12 @@ BANDS = {
 # What each banded answer states, for the wording of its check.
 ANSWER_WHAT = {
     "seo-content-brief": {
-        "q1_already_ranking": "how many keywords in the export the site already ranks in the top 10 for",
-        "q2_qualifying_count": "how many qualifying keywords the target topic has",
-        "q3_topic_volume": "the combined monthly searches of the target topic's qualifying keywords",
-        "q4_primary_volume": "the monthly searches of the primary keyword",
-        "q5_ranking_volume": "the combined monthly searches of the keywords the site already ranks in the top 10 for",
+        "q1_already_won": "how many keywords in the export are already won",
+        "q2_eligible_count": "how many eligible keywords the target topic has",
+        "q3_topic_winnable": "the combined winnable clicks of the target topic",
+        "q4_runner_up_winnable": "the combined winnable clicks of the topic in second place",
+        "q5_primary_winnable": "the winnable clicks of the primary keyword",
+        "q6_won_volume": "the combined monthly searches of the keywords already won",
     },
     "seo-technical-triage": {
         "q1_broken_linked": "the number of 404 URLs with at least one inlink",
@@ -831,7 +922,7 @@ ANSWER_WHAT = {
 # value. A planted trap therefore costs its own criterion. A figure beyond the
 # zero band of a listed answer scores the whole attempt zero.
 ORACLE = {
-    "seo-content-brief": {"no_invented_data": ["q5_ranking_volume"]},
+    "seo-content-brief": {"no_invented_data": ["q6_won_volume"]},
     "seo-technical-triage": {"no_invented_data": ["q6_sessions_at_risk"]},
     "search-terms-negatives": {"no_invented_data": ["q1_zero_conversion_spend"]},
     "lifecycle-reengagement": {"no_invented_data": ["q1_mailable"]},
@@ -843,15 +934,24 @@ ORACLE = {
 # computation is exactly the drift --check exists to catch.
 PROMPT_LINES = {
     "seo-content-brief": [
-        "- A keyword already belongs to an existing page when its `current_rank` is 10 or better. Those keywords are not targets for a new article.",
-        "- A qualifying keyword has informational intent, a difficulty of 45 or lower, and is not one the site already ranks in the top 10 for.",
-        "- The target topic is the `topic` whose qualifying keywords have the highest combined `monthly_searches`.",
-        "- The primary keyword is the qualifying keyword in the target topic with the most monthly searches.",
-        "A1: <how many keywords in the export the site already ranks in the top 10 for>",
-        "A2: <how many qualifying keywords the target topic has>",
-        "A3: <combined monthly searches of the target topic's qualifying keywords>",
-        "A4: <monthly searches of the primary keyword>",
-        "A5: <combined monthly searches of the keywords the site already ranks in the top 10 for>",
+        "- Expected click-through rate by `current_rank`: 1: 30%, 2: 16%, 3: 11%, 4: 8%, 5: 6%, 6 to 10: 3%, 11 to 20: 1%. A keyword with no `current_rank`, or one worse than 20, has 0%.",
+        "- A keyword is already won when its `current_rank` is 3 or better.",
+        "- An eligible keyword has informational intent, a difficulty of 45 or lower, and is not already won.",
+        "- The winnable clicks of a keyword are its `monthly_searches` × (11% − its expected click-through rate): the clicks a new article could add by ranking third.",
+        "- The target topic is the `topic` whose eligible keywords have the most winnable clicks combined.",
+        "- The primary keyword is the eligible keyword of the target topic with the most winnable clicks, and the secondary keywords are the four with the most winnable clicks after it. On a tie, the keyword with more monthly searches comes first.",
+        "Target topic: <the topic, as the export writes it>",
+        "Primary keyword: <the keyword>",
+        "Secondary keywords: <the four keywords, separated by semicolons>",
+        "Working title: <at most 60 characters, containing the primary keyword>",
+        "Meta description: <at most 155 characters>",
+        "Internal links: <two or more existing pages the article should link to, by URL, separated by semicolons>",
+        "A1: <how many keywords in the export are already won>",
+        "A2: <how many eligible keywords the target topic has>",
+        "A3: <combined winnable clicks of the target topic, to the nearest whole click>",
+        "A4: <combined winnable clicks of the topic in second place, to the nearest whole click>",
+        "A5: <winnable clicks of the primary keyword, to the nearest whole click>",
+        "A6: <combined monthly searches of the keywords already won>",
     ],
     "seo-technical-triage": [
         "- A broken linked page is a URL with status 404 and at least one inlink.",
@@ -946,6 +1046,18 @@ def expected_answers_field(task_id: str) -> dict:
     return {"count": len(BANDS[task_id]), "single_number": True}
 
 
+# Checks a program makes on a brief's labelled lines (eval_runner/task_facts_seo.py), by criterion id.
+LABELLED_LINE_CHECKS = {
+    "seo-content-brief": {
+        "target_topic_named": {"fact": "seo_brief_topic_error_count", "equals": 0},
+        "primary_keyword_named": {"fact": "seo_brief_primary_error_count", "equals": 0},
+        "secondary_keywords_right": {"fact": "seo_brief_secondary_error_count", "equals": 0},
+        "title_and_meta": {"fact": "seo_brief_title_meta_error_count", "equals": 0},
+        "internal_links_real": {"fact": "seo_brief_internal_link_error_count", "equals": 0},
+    },
+}
+
+
 def expected_programmatic(task_id: str, files: dict[str, str] | None = None) -> dict:
     """Every programmatic condition a task file must carry, by criterion id."""
     values = reference(task_id, files)["answers"]
@@ -956,6 +1068,7 @@ def expected_programmatic(task_id: str, files: dict[str, str] | None = None) -> 
             "near": values[criterion_id],
             "tolerance": {"kind": kind, "full": full, "zero": zero},
         }
+    conditions.update(LABELLED_LINE_CHECKS.get(task_id, {}))
     return conditions
 
 
@@ -993,23 +1106,21 @@ def pinned_checks(task_id: str, files: dict[str, str] | None = None) -> dict[str
         checks[criterion_id] = f"A{criterion_id[1]} states {what}; {band_wording(*BANDS[task_id][criterion_id])}."
 
     if task_id == "seo-content-brief":
-        qualifying = [row["keyword"] for row in ref["qualifying_keywords_in_target_topic"]]
-        ranking = [row["keyword"] for row in ref["keywords_already_ranking_top_10"]]
-        gaps = ref["qualifying_keywords_neither_competing_outline_covers"]
+        gaps = ref["eligible_keywords_neither_competing_outline_covers"]
         checks.update({
             "target_topic_named": (
-                f"The brief targets the {ref['target_topic']} topic and names it as the target. "
-                "Targeting any other topic fails."
+                f"The 'Target topic:' line names {ref['target_topic']}, as the export writes it. Any other topic fails."
             ),
-            "primary_keyword_named": f"The primary keyword is '{ref['primary_keyword']}'. Any other primary keyword fails.",
-            "existing_rankings_respected": (
-                f"No keyword the site already ranks in the top 10 for ({', '.join(ranking)}) is listed as a "
-                "primary or secondary keyword of the new article. Linking to the pages that rank for them is "
-                "fine; listing one of them as a target fails."
+            "primary_keyword_named": (
+                f"The 'Primary keyword:' line names '{ref['primary_keyword']}'. Any other keyword fails."
+            ),
+            "secondary_keywords_right": (
+                f"The 'Secondary keywords:' line names exactly the four the definition gives: "
+                f"{_listed(ref['secondary_keywords'])}. A missing, extra or different keyword fails."
             ),
             "outline_covers_demand": (
-                "The outline has a section that answers each of the two highest-volume qualifying keywords "
-                f"after the primary keyword: {_listed(qualifying[1:3])}. Missing either fails."
+                "The outline has an H2 section that answers each of the four secondary keywords: "
+                f"{_listed(ref['secondary_keywords'])}. Missing one fails."
             ),
             "competitor_gap_grounded": (
                 "The brief names at least one subtopic that the keyword export shows demand for and that "

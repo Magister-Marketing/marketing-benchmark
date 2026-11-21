@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Tasks: `seo-content-brief` hardened (prompt 4, rubric 5; same id). Every
+  setup passed all 15 checks of rubric 4. The choice of topic is now a
+  computation across a 149-keyword export: winnable clicks are a keyword's
+  searches times the click-through rate of third place less the rate at its
+  current rank (a table in the prompt), keywords already ranking third or
+  better and keywords of the wrong intent or above the difficulty limit are
+  removed, and the topic with the most winnable clicks wins. The topic with
+  the most searches, the most eligible searches, and the most clicks when the
+  clicks a ranking keyword already gets are left in is matcha every time; the
+  target is oolong tea, whose biggest keyword ranks fifth and so is not the
+  primary. Six labeled figures (A1-A6) and six labeled lines (topic, primary
+  and four secondary keywords, working title, meta description, internal
+  links) are checked by program: 12 of the 16 checks. Skills are now
+  `content-strategy` (vendored unchanged from `2c38021`) and
+  `site-architecture`. `task_references.VERSION` is 4, since the judge's
+  reference for this task changed; its data tests moved from
+  `tests/test_more_tasks.py` to `tests/test_tasks_seo.py`.
 - Tasks: `blog-post` hardened (prompt 3, rubric 4; same id). Every direct
   setup passed all nine checks of rubric 3. The facts now come from a dated
   `sources.md`, where the diagnostic price of the older service menu ($89,

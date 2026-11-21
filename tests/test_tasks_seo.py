@@ -619,3 +619,191 @@ def test_the_figures_a_post_states_are_read_as_the_prompt_defines_them():
     assert read("Set it to 68°F, call 911, and listen for these 6 noises.\n1. Whistling") == set()
     # A singular "call" after a number is not a number of calls.
     assert read("Raise it 2 degrees and call a technician.") == set()
+
+
+# ------------------------------------------------------------- seo-content-brief
+
+BRIEF_RATES = {1: 30, 2: 16, 3: 11, 4: 8, 5: 6, **{rank: 3 for rank in range(6, 11)}, **{rank: 1 for rank in range(11, 21)}}
+
+
+def _brief_oracle():
+    """Winnable clicks by keyword and topic, recomputed from the export in whole hundredths of a click."""
+    rows = _table("seo-brief/keyword_export.csv")
+    won = [row for row in rows if row["current_rank"] and int(row["current_rank"]) <= 3]
+
+    def eligible(row):
+        return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and row not in won
+
+    def winnable(row):  # in hundredths: searches x (11 - rate) percent
+        return int(row["monthly_searches"]) * (11 - BRIEF_RATES.get(int(row["current_rank"] or 0), 0))
+
+    by_topic = collections.Counter()
+    for row in rows:
+        if eligible(row):
+            by_topic[row["topic"]] += winnable(row)
+    (target, best), (runner_up, second) = by_topic.most_common(2)
+    keywords = sorted((row for row in rows if row["topic"] == target and eligible(row)),
+                      key=lambda row: (winnable(row), int(row["monthly_searches"])), reverse=True)
+    return rows, won, eligible, winnable, by_topic, target, runner_up, keywords
+
+
+def _whole(hundredths: int) -> int:
+    return (hundredths + 50) // 100
+
+
+BRIEF = """\
+Target topic: oolong tea
+Primary keyword: what is oolong tea
+Secondary keywords: oolong tea benefits; how to brew oolong tea; da hong pao; oolong tea caffeine
+Working title: What Is Oolong Tea? A Plain Guide to Oolong
+Meta description: What oolong tea is, how it is made, how to brew it, what da hong pao is, and how much caffeine a cup of oolong has.
+Internal links: /collections/oolong; /blog/tea-caffeine-chart; /products/tieguanyin
+
+## Why oolong tea wins on the numbers
+
+Its eligible keywords have 2,254 winnable clicks combined, against 1,568 for matcha, the topic in second place.
+Matcha has more searches, but the site already ranks fourth to tenth for most of them.
+
+## Search intent and format
+
+The intent is informational: an explanatory article, not a buying guide.
+
+## Outline
+
+- H2: What is oolong tea?
+- H2: The benefits of oolong tea
+- H2: How to brew oolong tea
+- H2: Da hong pao and other famous oolongs
+- H2: How much caffeine is in oolong tea?
+- H2: Milk oolong
+
+## The gap
+
+Neither competing outline covers da hong pao or milk oolong.
+
+A1: 10
+A2: 13
+A3: 2,254
+A4: 1,568
+A5: 484
+A6: 40,280
+"""
+
+
+def test_content_brief_oracle_matches_the_task_file_and_an_independent_recomputation():
+    task = _task("seo-content-brief")
+    rows, won, eligible, winnable, by_topic, target, runner_up, keywords = _brief_oracle()
+    answers = [len(won), len(keywords), _whole(by_topic[target]), _whole(by_topic[runner_up]), _whole(winnable(keywords[0])),
+               sum(int(row["monthly_searches"]) for row in won)]
+    by_id = _by_id(task)
+    targets = [by_id[name]["programmatic"]["near"] for name in (
+        "q1_already_won", "q2_eligible_count", "q3_topic_winnable", "q4_runner_up_winnable", "q5_primary_winnable", "q6_won_volume")]
+    assert targets == answers == [10, 13, 2254, 1568, 484, 40280]
+    ref = task_facts_seo.brief_oracle()
+    assert (ref["target_topic"], ref["runner_up_topic"], ref["primary_keyword"]) == (target, runner_up, keywords[0]["keyword"]) == (
+        "oolong tea", "matcha", "what is oolong tea")
+    assert ref["secondary_keywords"] == [row["keyword"] for row in keywords[1:5]] == [
+        "oolong tea benefits", "how to brew oolong tea", "da hong pao", "oolong tea caffeine"]
+    assert {topic: round(value * 100) for topic, value in ref["winnable_clicks_by_topic"].items()} == dict(by_topic)
+    assert [item["keyword"] for item in ref["keywords_already_won"]] == [
+        row["keyword"] for row in sorted(won, key=lambda row: (int(row["current_rank"]), row["keyword"]))]
+    # The judge's reference is the task file's oracle (one function computes both), and the wording quotes it.
+    assert ref["answers"] == bench.judge_source_reference(task, bench.assemble_prompt(task, False))["answers"]
+    assert "'oolong tea benefits', 'how to brew oolong tea', 'da hong pao' and 'oolong tea caffeine'" in by_id["secondary_keywords_right"]["check"]
+    assert "names oolong tea, as the export writes it" in by_id["target_topic_named"]["check"]
+    # Uncovered by both competing outlines: none of the keyword's own words is a word of them.
+    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text().split("## Topic: oolong tea")[1].split("## Topic:")[0].lower()
+    own = {"da hong pao": ["da", "hong", "pao"], "milk oolong": ["milk"], "oolong tea for digestion": ["digestion"]}
+    assert all(not any(re.search(rf"\b{word}", outlines) for word in words) for words in own.values())
+    assert ref["eligible_keywords_neither_competing_outline_covers"] == ["da hong pao", "milk oolong", "oolong tea for digestion"]
+    assert "('da hong pao', 'milk oolong' or 'oolong tea for digestion')" in by_id["competitor_gap_grounded"]["check"]
+    code = sum("programmatic" in c for c in by_id.values())
+    assert (code, len(by_id)) == (12, 16)
+    assert task["skills"] == ["evals/fixtures/public/skills/content-strategy/SKILL.md",
+                              "evals/fixtures/public/skills/site-architecture/SKILL.md"]
+
+
+def test_content_brief_traps_are_in_the_data():
+    rows, won, eligible, winnable, by_topic, target, runner_up, keywords = _brief_oracle()
+    raw, searches, flat = collections.Counter(), collections.Counter(), collections.Counter()
+    for row in rows:
+        raw[row["topic"]] += int(row["monthly_searches"])
+        if eligible(row):
+            searches[row["topic"]] += int(row["monthly_searches"])
+            flat[row["topic"]] += int(row["monthly_searches"]) * 11
+    # Each careless reading picks another topic: the most searches, the most eligible searches, or the
+    # winnable clicks with the clicks a ranking keyword already gets left in.
+    for reading in (raw, searches, flat):
+        assert reading.most_common(1)[0][0] == "matcha" != target
+    assert flat["matcha"] > 1.25 * by_topic[target]                    # outside A3's band
+    assert by_topic[runner_up] < 0.75 * by_topic[target]               # no near-tie for the target
+    # The target topic's biggest keyword ranks fifth: it is a secondary keyword, not the primary.
+    biggest = max(keywords, key=lambda row: int(row["monthly_searches"]))
+    assert (biggest["keyword"], biggest["current_rank"]) == ("oolong tea benefits", "5") and biggest is not keywords[0]
+    assert winnable(biggest) < 0.75 * winnable(keywords[0])
+    # A row on each threshold the definitions use, and one just past it.
+    by_keyword = {row["keyword"]: row for row in rows}
+    assert by_keyword["tieguanyin"]["current_rank"] == "3" and by_keyword["tieguanyin"] in won
+    assert by_keyword["how to make matcha"]["current_rank"] == "4" and eligible(by_keyword["how to make matcha"])
+    assert by_keyword["oolong tea for digestion"]["current_rank"] == "20" and winnable(by_keyword["oolong tea for digestion"]) == 480 * 10
+    assert by_keyword["oolong vs black tea"]["current_rank"] == "21" and winnable(by_keyword["oolong vs black tea"]) == 590 * 11
+    assert by_keyword["da hong pao"]["difficulty"] == "45" and by_keyword["da hong pao"] in keywords
+    assert by_keyword["oolong tea side effects"]["difficulty"] == "46" and not eligible(by_keyword["oolong tea side effects"])
+    assert len(rows) == 149
+
+
+def test_content_brief_reference_passes_every_check_and_careless_readings_score_zero():
+    results = _results("seo-content-brief", BRIEF)
+    assert _all_pass(results), {name: item["evidence"] for name, item in results.items() if not item["pass"]}
+    assert not any(item["pass"] for item in _results("seo-content-brief", "").values())
+    assert bench.free_credit_scores(_task("seo-content-brief")) == {}
+    # Labels in bold and a note after the name read the same.
+    styled = BRIEF.replace("Target topic: oolong tea", "**Target topic:** Oolong tea (2,254 winnable clicks)").replace(
+        "Primary keyword: what is oolong tea", "**Primary keyword**: What is oolong tea - 484 winnable clicks")
+    assert _all_pass(_results("seo-content-brief", styled))
+    rows, won, eligible, winnable, by_topic, target, runner_up, keywords = _brief_oracle()
+    block = BRIEF.split("A1:")[0]
+    task = _task("seo-content-brief")
+
+    def critical_tripped(text):
+        programmatic = list(bench.programmatic_results(task, bench.measured_facts(task, text)).values())
+        judged = [{"id": "no_invented_data", "pass": True, "score": 1.0, "evidence": "the judge saw nothing wrong"}]
+        after = bench.apply_oracle_overrides(programmatic + judged, bench.oracle_rules(task))
+        return bool(next(item for item in after if item["id"] == "no_invented_data").get("oracle_failed"))
+
+    # Matcha, picked on eligible searches: the topic, its keywords and its sums are all wrong.
+    matcha = (block.replace("Target topic: oolong tea", "Target topic: matcha")
+              .replace("Primary keyword: what is oolong tea", "Primary keyword: matcha benefits")
+              + _answer_block([10, 9, "27,290", "24,660", "8,100", "40,280"]))
+    zeroed = _zeroed(_results("seo-content-brief", matcha))
+    assert {"target_topic_named", "primary_keyword_named", "q3_topic_winnable", "q4_runner_up_winnable",
+            "q5_primary_winnable"} <= zeroed
+    assert not critical_tripped(matcha)  # the trap is not invention
+    # Matcha on winnable clicks with the clicks already got left in (11% for every eligible keyword).
+    flat = block.replace("oolong tea", "matcha", 1) + _answer_block([10, 9, "3,002", "2,713", 891, "40,280"])
+    assert {"target_topic_named", "q3_topic_winnable", "q4_runner_up_winnable"} <= _zeroed(_results("seo-content-brief", flat))
+    # The right topic, with the primary keyword picked by searches: the keyword with the most searches.
+    by_searches = (BRIEF.replace("Primary keyword: what is oolong tea", "Primary keyword: oolong tea benefits")
+                   .replace("oolong tea benefits; how to brew", "what is oolong tea; how to brew").replace("A5: 484", "A5: 330"))
+    assert {"primary_keyword_named", "secondary_keywords_right", "q5_primary_winnable"} <= _zeroed(_results("seo-content-brief", by_searches))
+    # "Better than 3" read strictly: the three keywords at rank 3 are left out of the already won.
+    strict = BRIEF.replace("A1: 10", "A1: 7")
+    assert "q1_already_won" in _zeroed(_results("seo-content-brief", strict))
+    # A URL that is not one of the site's pages, and a figure no reading of the export gives.
+    assert "internal_links_real" in _failed(_results("seo-content-brief", BRIEF.replace("/products/tieguanyin", "/blog/what-is-oolong-tea")))
+    assert critical_tripped(BRIEF.replace("A6: 40,280", "A6: 120,000"))
+
+
+def test_nothing_supplied_names_the_topic_to_pick():
+    task = _task("seo-content-brief")
+    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
+    pages = (FIXTURES / "seo-brief/existing_pages.md").read_text()
+    assert re.findall(r"(?m)^## Topic: (.+)$", outlines) == ["matcha", "oolong tea", "chai"]
+    assert "oolong" not in outlines.split("## Topic:")[0].lower()
+    notes = pages.split("Notes from the content lead:")[1].lower()
+    assert "oolong" not in notes and "no article" not in notes
+    assert "oolong" not in task["prompt"].lower()
+    assert "outlines of competing articles for three topics the team is considering" in task["prompt"]
+    # Every page a keyword ranks with is in the page list, so a brief can link to it.
+    urls = set(re.findall(r"(?m)^\| (/\S+) \|", pages))
+    assert {row["ranking_url"] for row in _table("seo-brief/keyword_export.csv") if row["ranking_url"]} <= urls

@@ -1,54 +1,150 @@
 keyword,topic,monthly_searches,difficulty,intent,current_rank,ranking_url
-loose leaf green tea,green tea,2400,55,transactional,11,/collections/green-tea
-chamomile tea benefits,herbal tea for sleep,5400,66,informational,,
-cold brew tea ratio,cold brew tea,1900,19,informational,,
-oolong tea caffeine,oolong,1600,33,informational,,
-matcha caffeine,matcha,1900,40,informational,6,/blog/matcha-caffeine
-iced tea concentrate,iced tea,720,29,informational,,
-does chamomile tea make you sleepy,herbal tea for sleep,1600,30,informational,,
-how to cold brew tea,cold brew tea,3600,28,informational,,
-how to brew green tea,green tea,2900,41,informational,,
-what is oolong tea,oolong,4400,46,informational,,
-oolong vs green tea,oolong,1000,31,informational,,
-how long to cold brew tea,cold brew tea,1600,22,informational,,
-how long does loose leaf tea last,tea storage,1000,25,informational,,
-cold brew green tea,cold brew tea,1000,31,informational,,
-best iced tea bags,iced tea,1300,40,commercial,,
-matcha latte recipe,matcha,6600,61,informational,,
-how to host a tea tasting,tea gifts,590,18,informational,,
+assam vs darjeeling,black tea,260,19,informational,6,/collections/black-tea
+how to make kombucha,kombucha,110,59,commercial,4,/blog/kombucha-basics
+what is pu erh tea,pu erh tea,2400,41,informational,,
+how to make chai concentrate,chai,1300,33,informational,,
+glass teapot,teaware,260,64,informational,6,/collections/teaware
+tieguanyin,oolong tea,2400,39,informational,3,/products/tieguanyin
 green tea benefits,green tea,12100,71,informational,,
-cold brew tea maker,cold brew tea,2400,48,transactional,,
+chamomile tea benefits,herbal tea for sleep,5400,66,informational,,
+how to make loose leaf tea,tea for beginners,110,57,informational,9,/blog/tea-for-beginners
+oolong vs green tea,oolong tea,1600,31,informational,,
+how much loose leaf tea per cup,tea for beginners,880,65,informational,12,/blog/tea-for-beginners
+tea cups,teaware,320,19,commercial,6,/collections/teaware
+lavender tea,herbal tea for sleep,1900,39,informational,15,/collections/herbal
+kombucha vinegar,kombucha,880,18,informational,4,/blog/kombucha-basics
+best green tea,green tea,14800,62,commercial,2,/guides/best-green-tea
+jun kombucha,kombucha,880,35,informational,12,/blog/kombucha-basics
+earl grey tea benefits,earl grey,90,45,informational,4,/blog/earl-grey-guide
+what is oolong tea,oolong tea,4400,38,informational,,
+black tea with milk,black tea,210,21,informational,12,/collections/black-tea
+what is chai,chai,4400,44,informational,,
+lapsang souchong,black tea,480,38,commercial,4,/collections/black-tea
+is chai tea caffeinated,chai,1000,26,informational,,
+black tea caffeine,black tea,210,23,commercial,4,/collections/black-tea
+does chamomile tea make you sleepy,herbal tea for sleep,1600,30,informational,,
+rooibos tea benefits,rooibos,2900,51,informational,,
+yixing teapot,teaware,260,19,transactional,,
+oolong tea for digestion,oolong tea,480,29,informational,20,/blog/tea-and-digestion
+matcha caffeine,matcha,2900,30,informational,2,/blog/tea-caffeine-chart
+earl grey cream,earl grey,210,43,transactional,6,/blog/earl-grey-guide
 sencha vs gyokuro,green tea,880,33,informational,,
-cold brew tea caffeine,cold brew tea,720,24,informational,,
-milk oolong,oolong,880,44,commercial,,
-ceremonial grade matcha,matcha,4400,57,commercial,,
-can you freeze tea leaves,tea storage,390,14,informational,,
-matcha vs green tea,matcha,2400,36,informational,,
+best matcha,matcha,6600,55,commercial,,
+pu erh caffeine,pu erh tea,480,26,informational,18,/blog/tea-caffeine-chart
+chai latte,chai,6600,52,informational,,
+cold brew green tea,cold brew tea,1000,31,informational,9,/blog/how-to-cold-brew-tea
 sweet tea recipe,iced tea,6600,56,informational,,
+how to taste tea,tea for beginners,480,61,transactional,6,/blog/tea-for-beginners
+how to make matcha,matcha,5400,40,informational,4,/blog/matcha-guide
 best tea for sleep,herbal tea for sleep,8100,58,commercial,,
-how to make matcha,matcha,5400,49,informational,,
-matcha powder,matcha,9900,68,transactional,,
-cold brew tea recipe,cold brew tea,1300,52,informational,,
-cold brew tea vs iced tea,cold brew tea,880,45,informational,,
-does tea expire,tea storage,2400,35,informational,8,/blog/does-tea-expire
-tea storage containers,tea storage,1300,42,transactional,,
-how to make iced tea,iced tea,8100,51,informational,,
-green tea caffeine,green tea,6600,38,informational,7,/blog/green-tea-caffeine
-how to brew oolong tea,oolong,1300,28,informational,,
-tea gift set,tea gifts,5400,59,transactional,,
-best green tea,green tea,14800,62,commercial,4,/guides/best-green-tea
-is sun tea safe,iced tea,880,20,informational,,
-oolong tea benefits,oolong,6600,64,informational,,
-japanese green tea brands,green tea,1000,44,commercial,,
-gifts for tea lovers,tea gifts,4400,53,commercial,,
-how to store loose leaf tea,tea storage,1900,23,informational,3,/blog/how-to-store-loose-leaf-tea
-tea sampler,tea gifts,2900,45,transactional,22,/collections/samplers
-best tea for cold brew,cold brew tea,1300,34,commercial,,
-does cold brew tea go bad,cold brew tea,480,15,informational,10,/blog/how-long-does-brewed-tea-last
-green tea temperature,green tea,1300,29,informational,,
-can you cold brew tea bags,cold brew tea,590,17,informational,,
+ripe vs raw pu erh,pu erh tea,590,34,informational,,
+best tea infuser,teaware,590,28,transactional,,
+bergamot tea,earl grey,170,43,informational,25,/blog/earl-grey-guide
 best tea tins,tea storage,880,37,commercial,,
-valerian root tea,herbal tea for sleep,2900,47,informational,,
+tea for anxiety,herbal tea for sleep,2400,43,informational,,
+matcha for weight loss,matcha,1900,41,informational,8,/blog/matcha-guide
+is kombucha good for you,kombucha,170,68,commercial,25,/blog/kombucha-basics
+ceremonial vs culinary matcha,matcha,1900,33,informational,9,/blog/matcha-guide
+how to make iced tea,iced tea,8100,51,informational,,
+oolong tea taste,oolong tea,1300,25,informational,8,/collections/oolong
+earl grey vs english breakfast,earl grey,880,48,commercial,,
+is matcha good for you,matcha,2400,38,informational,4,/blog/matcha-guide
+kombucha scoby,kombucha,880,42,informational,,
+earl grey caffeine,earl grey,590,39,informational,6,/blog/earl-grey-guide
+masala chai spices,chai,1600,36,informational,13,/collections/chai
+how to store loose leaf tea,tea storage,1900,23,informational,1,/blog/how-to-store-loose-leaf-tea
+loose leaf vs tea bags,tea for beginners,260,17,informational,,
 herbal tea before bed,herbal tea for sleep,720,21,informational,,
-how to whisk matcha,matcha,1000,27,informational,,
-lavender tea,herbal tea for sleep,1900,39,informational,,
+how to brew oolong tea,oolong tea,2900,28,informational,,
+can you freeze tea leaves,tea storage,390,14,informational,,
+black tea benefits,black tea,880,54,informational,,
+oolong tea temperature,oolong tea,720,19,informational,,
+buy oolong tea,oolong tea,1600,50,transactional,,
+earl grey latte,earl grey,590,24,informational,9,/blog/earl-grey-guide
+best earl grey,earl grey,320,44,transactional,6,/blog/earl-grey-guide
+red vs green rooibos,rooibos,390,27,informational,,
+how to brew green tea,green tea,2900,41,informational,3,/blog/how-to-brew-green-tea
+chai vs dirty chai,chai,1000,22,informational,,
+how to brew white tea,white tea,720,24,informational,4,/collections/white-tea
+tea starter kit,tea for beginners,480,68,informational,9,/blog/tea-for-beginners
+green tea for weight loss,green tea,3600,52,informational,,
+kombucha alcohol content,kombucha,480,57,transactional,6,/blog/kombucha-basics
+what is earl grey,earl grey,90,52,transactional,,
+tea sampler,tea gifts,2900,45,transactional,22,/collections/samplers
+how to brew pu erh,pu erh tea,880,29,informational,,
+matcha latte recipe,matcha,6600,61,informational,,
+green tea caffeine,green tea,6600,38,informational,1,/blog/green-tea-caffeine
+rooibos latte,rooibos,720,33,informational,11,/collections/herbal
+what is white tea,white tea,2900,39,informational,,
+how much matcha per cup,matcha,1000,21,informational,10,/blog/matcha-guide
+does green tea have caffeine,green tea,2400,31,informational,4,/blog/green-tea-caffeine
+tea gift set,tea gifts,5400,59,transactional,,
+lady grey tea,earl grey,320,64,commercial,17,/blog/earl-grey-guide
+cold brew tea caffeine,cold brew tea,720,24,informational,12,/blog/how-to-cold-brew-tea
+tea kettle with thermometer,teaware,170,36,commercial,12,/collections/teaware
+cold brew tea vs iced tea,cold brew tea,880,45,informational,,
+japanese green tea brands,green tea,1000,44,commercial,,
+does tea expire,tea storage,2400,35,informational,2,/blog/does-tea-expire
+kombucha flavors,kombucha,590,12,commercial,6,/blog/kombucha-basics
+how to host a tea tasting,tea gifts,590,18,informational,,
+white tea vs green tea,white tea,880,30,informational,,
+is oolong tea good for weight loss,oolong tea,2400,47,informational,,
+best iced tea bags,iced tea,1300,40,commercial,,
+valerian root tea,herbal tea for sleep,2900,47,informational,,
+gongfu brewing oolong,oolong tea,390,26,informational,,
+tea storage containers,tea storage,1300,42,transactional,,
+gifts for tea lovers,tea gifts,4400,53,commercial,,
+tea steeping times,tea for beginners,880,41,commercial,6,/blog/tea-for-beginners
+da hong pao,oolong tea,1900,45,informational,,
+can you cold brew tea bags,cold brew tea,590,17,informational,5,/blog/how-to-cold-brew-tea
+best black tea,black tea,880,28,informational,25,/collections/black-tea
+what is a gaiwan,teaware,720,17,informational,6,/collections/teaware
+cold brew tea maker,cold brew tea,2400,48,transactional,,
+how to cold brew tea,cold brew tea,3600,28,informational,3,/blog/how-to-cold-brew-tea
+oolong tea benefits,oolong tea,6600,42,informational,5,/collections/oolong
+oolong tea caffeine,oolong tea,1900,33,informational,14,/blog/tea-caffeine-chart
+iced tea concentrate,iced tea,720,29,informational,,
+matcha storage,matcha,590,18,informational,,
+english breakfast tea,black tea,880,20,informational,,
+best oolong tea,oolong tea,2900,40,commercial,,
+cast iron teapot,teaware,170,47,informational,4,/collections/teaware
+ceremonial grade matcha,matcha,4400,57,commercial,,
+how to whisk matcha,matcha,1600,27,informational,7,/blog/matcha-guide
+milk oolong,oolong tea,1000,36,informational,,
+loose leaf green tea,green tea,2400,55,transactional,11,/collections/green-tea
+is sun tea safe,iced tea,880,20,informational,1,/blog/sun-tea-safety
+oolong vs black tea,oolong tea,590,24,informational,21,/blog/tea-caffeine-chart
+matcha vs coffee,matcha,4400,35,informational,6,/blog/matcha-guide
+green tea vs black tea,green tea,1900,36,informational,6,/blog/how-to-brew-green-tea
+loose leaf black tea,black tea,170,37,informational,9,/collections/black-tea
+pu erh tea benefits,pu erh tea,1900,48,informational,,
+passionflower tea,herbal tea for sleep,880,28,informational,,
+what is a tea infuser,tea for beginners,140,25,informational,9,/blog/tea-for-beginners
+rooibos caffeine,rooibos,880,22,informational,,
+how to use a gaiwan,teaware,260,55,informational,6,/collections/teaware
+green tea temperature,green tea,1300,29,informational,,
+tea advent calendar,tea gifts,1900,41,commercial,,
+matcha benefits,matcha,8100,44,informational,5,/blog/matcha-guide
+caffeine free tea,herbal tea for sleep,3600,49,commercial,,
+best chai tea,chai,2400,50,commercial,,
+flash brewed iced tea,iced tea,390,31,informational,6,/blog/sun-tea-safety
+chai tea recipe,chai,9900,57,informational,,
+how many times can you steep oolong,oolong tea,880,22,informational,,
+how to clean a teapot,teaware,210,56,commercial,,
+cold brew tea ratio,cold brew tea,1900,19,informational,2,/blog/how-to-cold-brew-tea
+tea vs coffee caffeine,tea for beginners,210,46,transactional,17,/blog/tea-for-beginners
+white tea benefits,white tea,3600,53,informational,,
+silver needle tea,white tea,1000,35,informational,,
+iced tea without sugar,iced tea,590,27,informational,,
+white tea caffeine,white tea,1300,28,informational,9,/blog/tea-caffeine-chart
+kombucha starter kit,kombucha,590,28,informational,6,/blog/kombucha-basics
+how to brew black tea,black tea,320,34,informational,,
+how long does loose leaf tea last,tea storage,1000,25,informational,4,/blog/does-tea-expire
+oolong tea side effects,oolong tea,1000,46,informational,,
+how long to cold brew tea,cold brew tea,1600,22,informational,7,/blog/how-to-cold-brew-tea
+does cold brew tea go bad,cold brew tea,480,15,informational,10,/blog/how-to-cold-brew-tea
+matcha powder,matcha,12100,66,transactional,,
+kombucha second fermentation,kombucha,590,60,informational,12,/blog/kombucha-basics
+types of tea,tea for beginners,480,33,informational,12,/blog/tea-for-beginners
+what is rooibos tea,rooibos,2400,37,informational,,
+best tea for cold brew,cold brew tea,1300,34,commercial,,

@@ -460,12 +460,60 @@ def blog_facts(response_text: str) -> dict:
     }
 
 
+# ------------------------------------------------------------- seo-content-brief
+
+BRIEF_TASK = "seo-content-brief"
+BRIEF_TITLE_MAX, BRIEF_DESCRIPTION_MAX = 60, 155
+BRIEF_MIN_LINKS = 2
+
+
+@lru_cache(maxsize=1)
+def brief_oracle() -> dict:
+    """The judge's reference (task_references), computed from today's fixtures: one oracle for both."""
+    from eval_runner import task_references
+
+    folder = "seo-brief/"
+    return task_references.seo_brief_reference({
+        name: _fixture(folder + name) for name in ("keyword_export.csv", "existing_pages.md", "competitor_outlines.md")})
+
+
+def _named(value: str | None) -> str:
+    """A labelled value as a name: a note after a dash, a bracket or a colon dropped."""
+    head = re.split(r"\s+[-–—(]\s*|\s*[:(]\s*", value or "", maxsplit=1)[0]
+    return _phrase(head).strip(" .,;*_`\"'“”")
+
+
+def brief_facts(response_text: str) -> dict:
+    ref = brief_oracle()
+    topic = _named(_labelled(response_text, r"target topic"))
+    primary = _named(_labelled(response_text, r"primary keyword"))
+    secondary_line = _labelled(response_text, r"secondary keywords?")
+    secondary = {_named(item) for item in re.split(r"[;,]", secondary_line or "") if _named(item)}
+    title = _labelled(response_text, r"working title")
+    description = _labelled(response_text, r"meta description")
+    links_line = _labelled(response_text, r"internal links?")
+    urls = re.findall(r"(?:https?://(?:www\.)?fernhollowtea\.example)?(/[a-z0-9][a-z0-9/_-]*)", links_line or "", re.IGNORECASE)
+    pages = set(ref["existing_page_urls"])
+    wanted = {_phrase(keyword).strip() for keyword in ref["secondary_keywords"]}
+    return {
+        "seo_brief_topic_error_count": int(topic != _phrase(ref["target_topic"]).strip()),
+        "seo_brief_primary_error_count": int(primary != _phrase(ref["primary_keyword"]).strip()),
+        "seo_brief_secondary_error_count": len(wanted ^ secondary),
+        "seo_brief_title_meta_error_count": (
+            int(not (title and len(title) <= BRIEF_TITLE_MAX and _contains(title, ref["primary_keyword"])))
+            + int(not (description and len(description) <= BRIEF_DESCRIPTION_MAX))),
+        "seo_brief_internal_link_error_count": (
+            max(0, BRIEF_MIN_LINKS - len(set(urls))) + sum(1 for url in set(urls) if url.rstrip("/") not in pages)),
+    }
+
+
 # ------------------------------------------------------------------------- dispatch
 
 FACTS = {
     REDIRECT_TASK: redirect_facts,
     META_TASK: meta_facts,
     BLOG_TASK: blog_facts,
+    BRIEF_TASK: brief_facts,
 }
 
 

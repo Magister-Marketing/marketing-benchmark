@@ -1,4 +1,4 @@
-# Fernhollow Tea: existing pages (site inventory, 2026-04)
+# Fernhollow Tea: existing pages (site inventory, 2026-05)
 
 Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.fernhollowtea.example
 
@@ -6,14 +6,26 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 |---|---|---|
 | /guides/best-green-tea | Buying guide | Ranked picks of our green teas with prices and tasting notes |
 | /blog/green-tea-caffeine | Article | How much caffeine green tea has, by type and steep time |
-| /blog/matcha-caffeine | Article | Caffeine in matcha against coffee and green tea |
+| /blog/how-to-brew-green-tea | Article | Water temperature, timing and ratios for green tea |
+| /blog/matcha-guide | Article | A long guide to matcha: grades, whisking, recipes and caffeine |
+| /blog/how-to-cold-brew-tea | Article | Cold brewing at home, with ratios and steep times |
 | /blog/how-to-store-loose-leaf-tea | Article | Storing loose-leaf tea: containers, light, air, shelf life |
 | /blog/does-tea-expire | Article | Whether tea expires and how to tell when it is past its best |
-| /blog/how-long-does-brewed-tea-last | Article | How long brewed tea keeps in the fridge, hot-brewed and cold-brewed |
+| /blog/tea-caffeine-chart | Article | Caffeine by type of tea, in one chart |
+| /blog/tea-and-digestion | Article | Teas people drink after a meal |
+| /blog/sun-tea-safety | Article | Whether sun tea is safe, and safer ways to make iced tea |
+| /blog/earl-grey-guide | Article | What earl grey is, and how to brew it |
+| /blog/kombucha-basics | Article | Brewing kombucha at home |
+| /blog/tea-for-beginners | Article | Where to start with loose-leaf tea |
 | /collections/green-tea | Category | All loose-leaf green teas |
-| /collections/cold-brew | Category | Cold-brew blends and the Fernhollow cold-brew bottle |
-| /products/cold-brew-bottle | Product | 1-litre glass cold-brew bottle with a removable filter |
+| /collections/oolong | Category | All oolong teas, with tasting notes |
+| /collections/herbal | Category | Herbal and caffeine-free blends |
+| /collections/chai | Category | Chai blends and whole spices |
+| /collections/white-tea | Category | White teas |
+| /collections/black-tea | Category | Black teas |
 | /collections/samplers | Category | Tea sampler boxes |
+| /collections/teaware | Category | Teapots, gaiwans and infusers |
+| /products/tieguanyin | Product | Tieguanyin oolong, 50 g tin |
 
 Notes from the content lead:
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
