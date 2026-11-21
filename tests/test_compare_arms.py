@@ -39,11 +39,33 @@ def _run(tmp_path, name, scores, *, passes, judge="judge-a", repetitions=2, cost
         }},
         "submissions": [
             {"task_id": task, "model_id": "m",
-             "runs": [{"pass": rep <= passes[task]} for rep in range(1, repetitions + 1)]}
+             # Each run's cost and time as the report prices them.
+             "runs": [{"pass": rep <= passes[task], "provider_error": False,
+                       "cost_usd": 0.25, "cost_unknown": False, "latency_seconds": 10.0 * rep}
+                      for rep in range(1, repetitions + 1)]}
             for task in scores
         ],
     }))
     return run_dir
+
+
+def test_cost_and_time_are_the_reports_own_per_run_figures(compare, tmp_path):
+    """The report counts a decoy task's earlier turn in its run's cost and
+    time; the attempt's own latency_seconds and recorded cost leave it out
+    (the bridge subtracts the turn), so the arm reads the report's runs."""
+    run_dir = _run(tmp_path, "ours", {"decoy": 50.0, "headline": 100.0},
+                   passes={"decoy": 1, "headline": 2}, cost_key="gateway_provider_cost_usd")
+    report = json.loads((run_dir / "report.json").read_text())
+    for run in report["submissions"][0]["runs"]:
+        run.update(cost_usd=0.40, latency_seconds=run["latency_seconds"] + 20.0)
+    (run_dir / "report.json").write_text(json.dumps(report))
+    whole = compare.load_arm("Ours", run_dir)
+    assert whole["seconds_per_attempt"] == 25.0  # (30 + 40 + 10 + 20) / 4
+    shared = compare.load_arm("Ours", run_dir, only=["decoy", "headline"])
+    assert shared["cost_usd"] == 1.30 and shared["cost_complete"] is True
+    report["submissions"][1]["runs"][0].update(cost_usd=None, cost_unknown=True)
+    (run_dir / "report.json").write_text(json.dumps(report))
+    assert compare.load_arm("Ours", run_dir, only=["decoy", "headline"])["cost_complete"] is False
 
 
 def test_a_whole_run_is_reported_as_its_report_has_it(compare, tmp_path):

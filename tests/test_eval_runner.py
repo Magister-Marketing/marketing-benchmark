@@ -2953,11 +2953,11 @@ def test_a_failed_decoy_turn_fails_the_attempt_and_the_task_prompt_is_never_sent
         assert expected in attempt["error"]
 
 
-def test_the_decoy_turn_is_recorded_apart_and_left_out_of_the_tasks_cost_and_time(
+def test_a_direct_decoy_attempt_reports_both_turns_cost_and_time_and_the_split(
         tmp_path, monkeypatch):
-    """Like the Magister bridge's decoy_* fields: the earlier turn's tokens,
-    cost and time are on the attempt, and the attempt's own figures, which
-    the report sums, are the task turn's alone."""
+    """The earlier turn's receipt is kept apart under decoy_*, like the
+    Magister bridge's; the task as given is both messages, so its reported
+    cost and time are both turns, and the earlier turn's share is shown."""
     monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
     _stub_provider(monkeypatch)
     assert bench.cmd_run(_run_args()) == 0
@@ -2979,9 +2979,11 @@ def test_the_decoy_turn_is_recorded_apart_and_left_out_of_the_tasks_cost_and_tim
     assert (attempt["input_tokens"], attempt["output_tokens"], attempt["latency_seconds"]) == (
         1000, 1000, 5.0)
     spec = bench.load_models()["claude-haiku-4-5"]
-    assert bench.attempt_cost_usd(attempt, spec) == pytest.approx(0.006)
-    assert bench.decoy_cost_usd(attempt, spec) == pytest.approx((100 * 1 + 50 * 5) / 1e6)
-    assert bench.decoy_cost_usd({"input_tokens": 1}, spec) == 0.0  # no earlier turn
+    task_turn, earlier_turn = 0.006, (100 * 1 + 50 * 5) / 1e6
+    assert bench.decoy_cost_usd(attempt, spec) == pytest.approx(earlier_turn)
+    assert bench.attempt_cost_usd(attempt, spec) == pytest.approx(task_turn + earlier_turn)
+    assert bench.decoy_latency_seconds(attempt) == 2.0
+    assert bench.attempt_latency_seconds(attempt) == 7.0
 
     (run_dir / "judgments.jsonl").write_text(json.dumps({
         "task_id": DECOY_TASK, "model_id": "claude-haiku-4-5", "repetition": 1,
@@ -2990,12 +2992,106 @@ def test_the_decoy_turn_is_recorded_apart_and_left_out_of_the_tasks_cost_and_tim
     }) + "\n")
     assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
     summary = json.loads((run_dir / "report.json").read_text())
-    assert summary["models"]["claude-haiku-4-5"]["candidate_cost_usd"] == 0.006
-    assert summary["models"]["claude-haiku-4-5"]["average_task_time_seconds"] == 5.0
+    model = summary["models"]["claude-haiku-4-5"]
+    assert model["candidate_cost_usd"] == round(bench.attempt_cost_usd(attempt, spec), 4)
+    assert model["average_task_time_seconds"] == 7.0
+    assert model["decoy_cost_usd"] == round(earlier_turn, 4)
     (submission,) = summary["submissions"]
-    assert submission["metrics"]["candidate_cost_usd"] == 0.006
-    assert submission["metrics"]["average_latency_seconds"] == 5.0
+    assert submission["metrics"]["candidate_cost_usd"] == round(task_turn + earlier_turn, 6)
+    assert submission["metrics"]["average_latency_seconds"] == 7.0
+    assert submission["metrics"]["decoy_cost_usd"] == round(earlier_turn, 6)
+    assert submission["metrics"]["average_decoy_latency_seconds"] == 2.0
+    (run,) = submission["runs"]
+    assert (run["cost_usd"], run["latency_seconds"]) == (round(task_turn + earlier_turn, 6), 7.0)
+    assert (run["decoy_cost_usd"], run["decoy_latency_seconds"]) == (round(earlier_turn, 6), 2.0)
     assert submission["assembled_prompt"] == (run_dir / "prompts" / f"{DECOY_TASK}.md").read_text()
+    markdown = (run_dir / "report.md").read_text()
+    assert "7.0s latency (2.0s of it the earlier message)" in markdown
+    assert "of it the earlier message) ·" in markdown
+
+
+def _bridge_run(tmp_path) -> Path:
+    """A Magister bridge run, shaped as the bridge writes it: a decoy attempt
+    (its latency_seconds already has the decoy turn subtracted, and the turn's
+    cost is decoy_gateway_provider_cost_usd) and a plain one."""
+    run_dir = tmp_path / "bridge"
+    (run_dir / "responses").mkdir(parents=True)
+    pricing = {"input_per_mtok": 2.0, "output_per_mtok": 10.0}
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "bridge", "created_at": "x", "harness": "magister-agent",
+        "models": {"m": {"model": "magister/x", "pricing": pricing}},
+        "tasks": [DECOY_TASK, "headline"], "repetitions": 1, "skills_included": False,
+        "tools_enabled": True, "max_output_tokens": None,
+    }))
+    attempts = [
+        {"task_id": DECOY_TASK, "model_id": "m", "repetition": 1, "prompt_sha256": "h",
+         "decoy_prompt_sha256": "d", "decoy_sent": True, "finish_reason": None,
+         "latency_seconds": 80.22, "decoy_latency_seconds": 21.52,
+         "gateway_provider_cost_usd": 0.3419, "decoy_gateway_provider_cost_usd": 0.1703,
+         "input_tokens": 413078, "output_tokens": 2892,
+         "decoy_input_tokens": 126590, "decoy_output_tokens": 38, "decoy_llm_calls": 2,
+         "response_path": f"responses/{DECOY_TASK}--m--r1.md"},
+        {"task_id": "headline", "model_id": "m", "repetition": 1, "prompt_sha256": "h",
+         "finish_reason": None, "latency_seconds": 10.0, "gateway_provider_cost_usd": 0.1,
+         "input_tokens": 1000, "output_tokens": 100,
+         "response_path": "responses/headline--m--r1.md"},
+    ]
+    (run_dir / "attempts.jsonl").write_text("".join(json.dumps(a) + "\n" for a in attempts))
+    (run_dir / "judgments.jsonl").write_text("".join(json.dumps({
+        "task_id": task, "model_id": "m", "repetition": 1, "judge_model": "claude-sonnet-5",
+        "completed": True, "criteria": [{"id": criterion, "pass": True, "evidence": "x"}],
+    }) + "\n" for task, criterion in ((DECOY_TASK, "q1_blended_cpa"), ("headline", "five_options"))))
+    for task in (DECOY_TASK, "headline"):
+        (run_dir / "responses" / f"{task}--m--r1.md").write_text("answer")
+    return run_dir
+
+
+def test_a_bridge_decoy_attempt_reports_both_turns_and_a_plain_one_is_unchanged(tmp_path):
+    run_dir = _bridge_run(tmp_path)
+    assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
+    summary = json.loads((run_dir / "report.json").read_text())
+    by_task = {sub["task_id"]: sub for sub in summary["submissions"]}
+    decoy = by_task[DECOY_TASK]["metrics"]
+    # The bridge subtracted the decoy turn's 21.52 s from latency_seconds, so
+    # adding it back is the whole attempt; its gateway cost is the turn's.
+    assert decoy["candidate_cost_usd"] == round(0.3419 + 0.1703, 6)
+    assert decoy["average_latency_seconds"] == round(80.22 + 21.52, 1)
+    assert decoy["decoy_cost_usd"] == 0.1703
+    assert decoy["average_decoy_latency_seconds"] == 21.5
+    assert by_task["headline"]["metrics"] == {
+        "planned_runs": 1, "output_token_observations": 1, "total_output_tokens": 100,
+        "cost_observations": 1, "candidate_cost_usd": 0.1,
+        "latency_observations": 1, "average_latency_seconds": 10.0,
+    }
+    assert "decoy_cost_usd" not in by_task["headline"]["runs"][0]
+    model = summary["models"]["m"]
+    assert model["candidate_cost_usd"] == round(0.3419 + 0.1703 + 0.1, 4)
+    assert model["average_task_time_seconds"] == round((80.22 + 21.52 + 10.0) / 2, 1)
+    assert model["decoy_cost_usd"] == 0.1703
+    assert model["candidate_cost_complete"] is True
+
+
+def test_a_decoy_turn_with_no_cost_or_time_recorded_makes_that_part_unknown_not_zero():
+    spec = {"pricing": {"input_per_mtok": 2.0, "output_per_mtok": 10.0}}
+    plain = {"gateway_provider_cost_usd": 0.34, "latency_seconds": 80.0}
+    # No earlier turn: exactly the task turn's figures, as before.
+    assert bench.attempt_cost_usd(plain, spec) == 0.34
+    assert bench.attempt_latency_seconds(plain) == 80.0
+    assert bench.decoy_cost_usd(plain, spec) == 0.0
+    assert bench.decoy_latency_seconds(plain) == 0.0
+    missing = {**plain, "decoy_prompt_sha256": "d", "decoy_sent": True}
+    assert bench.decoy_cost_usd(missing, spec) is None
+    assert bench.attempt_cost_usd(missing, spec) is None
+    assert bench.decoy_latency_seconds(missing) is None
+    assert bench.attempt_latency_seconds(missing) is None
+    # A recorded gateway cost of 0 is "not recorded", as for the task turn:
+    # the rate card prices the turn's tokens.
+    priced = {**missing, "decoy_gateway_provider_cost_usd": 0.0,
+              "decoy_input_tokens": 1_000_000, "decoy_output_tokens": 0}
+    assert bench.decoy_cost_usd(priced, spec) == 2.0
+    assert bench.attempt_cost_usd(priced, spec) == pytest.approx(2.34)
+    # A planned cell never dispatched cost nothing, decoy task or not.
+    assert bench.attempt_cost_usd({"dispatched": False, "decoy_prompt_sha256": "d"}, spec) == 0.0
 
 
 def test_the_strict_spend_guard_counts_what_the_decoy_turn_cost(tmp_path, monkeypatch):
@@ -3014,6 +3110,21 @@ def test_the_strict_spend_guard_counts_what_the_decoy_turn_cost(tmp_path, monkey
     assert "error" not in rows[0] and rows[0]["cost_unknown"] is False
     assert rows[0]["provider_cost_usd"] == rows[0]["decoy_provider_cost_usd"] == .01
     assert rows[1]["error"] == "not dispatched: observed spend threshold reached"
+
+
+def test_the_strict_spend_guard_counts_the_decoy_turn_once(tmp_path, monkeypatch):
+    """0.025 lies between both turns counted once (0.02) and the decoy turn
+    counted twice (0.03): the next task is dispatched only when it is once."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch, receipt=_openrouter_receipt)
+    args = _run_args(models="gemini-3.8-flash-high", tasks=f"{DECOY_TASK},headline,ad-creatives",
+                     strict_attempts=True, request_timeout_seconds=75.,
+                     stop_after_cost_usd=.025)
+    assert bench.cmd_run(args) == 1
+    assert len(calls) == 3
+    rows = bench._read_jsonl(next(tmp_path.iterdir()) / "attempts.jsonl")
+    assert "error" not in rows[0] and "error" not in rows[1]
+    assert rows[2]["error"] == "not dispatched: observed spend threshold reached"
 
 
 def _errored_decoy_run(tmp_path, monkeypatch) -> Path:

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Report: a decoy task's cost and time include its earlier turn, for every
+  harness, since the task as given is both messages. They were the task
+  turn's alone, so the published cost and time of `ads-ledger-analysis-decoy`
+  understated what it took (in three Magister runs of 2026-11-20/21 the
+  earlier turn was a third to a half of the cost). `attempt_cost_usd` and the
+  new `attempt_latency_seconds` add the `decoy_*` cost and latency (the
+  bridge's `latency_seconds` has the turn subtracted, so the sum is the whole
+  attempt), and everything published reads them: each run, the metrics, the
+  per-model totals, `compare-arms` (which now reads the report's per-run
+  figures, not the attempts') and `bench-model`'s estimate (which also weighs
+  both turns' tokens). The share is shown as `decoy_cost_usd` and
+  `decoy_latency_seconds`. A turn with no recorded cost or time makes the
+  total unknown, never lower. Other tasks are unchanged.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same
@@ -10,11 +23,9 @@
   as plain text, and the task prompt as a single call has it (skills only on
   the "with skills" arm). Only call 2 is graded. A call 1 that fails, is
   empty, refused or cut off fails the attempt; the task is never sent alone.
-  Call 1's tokens, cost and time are recorded under `decoy_*` and, as for
-  the Magister bridge's decoy turn, are not in the report's cost, tokens or
-  time, so the published cost of this task leaves the earlier turn out in
-  every setup; `--stop-after-cost-usd` does count them. `retry` replays both
-  calls. Validation now names the harnesses that can send a prior turn
+  Call 1's tokens, cost and time are recorded under `decoy_*`, like the
+  Magister bridge's decoy turn, and count in the task's cost and time (see
+  the Report entry above). `retry` replays both calls. Validation now names the harnesses that can send a prior turn
   (`PRIOR_TURN_HARNESSES`: `direct-api`, `magister-agent`), and the task lists
   both. Its prompt, rubric, fixtures and versions are unchanged. Providers
   accept a text conversation (Anthropic and OpenRouter `messages`, OpenAI

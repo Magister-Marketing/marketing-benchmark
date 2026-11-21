@@ -52,12 +52,6 @@ def read_report(label: str, run_dir: Path) -> dict:
     return report
 
 
-def _costs(attempts: list[dict]) -> list[float]:
-    """The provider cost each attempt recorded, for those that recorded one."""
-    recorded = (attempt.get("gateway_provider_cost_usd") or attempt.get("provider_cost_usd") for attempt in attempts)
-    return [cost for cost in recorded if cost]
-
-
 def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
     """One arm's figures. With `only`, over those tasks alone: the score is
     the mean of their task scores, as the report's own is over all of them."""
@@ -78,6 +72,10 @@ def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
     }
     answered = [attempt for attempt in attempts if "error" not in attempt]
     runs_passed = {task: sum(1 for run in runs[task] if run.get("pass")) for task in tasks}
+    # Cost and time per attempt as the report prices them, which counts a
+    # decoy task's earlier turn; the attempts' own fields leave it out.
+    task_runs = [run for task in tasks for run in runs[task]]
+    answered_runs = [run for run in task_runs if not run.get("provider_error")]
     whole = only is None
     return {
         "label": label,
@@ -100,15 +98,20 @@ def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
         "task_runs_passed": runs_passed,
         "errors": len(attempts) - len(answered),
         # The report prices every attempt the same way for every harness: the
-        # recorded provider cost when there is one, the rate card otherwise.
-        # It prices the whole run, so over a subset the attempts' own recorded
-        # costs are summed instead, and an attempt without one makes it incomplete.
-        "cost_usd": stats.get("candidate_cost_usd") if whole else round(sum(_costs(attempts)), 4),
+        # recorded provider cost when there is one, the rate card otherwise,
+        # both turns of a decoy task. Over a subset its per-attempt prices for
+        # those tasks are summed, and an attempt it could not price makes the
+        # sum incomplete.
+        "cost_usd": (
+            stats.get("candidate_cost_usd") if whole
+            else round(sum(run["cost_usd"] for run in task_runs if run.get("cost_usd") is not None), 4)
+        ),
         "cost_complete": (
-            bool(stats.get("candidate_cost_complete", True)) if whole else len(_costs(attempts)) == len(attempts)
+            bool(stats.get("candidate_cost_complete", True)) if whole
+            else all(run.get("cost_usd") is not None and not run.get("cost_unknown") for run in task_runs)
         ),
         "seconds_per_attempt": _mean(
-            [a["latency_seconds"] for a in answered if a.get("latency_seconds") is not None]
+            [run["latency_seconds"] for run in answered_runs if run.get("latency_seconds") is not None]
         ),
         "llm_calls_per_attempt": _mean([a["llm_calls"] for a in answered if a.get("llm_calls") is not None]),
         "tool_calls_per_attempt": _mean(

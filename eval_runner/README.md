@@ -43,10 +43,19 @@ point for direct-model marketing quality.
   (`decoy_input_tokens`, `decoy_output_tokens`, `decoy_latency_seconds`,
   `decoy_provider_cost_usd` when OpenRouter reports one, and the rest of its
   receipt), and `decoy_prompt_sha256` covers its prompt while
-  `prompt_sha256` stays the task prompt's. As for the Magister bridge's decoy
-  turn, the report's cost, tokens and time are call 2's alone, so they leave
-  the earlier turn out; `--stop-after-cost-usd` counts both calls. `retry`
-  replays both.
+  `prompt_sha256` stays the task prompt's. `retry` replays both calls.
+- The task as given is both messages, so the report counts a decoy task's
+  earlier turn in that task's cost and time, for this runner's attempts and
+  the Magister bridge's alike (`attempt_cost_usd`,
+  `attempt_latency_seconds`). Neither harness's `latency_seconds` includes
+  that turn (the bridge subtracts it), so adding `decoy_latency_seconds` is
+  the whole attempt; its cost is `decoy_gateway_provider_cost_usd` (bridge),
+  `decoy_provider_cost_usd`, or the rate card over its tokens. The share
+  stays visible: `decoy_cost_usd` and `decoy_latency_seconds` on each run,
+  `decoy_cost_usd` and `average_decoy_latency_seconds` in its metrics, and
+  `decoy_cost_usd` per model. A turn whose cost or time was not recorded
+  makes the total unknown, never lower. Output tokens are the task turn's.
+  `--stop-after-cost-usd` counts both turns once.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
     prompt by default. Each task explicitly lists its skill files, whose full

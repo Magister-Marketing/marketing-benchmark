@@ -101,10 +101,28 @@ def _candidate_settings(spec: dict) -> dict:
 
 
 def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
+    """What an attempt cost: its task turn, plus a decoy task's earlier turn
+    (`decoy_cost_usd`), since the task as given is both messages. None when
+    either part is unknown. Every published cost goes through here."""
     if attempt.get("dispatched") is False:
         return 0.0
+    own = _turn_cost_usd(attempt, spec)
+    if not _had_decoy_turn(attempt):
+        return own
+    earlier = decoy_cost_usd(attempt, spec)
+    return None if own is None or earlier is None else own + earlier
+
+
+def _had_decoy_turn(attempt: dict) -> bool:
+    # Both harnesses record the earlier message's hash before sending it.
+    return "decoy_prompt_sha256" in attempt or "decoy_sent" in attempt
+
+
+def _turn_cost_usd(receipt: dict, spec: dict) -> float | None:
+    """One turn's cost: its recorded provider cost, else the candidate's rate
+    card over its tokens, else None."""
     for key in ("gateway_provider_cost_usd", "provider_cost_usd"):
-        recorded = attempt.get(key)
+        recorded = receipt.get(key)
         # Zero is indistinguishable from "not recorded": no candidate runs
         # on a free endpoint, so 0 falls through to the token estimate.
         if (
@@ -116,14 +134,9 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
     pricing = spec.get("pricing")
     if not pricing:
         return None
-    input_tokens = attempt.get("input_tokens")
-    output_tokens = attempt.get("output_tokens")
-    if (
-        not isinstance(input_tokens, (int, float))
-        or isinstance(input_tokens, bool)
-        or not isinstance(output_tokens, (int, float))
-        or isinstance(output_tokens, bool)
-    ):
+    input_tokens = receipt.get("input_tokens")
+    output_tokens = receipt.get("output_tokens")
+    if not _is_number(input_tokens) or not _is_number(output_tokens):
         return None
     return (
         input_tokens * pricing["input_per_mtok"]
@@ -131,18 +144,48 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
     ) / 1_000_000
 
 
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def decoy_cost_usd(attempt: dict, spec: dict) -> float | None:
-    """What a decoy task's earlier turn cost, from its `decoy_*` receipt; 0.0
-    for an attempt that had none. It is never in `attempt_cost_usd`, so the
-    report's cost and time are the task turn's alone, as they are for the
-    Magister bridge's decoy turn. Only the strict spend guard adds it."""
-    if "decoy_prompt_sha256" not in attempt:
+    """A decoy task's earlier turn's share of `attempt_cost_usd`, from its
+    `decoy_*` receipt: the Magister bridge's `decoy_gateway_provider_cost_usd`,
+    this runner's `decoy_provider_cost_usd` (OpenRouter), else the rate card
+    over `decoy_input_tokens`/`decoy_output_tokens`. 0.0 for an attempt with
+    no earlier turn; None when the turn's cost was not recorded."""
+    if not _had_decoy_turn(attempt):
         return 0.0
-    return attempt_cost_usd({
+    return _turn_cost_usd({
+        "gateway_provider_cost_usd": attempt.get("decoy_gateway_provider_cost_usd"),
         "provider_cost_usd": attempt.get("decoy_provider_cost_usd"),
         "input_tokens": attempt.get("decoy_input_tokens"),
         "output_tokens": attempt.get("decoy_output_tokens"),
     }, spec)
+
+
+def attempt_latency_seconds(attempt: dict) -> float | None:
+    """How long an attempt took: its task turn, plus a decoy task's earlier
+    turn. Neither harness's `latency_seconds` includes that turn (the Magister
+    bridge subtracts it; this runner's is call 2's), so the sum is the whole
+    attempt. None when either part is missing. Every published time goes
+    through here."""
+    own = attempt.get("latency_seconds")
+    if not _is_number(own):
+        return None
+    if not _had_decoy_turn(attempt):
+        return own
+    earlier = decoy_latency_seconds(attempt)
+    return None if earlier is None else round(own + earlier, 2)
+
+
+def decoy_latency_seconds(attempt: dict) -> float | None:
+    """A decoy task's earlier turn's share of `attempt_latency_seconds`; 0.0
+    for an attempt with no earlier turn, None when its time was not recorded."""
+    if not _had_decoy_turn(attempt):
+        return 0.0
+    earlier = attempt.get("decoy_latency_seconds")
+    return earlier if _is_number(earlier) else None
 
 
 def load_tasks() -> dict:
@@ -723,9 +766,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 record["error"] = route_error
             if not (run_dir / record["response_path"]).read_text().strip():
                 record["error"] = "provider returned an empty completion; no retry dispatched"
-            record["cost_unknown"] = (
-                attempt_cost_usd(record, spec) is None or decoy_cost_usd(record, spec) is None
-            )
+            record["cost_unknown"] = attempt_cost_usd(record, spec) is None
         print(f"  done {task_id} / {model_id} r{rep} ({record['latency_seconds']}s)")
         return record
 
@@ -750,10 +791,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                         dispatches.flush()
                         os.fsync(dispatches.fileno())
                     record = one((model_id, task_id, rep))
-                    # Money spent: a decoy task's earlier turn was paid for
-                    # too, though the report leaves it out of the task's cost.
-                    spent += (attempt_cost_usd(record, models[model_id]) or 0.0) + (
-                        decoy_cost_usd(record, models[model_id]) or 0.0)
+                    # attempt_cost_usd already has a decoy task's earlier turn.
+                    spent += attempt_cost_usd(record, models[model_id]) or 0.0
                     if record.get("error") or record.get("cost_unknown"):
                         halted = "previous attempt failed or has unknown cost"
                     elif stop_after_cost is not None and spent >= stop_after_cost:
@@ -2615,10 +2654,7 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
     completed = [attempt for attempt in attempts if "error" not in attempt]
     rows = [attempt for attempt in attempts if attempt.get("dispatched") is not False]
     latencies = [
-        attempt["latency_seconds"]
-        for attempt in rows
-        if isinstance(attempt.get("latency_seconds"), (int, float))
-        and not isinstance(attempt["latency_seconds"], bool)
+        latency for latency in map(attempt_latency_seconds, rows) if latency is not None
     ]
     output_tokens = [
         attempt["output_tokens"]
@@ -2628,8 +2664,19 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
     ]
     costs = [attempt_cost_usd(attempt, spec or {}) for attempt in rows]
     known_costs = [cost for cost in costs if cost is not None]
+    # A decoy task's earlier turns, already inside cost_usd, shown apart.
+    decoy_rows = [attempt for attempt in rows if _had_decoy_turn(attempt)]
+    decoy_costs = [
+        cost for cost in (decoy_cost_usd(attempt, spec or {}) for attempt in decoy_rows)
+        if cost is not None
+    ]
+    decoy_share = (
+        {"decoy_cost_usd": round(sum(decoy_costs), 4) if decoy_costs else None}
+        if decoy_rows else {}
+    )
 
     return {
+        **decoy_share,
         # Kept for report.json compatibility. This means provider-successful
         # candidate responses, not judge-completed or rubric-passing attempts.
         "completed_attempts": len(completed),
@@ -3463,7 +3510,7 @@ def _submission_metrics(runs: list[dict]) -> dict:
     output_tokens = observations("output_tokens")
     costs = observations("cost_usd")
     latencies = observations("latency_seconds")
-    return {
+    metrics = {
         "planned_runs": len(runs),
         "output_token_observations": len(output_tokens),
         "total_output_tokens": sum(output_tokens) if output_tokens else None,
@@ -3474,6 +3521,25 @@ def _submission_metrics(runs: list[dict]) -> dict:
             round(sum(latencies) / len(latencies), 1) if latencies else None
         ),
     }
+    if any("decoy_cost_usd" in run for run in runs):
+        # A decoy task's earlier turn, already inside the two figures above.
+        decoy_costs = observations("decoy_cost_usd")
+        decoy_latencies = observations("decoy_latency_seconds")
+        metrics["decoy_cost_usd"] = round(sum(decoy_costs), 6) if decoy_costs else None
+        metrics["average_decoy_latency_seconds"] = (
+            round(sum(decoy_latencies) / len(decoy_latencies), 1) if decoy_latencies else None
+        )
+    return metrics
+
+
+def _earlier_turn_note(run: dict, share_key: str, total_key: str) -> str:
+    """` ($X of it the earlier message)` for a decoy task's run whose total
+    and earlier-turn share are both known, else nothing."""
+    share, total = run.get(share_key), run.get(total_key)
+    if not _is_number(share) or not _is_number(total):
+        return ""
+    shown = f"${share:.4f}" if share_key == "decoy_cost_usd" else f"{share:.1f}s"
+    return f" ({shown} of it the earlier message)"
 
 
 def submission_records(
@@ -3537,6 +3603,17 @@ def submission_records(
                         for criterion in judgment.get("criteria", [])
                     ]
                 cost = attempt_cost_usd(attempt or {}, models_meta[model_id])
+                # A decoy task's earlier turn is inside cost and latency; its
+                # share is shown beside them.
+                decoy_share = {}
+                if attempt and _had_decoy_turn(attempt):
+                    decoy_cost = decoy_cost_usd(attempt, models_meta[model_id])
+                    decoy_share = {
+                        "decoy_cost_usd": (
+                            round(decoy_cost, 6) if decoy_cost is not None else None
+                        ),
+                        "decoy_latency_seconds": decoy_latency_seconds(attempt),
+                    }
                 runs.append(
                     {
                         "repetition": repetition,
@@ -3546,8 +3623,9 @@ def submission_records(
                         "finish_reason": (attempt or {}).get("finish_reason"),
                         "provider_error": bool(attempt and "error" in attempt),
                         "output_tokens": (attempt or {}).get("output_tokens"),
-                        "latency_seconds": (attempt or {}).get("latency_seconds"),
+                        "latency_seconds": attempt_latency_seconds(attempt or {}),
                         "cost_usd": round(cost, 6) if cost is not None else None,
+                        **decoy_share,
                         "cost_unknown": bool((attempt or {}).get("cost_unknown")) or cost is None,
                         "response_path": safe_response_path,
                         "response": response,
@@ -4001,6 +4079,9 @@ def _render_report_html(
                 if run["cost_usd"] is not None
                 else "n/a"
             )
+            cost_label = "Candidate cost" + _earlier_turn_note(run, "decoy_cost_usd", "cost_usd")
+            latency_label = "Latency" + _earlier_turn_note(
+                run, "decoy_latency_seconds", "latency_seconds")
             human_verdict = run["human_verdict"]
             if human_verdict:
                 note = human_verdict["note"] or "No note recorded."
@@ -4019,9 +4100,9 @@ def _render_report_html(
                 f'<div class="metric-tile"><strong>{h(output_tokens)}</strong>'
                 '<span>Output tokens</span></div>',
                 f'<div class="metric-tile"><strong>{h(cost)}</strong>'
-                '<span>Candidate cost</span></div>',
+                f'<span>{h(cost_label)}</span></div>',
                 f'<div class="metric-tile"><strong>{h(latency)}</strong>'
-                '<span>Latency</span></div></div>',
+                f'<span>{h(latency_label)}</span></div></div>',
                 f'<p class="verification">{verification}</p>',
             ]
             if run["response"] is not None:
@@ -4546,6 +4627,8 @@ def cmd_report(args: argparse.Namespace) -> int:
                     if run["cost_usd"] is not None
                     else "candidate cost n/a"
                 )
+                cost += _earlier_turn_note(run, "decoy_cost_usd", "cost_usd")
+                latency += _earlier_turn_note(run, "decoy_latency_seconds", "latency_seconds")
                 if run.get("cost_unknown"):
                     cost += " (lower bound; billing incomplete)"
                 lines += [
@@ -4640,6 +4723,9 @@ def cmd_report(args: argparse.Namespace) -> int:
                 "completed_responses": efficiency[model_id]["completed_attempts"],
                 "total_output_tokens": efficiency[model_id]["total_output_tokens"],
                 "candidate_cost_usd": efficiency[model_id]["cost_usd"],
+                # The share of it that was decoy tasks' earlier turns.
+                **({"decoy_cost_usd": efficiency[model_id]["decoy_cost_usd"]}
+                   if "decoy_cost_usd" in efficiency[model_id] else {}),
                 "candidate_cost_complete": not efficiency[model_id]["cost_unknown_attempts"],
                 "cost_unknown_attempts": efficiency[model_id]["cost_unknown_attempts"],
                 "average_task_time_seconds": efficiency[model_id][
