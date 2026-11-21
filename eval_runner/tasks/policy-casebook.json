@@ -1,0 +1,153 @@
+{
+  "id": "policy-casebook",
+  "title": "Forty proposed actions ruled against a long brand and promotions policy",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/policy-casebook/policy.md",
+    "eval_runner/fixtures/policy-casebook/cases.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/influencer-marketing/SKILL.md"
+  ],
+  "prompt": "Northvane Nutrition's brand team has 40 proposed marketing actions waiting for review. Rule on each one under the supplied Brand and Promotions Policy: allowed, allowed with condition, or not allowed, and cite the one clause that decides it, deciding each case the way the policy's own clause 1.5 says. Decide by this policy alone, not by any law, platform rule or practice you know from elsewhere, and take each case as it is written.\n\nDeliver one file. Put it under a line with its file name, as CSV with exactly the header shown: one row per case, in any order, no totals row, and nothing inside the file but its rows.\n\n### rulings.csv\ncase_id,ruling,condition,clause\n\n- `ruling`: allowed, allowed with condition, or not allowed.\n- `condition`: for allowed with condition, the condition's name exactly as the policy's list in 1.4 gives it; otherwise leave it empty.\n- `clause`: the number of the deciding clause as the policy numbers it (for example 3.4, 2.4(a) or CL-2).\n\nYou may put a short note for the brand team before the file. This is an internal review: publish nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "every_case_ruled_once",
+        "check": "rulings.csv is in the reply under a line with its file name and has exactly one row for each of the 40 cases (C01 to C40), and none for anything else. Full credit for none missing, repeated or unknown; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "casebook_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "plain_cases_ruled",
+        "check": "Each of the 6 cases decided by one clause as it reads has the right ruling, the right condition when the ruling has one, and the deciding clause: C03 allowed with condition `legal-signoff`, 4.1; C10 allowed with condition `ad-label`, 2.5; C15 allowed with condition `partner-approval`, 7.1; C22 not allowed, 3.1; C31 allowed with condition `skill-question`, 2.3; C34 allowed with condition `employee-tag`, 6.3. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_plain_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "offer_definition_cases_ruled",
+        "check": "Each of the 4 cases where a definition of an offer, a message or a claim in 1.3 decides which clause covers the action (free shipping is not a price reduction, a transactional email with a code is a marketing message, a judged contest is not a giveaway, a comparison with our own old formula is an improvement claim) has the right ruling, the right condition when the ruling has one, and the deciding clause: C02 allowed with condition `price-record`, 3.7; C21 not allowed, 2.4; C30 allowed, 1.6; C37 not allowed, 4.6. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_offer_definitions_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "people_definition_cases_ruled",
+        "check": "Each of the 4 cases where a definition of a person or an audience in 1.3 decides which clause covers the action (a contractor is an influencer, a small gift makes a gifted creator, a placement over 25% under 18 or a person under 18 shown makes it minor-directed) has the right ruling, the right condition when the ruling has one, and the deciding clause: C06 allowed with condition `ad-label`, 2.5; C13 allowed with condition `gift-note`, 6.2; C18 not allowed, 2.6; C36 not allowed, 6.1. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_people_definitions_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "exception_cases_ruled",
+        "check": "Each of the 6 cases where an exception displaces the clause it names and decides has the right ruling, the right condition when the ruling has one, and the deciding clause: C04 allowed, 3.2; C11 allowed, 4.2; C20 allowed, 7.3; C24 allowed, 6.5; C28 allowed, 5.3; C33 allowed, 2.4(a). A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_exceptions_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "exception_limit_cases_ruled",
+        "check": "Each of the 5 cases where an exception to an exception puts the clause back, or an exception does not reach the case, so the clause it names decides has the right ruling, the right condition when the ruling has one, and the deciding clause: C09 not allowed, 3.1; C17 not allowed, 3.4; C25 not allowed, 2.4; C32 allowed with condition `legal-signoff`, 4.1; C40 not allowed, 3.1. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_exception_limits_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "change_log_entries_cited",
+        "check": "Each of the 5 cases where a change-log entry in force on the action's date replaces a clause and decides, so the entry is cited, not the clause it replaced has the right ruling, the right condition when the ruling has one, and the deciding clause: C01 allowed with condition `study-on-file`, CL-3; C08 not allowed, CL-4; C14 not allowed, CL-3; C27 not allowed, CL-7; C35 allowed with condition `terms-link`, CL-2. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_log_decides_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "change_log_removals_followed",
+        "check": "Each of the 3 cases where a change-log entry in force takes the case out of the clause it replaced, so another clause or the default 1.6 decides has the right ruling, the right condition when the ruling has one, and the deciding clause: C12 not allowed, 3.4; C23 allowed, 1.6; C29 allowed, 1.6. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_log_takes_out_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "future_entries_not_applied",
+        "check": "Each of the 3 cases where a change-log entry dated after the action does not apply, so the clause as written in the body decides has the right ruling, the right condition when the ruling has one, and the deciding clause: C07 not allowed, 7.5; C19 allowed with condition `ad-label`, 2.5; C38 not allowed, 4.3. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_log_not_in_force_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "part_two_precedence_applied",
+        "check": "Each of the 4 cases where a Part 2 clause decides because it wins a tie of the strictest ruling (1.5 step E) or cannot be displaced by an exception outside Part 2 (step C) has the right ruling, the right condition when the ruling has one, and the deciding clause: C05 not allowed, 2.6; C16 not allowed, 2.1; C26 not allowed, 2.2; C39 allowed with condition `ad-label`, 2.5. A right ruling with another clause counts as wrong. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "casebook_wrong_part_two_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      }
+    ]
+  }
+}

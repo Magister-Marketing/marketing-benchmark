@@ -1,0 +1,236 @@
+{
+  "id": "brief-amendment",
+  "title": "Launch plan after the client amends the signed-off brief",
+  "split": "development",
+  "harnesses": [
+    "direct-api",
+    "magister-agent"
+  ],
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/brief-amendment/amendment.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/launch/SKILL.md"
+  ],
+  "decoy": {
+    "fixture": "eval_runner/fixtures/brief-amendment/original/product_sheet.csv",
+    "message": "Here is the Brightwell launch brief we signed off on 8 February 2027, with the product sheet attached. This is for reference only, so no work on it yet: the request follows in my next message.\n\n# Pellmore Kitchen: Brightwell range launch brief\n\nSigned off 8 February 2027.\n\n## The launch\n\nPellmore Kitchen launches its Brightwell range of small kitchen appliances on Tuesday 9 March 2027 in two markets, the US and the UK (market codes US and UK). Launch day is the same in every market.\n\n## What runs where\n\n- Every item on the product sheet, product or bundle, runs in each launch market its `markets` column lists, and nowhere else.\n- A bundle is sold only while every item in it (its `bundle_items`) is in the launch. If any of its items is withdrawn, the bundle is withdrawn in every market, with its ads, and nothing takes its place.\n\n## Ads\n\n- One ad per item for each market it runs in. Its ad_id is the market code, a hyphen and the item_id (for example US-P02).\n- Headline: the item's ad_name, exactly.\n- Claim: the item's claim_1, word for word. If claim_1 may not be used, the ad uses claim_2 instead.\n- Price: the item's price in the market's currency, as a whole number after its sign: $ from price_usd in the US, £ from price_gbp in the UK, € from price_eur in any euro market. Every price in the plan is the price in effect on the launch date: a price change counts only if it is already in effect on launch day.\n- Paid ads run in every market for 28 days from the launch date: ads_start is the launch date and ads_end is the 28th day (the launch date plus 27 days).\n\n## Emails\n\nEach market gets three emails: a teaser 4 days before the launch date, a launch email on the launch date and a reminder 3 days after it. An email whose date falls on a Saturday, a Sunday or a holiday of its own market goes out on the closest earlier day that is none of those.\n\n- Teaser subject: Brightwell arrives <launch date>, with the launch date written as the day without a leading zero and the month in full (for example 9 March).\n- Launch email subject: Meet the <featured item's ad_name>\n- Reminder subject: Still thinking about the <featured item's ad_name>?\n- The featured item is the market's bundle. A market with no bundle features its highest-priced product, at the price in effect on launch day (a tie goes to the lower item_id).\n\n## Holidays in 2027 in Pellmore's markets\n\nOnly these count:\n\n- US: 1 January, 18 January, 15 February, 31 May.\n- UK: 1 January, 26 March, 29 March, 3 May, 31 May.\n- IE: 1 January, 1 February, 17 March, 29 March, 3 May.\n\n## Budget\n\nThe paid media budget is $48,000, held in US dollars: $28,800 for the US and $19,200 for the UK. A market's budget pays for its paid ads only.\n\n## What we need from you\n\nWhen the request comes: the launch plan for each market, the email schedule and the ad sheet, ready to build.",
+    "answers": {
+      "launch_dates_moved": 3,
+      "budget_moved": 2,
+      "withdrawn_item_removed": 2,
+      "ireland_ads_added": 4,
+      "bundle_withdrawn_with_its_item": 2,
+      "claim_replaced_everywhere": 5,
+      "price_rise_applied": 1,
+      "teaser_moved_off_holiday": 1,
+      "email_dates_right": 8,
+      "teaser_subjects_dated": 3,
+      "featured_item_right": 6,
+      "ireland_ads_built_by_the_brief": 4
+    }
+  },
+  "prompt": "Earlier in this conversation Pellmore Kitchen sent you the signed-off launch brief for its Brightwell range, with the product sheet. Their marketing lead has now sent the amendment supplied below. Produce the final launch plan and its assets: the brief as amended, with each change applied everywhere it reaches and everything the amendment does not change exactly as the brief has it. Every rule you need is in the brief or the amendment; use no fact from anywhere else.\n\nStart with a short note for the client: what is different from the signed-off plan and why, including any change the amendment does not spell out. Then deliver three files. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### launch_plan.csv\nmarket,launch_date,ads_start,ads_end,budget_usd\nOne row per market. Dates as YYYY-MM-DD; budget_usd in whole dollars.\n\n### email_schedule.csv\nmarket,email,send_date,subject\nOne row per email: `email` is teaser, launch or reminder; send_date as YYYY-MM-DD; subject exactly as it will be sent.\n\n### ads.csv\nad_id,market,item_id,headline,claim,price\nOne row per ad: the headline and claim exactly as they will run, and the price with its currency sign (for example $59).\n\nThis is a plan for review. Send nothing, create nothing in any account and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "three_files_present",
+        "check": "All three files (launch_plan.csv, email_schedule.csv, ads.csv) are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "amend_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "launch_dates_moved",
+        "check": "launch_plan.csv has one row for each of the three markets (US, UK and IE, which the amendment adds) and no other, each with launch_date and ads_start 2027-03-30 and ads_end 2027-04-26, the 28th day. Full credit for none wrong, missing or extra; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "amend_plan_date_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "budget_moved",
+        "check": "budget_usd is $28,800 for the US, $13,200 for the UK and $6,000 for IE: the amendment moves $6,000 from the UK to Ireland and changes nothing else. Full credit for all three right; zero credit at 1 wrong or missing.",
+        "programmatic": {
+          "fact": "amend_budget_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "withdrawn_item_removed",
+        "check": "No ad for the withdrawn Brightwell Kettle (P01) in any market. Full credit for none; zero credit at 1.",
+        "programmatic": {
+          "fact": "amend_withdrawn_ad_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "ireland_ads_added",
+        "check": "IE has exactly the 4 ads the sheet's IE items give once the kettle is withdrawn (P03, P04, P07 and P08), each once, and no other. Full credit for none missing, repeated or extra; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "amend_ireland_ad_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "other_ads_kept",
+        "check": "The US and the UK keep every ad the amendment does not remove (US: P02 to P08; UK: P02 to P07), each once, and gain none. Full credit only for none missing, repeated or extra.",
+        "programmatic": {
+          "fact": "amend_other_ad_error_count",
+          "equals": 0
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "bundle_withdrawn_with_its_item",
+        "check": "No ad for the Brightwell Breakfast Set (B01) in any market: the brief sells a bundle only while every item in it is in the launch, and the withdrawn kettle is one of its items, though the amendment does not say so. Full credit for none; zero credit at 1.",
+        "programmatic": {
+          "fact": "amend_bundle_ad_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "claim_replaced_everywhere",
+        "check": "The 5 ads whose claim_1 says dishwasher-safe (P04 in US, UK and IE; P05 in US and UK) carry their claim_2 word for word instead, and no ad's headline or claim says dishwasher-safe in any wording. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "amend_claim_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "price_rise_applied",
+        "check": "The US ad for the Brightwell Coffee Machine (P06) shows $259, the price in effect from 1 March, before the launch. Full credit only when right.",
+        "programmatic": {
+          "fact": "amend_price_rise_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "later_price_not_applied",
+        "check": "The UK ad for the Brightwell Toaster (P03) shows £69: the £74 price starts on 1 May, after the launch date, and the brief prices the plan on launch day. Full credit only when right.",
+        "programmatic": {
+          "fact": "amend_later_price_error_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "ireland_ads_built_by_the_brief",
+        "check": "Each of the 4 IE ads is built by the brief's ad rules: the item's ad_name as headline, its claim_1 (P04's claim is checked with the withdrawn claim) and its euro price from the sheet with the € sign (P03 €75, P04 €55, P07 €95, P08 €45). Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "amend_ireland_ad_field_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "untouched_ads_unchanged",
+        "check": "Every US and UK ad keeps each field no change of the amendment reaches exactly as the signed-off brief gives it: its headline, its claim unless the claim is withdrawn, and its price unless a price change names it (13 ads: US P02 to P08, UK P02 to P07). Full credit only for none different or missing.",
+        "programmatic": {
+          "fact": "amend_untouched_error_count",
+          "equals": 0
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "teaser_moved_off_holiday",
+        "check": "The UK teaser goes out on 2027-03-25: four days before the new launch date is 26 March, a UK holiday in the brief's calendar, so it moves to the closest earlier working day, though the amendment does not say so. Full credit only when right.",
+        "programmatic": {
+          "fact": "amend_holiday_move_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "email_dates_right",
+        "check": "The other 8 emails of the three markets go out on the dates the brief's offsets give from the new launch date (teasers 2027-03-26 in the US and IE, launch emails 2027-03-30, reminders 2027-04-02), with no email in the file twice or for anything else. Full credit for none wrong, missing or extra; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "amend_email_date_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "teaser_subjects_dated",
+        "check": "Each market's teaser subject is \"Brightwell arrives 30 March\", the new launch date. Full credit for all three; zero credit at 2 or more wrong or missing.",
+        "programmatic": {
+          "fact": "amend_teaser_subject_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "featured_item_right",
+        "check": "The launch and reminder subjects name the item the brief features once the bundle is gone, the market's highest-priced product on launch day: the Brightwell Coffee Machine in the US (at $259 it now tops the $249 stand mixer), the Brightwell Stand Mixer in the UK and the Brightwell Coffee Grinder in IE, each in the brief's subject wording. Full credit for all six right; zero credit at 2 or more wrong or missing.",
+        "programmatic": {
+          "fact": "amend_featured_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "change_note_names_the_knock_ons",
+        "check": "The note before the files tells the client what changed and why, including the changes the amendment does not spell out: the Breakfast Set comes out with the kettle; the launch and reminder emails feature the Coffee Machine (US), the Stand Mixer (UK) and the Coffee Grinder (IE) instead of the set; the UK teaser moves to 25 March because 26 March is a UK holiday; and the UK toaster stays at £69 because its new price starts after launch. It fails if any of these four is missing or misstated, or if the note claims a change the files do not make."
+      }
+    ]
+  }
+}

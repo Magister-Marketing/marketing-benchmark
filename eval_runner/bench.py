@@ -1761,6 +1761,9 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # The email tasks' own checker (eval_runner/task_facts_email.py).
     from eval_runner import task_facts_email
     facts.update(task_facts_email.facts_for(task, response_text))
+    # The experimental tasks' own checker (eval_runner/task_facts_experiments.py).
+    from eval_runner import task_facts_experiments
+    facts.update(task_facts_experiments.facts_for(task, response_text))
     return facts
 
 

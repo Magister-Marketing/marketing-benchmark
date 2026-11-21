@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- Tasks: `policy-casebook` (development split, experimental area): 40
+  proposed marketing actions ruled allowed, allowed with a named condition
+  or not allowed, each with the one clause that decides it, under a 30 KB
+  brand and promotions policy for a fictional sports nutrition brand: 16
+  definitions, rules and exceptions across six Parts, exceptions to
+  exceptions, a six-step procedure for deciding (change log in force,
+  definitions, exceptions, strictest ruling, Part 2 on a tie, a default), a
+  change log of eight dated entries (one approved but not yet in force) and
+  three schedules. It isolates judgement against a long rulebook with no
+  arithmetic: the cases fall in nine groups by what decides them, and each
+  group is one check, scored per case on the ruling, the condition and the
+  clause together. The rules are kept as a machine-readable copy beside the
+  oracle (`task_facts_experiments.CASEBOOK_CLAUSES`, `CHANGE_LOG`), and a
+  test applies the policy's procedure to it with code of its own to prove
+  each case has exactly one deciding clause. All 10 checks are a program's.
+  The `influencer-marketing` skill is vendored unchanged at `2c38021`.
+- Tasks: `brief-amendment` (development split, experimental area): the
+  signed-off launch brief and its product sheet arrive one turn earlier,
+  "for reference, the request follows", through the existing `decoy`
+  mechanism (the brief is the earlier message, the sheet its fixture); the
+  request is the client's amendment of six changes (launch date, a withdrawn
+  product, two price changes, a new market with its budget, a withdrawn
+  claim). The reply is a note and three files (plan, emails, ads) for three
+  markets. It isolates applying a change everywhere it reaches and nowhere
+  else: three knock-ons the amendment does not mention (the bundle the
+  withdrawn kettle belongs to, the item each launch email features, a teaser
+  moved off a UK holiday) and a look-alike (a price that starts after
+  launch). `decoy.answers` holds what the brief-alone plan scores on each of
+  the 12 banded checks; no change to the mechanism or its validation was
+  needed. 16 of its 17 checks are a program's. Lists `harnesses`
+  (`direct-api`, `magister-agent`).
+- Tasks: `launch-workflow-chain` (development split, experimental area): a
+  paid social launch built as six dependent deliverables in one reply, from a
+  build brief, a 22-segment audience table and a 20-product catalogue: the
+  segments six ordered rules choose (8), the campaigns and ad groups a naming
+  convention builds (8 and 30), one ad per ad group under character limits
+  with only its own product's facts, a tracked URL per ad group built from
+  the names, daily budgets shared by segment size, and a pre-launch count.
+  It isolates consistency along the chain: the files after the structure are
+  checked against the reply's own structure (a name, product or count that
+  drifts between files fails that file's agreement check, and only that),
+  and the structure and segments against the oracle. 13 of its 14 checks are
+  a program's. Oracle and reader in the new `eval_runner/task_facts_experiments.py`,
+  hooked into `bench.measured_facts`; generator beside the fixtures; tests in
+  `tests/test_tasks_experiments.py`.
 - Report: a decoy task's cost and time include its earlier turn, for every
   harness, since the task as given is both messages. They were the task
   turn's alone, so the published cost and time of `ads-ledger-analysis-decoy`

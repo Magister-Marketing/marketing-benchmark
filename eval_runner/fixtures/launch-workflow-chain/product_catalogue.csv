@@ -1,0 +1,21 @@
+sku,product_name,ad_name,category,status,markets,price_usd,price_gbp,price_eur,proof_1,proof_2,slug
+TN-204,Ridgeway 2P Tent,Ridgeway 2P,tents,launch,US;UK;DE,389,339,369,1.9 kg trail weight,Pitches in 4 minutes,ridgeway-2p-tent
+TN-206,Ridgeway 3P Tent,Ridgeway 3P,tents,launch,US;UK;DE,459,399,429,Room for three plus packs,Two doors and two porches,ridgeway-3p-tent
+TN-310,Saltmarsh Tarp Shelter,Saltmarsh Tarp,tents,launch,US;UK;DE,179,155,169,Packs down to 610 g,Pitches with trekking poles,saltmarsh-tarp-shelter
+TN-412,Kittiwake Bivy,Kittiwake Bivy,tents,launch,UK;DE,,189,209,Seam-taped waterproof shell,Weighs 540 g,kittiwake-bivy
+TN-118,Hollin Dome 2 Tent,Hollin Dome 2,tents,carryover,US;UK;DE,249,219,239,Freestanding dome design,Colour-coded pole clips,hollin-dome-2-tent
+PK-120,Corrie 28 Daypack,Corrie 28,packs,launch,US;UK;DE,129,109,119,Fits a 15-inch laptop,Rain cover included,corrie-28-daypack
+PK-140,Corrie 40 Pack,Corrie 40,packs,launch,US;UK;DE,189,165,179,Adjustable back length,Weighs 1.3 kg,corrie-40-pack
+PK-165,Tarn 65 Trekking Pack,Tarn 65,packs,launch,US;DE,279,,259,Carries 20 kg in comfort,Twin hip-belt pockets,tarn-65-trekking-pack
+PK-090,Scree Hip Pack,Scree Hip Pack,packs,launch,US;UK,49,42,,Holds two 500 ml flasks,Reflective trim all round,scree-hip-pack
+PK-075,Bracken 22 Daypack,Bracken 22,packs,discontinued,US;UK,89,79,,Ventilated mesh back,Stretch side bottle pockets,bracken-22-daypack
+SL-301,Lowfell Down Quilt,Lowfell Quilt,sleep,launch,US;UK;DE,319,279,299,650-fill responsible down,Packs into a 6 litre sack,lowfell-down-quilt
+SL-305,Lowfell Synthetic Bag,Lowfell Synthetic,sleep,launch,US;UK;DE,189,159,175,Stays warm when damp,Full-length two-way zip,lowfell-synthetic-bag
+SL-320,Gorse Air Mat,Gorse Air Mat,sleep,launch,US;UK;DE,149,129,139,R-value of 4.2,Inflates in 12 breaths,gorse-air-mat
+SL-330,Gorse Camp Pillow,Gorse Pillow,sleep,launch,UK;DE,,29,32,Packs smaller than a fist,Weighs 85 g,gorse-camp-pillow
+SL-210,Moorland Sleeping Bag,Moorland Bag,sleep,carryover,US;UK;DE,149,125,135,Insulated draught collar,Comes with a compression sack,moorland-sleeping-bag
+CK-501,Emberline Stove,Emberline Stove,cook,launch,US;UK;DE,89,79,85,Boils a litre in 3.5 minutes,Folds to fit inside its pot,emberline-stove
+CK-505,Emberline Pot Set,Emberline Pot Set,cook,launch,US;UK;DE,69,59,65,Hard-anodised aluminium,Two pots and a lid-pan,emberline-pot-set
+CK-520,Brook Filter Bottle,Brook Bottle,cook,launch,US;UK,45,39,,Filter lasts 1500 litres,Fits standard bottle cages,brook-filter-bottle
+CK-530,Cinder Titanium Mug,Cinder Mug,cook,launch,US;DE,25,,23,Double-wall titanium,Holds 450 ml,cinder-titanium-mug
+CK-480,Spark Gas Lighter,Spark Lighter,cook,discontinued,US;UK;DE,15,12,14,Lights in gusty wind,Refills from a gas can,spark-gas-lighter

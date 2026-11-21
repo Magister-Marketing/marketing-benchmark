@@ -194,7 +194,11 @@ rather than inline:
   described under Protocol. `answers` maps
   every banded check to the value the decoy yields; `bench validate` proves
   each scores 0 against the real target, so computing from the wrong file
-  fails on oracle evidence.
+  fails on oracle evidence. The earlier turn need not be a look-alike to
+  ignore: in `brief-amendment` it is the signed-off brief and its product
+  sheet, which the task cannot be done without, and `answers` holds what the
+  plan built from that brief alone scores on each banded check, so a reply
+  that ignores the amendment fails on oracle evidence too.
 - `derived_from` — the parent task this one duplicates. Prompt, answers,
   fixtures, and skills must be identical and every parent criterion must
   appear unchanged; the derived task may only add (a decoy, a criterion).
@@ -243,6 +247,10 @@ rather than inline:
 | development | `price-change-rollout` | a workflow task: a change brief and 14 assets in; every asset returned in full, changed exactly as the brief says, with a change log; 18 of its 19 checks are a program's |
 | development | `test-plan-sizing` | a 150-test backlog across twelve storefronts sized by a stated formula and put on one calendar with a four-week limit, per-storefront freeze weeks and limits on tests at once, and a priority order; sessions to turn into users, outage weeks to leave out, lifts in points, half-traffic tests; a 150-row calendar file checked row by row |
 | development | `funnel-dropoff` | a 1,154-row daily checkout funnel over ten segments, a release log and 13 suspected causes: two real breaks, three double-firings that move or fake breaks, a crawler judged after the halving, look-alike dips and recoveries; a per-segment diagnosis and a ruling per cause, checked row by row, and four store figures (version 2) |
+| development | `funnel-dropoff` | a 1,131-row daily checkout funnel over ten segments, a release log and ten suspected causes: one segment's step breaks, two double-firings and a crawler to remove by stated rules, look-alike dips and recoveries; 17 labeled figures |
+| development | `brief-amendment` | an experiment in applying a change everywhere and nowhere else: the signed-off brief and product sheet one turn earlier (as a `decoy` turn), then the client's six amendments; three knock-ons the amendment does not mention and one price change that by the brief's rule does not apply; runs on `direct-api` (two calls) and `magister-agent` |
+| development | `policy-casebook` | an experiment in judgement against a long rulebook, with no arithmetic: 40 proposed actions ruled allowed, allowed with a named condition or not allowed under a 30 KB policy with definitions, exceptions to exceptions, a precedence procedure and a dated change log, each ruling and its deciding clause checked by program against a machine-readable copy of the rules |
+| development | `launch-workflow-chain` | an experiment in consistency along a chain: six dependent deliverables (segments, 8 campaigns and 30 ad groups, ads, tracked URLs, budgets, a pre-launch count), each later file checked against the reply's own earlier ones by `task_facts_experiments.py` |
 | development | `headline-forecast`, `headline-forecast-unpublished` | 100 pairs of headlines each from real tests with a clear winner (Upworthy Research Archive, CC BY 4.0): pick the one that got the higher click rate and say how sure; graded on picks right (a coin flip scores nothing, nine in ten passes) and on the Brier score of the stated confidence |
 
 The ad-performance CSV has planted, exactly computable findings

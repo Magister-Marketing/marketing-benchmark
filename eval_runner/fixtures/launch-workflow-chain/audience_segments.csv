@@ -1,0 +1,23 @@
+segment_id,segment_code,segment_name,market,type,interest,source,consent,est_size
+S01,HKR,US weekend hikers,US,prospecting,tents,first-party,opt-in,182400
+S02,HKX,US hikers (partner audience),US,prospecting,tents,partner,,241000
+S03,PKR,US day packers,US,prospecting,packs,first-party,opt-in,133250
+S04,CKR,US camp kitchen page visitors,US,retargeting,cook,first-party,opt-in,14820
+S05,SLP,US sleep shoppers (bought list),US,prospecting,sleep,purchased,,310000
+S06,TRL,US trail runners,US,prospecting,packs,first-party,not recorded,96000
+S07,CKP,US camp cooks (partner audience),US,prospecting,cook,partner,,54300
+S08,TNV,US tent page visitors,US,retargeting,tents,first-party,opt-in,7950
+S09,HKU,UK fell walkers,UK,prospecting,tents,first-party,opt-in,98600
+S10,SLU,UK cold sleepers (partner audience),UK,prospecting,sleep,partner,,72400
+S11,PKU,UK pack page visitors,UK,retargeting,packs,first-party,opt-in,9310
+S12,CKU,UK campsite cooks,UK,prospecting,cook,first-party,opt-in,49800
+S13,HKW,UK walkers (partner audience),UK,prospecting,tents,partner,,98600
+S14,SLV,UK sleep page visitors,UK,retargeting,sleep,first-party,not recorded,12000
+S15,SLD,DE hut sleepers,DE,prospecting,sleep,first-party,opt-in,88100
+S16,TND,DE tent page visitors,DE,retargeting,tents,first-party,opt-in,11640
+S17,PKD,DE alpine packers (bought list),DE,prospecting,packs,purchased,,150000
+S18,HKA,AT trekkers (partner audience),AT,prospecting,tents,partner,,61900
+S19,HKC,CA backcountry campers,CA,prospecting,tents,first-party,opt-in,120000
+S20,PKA,AU bushwalkers (partner audience),AU,prospecting,packs,partner,,140000
+S21,CKD,DE camp kitchen page visitors,DE,retargeting,cook,first-party,opt-in,10200
+S22,SLX,DE sleepers (partner audience),DE,prospecting,sleep,partner,,79500
