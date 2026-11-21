@@ -391,6 +391,26 @@ def _whole(text: object) -> int | None:
     return int(value) if re.fullmatch(r"\d+", value) else None
 
 
+# One subscriber's line of frequency.csv, however it is written: "S0001,4",
+# "S0001, 4", "S0001: 4", "S0001 4", a tab, a bullet, a Markdown table row,
+# quoted cells, with or without the header. A line is read only when it holds
+# an id and a count and nothing else, so a header, a note or an answer line
+# below an unfenced file is not a subscriber.
+_FREQUENCY_LINE = re.compile(
+    r"[\s|>*`'\"+-]*(S\d{1,4})[`'\"*]*[\s|,;:=`'\"*]+(\d{1,3})[\s|`'\"*.]*", re.IGNORECASE)
+
+
+def _frequency_lines(response_text: str) -> list[tuple[str, int]]:
+    """Every (subscriber, count) line of the reply's frequency.csv, in order."""
+    text = common.sections(response_text, ["frequency.csv"])["frequency.csv"] or ""
+    out = []
+    for line in text.splitlines()[:5000]:
+        match = _FREQUENCY_LINE.fullmatch(line[:200])
+        if match:
+            out.append((f"S{int(match.group(1)[1:]):04d}", int(match.group(2))))
+    return out
+
+
 def calendar_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. Every count is over the plan's
     campaigns or the export's subscribers, so a missing file is that many
@@ -432,11 +452,9 @@ def calendar_facts(response_text: str) -> dict[str, int]:
 
     counts: dict[str, int | None] = {}
     seen: list[str] = []
-    for row in found["frequency.csv"] or []:
-        sid = _row_id(common.cell(row, "subscriber_id", "subscriber", "id"), "S", 4)
-        if sid:
-            seen.append(sid)
-            counts[sid] = _whole(common.cell(row, "emails", "email_count", "count"))
+    for sid, count in _frequency_lines(response_text):
+        seen.append(sid)
+        counts[sid] = count
     frequency_errors = (sum(1 for sid, count in own_counts.items() if counts.get(sid) != count)
                         + (len(seen) - len(set(seen))) + len(set(seen) - set(own_counts)))
     return {

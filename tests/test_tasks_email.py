@@ -746,3 +746,49 @@ def test_free_shipping_claims_are_unambiguous_under_section_4():
             stated = re.search(r"over \$\d+", claim)
             assert stated or "on every order" in claim, email_id
             assert ("SUBJECT" in email.audit_reference()[email_id]) == (not stated), email_id
+
+
+@pytest.mark.parametrize("style", ["colon", "space", "tab", "comma space", "bullets", "table", "no header",
+                                   "other header", "quoted", "loose ids", "unfenced then answers"])
+def test_frequency_rows_read_however_a_model_writes_them(style):
+    """800 short lines, one per subscriber: every plain way of writing an id
+    and a count reads as the reference, and only such lines are read."""
+    head, rest = CALENDAR_REFERENCE.split("### frequency.csv\n```csv\nsubscriber_id,emails\n")
+    body, tail = rest.split("\n```\n", 1)
+    rows = [line.split(",") for line in body.splitlines()]
+    assert len(rows) == 800
+    header = "subscriber_id,emails\n"
+    fence = ("```csv\n", "\n```\n")
+    if style == "colon":
+        lines = [f"{sid}: {n}" for sid, n in rows]
+    elif style == "space":
+        lines = [f"{sid} {n}" for sid, n in rows]
+    elif style == "tab":
+        lines = [f"{sid}\t{n}" for sid, n in rows]
+    elif style == "comma space":
+        lines = [f"{sid}, {n}" for sid, n in rows]
+    elif style == "bullets":
+        lines, header, fence = [f"- {sid}: {n}" for sid, n in rows], "", ("", "\n\n")
+    elif style == "table":
+        lines, header, fence = ["| subscriber_id | emails |", "|---|---|"] + [f"| {sid} | {n} |" for sid, n in rows], "", ("", "\n\n")
+    elif style == "no header":
+        lines, header = [f"{sid},{n}" for sid, n in rows], ""
+    elif style == "other header":
+        lines, header = [f"{sid},{n}" for sid, n in rows], "subscriber,emails_received\n"
+    elif style == "quoted":
+        lines = [f'"{sid}","{n}"' for sid, n in rows]
+    elif style == "loose ids":
+        lines = [f"{sid.lower().replace('s0', 's', 1)},{n}" for sid, n in rows]
+    else:
+        lines, fence = [f"{sid},{n}" for sid, n in rows], ("", "\n")
+    reply = head + "### frequency.csv\n" + fence[0] + header + "\n".join(lines) + fence[1] + tail
+    assert email.calendar_facts(reply) == email.calendar_facts(CALENDAR_REFERENCE)
+    assert email.calendar_facts(reply)["calendar_wrong_frequency_count"] == 0
+
+
+def test_a_frequency_line_with_more_than_an_id_and_a_count_is_not_read():
+    first = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("S0001,"))
+    count = int(first.split(",")[1])
+    for written in (f"S0001,{count},{count}", f"S0001 gets {count}", f"S0001,{count} emails"):
+        facts = email.calendar_facts(_swap(CALENDAR_REFERENCE, first + "\n", written + "\n"))
+        assert facts["calendar_wrong_frequency_count"] == 1, written

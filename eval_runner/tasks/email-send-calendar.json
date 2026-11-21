@@ -3,7 +3,7 @@
   "title": "Build a month's email send calendar under a frequency cap",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "fixtures": [
     "eval_runner/fixtures/email-send-calendar/calendar_policy.md",
     "eval_runner/fixtures/email-send-calendar/campaigns.csv",

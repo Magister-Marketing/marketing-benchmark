@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Tasks: `email-send-calendar` rubric version 2 (prompt unchanged). Its
+  frequency.csv is read line by line: a line counts when it holds a
+  subscriber id and a count and nothing else, however it is separated
+  (comma, colon, space, tab, a Markdown table, bullets, quotes), with or
+  without the header and whatever the header calls its columns. The first
+  trial failed the three counting checks; the policy's wording for who
+  receives a campaign (joined and paused dates both "that day or earlier")
+  and for what A3 adds up was reread and has one reading, so it is
+  unchanged.
 - Tasks: `email-compliance-audit` (development split): the 150 live emails
   of a skincare brand before a platform move (110 marketing, 40
   transactional), a sending policy with six violation codes, a consent table
