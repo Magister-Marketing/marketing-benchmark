@@ -18,6 +18,7 @@ Each file's own version is in its frontmatter. At this pin:
 |---|---|---|
 | `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.9.4 |
 | `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
+| `copy-editing/SKILL.md` | `skills/copy-editing/SKILL.md` | 2.0.0 |
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
 | `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
 | `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |

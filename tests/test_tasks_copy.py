@@ -1,4 +1,4 @@
-"""The copy tasks: launch-copy-pack and catalog-descriptions.
+"""The copy tasks: launch-copy-pack, catalog-descriptions and claims-check.
 
 For each task:
 
@@ -807,6 +807,315 @@ def test_catalog_each_kind_of_wrong_answer_fails_its_own_check():
         "workflow_word_range_error_count": 1, "workflow_spec_line_error_count": 1,
         "workflow_blank_field_invented_count": 3, "workflow_cert_not_held_count": 1,
         "workflow_price_mention_count": 1, "workflow_banned_word_count": 1, "workflow_foreign_fact_count": 1}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# claims-check
+# ═════════════════════════════════════════════════════════════════════════════
+
+CLAIMS = task_file("claims-check")
+CLAIMS_REF = m.claims_reference_answer()
+CLAIMS_CLEAN = m.claims_facts(CLAIMS_REF)
+REF_VERDICTS = {c.number: c.verdict for c in m.claims()}
+REF_REWRITE = m.rewrite_reference()
+
+
+def claims_doc(name: str) -> str:
+    return (FIXTURES / "claims-check" / name).read_text()
+
+
+def claims_reply(verdicts: dict[int, str], rewrite: str) -> str:
+    rows = "\n".join(f"{n},{verdicts[n]}" for n in sorted(verdicts))
+    return f"### claims.csv\n```csv\nclaim,verdict\n{rows}\n```\n\n### rewrite.md\n```markdown\n{rewrite}\n```\n"
+
+
+def claims_changed(text: str) -> dict:
+    facts = m.claims_facts(text)
+    return {name: facts[name] - CLAIMS_CLEAN[name] for name in facts if facts[name] != CLAIMS_CLEAN[name]}
+
+
+# The second key: each kind of sentence the draft writes, read by its own
+# pattern, and where the sources would state it.
+LAB_SENTENCES = [
+    (r"The (?P<model>.+) weighs just (?P<x>[\d.]+) kg", "weight"),
+    (r"Get up to (?P<x>\d+) minutes of cleaning in eco mode", "runtime, eco mode"),
+    (r"It runs for (?P<x>\d+) minutes on standard power", "runtime, standard power"),
+    (r"Boost mode keeps going for (?P<x>\d+) minutes", "runtime, boost mode"),
+    (r"Boost mode pulls (?P<x>\d+) AW of suction", "suction, boost mode"),
+    (r"A full charge takes (?P<x>[\d.]+) hours", "full charge"),
+    (r"The bin holds (?P<x>[\d.]+) L", "dust bin"),
+    (r"It picks up (?P<x>\d+)% of debris on carpet", "debris picked up on carpet"),
+    (r"On hard floors it picks up (?P<x>\d+)% of debris", "debris picked up on hard floors"),
+    (r"Along edges it picks up (?P<x>\d+)% of debris", "debris picked up along edges"),
+    (r"It captures (?P<x>[\d.]+)% of particles as small as 0\.3 microns",
+     "particles of 0.3 microns and larger captured"),
+    (r"It runs at just (?P<x>\d+) dB on standard power", "noise, standard power"),
+    (r"In eco mode it drops to (?P<x>\d+) dB", "noise, eco mode"),
+]
+OWNER_SENTENCES = [
+    (r"(?P<x>\d+)% of owners would recommend it to a friend", "would recommend it to a friend"),
+    (r"(?P<x>\d+)% of owners would buy it again", "would buy it again"),
+    (r"Owners rate it (?P<x>[\d.]+) out of 5", "average rating, 1 to 5"),
+    (r"(?P<x>\d+)% of owners use it every day", "use it every day"),
+    (r"(?P<x>\d+)% of owners say it replaced their old vacuum", "said it replaced their old vacuum"),
+]
+NO_SOURCE = ["It is quieter than a normal conversation", "It is recommended by allergists",
+             "It is built to last 10 years", "It picks up 3x more pet hair than leading brands"]
+
+
+def draft_claims() -> list[tuple[int, str, str]]:
+    """(number, model, sentence) for every claim, by the page it is on."""
+    out = []
+    for page in re.split(r"(?m)^# ", claims_doc("draft.md"))[1:]:
+        model = page.splitlines()[0].removeprefix("Corvane ").strip()
+        for sentence, number in re.findall(r"([^.\]]+(?:\.\d[^.\]]*)*?) \[(\d+)\]\.", page):
+            out.append((int(number), model, sentence.strip().split("\n")[-1].strip()))
+    return out
+
+
+def recomputed() -> dict[int, tuple[str, Decimal | None]]:
+    """claim -> (verdict, the source's figure when contradicted), from the files."""
+    go_live = "2026-11-30"
+    assert "go live on Nov 30, 2026" in CLAIMS["prompt"]
+    lab = [row for row in csv.DictReader(io.StringIO(claims_doc("lab_results.csv")))]
+    final = {(row["model"], row["measure"]): Decimal(row["value"]) for row in lab if row["status"] == "final"}
+    notes = claims_doc("lab_notes.md")
+    every_model = "Every stick vacuum Corvane has ever made" in notes
+    survey = {(r["model"], r["group"], r["question"]): Decimal(r["result"])
+              for r in csv.DictReader(io.StringIO(claims_doc("owner_survey.csv")))}
+    prices = {r["model"]: Decimal(r["price_usd"]) for r in csv.DictReader(io.StringIO(claims_doc("price_history.csv")))
+              if r["valid_from"] <= go_live and (not r["valid_to"] or go_live <= r["valid_to"])}
+    offers = {r["model"]: Decimal(r["discount_percent"]) for r in csv.DictReader(io.StringIO(claims_doc("offers.csv")))
+              if r["starts"] <= go_live <= r["ends"]}
+    policy = claims_doc("policy.md")
+    warranty_default, warranty_model, warranty_long = re.search(
+        r"has a (\d+)-year warranty, except the (.+?), which has a\s+(\d+)-year warranty", policy).groups()
+    return_days = Decimal(re.search(r"within (\d+) days of delivery for a full refund", policy).group(1))
+    shipping_over = Decimal(re.search(r"free shipping on orders over \$(\d+)", policy).group(1))
+    retail_only = re.search(r"The (.+?) is sold only through retailers", policy).group(1)
+    winner = re.search(r"Winner, home appliances: Corvane (.+?)\.", claims_doc("awards.md")).group(1)
+    models = {model for model, _measure in final}
+
+    def figure_verdict(claimed: str, truth: Decimal | None):
+        if truth is None:
+            return "unsupported", None
+        return ("supported", None) if Decimal(claimed) == truth else ("contradicted", truth)
+
+    out = {}
+    for number, model, sentence in draft_claims():
+        verdict = None
+        for pattern, measure in LAB_SENTENCES:
+            match = re.fullmatch(pattern, sentence)
+            if match:
+                verdict = figure_verdict(match.group("x"), final.get((model, measure)))
+        for pattern, question in OWNER_SENTENCES:
+            match = re.fullmatch(pattern, sentence)
+            if match:
+                verdict = figure_verdict(match.group("x"), survey.get((model, "all owners", question)))
+        match = re.fullmatch(r"In our 30-day home trial, (?P<x>\d+)% of testers said it replaced their old vacuum",
+                             sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"),
+                                     survey.get((model, "30-day home trial", "said it replaced their old vacuum")))
+        if sentence == "It is our lightest stick vacuum ever":
+            lightest = min(models, key=lambda name: final[(name, "weight")])
+            verdict = ("supported" if every_model and lightest == model else "unsupported", None)
+        if sentence == "It is the quietest stick vacuum we have made":
+            quietest = min(models, key=lambda name: final[(name, "noise, standard power")])
+            verdict = ("supported" if every_model and quietest == model else "unsupported", None)
+        if sentence == "It was independently tested by Halberd Test Labs":
+            verdict = ("supported" if "is an independent laboratory" in notes and model in models else "unsupported", None)
+        if sentence == "Its design is award-winning":
+            verdict = ("supported" if model == winner else "unsupported", None)
+        if sentence in NO_SOURCE or re.fullmatch(r"Join the owners behind over \d+ five-star reviews", sentence):
+            verdict = ("unsupported", None)
+        match = re.fullmatch(r"Every (?P<model>.+) comes with a (?P<x>\d+)-year warranty", sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"), Decimal(warranty_long if model == warranty_model
+                                                               else warranty_default))
+        match = re.fullmatch(r"You have a (?P<x>\d+)-day return window", sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"), None if model == retail_only else return_days)
+        match = re.fullmatch(r"Free shipping on orders over \$(?P<x>\d+)", sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"), None if model == retail_only else shipping_over)
+        match = re.fullmatch(r"The (?P<model>.+) is \$(?P<x>\d+)", sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"), prices.get(model))
+        match = re.fullmatch(r"Launch offer: (?P<x>\d+)% off through \w+ \d+", sentence)
+        if match:
+            verdict = figure_verdict(match.group("x"), offers.get(model))
+        assert verdict is not None, sentence
+        out[number] = verdict
+    return out
+
+
+def test_claims_files_are_generated_and_fit_one_call():
+    the_files_are_generated("claims-check")
+    assert 30_000 < sum(len(text) for text in m.claims_fixtures().values())
+
+
+def test_claims_reference_passes_and_a_blank_reply_earns_nothing():
+    the_reference_passes_and_a_blank_reply_earns_nothing("claims-check")
+    untouched = claims_reply(REF_VERDICTS, claims_doc("draft.md").strip())
+    got = scores(CLAIMS, untouched)
+    for name in ("headings_kept", "claim_numbers_match", "supported_claims_kept", "conditions_kept",
+                 "corrected_figures_in", "wrong_figures_out", "removed_claims_out", "no_new_figures"):
+        assert got[name] == 0.0, name
+
+
+def test_claims_every_verdict_and_corrected_figure_comes_from_the_sources():
+    found = recomputed()
+    assert sorted(found) == list(range(1, 151))
+    module = {c.number: (c.verdict, Decimal(c.right) if c.right else None) for c in m.claims()}
+    assert found == module
+    count = {v: sum(1 for verdict, _f in found.values() if verdict == v) for v in m.VERDICTS}
+    assert count == {"supported": 64, "contradicted": 47, "unsupported": 39}
+    criteria = by_id(CLAIMS)
+    assert f"All {count['supported']} claims the sources support" in criteria["supported_verdicts"]["check"]
+    assert f"All {count['contradicted']} claims" in criteria["contradicted_verdicts"]["check"]
+    assert f"All {count['unsupported']} claims" in criteria["unsupported_verdicts"]["check"]
+    assert "each of the 150 claims" in criteria["every_claim_judged"]["check"]
+    assert f"exactly the {150 - count['unsupported']} claims" in criteria["claim_numbers_match"]["check"]
+    headings = re.findall(r"(?m)^#+ (.+)$", claims_doc("draft.md"))
+    assert len(headings) == 36 and "all 36 of the draft's headings" in criteria["headings_kept"]["check"]
+    qualified = sum(1 for n, _model, sentence in draft_claims() if found[n][0] == "supported" and
+                    ("eco mode" in sentence or "home trial" in sentence or "orders over" in sentence))
+    assert f"The {qualified} supported claims" in criteria["conditions_kept"]["check"]
+
+
+def test_claims_the_traps_are_spread_through_the_pages():
+    traps = {}
+    for claim in m.claims():
+        traps.setdefault(claim.trap, set()).add(claim.model)
+    assert len(traps["superseded test"]) >= 4 and len(traps["the June result differs"]) >= 4
+    assert len(traps["slightly off"]) == 6 and len(traps["another model's figure"]) >= 4
+    lab = list(csv.DictReader(io.StringIO(claims_doc("lab_results.csv"))))
+    first = {}
+    for row in lab:  # the June rows come first in the export
+        first.setdefault((row["model"], row["measure"]), row)
+    assert all(row["status"].startswith("superseded") for row in first.values())
+    assert "Wisp (discontinued in 2024)" in claims_doc("lab_notes.md")
+    assert "Shortlisted, home appliances: Corvane Mira and the Lumen." in claims_doc("awards.md")
+
+
+def test_claims_reference_rewrite_read_by_separate_code():
+    numbers = sorted(int(n) for n in re.findall(r"\[(\d+)\]", REF_REWRITE))
+    assert numbers == sorted(n for n, v in REF_VERDICTS.items() if v != "unsupported")
+    plain = re.sub(r"\[\d+\]", "", REF_REWRITE)
+    corrected = {f for _v, f in recomputed().values() if f is not None}
+    assert set(numbers_in(plain)) <= set(numbers_in(re.sub(r"\[\d+\]", "", claims_doc("draft.md")))) | corrected
+    assert re.findall(r"(?m)^#+ (.+)$", REF_REWRITE) == re.findall(r"(?m)^#+ (.+)$", claims_doc("draft.md"))
+
+
+# ── The careless readings ────────────────────────────────────────────────────
+
+def test_claims_the_first_lab_row_read_as_the_result():
+    """The June rows come first in the export; a reader who takes the first
+    match misreads every claim whose test was repeated."""
+    verdicts = dict(REF_VERDICTS)
+    for claim in m.claims():
+        june = m.SUPERSEDED.get((claim.model, claim.slot.measure)) if claim.slot.kind == "lab" else None
+        if june is not None:
+            verdicts[claim.number] = "supported" if Decimal(claim.figure) == Decimal(june) else "contradicted"
+    zero_on(CLAIMS, claims_reply(verdicts, REF_REWRITE), {"supported_verdicts", "contradicted_verdicts"})
+
+
+def test_claims_a_figure_found_anywhere_in_the_survey():
+    verdicts = dict(REF_VERDICTS)
+    for claim in m.claims():
+        if claim.trap in ("one country's figure", "a trial figure given as all owners'"):
+            verdicts[claim.number] = "supported"
+    zero_at_least(CLAIMS, claims_reply(verdicts, REF_REWRITE), {"contradicted_verdicts"})
+
+
+def test_claims_boasts_the_sources_bear_out_read_as_puffery():
+    verdicts = dict(REF_VERDICTS)
+    for claim in m.claims():
+        if claim.trap in ("sounds like a boast", "sounds like boilerplate"):
+            verdicts[claim.number] = "unsupported"
+    zero_on(CLAIMS, claims_reply(verdicts, REF_REWRITE), {"supported_verdicts"})
+
+
+def test_claims_loose_readings_of_what_supports_a_claim():
+    """Today's models only, a shortlist as an award, an offer whatever its
+    dates, the policy for a model it does not cover."""
+    verdicts = dict(REF_VERDICTS)
+    for claim in m.claims():
+        if claim.trap in ("a discontinued model is lighter", "shortlisted, not a winner",
+                          "an offer not in force on the day", "sold only through retailers"):
+            verdicts[claim.number] = "supported"
+    zero_on(CLAIMS, claims_reply(verdicts, REF_REWRITE), {"unsupported_verdicts"})
+
+
+def test_claims_conditions_dropped_from_true_claims():
+    rewrite = (REF_REWRITE.replace(" in eco mode [", " [").replace("In eco mode it drops", "It drops")
+               .replace("In our 30-day home trial, ", "").replace(" on orders over $150", ""))
+    zero_at_least(CLAIMS, claims_reply(REF_VERDICTS, rewrite), {"conditions_kept"})  # the $150 goes with it
+
+
+def test_claims_verdicts_right_but_the_rewrite_not_corrected():
+    rewrite = m._pages(rewrite=False)
+    for claim in m.claims():
+        if claim.verdict == "unsupported":
+            rewrite = rewrite.replace(" " + m.claim_sentence(claim), "").replace(m.claim_sentence(claim) + " ", "")
+            rewrite = rewrite.replace(m.claim_sentence(claim), "")
+    zero_on(CLAIMS, claims_reply(REF_VERDICTS, rewrite.rstrip()), {"corrected_figures_in", "wrong_figures_out"})
+
+
+def test_claims_removed_claims_kept_without_their_numbers():
+    rewrite = REF_REWRITE
+    for claim in m.claims():
+        if claim.verdict == "unsupported" and claim.model == "Mira":
+            rewrite = rewrite.replace("## Order\n", f"## Order\n\n{m.claim_sentence(claim)[:-len(f' [{claim.number}].')]}.\n", 1)
+    zero_on(CLAIMS, claims_reply(REF_VERDICTS, rewrite), {"removed_claims_out"})
+
+
+# ── The edges of the rules ───────────────────────────────────────────────────
+
+@pytest.mark.parametrize("text, marker, found", [
+    ("runs 29 minutes", "29", True), ("runs 29.0 minutes", "29", True), ("Dec 29", "29", True),
+    ("3.5 hours", "3", False), ("0.3 microns", "3", False), ("3x more", "3", True),
+    ("a 2-year warranty", "year warranty", True), ("orders over $150", "over $150", True),
+    ("orders above $150", "over $150", False), ("award-winning", "award", True),
+])
+def test_the_edges_of_what_a_rewrite_says(text, marker, found):
+    assert m.says(text, marker) is found
+
+
+def test_claims_each_claim_is_read_where_it_stands():
+    segments = m.claim_segments("## A\n\nOne 29 [1]. Two 30 [2].\n\n## B\n\nThree [3].")
+    assert {n: s.strip() for n, s in segments.items()} == {1: "One 29", 2: ". Two 30", 3: "Three"}
+    pages = m.page_texts(REF_REWRITE)
+    assert list(pages) == m.PAGE_MODELS and all(page.startswith("# Corvane") for page in pages.values())
+    assert m.figures(m.without_markers("runs [10] for 52 minutes [3]")) == [Decimal("52")]
+    assert m.heading_errors(REF_REWRITE) == 0 and m.heading_errors(REF_REWRITE.upper()) == 0
+    assert m.heading_errors(REF_REWRITE.replace("# Corvane Lumen Lite\n", "")) == 1
+    # A corrected figure on another claim's sentence does not count for this one.
+    first = next(c for c in m.claims() if c.verdict == "contradicted")
+    moved = REF_REWRITE.replace(f" [{first.number}].", f" {first.figure} [{first.number}].")
+    assert claims_changed(claims_reply(REF_VERDICTS, moved))["workflow_wrong_figure_left_count"] == 1
+
+
+def test_claims_each_kind_of_wrong_answer_fails_its_own_check():
+    rows = claims_reply(REF_VERDICTS, REF_REWRITE)
+    first_supported = next(n for n, v in REF_VERDICTS.items() if v == "supported")
+    assert claims_changed(claims_reply({**REF_VERDICTS, first_supported: "Supported"}, REF_REWRITE)) == {}  # any case
+    assert claims_changed(swap(rows, "\n150,", "\n150, ")) == {}
+    missing_row = re.sub(r"\n150,[a-z]+\n", "\n", rows)
+    assert claims_changed(missing_row) == {"workflow_claim_row_error_count": 1,
+                                           f"workflow_{REF_VERDICTS[150]}_misread_count": 1}
+    extra = swap(rows, "claim,verdict\n", "claim,verdict\n151,supported\n")
+    assert claims_changed(extra) == {"workflow_claim_row_error_count": 1}
+    added = REF_REWRITE.replace("## Order\n", "## Order\n\nIn a survey of 412 owners.\n", 1)
+    assert claims_changed(claims_reply(REF_VERDICTS, added)) == {"workflow_new_figure_count": 1}
+    first_kept = next(c for c in m.claims() if c.verdict == "supported")
+    unnumbered = REF_REWRITE.replace(f" [{first_kept.number}]", "")
+    changed = claims_changed(claims_reply(REF_VERDICTS, unnumbered))
+    assert changed["workflow_claim_number_error_count"] == 1
+    only_rows = rows.split("### rewrite.md")[0]
+    facts = m.claims_facts(only_rows)
+    assert facts["workflow_missing_file_count"] == 1 and facts["workflow_heading_error_count"] == 36
 
 
 # ═════════════════════════════════════════════════════════════════════════════

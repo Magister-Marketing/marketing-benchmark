@@ -26,6 +26,7 @@ MODULES = {
     "price-change-rollout": "eval_runner.workflows.price_change_rollout",
     "launch-copy-pack": "eval_runner.workflows.launch_copy_pack",
     "catalog-descriptions": "eval_runner.workflows.catalog_descriptions",
+    "claims-check": "eval_runner.workflows.claims_check",
 }
 
 

@@ -49,7 +49,7 @@ SIGN_OFFS = ["Let me know if you want any changes.", "Happy to adjust any of the
 
 
 def test_every_file_task_is_covered():
-    assert FILE_TASKS == ["catalog-descriptions", "launch-copy-pack", "launch-trafficking",
+    assert FILE_TASKS == ["catalog-descriptions", "claims-check", "launch-copy-pack", "launch-trafficking",
                           "lifecycle-program", "outbound-sequence", "price-change-rollout", "search-account-build"]
 
 

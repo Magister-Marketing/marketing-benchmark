@@ -1,4 +1,5 @@
-"""The copy tasks: a launch copy pack and a catalog of product descriptions.
+"""The copy tasks: a launch copy pack, a catalog of product descriptions, and a
+claims check with a rewrite.
 
 Each task is a workflow task (``eval_runner/workflows``): this one module
 builds the files the candidate reads, holds a reference answer written to
@@ -10,8 +11,9 @@ here serves whichever is asked for.
 
 Everything a check applies is a constant here, and the same constant writes
 the sentence of the document that states the rule, so a rule cannot say one
-thing to the candidate and another to the grader. Nothing is random, so the
-files are the same bytes on every run
+thing to the candidate and another to the grader. The claims check draws which
+claims carry which trap with a fixed seed (``CLAIMS_SEED``); nothing else is
+random, so the files are the same bytes on every run
 (``scripts/gen_workflow_tasks.py``).
 
     launch-copy-pack       a launch brief, a claims register, a spec sheet,
@@ -20,6 +22,9 @@ files are the same bytes on every run
     catalog-descriptions   a 60-row spec table, a certificate register, a
                            warranty policy, last season's descriptions and a
                            style sheet in; 60 product descriptions out
+    claims-check           six product pages with 150 numbered claims and the
+                           lab, survey, price, offer, policy and award sources
+                           in; a verdict per claim and the rewritten pages out
 
 All brands, products, people, places, sites and figures are invented.
 """
@@ -27,11 +32,13 @@ from __future__ import annotations
 
 import csv
 import io
+import random
 import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from pathlib import Path
 
 from eval_runner.workflows import common
@@ -1762,6 +1769,767 @@ def catalog_facts(response_text: str) -> dict[str, int]:
 
 
 _TASKS[CATALOG_ID] = (catalog_fixtures, catalog_facts, catalog_reference_answer)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# claims-check
+# ═════════════════════════════════════════════════════════════════════════════
+
+CLAIMS_ID = "claims-check"
+CLAIMS_DIR = FIXTURE_DIR / CLAIMS_ID
+CLAIMS_FILES = ["claims.csv", "rewrite.md"]
+SUPPORTED, CONTRADICTED, UNSUPPORTED = "supported", "contradicted", "unsupported"
+VERDICTS = (SUPPORTED, CONTRADICTED, UNSUPPORTED)
+COMPANY = "Corvane"
+LAB = "Halberd Test Labs"
+GO_LIVE = date(2026, 11, 30)
+CLAIMS_SEED = 2611
+
+# ── The sources ──────────────────────────────────────────────────────────────
+
+# (key, the measure as the lab's export names it, its unit)
+MEASURES: list[tuple[str, str, str]] = [
+    ("weight", "weight", "kg"),
+    ("eco", "runtime, eco mode", "min"),
+    ("standard", "runtime, standard power", "min"),
+    ("boost", "runtime, boost mode", "min"),
+    ("charge", "full charge", "hours"),
+    ("noise", "noise, standard power", "dB"),
+    ("noise_eco", "noise, eco mode", "dB"),
+    ("bin", "dust bin", "L"),
+    ("suction", "suction, boost mode", "AW"),
+    ("filtration", "particles of 0.3 microns and larger captured", "%"),
+    ("carpet", "debris picked up on carpet", "%"),
+    ("hard_floor", "debris picked up on hard floors", "%"),
+    ("edges", "debris picked up along edges", "%"),
+]
+MEASURE_KEYS = [key for key, _label, _unit in MEASURES]
+PAGE_MODELS = ["Mira", "Mira Pet", "Aster", "Aster Pro", "Lumen", "Lumen Lite"]
+DISCONTINUED = {"Wisp": 2024, "Arc": 2023}
+# Every stick vacuum Corvane has made, final results: one value per measure,
+# in MEASURES order.
+LAB_FINAL: dict[str, tuple[str, ...]] = {
+    "Mira": ("2.4", "52", "29", "11", "3.5", "68", "61", "0.6", "185", "99.9", "92", "99", "81"),
+    "Mira Pet": ("2.7", "47", "27", "10", "3.5", "70", "63", "0.6", "205", "99.9", "95", "99", "83"),
+    "Aster": ("2.9", "44", "26", "9", "4", "71", "64", "0.8", "160", "99.5", "88", "98", "76"),
+    "Aster Pro": ("3.1", "60", "35", "13", "4.5", "72", "65", "0.8", "230", "99.95", "97", "99", "86"),
+    "Lumen": ("2.6", "38", "24", "8", "3", "69", "62", "0.5", "140", "99", "85", "97", "74"),
+    "Lumen Lite": ("2.2", "30", "20", "7", "2.5", "67", "58", "0.4", "120", "98", "79", "96", "70"),
+    "Wisp": ("2.1", "25", "18", "6", "3", "70", "63", "0.4", "100", "97", "72", "94", "65"),
+    "Arc": ("3.4", "40", "22", "8", "5", "75", "68", "0.7", "150", "99", "84", "96", "71"),
+}
+# (model, measure) -> the earlier result the September retest replaced.
+SUPERSEDED: dict[tuple[str, str], str] = {
+    ("Aster Pro", "eco"): "58", ("Mira", "noise"): "66", ("Lumen", "suction"): "150",
+    ("Mira Pet", "charge"): "3", ("Aster", "weight"): "3", ("Lumen Lite", "eco"): "32",
+    ("Mira", "bin"): "0.7", ("Aster Pro", "filtration"): "99.9", ("Aster", "carpet"): "86",
+    ("Mira Pet", "edges"): "80", ("Lumen Lite", "noise_eco"): "60", ("Aster Pro", "suction"): "220",
+    ("Lumen", "standard"): "26", ("Mira", "filtration"): "99.5", ("Mira Pet", "weight"): "2.8",
+    ("Lumen Lite", "charge"): "3", ("Aster", "noise"): "73",
+}
+
+SURVEY_QUESTIONS = [
+    ("recommend", "would recommend it to a friend", "%"),
+    ("again", "would buy it again", "%"),
+    ("rating", "average rating, 1 to 5", "out of 5"),
+    ("daily", "use it every day", "%"),
+    ("empty", "say it is easy to empty", "%"),
+    ("battery", "say the battery lasts long enough", "%"),
+    ("stairs", "say it is easy to use on stairs", "%"),
+]
+# The survey's two countries, each a share of the owners who answered. Their
+# figures differ from all owners' by a point or a few.
+COUNTRIES_SURVEYED = (("US owners", Decimal("0.6")), ("UK owners", Decimal("0.4")))
+TRIAL_QUESTIONS = [
+    ("replaced", "said it replaced their old vacuum", "%"),
+    ("trial_empty", "said it was easy to empty", "%"),
+]
+# model -> (respondents, then all owners' answer to each question in
+# SURVEY_QUESTIONS order); Lumen Lite came out in October and has no survey.
+SURVEY: dict[str, tuple[str, ...]] = {
+    "Mira": ("412", "89", "88", "4.6", "61", "84", "77", "70"),
+    "Mira Pet": ("288", "91", "87", "4.7", "66", "80", "73", "68"),
+    "Aster": ("530", "84", "82", "4.4", "55", "78", "69", "62"),
+    "Aster Pro": ("196", "93", "90", "4.8", "58", "86", "88", "71"),
+    "Lumen": ("644", "86", "85", "4.5", "63", "75", "64", "74"),
+}
+
+
+@lru_cache(maxsize=1)
+def survey_by_country() -> dict[tuple[str, str, str], str]:
+    """(model, country group, question key) -> that group's answer: a point
+    to four above all owners' in one country and below it in the other."""
+    rng = random.Random(CLAIMS_SEED + 1)
+    out = {}
+    for model, values in SURVEY.items():
+        for (key, _question, _unit), value in zip(SURVEY_QUESTIONS, values[1:]):
+            step = Decimal("0.1") if key == "rating" else Decimal(1)
+            up = step * rng.choice([1, 2, 3, 4])
+            first, second = Decimal(value) + up, Decimal(value) - up * Decimal(3) / Decimal(2)
+            if key == "rating":
+                first, second = min(first, Decimal("4.9")), second.quantize(step)
+            else:
+                first, second = min(first, Decimal(99)), second.quantize(Decimal(1))
+            for (group, _share), number in zip(COUNTRIES_SURVEYED, (first, second)):
+                out[(model, group, key)] = _plain(number)
+    return out
+# model -> (testers, replaced, easy to empty), for the models that went
+# through the 30-day home trial.
+TRIAL: dict[str, tuple[str, ...]] = {
+    "Mira": ("120", "76", "81"),
+    "Mira Pet": ("80", "79", "83"),
+    "Aster Pro": ("60", "72", "88"),
+}
+# (model, price, valid from, valid to or None)
+PRICE_HISTORY: list[tuple[str, str, date, date | None]] = [
+    ("Arc", "299", date(2021, 3, 1), date(2023, 8, 31)),
+    ("Wisp", "129", date(2022, 2, 1), date(2024, 6, 30)),
+    ("Lumen", "199", date(2025, 9, 1), date(2026, 10, 31)),
+    ("Lumen", "219", date(2026, 11, 1), None),
+    ("Aster", "279", date(2025, 9, 1), date(2026, 10, 31)),
+    ("Aster", "259", date(2026, 11, 1), None),
+    ("Mira", "349", date(2026, 3, 1), date(2026, 10, 31)),
+    ("Mira", "329", date(2026, 11, 1), None),
+    ("Mira Pet", "399", date(2026, 3, 1), date(2026, 10, 31)),
+    ("Mira Pet", "379", date(2026, 11, 1), None),
+    ("Aster Pro", "449", date(2026, 5, 1), None),
+    ("Lumen Lite", "149", date(2026, 10, 1), None),
+]
+# (model, discount %, starts, ends)
+OFFERS: list[tuple[str, str, date, date]] = [
+    ("Aster", "20", date(2026, 10, 1), date(2026, 11, 15)),
+    ("Mira", "15", date(2026, 11, 1), date(2026, 12, 31)),
+    ("Mira Pet", "10", date(2026, 11, 1), date(2026, 12, 31)),
+    ("Aster Pro", "10", date(2026, 11, 20), date(2026, 12, 31)),
+    ("Lumen", "25", date(2026, 12, 26), date(2027, 1, 2)),
+]
+WARRANTY_YEARS = {"Aster Pro": "3"}
+WARRANTY_DEFAULT = "2"
+RETURN_DAYS = "60"
+SHIPPING_OVER = "150"
+RETAIL_ONLY = {"Lumen Lite"}
+AWARD = "Northgate Design Award 2026"
+AWARD_WINNER = "Aster Pro"
+AWARD_SHORTLIST = ("Mira", "Lumen")
+
+
+def lab_value(model: str, measure: str) -> str:
+    return LAB_FINAL[model][MEASURE_KEYS.index(measure)]
+
+
+def current_price(model: str) -> str:
+    return next(price for name, price, start, end in PRICE_HISTORY
+                if name == model and start <= GO_LIVE and (end is None or GO_LIVE <= end))
+
+
+def offer_in_force(model: str) -> tuple[str, date] | None:
+    for name, discount, start, end in OFFERS:
+        if name == model and start <= GO_LIVE <= end:
+            return discount, end
+    return None
+
+
+def any_offer(model: str) -> tuple[str, date, date] | None:
+    return next(((d, s, e) for name, d, s, e in OFFERS if name == model), None)
+
+
+# ── The draft: one page per model, one claim per sentence ────────────────────
+
+@dataclass(frozen=True)
+class Slot:
+    """A kind of claim: the sentence it is, where it sits, and how its source
+    decides it."""
+    key: str
+    section: str
+    template: str            # "{x}" is the figure, "{m}" the model, "{d}" a date
+    kind: str                # lab, survey, trial, wrong_group, fact, never, lab_name, warranty, returns,
+                             # shipping, price, offer
+    measure: str = ""
+    qualifier: tuple[str, ...] = ()
+    keep_word: str = ""      # what a kept claim without its own figure still says
+    gone: tuple[str, ...] = ()
+
+
+SECTIONS = ["Power", "Air and noise", "Owners say", "The details", "Order"]
+SLOTS: list[Slot] = [
+    Slot("weight", "Power", "The {m} weighs just {x} kg", "lab", "weight"),
+    Slot("eco", "Power", "Get up to {x} minutes of cleaning in eco mode", "lab", "eco", qualifier=("eco",)),
+    Slot("standard", "Power", "It runs for {x} minutes on standard power", "lab", "standard"),
+    Slot("boost", "Power", "Boost mode keeps going for {x} minutes", "lab", "boost"),
+    Slot("suction", "Power", "Boost mode pulls {x} AW of suction", "lab", "suction"),
+    Slot("charge", "Power", "A full charge takes {x} hours", "lab", "charge"),
+    Slot("bin", "Power", "The bin holds {x} L", "lab", "bin"),
+    Slot("lightest", "Power", "It is our lightest stick vacuum ever", "fact", "weight", gone=("lightest",)),
+    Slot("carpet", "Power", "It picks up {x}% of debris on carpet", "lab", "carpet"),
+    Slot("hard_floor", "Power", "On hard floors it picks up {x}% of debris", "lab", "hard_floor"),
+    Slot("edges", "Power", "Along edges it picks up {x}% of debris", "lab", "edges"),
+    Slot("filtration", "Air and noise", "It captures {x}% of particles as small as 0.3 microns", "lab", "filtration"),
+    Slot("noise", "Air and noise", "It runs at just {x} dB on standard power", "lab", "noise"),
+    Slot("noise_eco", "Air and noise", "In eco mode it drops to {x} dB", "lab", "noise_eco", qualifier=("eco",)),
+    Slot("quietest", "Air and noise", "It is the quietest stick vacuum we have made", "fact", "noise",
+         keep_word="quietest", gone=("quietest",)),
+    Slot("conversation", "Air and noise", "It is quieter than a normal conversation", "never", gone=("conversation",)),
+    Slot("lab_name", "Air and noise", "It was independently tested by Halberd Test Labs", "lab_name",
+         keep_word="Halberd", gone=("Halberd",)),
+    Slot("allergists", "Air and noise", "It is recommended by allergists", "never", gone=("allergist", "allergists")),
+    Slot("recommend", "Owners say", "{x}% of owners would recommend it to a friend", "survey", "recommend",
+         gone=("recommend",)),
+    Slot("again", "Owners say", "{x}% of owners would buy it again", "survey", "again", gone=("buy it again",)),
+    Slot("rating", "Owners say", "Owners rate it {x} out of 5", "survey", "rating", gone=("out of 5",)),
+    Slot("daily", "Owners say", "{x}% of owners use it every day", "survey", "daily", gone=("every day",)),
+    Slot("trial", "Owners say", "In our 30-day home trial, {x}% of testers said it replaced their old vacuum",
+         "trial", "replaced", qualifier=("30-day", "trial"), gone=("replaced their old vacuum",)),
+    Slot("wrong_group", "Owners say", "{x}% of owners say it replaced their old vacuum", "wrong_group",
+         "replaced", gone=("replaced their old vacuum",)),
+    Slot("reviews", "Owners say", "Join the owners behind over {x} five-star reviews", "never",
+         gone=("five-star",)),
+    Slot("award", "The details", "Its design is award-winning", "fact", "award", keep_word="award",
+         gone=("award",)),
+    Slot("lifespan", "The details", "It is built to last 10 years", "never", gone=("built to last",)),
+    Slot("pet_hair", "The details", "It picks up 3x more pet hair than leading brands", "never",
+         gone=("leading brands",)),
+    Slot("warranty", "The details", "Every {m} comes with a {x}-year warranty", "warranty", keep_word="year warranty"),
+    Slot("returns", "The details", "You have a {x}-day return window", "returns", gone=("return window",)),
+    Slot("shipping", "Order", "Free shipping on orders over ${x}", "shipping", qualifier=("over $150",),
+         keep_word="free shipping", gone=("free shipping",)),
+    Slot("price", "Order", "The {m} is ${x}", "price"),
+    Slot("offer", "Order", "Launch offer: {x}% off through {d}", "offer", gone=("off through",)),
+]
+# Slots every page leaves out, so each page has 25 claims: a page reads like
+# its own product, not a form.
+LEFT_OUT: dict[str, tuple[str, ...]] = {
+    "Mira": ("boost", "hard_floor", "edges", "lab_name", "daily", "wrong_group", "lightest", "returns"),
+    "Mira Pet": ("hard_floor", "lightest", "quietest", "conversation", "reviews", "trial", "lifespan", "boost"),
+    "Aster": ("carpet", "edges", "allergists", "quietest", "trial", "pet_hair", "wrong_group", "noise_eco"),
+    "Aster Pro": ("boost", "carpet", "lightest", "allergists", "wrong_group", "reviews", "lifespan", "returns"),
+    "Lumen": ("hard_floor", "edges", "conversation", "lab_name", "trial", "pet_hair", "daily", "charge"),
+    "Lumen Lite": ("carpet", "edges", "bin", "allergists", "reviews", "award", "lifespan", "wrong_group"),
+}
+
+
+@dataclass(frozen=True)
+class Claim:
+    """One numbered claim of the draft and what the review must do with it."""
+    number: int
+    model: str
+    slot: Slot
+    figure: str              # as the draft writes it ("" for a claim without one)
+    verdict: str
+    right: str = ""          # the source's figure, for a contradicted claim
+    trap: str = ""           # what makes it easy to get wrong, for the tests and the report
+
+    @property
+    def keep(self) -> tuple[str, ...]:
+        """What the rewrite must still say for a supported claim: its figure,
+        and the word that carries a claim (quietest, Halberd, year warranty)."""
+        if self.verdict != SUPPORTED:
+            return ()
+        return tuple(part for part in (self.figure, self.slot.keep_word) if part)
+
+
+def _sibling_figure(model: str, measure: str, true: str) -> str | None:
+    """Another current model's result for the same measure, when it differs."""
+    for other in PAGE_MODELS:
+        if other != model and lab_value(other, measure) != true:
+            return lab_value(other, measure)
+    return None
+
+
+def _off(value: str, rng: random.Random, step: Decimal) -> str:
+    """A figure slightly off the true one: one to three steps away."""
+    number = Decimal(value)
+    delta = step * rng.choice([1, 2, 3]) * rng.choice([-1, 1])
+    return _plain(number + delta if number + delta > 0 else number - delta)
+
+
+_STEPS = {"weight": Decimal("0.1"), "eco": Decimal(2), "standard": Decimal(2), "boost": Decimal(1),
+          "charge": Decimal("0.5"), "noise": Decimal(2), "noise_eco": Decimal(2), "bin": Decimal("0.1"),
+          "suction": Decimal(10), "filtration": Decimal("0.4"), "carpet": Decimal(2), "hard_floor": Decimal(1),
+          "edges": Decimal(3), "recommend": Decimal(3), "again": Decimal(2), "rating": Decimal("0.2"),
+          "daily": Decimal(4), "replaced": Decimal(4)}
+
+
+def _bounded(value: str, measure: str, rng: random.Random) -> str:
+    """A slightly-off figure that stays a possible value of its measure."""
+    for _attempt in range(10):
+        figure = _off(value, rng, _STEPS[measure])
+        number = Decimal(figure)
+        if measure in ("filtration", "carpet", "hard_floor", "edges", "recommend", "again", "daily", "replaced"):
+            if number >= 100:
+                continue
+        if measure == "rating" and number >= 5:
+            continue
+        return figure
+    raise AssertionError((value, measure))
+
+
+@lru_cache(maxsize=1)
+def claims() -> tuple[Claim, ...]:
+    """Every claim of the draft, page by page, with its verdict decided from
+    the sources by the rules the prompt states."""
+    rng = random.Random(CLAIMS_SEED)
+    lightest = min(LAB_FINAL, key=lambda name: Decimal(lab_value(name, "weight")))
+    quietest = min(LAB_FINAL, key=lambda name: Decimal(lab_value(name, "noise")))
+    out: list[Claim] = []
+    for model in PAGE_MODELS:
+        for slot in SLOTS:
+            if slot.key in LEFT_OUT[model]:
+                continue
+            number = len(out) + 1
+            add = lambda figure, verdict, right="", trap="": out.append(  # noqa: E731
+                Claim(number, model, slot, figure, verdict, right, trap))
+            roll = rng.random()
+            if slot.kind == "lab":
+                true = lab_value(model, slot.measure)
+                old = SUPERSEDED.get((model, slot.measure))
+                sibling = _sibling_figure(model, slot.measure, true)
+                if old is not None and roll < 0.5:
+                    add(old, CONTRADICTED, true, "superseded test")
+                elif old is not None:
+                    add(true, SUPPORTED, trap="the June result differs")
+                elif roll < 0.45:
+                    add(true, SUPPORTED)
+                elif roll < 0.72:
+                    add(_bounded(true, slot.measure, rng), CONTRADICTED, true, "slightly off")
+                else:
+                    add(sibling, CONTRADICTED, true, "another model's figure")
+            elif slot.kind == "fact":
+                if slot.key == "lightest":
+                    add("", SUPPORTED if model == lightest else UNSUPPORTED, trap="a discontinued model is lighter")
+                elif slot.key == "quietest":
+                    add("", SUPPORTED if model == quietest else UNSUPPORTED,
+                        trap="sounds like a boast" if model == quietest else "another model is quieter")
+                else:  # award
+                    add("", SUPPORTED if model == AWARD_WINNER else UNSUPPORTED,
+                        trap="sounds like a boast" if model == AWARD_WINNER else
+                        ("shortlisted, not a winner" if model in AWARD_SHORTLIST else "no award"))
+            elif slot.kind == "never":
+                figure = ""
+                if slot.key == "reviews":
+                    respondents = SURVEY.get(model, ("300",))[0]
+                    figure = str(int(respondents) // 100 * 100)
+                add(figure, UNSUPPORTED, trap="near the survey's respondent count" if slot.key == "reviews" else "")
+            elif slot.kind == "lab_name":
+                add("", SUPPORTED, trap="sounds like boilerplate")
+            elif slot.kind == "survey":
+                column = 1 + [key for key, _q, _u in SURVEY_QUESTIONS].index(slot.measure)
+                if model not in SURVEY:
+                    add(SURVEY["Mira"][column], UNSUPPORTED, trap="no survey of this model")
+                    continue
+                true = SURVEY[model][column]
+                group = COUNTRIES_SURVEYED[rng.randrange(len(COUNTRIES_SURVEYED))][0]
+                if roll < 0.45:
+                    add(true, SUPPORTED)
+                elif roll < 0.7:
+                    add(_bounded(true, slot.measure, rng), CONTRADICTED, true, "slightly off")
+                else:
+                    add(survey_by_country()[(model, group, slot.measure)], CONTRADICTED, true,
+                        "one country's figure")
+            elif slot.kind in ("trial", "wrong_group"):
+                if model not in TRIAL:
+                    add(TRIAL["Mira"][1], UNSUPPORTED, trap="no home trial of this model")
+                    continue
+                true = TRIAL[model][1]
+                if slot.kind == "wrong_group":
+                    add(true, UNSUPPORTED, trap="a trial figure given as all owners'")
+                elif roll < 0.6:
+                    add(true, SUPPORTED, trap="true only in the trial")
+                else:
+                    add(_bounded(true, "replaced", rng), CONTRADICTED, true, "slightly off")
+            elif slot.kind == "warranty":
+                if model in WARRANTY_YEARS:
+                    add(WARRANTY_DEFAULT, CONTRADICTED, WARRANTY_YEARS[model], "its own warranty is longer")
+                elif roll < 0.7:
+                    add(WARRANTY_DEFAULT, SUPPORTED)
+                else:
+                    add(WARRANTY_YEARS["Aster Pro"], CONTRADICTED, WARRANTY_DEFAULT, "another model's warranty")
+            elif slot.kind == "returns":
+                if model in RETAIL_ONLY:
+                    add(RETURN_DAYS, UNSUPPORTED, trap="sold only through retailers")
+                elif roll < 0.5:
+                    add(RETURN_DAYS, SUPPORTED)
+                else:
+                    add(rng.choice(["30", "45", "90"]), CONTRADICTED, RETURN_DAYS, "slightly off")
+            elif slot.kind == "shipping":
+                if model in RETAIL_ONLY:
+                    add(SHIPPING_OVER, UNSUPPORTED, trap="sold only through retailers")
+                elif roll < 0.7:
+                    add(SHIPPING_OVER, SUPPORTED, trap="true only over the threshold")
+                else:
+                    add("100", CONTRADICTED, SHIPPING_OVER, "an old threshold")
+            elif slot.kind == "price":
+                true = current_price(model)
+                old = [p for name, p, _s, end in PRICE_HISTORY if name == model and end is not None]
+                if old and roll < 0.75:
+                    add(old[-1], CONTRADICTED, true, "the price before Nov 1")
+                else:
+                    add(true, SUPPORTED)
+            elif slot.kind == "offer":
+                running, ever = offer_in_force(model), any_offer(model)
+                if running is None:
+                    add(ever[0] if ever else "15", UNSUPPORTED,
+                        trap=("an offer not in force on the day" if ever else "no offer for this model"))
+                elif roll < 0.5:
+                    add(running[0], SUPPORTED)
+                else:
+                    add(_plain(Decimal(running[0]) + 5), CONTRADICTED, running[0], "slightly off")
+    return tuple(out)
+
+
+def _claim_date(claim: Claim) -> str:
+    """The offer's end date as the draft writes it: the offer's own."""
+    ever = any_offer(claim.model)
+    return _day(ever[2]) if ever else "Dec 31"
+
+
+def claim_sentence(claim: Claim, figure: str | None = None) -> str:
+    """The claim as a sentence, with its number in brackets before the full stop."""
+    text = claim.slot.template.format(x=claim.figure if figure is None else figure, m=claim.model,
+                                      d=_claim_date(claim))
+    return f"{text} [{claim.number}]."
+
+
+def _pages(rewrite: bool) -> str:
+    parts: list[str] = []
+    for model in PAGE_MODELS:
+        parts += [f"# {COMPANY} {model}", ""]
+        for section in SECTIONS:
+            sentences = []
+            for claim in claims():
+                if claim.model != model or claim.slot.section != section:
+                    continue
+                if rewrite and claim.verdict == UNSUPPORTED:
+                    continue
+                sentences.append(claim_sentence(claim, claim.right if rewrite and claim.verdict == CONTRADICTED
+                                                else None))
+            parts += [f"## {section}", ""]
+            if sentences:
+                parts += [" ".join(sentences), ""]
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def draft_md() -> str:
+    return _pages(rewrite=False)
+
+
+def rewrite_reference() -> str:
+    return _pages(rewrite=True).rstrip("\n")
+
+
+def _csv(header: list[str], rows: list[list[str]]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(header)
+    writer.writerows(rows)
+    return buffer.getvalue()
+
+
+def lab_results_csv() -> str:
+    rows = []
+    final_ids: dict[str, str] = {}
+    for index, model in enumerate(LAB_FINAL, 1):
+        final_ids[model] = f"HTL-2609-{index:02d}"
+    for index, model in enumerate(LAB_FINAL, 1):
+        for key, label, unit in MEASURES:
+            june = SUPERSEDED.get((model, key), lab_value(model, key))
+            rows.append([f"HTL-2606-{index:02d}", "2026-06-15", model, label, june, unit,
+                         f"superseded by {final_ids[model]}"])
+    for model in LAB_FINAL:
+        for key, label, unit in MEASURES:
+            rows.append([final_ids[model], "2026-09-14", model, label, lab_value(model, key), unit, "final"])
+    return _csv(["test_id", "tested", "model", "measure", "value", "unit", "status"], rows)
+
+
+def owner_survey_csv() -> str:
+    rows = []
+    for model, values in SURVEY.items():
+        for (key, question, unit), value in zip(SURVEY_QUESTIONS, values[1:]):
+            rows.append([model, "all owners", values[0], question, value, unit])
+        for group, share in COUNTRIES_SURVEYED:
+            respondents = _plain((Decimal(values[0]) * share).quantize(Decimal(1)))
+            for key, question, unit in SURVEY_QUESTIONS:
+                rows.append([model, group, respondents, question, survey_by_country()[(model, group, key)], unit])
+        if model in TRIAL:
+            for (key, question, unit), value in zip(TRIAL_QUESTIONS, TRIAL[model][1:]):
+                rows.append([model, "30-day home trial", TRIAL[model][0], question, value, unit])
+    return _csv(["model", "group", "respondents", "question", "result", "unit"], rows)
+
+
+def price_history_csv() -> str:
+    return _csv(["model", "price_usd", "valid_from", "valid_to"],
+                [[m_, p, f"{s:%Y-%m-%d}", f"{e:%Y-%m-%d}" if e else ""] for m_, p, s, e in PRICE_HISTORY])
+
+
+def offers_csv() -> str:
+    return _csv(["model", "discount_percent", "starts", "ends"],
+                [[m_, d, f"{s:%Y-%m-%d}", f"{e:%Y-%m-%d}"] for m_, d, s, e in OFFERS])
+
+
+def lab_notes_md() -> str:
+    discontinued = ", ".join(f"{name} (discontinued in {year})" for name, year in DISCONTINUED.items())
+    return f"""# {LAB}: notes to the {COMPANY} results
+
+{LAB} is an independent laboratory. {COMPANY} paid for the tests and had
+no say in how they were run or in their results.
+
+## What was tested
+
+Every stick vacuum {COMPANY} has ever made: the {len(PAGE_MODELS)} on sale today and
+{discontinued}, one production unit of each, bought at retail. lab_results.csv
+holds every result.
+
+## Reading the results
+
+- Every model was tested in June and again in September, on new units. The
+  September result is final and the June result is marked superseded; most
+  agree, some do not. Only a final result is the model's result.
+- Runtime is from a full charge to shut-off. Noise is measured 1 m from the
+  vacuum. Pickup is the share of a measured amount of test debris picked up in
+  one pass.
+"""
+
+
+def policy_md() -> str:
+    pro = ", ".join(WARRANTY_YEARS)
+    retail = ", ".join(sorted(RETAIL_ONLY))
+    return f"""# {COMPANY} customer policy
+
+In force from Nov 1, 2026.
+
+## Warranty
+
+Every {COMPANY} stick vacuum has a {WARRANTY_DEFAULT}-year warranty, except the {pro}, which has a
+{WARRANTY_YEARS[pro]}-year warranty. Registering a vacuum within 30 days of delivery extends the
+cover on its motor to 5 years.
+
+## Orders on corvane.example
+
+These terms cover orders placed on corvane.example only.
+
+- Returns: return anything within {RETURN_DAYS} days of delivery for a full refund. We
+  pay for the return shipping.
+- Shipping: free shipping on orders over ${SHIPPING_OVER}. Orders under ${SHIPPING_OVER} ship for $9.
+
+## Sold through retailers
+
+The {retail} is sold only through retailers, not on corvane.example. Its
+returns and its shipping are the retailer's, and {COMPANY} makes no promise
+about either.
+"""
+
+
+def awards_md() -> str:
+    shortlist = " and the ".join(AWARD_SHORTLIST)
+    return f"""# Awards
+
+## {AWARD}
+
+- Winner, home appliances: {COMPANY} {AWARD_WINNER}.
+- Shortlisted, home appliances: {COMPANY} {shortlist}.
+
+No other {COMPANY} product has won or been shortlisted for an award.
+"""
+
+
+def claims_fixtures() -> dict[str, str]:
+    return {
+        "draft.md": draft_md(),
+        "lab_results.csv": lab_results_csv(),
+        "lab_notes.md": lab_notes_md(),
+        "owner_survey.csv": owner_survey_csv(),
+        "price_history.csv": price_history_csv(),
+        "offers.csv": offers_csv(),
+        "policy.md": policy_md(),
+        "awards.md": awards_md(),
+    }
+
+
+def claims_reference_answer() -> str:
+    rows = "\n".join(f"{claim.number},{claim.verdict}" for claim in claims())
+    return "\n".join([
+        f"Each of the {len(claims())} claims checked against the sources, then the six pages rewritten.",
+        "",
+        "### claims.csv",
+        "```csv",
+        "claim,verdict",
+        rows,
+        "```",
+        "",
+        "### rewrite.md",
+        "```markdown",
+        rewrite_reference(),
+        "```",
+        "",
+    ])
+
+
+# ── The checker ──────────────────────────────────────────────────────────────
+
+_MARKER = re.compile(r"\[(\d{1,3})\]")
+_IS_FIGURE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def without_markers(text: str) -> str:
+    return _MARKER.sub(" ", text)
+
+
+def says(text: str, marker: str) -> bool:
+    """A figure as a value among the text's figures; anything else as words."""
+    if _IS_FIGURE.fullmatch(marker):
+        return Decimal(marker) in figures(text)
+    return has_words(text, marker)
+
+
+def _heading_lines(text: str) -> list[tuple[int, str]]:
+    return [(index, common.norm(line.strip().lstrip("#"))) for index, line in enumerate(text.splitlines())
+            if line.strip().startswith("#") and line.strip().lstrip("#")[:1] in (" ", "\t")]
+
+
+def draft_headings() -> list[str]:
+    return [common.norm(text) for model in PAGE_MODELS
+            for text in [f"{COMPANY} {model}"] + SECTIONS]
+
+
+def heading_errors(text: str) -> int:
+    """Draft headings missing from the rewrite, or out of their order."""
+    found = [heading for _index, heading in _heading_lines(text)]
+    position = kept = 0
+    for heading in draft_headings():
+        try:
+            position = found.index(heading, position) + 1
+            kept += 1
+        except ValueError:
+            continue
+    return len(draft_headings()) - kept
+
+
+def page_texts(text: str) -> dict[str, str]:
+    """Each model's page of a rewrite: from its title heading to the next."""
+    lines = text.splitlines()
+    starts = {heading: index for index, heading in _heading_lines(text)}
+    titles = sorted((starts[common.norm(f"{COMPANY} {model}")], model) for model in PAGE_MODELS
+                    if common.norm(f"{COMPANY} {model}") in starts)
+    out = {}
+    for position, (start, model) in enumerate(titles):
+        end = titles[position + 1][0] if position + 1 < len(titles) else len(lines)
+        out[model] = "\n".join(lines[start:end])
+    return out
+
+
+def claim_segments(text: str) -> dict[int, str]:
+    """Each numbered claim's own words in a rewrite: what comes after the
+    previous number (or the previous heading) up to its own number."""
+    out: dict[int, str] = {}
+    for block in re.split(r"(?m)^\s*#.*$", text):
+        start = 0
+        for match in _MARKER.finditer(block):
+            number = int(match.group(1))
+            if number not in out:
+                out[number] = block[start:match.start()]
+            start = match.end()
+    return out
+
+
+def _verdicts(document: str | None) -> tuple[dict[int, str | None], int]:
+    """claim number -> the verdict given (None when it cannot be read), and
+    how many rows repeat a claim or name one the draft does not have."""
+    given: dict[int, str | None] = {}
+    errors = 0
+    numbers = {claim.number for claim in claims()}
+    for raw, value in keyed_lines(document, "claim"):
+        match = re.search(r"\d{1,3}", raw[:20])
+        if not match:
+            continue
+        number = int(match.group(0))
+        if number in given or number not in numbers:
+            errors += 1
+            continue
+        first = word_list(value)[:1]
+        given[number] = first[0] if first and first[0] in VERDICTS else None
+    return given, errors
+
+
+def _same(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+CLAIMS_FACTS = (
+    "workflow_missing_file_count",
+    "workflow_claim_row_error_count",
+    "workflow_supported_misread_count",
+    "workflow_contradicted_misread_count",
+    "workflow_unsupported_misread_count",
+    "workflow_kept_claim_missing_count",
+    "workflow_qualifier_missing_count",
+    "workflow_corrected_figure_missing_count",
+    "workflow_wrong_figure_left_count",
+    "workflow_removed_claim_left_count",
+    "workflow_claim_number_error_count",
+    "workflow_new_figure_count",
+    "workflow_heading_error_count",
+)
+
+
+def claims_facts(response_text: str) -> dict[str, int]:
+    """Counts of what a reply got wrong. A rewrite that is missing, or that is
+    the draft handed back unchanged, is no rewrite: every rewrite check
+    counts all of its work as undone. Each kept or corrected claim is read
+    where it stands, between the number before it and its own number."""
+    text = response_text if isinstance(response_text, str) else ""
+    rows_file = csv_file(text, CLAIMS_FILES[0])
+    raw = common.sections(text, [CLAIMS_FILES[1]])[CLAIMS_FILES[1]]
+    out = dict.fromkeys(CLAIMS_FACTS, 0)
+    out["workflow_missing_file_count"] = (rows_file is None) + (raw is None)
+    every = claims()
+    given, row_errors = _verdicts(rows_file)
+    out["workflow_claim_row_error_count"] = row_errors + sum(given.get(c.number) is None for c in every)
+    for verdict, fact in ((SUPPORTED, "workflow_supported_misread_count"),
+                          (CONTRADICTED, "workflow_contradicted_misread_count"),
+                          (UNSUPPORTED, "workflow_unsupported_misread_count")):
+        out[fact] = sum(1 for c in every if c.verdict == verdict and given.get(c.number) != verdict)
+
+    raw = raw[:_MAX_DOCUMENT] if raw else None
+    if raw is not None and _same(raw) == _same(draft_md()):
+        raw = None
+    supported = [c for c in every if c.verdict == SUPPORTED]
+    contradicted = [c for c in every if c.verdict == CONTRADICTED]
+    removed = [c for c in every if c.verdict == UNSUPPORTED]
+    kept_numbers = {c.number for c in every if c.verdict != UNSUPPORTED}
+    if raw is None:
+        out["workflow_kept_claim_missing_count"] = len(supported)
+        out["workflow_qualifier_missing_count"] = sum(bool(c.slot.qualifier) for c in supported)
+        out["workflow_corrected_figure_missing_count"] = len(contradicted)
+        out["workflow_wrong_figure_left_count"] = len(contradicted)
+        out["workflow_removed_claim_left_count"] = len(removed)
+        out["workflow_claim_number_error_count"] = len(kept_numbers)
+        out["workflow_new_figure_count"] = 1
+        out["workflow_heading_error_count"] = len(draft_headings())
+        return out
+    segments = {number: without_markers(words) for number, words in claim_segments(raw).items()}
+    pages = {model: without_markers(page) for model, page in page_texts(raw).items()}
+    for c in supported:
+        segment = segments.get(c.number)
+        out["workflow_kept_claim_missing_count"] += segment is None or not all(says(segment, k) for k in c.keep)
+        if c.slot.qualifier:
+            out["workflow_qualifier_missing_count"] += segment is None or not all(
+                says(segment, q) for q in c.slot.qualifier)
+    for c in contradicted:
+        segment = segments.get(c.number)
+        out["workflow_corrected_figure_missing_count"] += segment is None or not says(segment, c.right)
+        out["workflow_wrong_figure_left_count"] += segment is None or says(segment, c.figure)
+    for c in removed:
+        page = pages.get(c.model)
+        out["workflow_removed_claim_left_count"] += page is None or c.number in segments or any(
+            says(page, marker) for marker in c.slot.gone)
+    numbers = {int(n) for n in _MARKER.findall(raw)}
+    out["workflow_claim_number_error_count"] = len(numbers ^ kept_numbers)
+    allowed = set(figures(without_markers(draft_md()))) | {Decimal(c.right) for c in contradicted}
+    out["workflow_new_figure_count"] = len({value for value in figures(without_markers(raw)) if value not in allowed})
+    out["workflow_heading_error_count"] = heading_errors(raw)
+    return out
+
+
+_TASKS[CLAIMS_ID] = (claims_fixtures, claims_facts, claims_reference_answer)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

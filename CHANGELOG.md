@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Tasks: workflow task `claims-check` (development split): six product
+  pages making 150 numbered claims, and the sources (lab results with a
+  superseded June round, an owner survey by group and country, price history,
+  offers with dates, a policy, an awards list) in; a verdict per claim and the
+  six pages rewritten out. Traps run through every page: a retest whose June
+  row disagrees with the final one, one country's survey figure, a sibling
+  model's figure, a price or offer not in force on the day, a discontinued
+  model that is lighter, a shortlist read as an award, a retailer-only
+  model's returns and shipping, review counts near a respondent count, and
+  conditions the rewrite must keep. Each kept or corrected claim is checked
+  where it stands, between the claim number before it and its own. 13 of its
+  14 checks are a program's. Vendors `copy-editing` (2.0.0) unchanged from
+  marketingskills `2c38021`, the pin of the other skill files, for its "with
+  skills" arm.
 - Tasks: workflow task `catalog-descriptions` (development split): a 60-row
   product table in twelve families of near-identical variants, a certificate
   register, a warranty policy by category and last season's descriptions in;
@@ -17,7 +31,7 @@
   usable for the asset's product and channel, prices carry the product's own
   offer date, an SMS limit counts the opt-out line and falls to 70
   characters for one non-plain character, and no two of a product's
-  headlines open alike. 14 of its 15 checks are a program's. The copy
+  headlines open alike. 14 of its 15 checks are a program's. The three copy
   tasks share `eval_runner/task_facts_copy.py` (documents, reference replies
   and checkers); each has a thin interface module in `eval_runner/workflows/`.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
