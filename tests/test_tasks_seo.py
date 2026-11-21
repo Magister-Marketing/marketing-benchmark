@@ -157,7 +157,7 @@ def test_redirect_oracle_matches_the_task_file_and_an_independent_recomputation(
     no_row = sorted(url for url, value in rows.items() if value is None)
     backlinks = {row["url"]: int(row["backlinks"]) for row in old}
     answers = [len(redirects), len(gone), len(no_row), sum(backlinks[url] for url in gone)]
-    assert answers == [170, 16, 28, 28] == list(ref["answers"].values())
+    assert answers == [263, 24, 40, 34] == list(ref["answers"].values())
     by_id = _by_id(task)
     assert [by_id[name]["programmatic"]["near"] for name in ("q1_redirects", "q2_gone", "q3_no_row", "q4_gone_backlinks")] == answers
     # Every 301 lands on a live page of the new site, and none on an old URL that redirects.
@@ -165,7 +165,7 @@ def test_redirect_oracle_matches_the_task_file_and_an_independent_recomputation(
     assert set(redirects.values()) <= live
     assert not set(redirects.values()) & {url for url, value in rows.items() if value}
     # The counts the checks quote are the oracle's.
-    assert len(old) == 214 and "(186 of the 214)" in by_id["every_row_accounted"]["check"]
+    assert len(old) == 327 and "(287 of the 327)" in by_id["every_row_accounted"]["check"]
     assert f"None of the {len(no_row)} old URLs" in by_id["no_row_urls_left_out"]["check"]
     assert f"Each of the {len(gone)} old URLs" in by_id["gone_urls_right"]["check"]
     quoted = {"product": "products_matched_by_sku", "retired": "retired_products_to_category", "renamed": "renames_applied",
@@ -187,15 +187,16 @@ def test_redirect_traps_are_in_the_data():
     reused = [row for row in old if row["url"].startswith("/products/") and row["status"] == "200"
               and row["sku"] not in {item["sku"] for item in new}
               and any(item["sku"] for item in new_by_slug[row["url"].rsplit("/", 1)[1]])]
-    assert len(reused) == 5
+    assert len(reused) == 8
     assert all(rows[row["url"]][1].count("/") == 2 for row in reused)  # a category, not the successor
     # Retired products with exactly one signal above zero still redirect; the silent ones are gone.
     retired = [row for row in old if row["url"].startswith("/products/") and row["status"] == "200"
                and row["sku"] not in {item["sku"] for item in new}]
     signals = collections.Counter(sum(row[key] != "0" for key in ("inlinks", "backlinks", "sessions_90d")) for row in retired)
-    assert signals[0] == 6 and signals[1] == 3
+    assert signals[0] == 11 and signals[1] == 5
     # Slugs with a number in front that is not a YYYY-MM- date keep it.
-    for slug in ("10-knife-skills-every-cook-needs", "2024-gift-guide", "2025-kitchen-trends"):
+    for slug in ("10-knife-skills-every-cook-needs", "2024-gift-guide", "2025-kitchen-trends", "2024-1-year-of-sourdough",
+                 "2023-holiday-gift-guide"):
         assert rows["/blogs/kitchen-notes/" + slug] == ("301", "/journal/" + slug)
     assert rows["/blogs/kitchen-notes/2023-11-holiday-baking-timeline"] == ("301", "/journal/holiday-baking-timeline")
     assert rows["/blogs/kitchen-notes/2021-06-summer-grilling-tools"] == ("301", "/journal")
@@ -206,7 +207,11 @@ def test_redirect_traps_are_in_the_data():
     assert int(old_at["/blogs/kitchen-notes/how-to-season-cast-iron?utm_source=pinterest"]["backlinks"]) > 10
     # The rename table points at addresses the new site redirects again.
     assert {address for address in table.values() if any(row["url"] == address and row["status"] == "301" for row in new)} == {
-        "/shop/cast-iron", "/shop/food-storage", "/pages/visit-us"}
+        "/shop/cast-iron", "/shop/food-storage", "/pages/visit-us", "/shop/bar-tools"}
+    # Colour and size pages: every SKU is on the new site, but all except the first fold into its page.
+    aprons = {color: rows[f"/products/chef-apron-{color}"] for color in ("navy", "rust", "olive", "charcoal")}
+    assert set(aprons.values()) == {("301", "/shop/linens/chef-apron")}
+    assert sum(1 for row in new if row["status"] == "301" and row["sku"]) >= 20
 
 
 def test_redirect_reference_reply_passes_every_check_and_a_blank_reply_none():
@@ -246,7 +251,7 @@ def test_each_careless_reading_scores_zero_on_its_own_check():
     # Matching products by slug: the successor that took a retired product's slug.
     by_slug = {url: ("301", hop.get(new_by_slug[url.rsplit("/", 1)[1]], new_by_slug[url.rsplit("/", 1)[1]]))
                for url in ref["buckets"]["retired"] if url.rsplit("/", 1)[1] in new_by_slug}
-    assert len(by_slug) == 4 and "retired_products_to_category" in zeroed(_with(rows, by_slug))
+    assert len(by_slug) == 7 and "retired_products_to_category" in zeroed(_with(rows, by_slug))
     # Stopping at the address a rule gives when the new site redirects it again.
     unfollowed = {}
     for url in ref["buckets"]["new_site_redirect"]:
@@ -267,13 +272,13 @@ def test_each_careless_reading_scores_zero_on_its_own_check():
     # Sending every retired product to its category, or the trade portal to the home page.
     silent = {url: ("301", table["/collections/" + old_at[url]["category"]]) for url in ref["gone"]
               if url.startswith("/products/")}
-    assert len(silent) == 6 and {"gone_urls_right", "q2_gone"} <= zeroed(_with(rows, silent))
+    assert len(silent) == 11 and {"gone_urls_right", "q2_gone"} <= zeroed(_with(rows, silent))
     portal = {url: ("301", "/") for url in ref["gone"] if url.startswith("/wholesale")}
     assert {"gone_urls_right", "q2_gone", "q4_gone_backlinks"} <= zeroed(_with(rows, portal))
     # Stripping any number from the front of a slug, and mapping every post to /journal/<slug>.
     numbered = {url: ("301", "/journal/" + re.sub(r"^\d+-", "", url.rsplit("/", 1)[1])) for url in ref["buckets"]["journal"]
                 if re.match(r"\d+-", url.rsplit("/", 1)[1]) and not re.match(r"\d{4}-\d{2}-", url.rsplit("/", 1)[1])}
-    assert len(numbered) == 3 and "journal_slugs_right" in zeroed(_with(rows, numbered))
+    assert len(numbered) == 7 and "journal_slugs_right" in zeroed(_with(rows, numbered))
     blind = {url: ("301", "/journal/" + re.sub(r"^\d{4}-\d{2}-", "", url.rsplit("/", 1)[1]))
              for url in ref["buckets"]["journal"] if rows[url][1] == "/journal"}
     assert len(blind) >= 3 and "journal_slugs_right" in zeroed(_with(rows, blind))

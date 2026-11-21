@@ -66,12 +66,14 @@ REDIRECT_CATEGORIES = [
     ("gifts", "/shop/gifts"),
     ("sale", "/shop/sale"),
     ("new-arrivals", "/shop/new"),
+    ("bar-tools", "/shop/bar-tools"),                    # stale: the new site moved it again
 ]
 # The rename table's addresses that the new site's own list redirects again.
 REDIRECT_NEW_SITE_MOVES = {
     "/shop/cast-iron": "/shop/cast-iron-cookware",
     "/shop/food-storage": "/shop/pantry-storage",
     "/pages/visit-us": "/pages/contact",
+    "/shop/bar-tools": "/shop/barware",
 }
 REDIRECT_PAGE_RENAMES = [
     ("/pages/shipping", "/pages/shipping-and-returns"),
@@ -80,6 +82,8 @@ REDIRECT_PAGE_RENAMES = [
     ("/pages/care-guides", "/journal/care-and-cleaning"),
     ("/pages/store-locations", "/pages/visit-us"),       # stale: the new site redirects it
     ("/blogs/kitchen-notes", "/journal"),
+    ("/pages/gift-cards", "/pages/gift-card"),
+    ("/pages/recipes", "/journal"),
 ]
 REDIRECT_UNCHANGED = [
     "/", "/cart", "/search", "/account/login", "/account/register",
@@ -88,31 +92,37 @@ REDIRECT_UNCHANGED = [
 # Products by old category: the name, and the new slug where the new site renamed it.
 REDIRECT_PRODUCTS = {
     "frying-pans": ["Classic Fry Pan 8 Inch", "Classic Fry Pan 10 Inch", "Classic Fry Pan 12 Inch", "Everyday Skillet 10",
-                    "Carbon Steel Pan 11", "Crepe Pan 10", "Grill Pan Square", "Paella Pan 14", "Egg Pan Mini"],
+                    "Carbon Steel Pan 11", "Crepe Pan 10", "Grill Pan Square", "Paella Pan 14", "Egg Pan Mini",
+                    "Stainless Fry Pan 8", "Wok 14 Inch", "Grill Press"],
     "saucepans": ["Saucepan 1.5 Quart", "Saucepan 3 Quart", "Saucier 2 Quart", "Butter Warmer", "Milk Pan Small",
-                  "Stockpot 8 Quart", "Pasta Pot 6 Quart"],
+                  "Stockpot 8 Quart", "Pasta Pot 6 Quart", "Saucepan 2 Quart",
+                  "Saute Pan 4 Quart"],
     "dutch-ovens": ["Round Dutch Oven 5.5 Quart", "Oval Dutch Oven 7 Quart", "Braiser 3.5 Quart", "Mini Cocotte Pair",
-                    "Bread Oven Cloche", "Dutch Oven Lid Knob"],
+                    "Bread Oven Cloche", "Dutch Oven Lid Knob", "Cast Iron Bread Pan"],
     "cast-iron": ["Cast Iron Skillet 10", "Cast Iron Skillet 12", "Cast Iron Griddle", "Cast Iron Wok",
-                  "Chainmail Scrubber", "Skillet Handle Sleeve"],
-    "stainless-steel": ["Tri Ply Skillet 10", "Tri Ply Saute Pan", "Tri Ply Stockpot", "Steamer Insert", "Roasting Pan Rack"],
-    "nonstick": ["Ceramic Nonstick Pan 10", "Ceramic Nonstick Pan 12", "Nonstick Omelette Pan", "Nonstick Wok"],
+                  "Chainmail Scrubber", "Skillet Handle Sleeve", "Cast Iron Dutch Oven 6", "Pan Scraper Set"],
+    "stainless-steel": ["Tri Ply Skillet 10", "Tri Ply Saute Pan", "Tri Ply Stockpot", "Steamer Insert", "Roasting Pan Rack", "Tri Ply Saucepan 2",
+                        "Stainless Roaster"],
+    "nonstick": ["Ceramic Nonstick Pan 10", "Ceramic Nonstick Pan 12", "Nonstick Omelette Pan", "Nonstick Wok", "Nonstick Grill Pan",
+                 "Ceramic Saute Pan"],
     "knives": ["Chef Knife 8 Inch", "Santoku 7 Inch", "Paring Knife 3.5", "Bread Knife 9", "Utility Knife 6",
-               "Boning Knife", "Nakiri 6.5", "Honing Steel"],
-    "knife-sets": ["Essential Knife Trio", "Block Set 7 Piece", "Steak Knife Set 4", "Magnetic Knife Strip"],
+               "Boning Knife", "Nakiri 6.5", "Honing Steel", "Carving Knife 10", "Serrated Utility 5"],
+    "knife-sets": ["Essential Knife Trio", "Block Set 7 Piece", "Steak Knife Set 4", "Magnetic Knife Strip", "Knife Block Bamboo"],
     "cutting-boards": ["Walnut End Grain Board", "Maple Board Large", "Bamboo Prep Board", "Board Oil Bottle",
-                       "Cherry Serving Board"],
+                       "Cherry Serving Board", "Bread Board Oak"],
     "bakeware": ["Half Sheet Pan", "Quarter Sheet Pan", "Loaf Pan", "Round Cake Pan 9", "Muffin Tin 12",
-                 "Pie Dish Ceramic", "Bundt Pan"],
+                 "Pie Dish Ceramic", "Bundt Pan", "Springform Pan 9", "Baking Dish Large"],
     "baking-tools": ["Bench Scraper", "French Rolling Pin", "Pastry Brush", "Cooling Rack", "Proofing Basket",
-                     "Dough Whisk"],
+                     "Dough Whisk", "Pastry Blender", "Piping Bag Set"],
     "utensils": ["Fish Spatula", "Silicone Spatula", "Wooden Spoon Set", "Kitchen Tongs 12", "Ladle Stainless",
-                 "Slotted Spoon"],
-    "gadgets": ["Garlic Press", "Microplane Zester", "Salad Spinner", "Mandoline Slicer", "Herb Stripper"],
-    "storage": ["Glass Container Set", "Spice Jar Set", "Bread Box Bamboo", "Produce Saver", "Flour Canister"],
-    "kitchen-linens": ["Linen Tea Towel Pair", "Waffle Dish Towel", "Canvas Apron", "Oven Mitt Pair", "Linen Napkin Set"],
-    "coffee-tea": ["Pour Over Kettle", "French Press 8 Cup", "Tea Infuser Mug", "Coffee Canister", "Milk Frother"],
-    "gifts": ["Starter Kitchen Gift Set", "Baker Gift Set", "Knife Care Gift Set"],
+                 "Slotted Spoon", "Potato Masher", "Spider Strainer"],
+    "gadgets": ["Garlic Press", "Microplane Zester", "Salad Spinner", "Mandoline Slicer", "Herb Stripper", "Smooth Edge Can Opener",
+                "Citrus Juicer"],
+    "storage": ["Glass Container Set", "Spice Jar Set", "Bread Box Bamboo", "Produce Saver", "Flour Canister", "Bento Box Steel"],
+    "kitchen-linens": ["Linen Tea Towel Pair", "Waffle Dish Towel", "Canvas Apron", "Oven Mitt Pair", "Linen Napkin Set", "Pot Holder Pair"],
+    "coffee-tea": ["Pour Over Kettle", "French Press 8 Cup", "Tea Infuser Mug", "Coffee Canister", "Milk Frother", "Hand Burr Grinder", "Enamel Tea Kettle"],
+    "gifts": ["Starter Kitchen Gift Set", "Baker Gift Set", "Knife Care Gift Set", "Pasta Night Gift Set"],
+    "bar-tools": ["Cocktail Shaker", "Jigger Set", "Bar Spoon", "Muddler"],
 }
 # New slugs where the new site renamed the product page (the rest keep theirs).
 REDIRECT_NEW_SLUGS = {
@@ -132,21 +142,42 @@ REDIRECT_NEW_SLUGS = {
 }
 # Retired: not on the new site. With every signal at zero they get 410.
 REDIRECT_RETIRED_SILENT = ["Milk Pan Small", "Butter Warmer", "Nonstick Wok", "Board Oil Bottle", "Produce Saver",
-                           "Steak Knife Set 4"]
+                           "Steak Knife Set 4", "Grill Press", "Pastry Blender", "Pot Holder Pair", "Muddler"]
 # Retired with exactly one signal above zero: (inlinks, backlinks, sessions).
-REDIRECT_RETIRED_ONE_SIGNAL = {"Chainmail Scrubber": (0, 0, 1), "Proofing Basket": (1, 0, 0), "Coffee Canister": (0, 1, 0)}
+REDIRECT_RETIRED_ONE_SIGNAL = {"Chainmail Scrubber": (0, 0, 1), "Proofing Basket": (1, 0, 0), "Coffee Canister": (0, 1, 0),
+                               "Potato Masher": (0, 0, 2), "Bread Board Oak": (0, 1, 0)}
 REDIRECT_RETIRED = ["Crepe Pan 10", "Mini Cocotte Pair", "Steamer Insert", "Waffle Dish Towel", "Tea Infuser Mug",
-                    "Cast Iron Wok", "Spice Jar Set", "Egg Pan Mini", "Herb Stripper"]
+                    "Cast Iron Wok", "Spice Jar Set", "Egg Pan Mini", "Herb Stripper", "Stainless Roaster", "Citrus Juicer",
+                    "Cast Iron Dutch Oven 6", "Bento Box Steel"]
 # Retired, and the new site reuses the slug for a successor with a new SKU.
 REDIRECT_SLUG_REUSED = ["Everyday Skillet 10", "Santoku 7 Inch", "Half Sheet Pan", "Pour Over Kettle",
-                        "Glass Container Set"]
+                        "Glass Container Set", "Wok 14 Inch", "Hand Burr Grinder", "Springform Pan 9"]
 # New-site product pages that are merged into another (status 301 in the new list).
 REDIRECT_MERGED_PRODUCTS = {
     "Classic Fry Pan 8 Inch": "Classic Fry Pan 10 Inch", "Classic Fry Pan 12 Inch": "Classic Fry Pan 10 Inch",
     "Cast Iron Skillet 12": "Cast Iron Skillet 10", "Tri Ply Stockpot": "Stockpot 8 Quart",
+    "Saucepan 2 Quart": "Saucepan 3 Quart", "Serrated Utility 5": "Utility Knife 6",
 }
+# Colourways and sizes the old site sold as separate product pages, each with its own SKU.
+# The new site keeps every SKU but folds the pages into one: the first is the product page,
+# the others redirect to it. The last of some groups is retired.
+REDIRECT_VARIANTS = [
+    ("kitchen-linens", "Chef Apron", ["navy", "rust", "olive", "charcoal"]),
+    ("kitchen-linens", "Striped Tea Towel", ["blue", "red", "green"]),
+    ("cutting-boards", "Acacia Board", ["small", "medium", "large"]),
+    ("dutch-ovens", "Enamel Dutch Oven", ["red", "blue", "black", "white"]),
+    ("utensils", "Silicone Spoon", ["grey", "sage", "blush"]),
+    ("bakeware", "Ceramic Ramekin Set", ["white", "speckled"]),
+    ("coffee-tea", "Stoneware Mug", ["cream", "slate", "terracotta"]),
+    ("storage", "Glass Jar", ["small", "medium", "large"]),
+    ("bar-tools", "Cocktail Glass Pair", ["coupe", "rocks"]),
+]
+# Variant pages not on the new site: (inlinks, backlinks, sessions); all zero is gone.
+REDIRECT_RETIRED_VARIANTS = {("Enamel Dutch Oven", "white"): (3, 0, 40), ("Stoneware Mug", "terracotta"): (0, 0, 0),
+                             ("Glass Jar", "large"): (1, 2, 75)}
 REDIRECT_NEW_ONLY_PRODUCTS = [("frying-pans", "induction-fry-pan-11"), ("kitchen-knives", "cleaver-7in"),
-                              ("bakeware", "baguette-tray"), ("pantry-storage", "rice-bin"), ("linens", "bar-towels")]
+                              ("bakeware", "baguette-tray"), ("pantry-storage", "rice-bin"), ("linens", "bar-towels"),
+                              ("barware", "ice-mold-set"), ("kitchen-tools", "bench-knife"), ("coffee-and-tea", "matcha-whisk")]
 
 REDIRECT_POSTS = [
     "how-to-season-cast-iron", "cleaning-stainless-steel-pans", "choosing-a-dutch-oven", "knife-sharpening-basics",
@@ -156,17 +187,26 @@ REDIRECT_POSTS = [
     "whipping-cream-by-hand", "kitchen-tools-under-25", "making-cold-brew-at-home", "pour-over-coffee-guide",
     "tea-towel-care", "how-to-clean-a-cast-iron-griddle", "carbon-steel-vs-cast-iron", "induction-cookware-guide",
     "oven-safe-pans", "saute-vs-fry", "how-to-store-knives", "choosing-a-cutting-board", "linen-vs-cotton-towels",
+    "how-to-braise-short-ribs", "chef-knife-vs-santoku", "storing-fresh-herbs", "making-stock-at-home",
+    "how-to-dice-an-onion", "pie-crust-basics", "sourdough-starter-guide", "cast-iron-myths", "kitchen-towel-guide",
+    "how-to-sharpen-scissors", "coffee-grind-sizes", "tea-steeping-guide", "cleaning-a-dutch-oven", "mixing-a-classic-sour",
     # A number at the front that is not a YYYY-MM- date: the slug stays as it is.
-    "10-knife-skills-every-cook-needs", "2024-gift-guide", "2025-kitchen-trends",
+    "10-knife-skills-every-cook-needs", "2024-gift-guide", "2025-kitchen-trends", "5-pans-every-kitchen-needs",
+    "2023-holiday-gift-guide", "30-minute-weeknight-dinners", "2024-1-year-of-sourdough",
     # Dated slugs: the date goes. The last two have no page on the new site.
     "2022-03-spring-baking-checklist", "2023-11-holiday-baking-timeline", "2024-02-valentines-dinner-for-two",
     "2023-05-mothers-day-brunch", "2021-10-soup-season-staples", "2024-08-tomato-season-recipes",
-    "2021-06-summer-grilling-tools", "2022-09-back-to-school-lunches",
+    "2022-12-holiday-cookie-swap", "2023-04-spring-pasta-recipes", "2021-01-new-year-pantry-reset",
+    "2024-06-grilling-season-guide",
+    "2021-06-summer-grilling-tools", "2022-09-back-to-school-lunches", "2023-09-apple-pie-season", "2022-07-picnic-essentials",
     # Not carried over.
-    "our-new-warehouse", "meet-the-team-2022",
+    "our-new-warehouse", "meet-the-team-2022", "warehouse-sale-recap",
 ]
-REDIRECT_POSTS_NOT_MOVED = {"summer-grilling-tools", "back-to-school-lunches", "our-new-warehouse", "meet-the-team-2022"}
-REDIRECT_MERGED_POSTS = {"saute-vs-fry": "pan-frying-guide", "linen-vs-cotton-towels": "tea-towel-care"}
+REDIRECT_POSTS_NOT_MOVED = {"summer-grilling-tools", "back-to-school-lunches", "our-new-warehouse", "meet-the-team-2022",
+                            "apple-pie-season", "picnic-essentials", "warehouse-sale-recap"}
+REDIRECT_MERGED_POSTS = {"saute-vs-fry": "pan-frying-guide", "linen-vs-cotton-towels": "tea-towel-care",
+                         "kitchen-towel-guide": "tea-towel-care", "cast-iron-myths": "how-to-season-cast-iron",
+                         "cleaning-a-dutch-oven": "choosing-a-dutch-oven"}
 
 REDIRECT_RULES_MD = """\
 # Bramblewood Kitchen: redirect rules for the platform move
@@ -204,28 +244,50 @@ The target of a 301 must have status 200 in `new_site_urls.csv`. Where a rule ab
 """
 
 
+def _redirect_leaf(category: str) -> str:
+    """The last part of the live new address of an old category."""
+    path = dict(REDIRECT_CATEGORIES)[category]
+    return REDIRECT_NEW_SITE_MOVES.get(path, path).rsplit("/", 1)[1]
+
+
 def redirect_product_rows() -> list[dict]:
-    """Every product of the old site with its SKU, signals and new URL (or None when retired)."""
+    """Every product page of the old site with its SKU, signals and new URL (None when retired).
+
+    A variant page carries `folds_into`: the new product page its new URL redirects to.
+    """
     rng = random.Random(4471)
-    new_leaf = {slug: new.rsplit("/", 1)[1] for slug, new in REDIRECT_CATEGORIES}
-    new_leaf.update({"cast-iron": "cast-iron-cookware", "storage": "pantry-storage"})
     retired = set(REDIRECT_RETIRED_SILENT) | set(REDIRECT_RETIRED_ONE_SIGNAL) | set(REDIRECT_RETIRED) | set(REDIRECT_SLUG_REUSED)
     products, sku = [], 1001
+
+    def busy() -> tuple[int, int, int]:
+        return rng.randint(2, 38), rng.choice([0, 0, 0, 1, 1, 2, 3, 5, 8, 12]), rng.randint(15, 2400)
+
     for category, names in REDIRECT_PRODUCTS.items():
         for name in names:
             slug = _slug(name)
             if name in REDIRECT_RETIRED_SILENT:
                 signals = (0, 0, 0)
-            elif name in REDIRECT_RETIRED_ONE_SIGNAL:
-                signals = REDIRECT_RETIRED_ONE_SIGNAL[name]
             else:
-                signals = (rng.randint(2, 38), rng.choice([0, 0, 0, 1, 1, 2, 3, 5, 8, 12]), rng.randint(15, 2400))
+                signals = REDIRECT_RETIRED_ONE_SIGNAL.get(name) or busy()
             products.append({
                 "name": name, "category": category, "slug": slug, "sku": f"BW-{sku}",
                 "inlinks": signals[0], "backlinks": signals[1], "sessions": signals[2],
-                "new_url": None if name in retired else f"/shop/{new_leaf[category]}/{REDIRECT_NEW_SLUGS.get(name, slug)}",
+                "new_url": None if name in retired else f"/shop/{_redirect_leaf(category)}/{REDIRECT_NEW_SLUGS.get(name, slug)}",
             })
             sku += 1 + rng.randint(0, 3)
+    sku = 2401
+    for category, base, options in REDIRECT_VARIANTS:
+        main = f"/shop/{_redirect_leaf(category)}/{_slug(base)}"
+        for index, option in enumerate(options):
+            gone = (base, option) in REDIRECT_RETIRED_VARIANTS
+            signals = REDIRECT_RETIRED_VARIANTS[(base, option)] if gone else busy()
+            products.append({
+                "name": f"{base} {option}", "category": category, "slug": f"{_slug(base)}-{option}", "sku": f"BW-{sku}",
+                "inlinks": signals[0], "backlinks": signals[1], "sessions": signals[2],
+                "new_url": None if gone else (main if index == 0 else f"{main}-{option}"),
+                "folds_into": main if index and not gone else None,
+            })
+            sku += 3
     return products
 
 
@@ -246,7 +308,8 @@ def build_redirect_map() -> dict[str, str]:
         old.append([f"/collections/{slug}", 200, "", "", "", *signals(30, 150, [0, 1, 3, 6, 14], (200, 5200))])
     for path, _new in REDIRECT_PAGE_RENAMES:
         old.append([path, 200, "", "", "", *signals(10, 120, [0, 1, 2, 5], (40, 1800))])
-    for path in ("/collections/holiday-2023", "/collections/black-friday-2024", "/pages/press-2019"):
+    for path in ("/collections/holiday-2023", "/collections/black-friday-2024", "/pages/press-2019",
+                 "/collections/outdoor-dining", "/pages/careers"):
         old.append([path, 200, "", "", "", *signals(1, 12, [0, 2, 7], (5, 300))])
     for item in products:
         old.append([f"/products/{item['slug']}", 200, "", item["sku"], item["category"],
@@ -259,10 +322,17 @@ def build_redirect_map() -> dict[str, str]:
         ("/products/dutch-oven-round", "/products/round-dutch-oven-5-5-quart"),
         ("/products/skillet-everyday", "/products/everyday-skillet-10"),
         ("/products/maple-board", "/products/maple-board-large"),
+        ("/products/apron-navy", "/products/chef-apron-navy"),
+        ("/products/apron-rust", "/products/chef-apron-rust"),
+        ("/products/wok", "/products/wok-14-inch"),
+        ("/products/santoku-knife", "/products/santoku-7-inch"),
         ("/collections/pans", "/collections/frying-pans"),
         ("/collections/food-storage", "/collections/storage"),
+        ("/collections/knife-blocks", "/collections/knife-sets"),
         ("/blogs/kitchen-notes/seasoning-cast-iron", "/blogs/kitchen-notes/how-to-season-cast-iron"),
+        ("/blogs/kitchen-notes/dutch-oven-bread", "/blogs/kitchen-notes/bread-baking-in-a-dutch-oven"),
         ("/pages/shipping-policy", "/pages/shipping"),
+        ("/pages/returns-policy", "/pages/returns"),
     ):
         old.append([path, 301, target, "", "", *signals(0, 9, [0, 1, 3, 6, 11], (0, 0))])
     # Already dead on the old site.
@@ -270,21 +340,24 @@ def build_redirect_map() -> dict[str, str]:
     for slug, category, inlinks, backlinks, on_new_site in (
         ("linen-napkin-roll", "kitchen-linens", 3, 3, False), ("copper-saucepan", "saucepans", 0, 5, False),
         ("knife-roll-canvas", "knives", 4, 0, False), ("pizza-stone", "bakeware", 2, 0, False),
-        ("enamel-roaster", "dutch-ovens", 1, 2, True),
+        ("enamel-roaster", "dutch-ovens", 1, 2, True), ("bamboo-steamer", "saucepans", 2, 1, False),
+        ("knife-guard-set", "knives", 3, 0, False), ("oven-thermometer", "gadgets", 0, 4, True),
     ):
         old.append([f"/products/{slug}", 404, "", f"BW-{sku}", category, inlinks, backlinks, 0])
         if on_new_site:
-            new.append([f"/shop/dutch-ovens/{slug}", 200, "", f"BW-{sku}"])
+            new.append([f"/shop/{_redirect_leaf(category)}/{slug}", 200, "", f"BW-{sku}"])
         sku += 7
     for path, inlinks, backlinks in (
         ("/blogs/kitchen-notes/2020-01-new-year-kitchen-reset", 0, 2), ("/blogs/kitchen-notes/old-recipe-index", 6, 0),
-        ("/pages/holiday-hours", 2, 1), ("/wholesale/catalog-2024", 3, 0),
+        ("/blogs/kitchen-notes/2019-11-thanksgiving-prep", 0, 3), ("/pages/holiday-hours", 2, 1),
+        ("/pages/gift-registry", 4, 0), ("/wholesale/catalog-2024", 3, 0),
     ):
         old.append([path, 404, "", "", "", inlinks, backlinks, 0])
     # The trade portal.
     old.append(["/wholesale", 200, "", "", "", 12, 4, 260])
     old.append(["/wholesale/login", 301, "/wholesale/portal", "", "", 5, 2, 0])
-    for path, backlinks in (("/wholesale/portal", 1), ("/wholesale/price-list", 6), ("/wholesale/apply", 0), ("/wholesale/terms", 0)):
+    for path, backlinks in (("/wholesale/portal", 1), ("/wholesale/price-list", 6), ("/wholesale/apply", 0),
+                            ("/wholesale/terms", 0), ("/wholesale/order-form", 2)):
         old.append([path, 200, "", "", "", rng.randint(2, 9), backlinks, rng.randint(10, 140)])
     # Parameter URLs, some with links worth keeping that the new platform cannot keep.
     for path, backlinks in (
@@ -295,11 +368,16 @@ def build_redirect_map() -> dict[str, str]:
         ("/blogs/kitchen-notes/how-to-season-cast-iron?utm_source=pinterest", 14), ("/collections/sale?page=3", 0),
         ("/collections/gifts?sort=best-selling", 1), ("/products/walnut-end-grain-board?ref=gift-guide", 3),
         ("/pages/contact?subject=wholesale", 0), ("/cart?discount=WELCOME10", 0),
+        ("/collections/dutch-ovens?color=red", 0), ("/collections/cutting-boards?sort=price-descending", 0),
+        ("/products/enamel-dutch-oven-red?variant=40220011", 4), ("/collections/kitchen-linens?page=2", 0),
+        ("/blogs/kitchen-notes?page=3", 0), ("/blogs/kitchen-notes/knife-sharpening-basics?utm_source=video", 6),
+        ("/products/chef-apron-navy?utm_campaign=spring", 1), ("/search?q=apron", 0),
+        ("/collections/new-arrivals?sort=created-descending", 0), ("/pages/faq?section=shipping", 0),
     ):
         old.append([path, 200, "", "", "", rng.randint(0, 6), backlinks, rng.randint(0, 90)])
 
     # The new site.
-    for path in REDIRECT_UNCHANGED + ["/pages/shipping-and-returns", "/journal"]:
+    for path in REDIRECT_UNCHANGED + ["/pages/shipping-and-returns", "/pages/gift-card", "/journal"]:
         new.append([path, 200, "", ""])
     for path in sorted({new_path for _slug, new_path in REDIRECT_CATEGORIES}):
         if path in REDIRECT_NEW_SITE_MOVES:
@@ -313,15 +391,12 @@ def build_redirect_map() -> dict[str, str]:
         if item["new_url"] is None:
             continue
         merged = REDIRECT_MERGED_PRODUCTS.get(item["name"])
-        if merged:
-            new.append([item["new_url"], 301, by_name[merged]["new_url"], item["sku"]])
-        else:
-            new.append([item["new_url"], 200, "", item["sku"]])
+        folds = by_name[merged]["new_url"] if merged else item.get("folds_into")
+        new.append([item["new_url"], 301, folds, item["sku"]] if folds else [item["new_url"], 200, "", item["sku"]])
     successor = 3001
     for name in REDIRECT_SLUG_REUSED:
         item = by_name[name]
-        leaf = "pantry-storage" if item["category"] == "storage" else dict(REDIRECT_CATEGORIES)[item["category"]].rsplit("/", 1)[1]
-        new.append([f"/shop/{leaf}/{item['slug']}", 200, "", f"BW-{successor}"])
+        new.append([f"/shop/{_redirect_leaf(item['category'])}/{item['slug']}", 200, "", f"BW-{successor}"])
         successor += 11
     for leaf, slug in REDIRECT_NEW_ONLY_PRODUCTS:
         new.append([f"/shop/{leaf}/{slug}", 200, "", f"BW-{successor}"])

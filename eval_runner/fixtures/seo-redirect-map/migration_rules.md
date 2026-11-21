@@ -48,9 +48,12 @@ The target of a 301 must have status 200 in `new_site_urls.csv`. Where a rule ab
 | `/collections/gifts` | `/shop/gifts` |
 | `/collections/sale` | `/shop/sale` |
 | `/collections/new-arrivals` | `/shop/new` |
+| `/collections/bar-tools` | `/shop/bar-tools` |
 | `/pages/shipping` | `/pages/shipping-and-returns` |
 | `/pages/returns` | `/pages/shipping-and-returns` |
 | `/pages/our-story` | `/pages/about` |
 | `/pages/care-guides` | `/journal/care-and-cleaning` |
 | `/pages/store-locations` | `/pages/visit-us` |
 | `/blogs/kitchen-notes` | `/journal` |
+| `/pages/gift-cards` | `/pages/gift-card` |
+| `/pages/recipes` | `/journal` |
