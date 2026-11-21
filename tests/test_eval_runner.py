@@ -1394,6 +1394,25 @@ def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
         bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
+def test_retry_checks_every_recorded_prompt_before_the_first_paid_call(tmp_path, monkeypatch):
+    """A changed prompt on a later errored attempt must stop the retry before
+    an earlier one is re-paid and then left unrecorded."""
+    run_dir = _retry_fixture(tmp_path)
+    (run_dir / "prompts" / "u.md").write_text("a prompt edited after the run")
+    with (run_dir / "attempts.jsonl").open("a") as handle:
+        handle.write(json.dumps({
+            "task_id": "u", "model_id": "m", "repetition": 1,
+            "prompt_sha256": hashlib.sha256(b"the prompt the run sent").hexdigest(),
+            "error": "provider exploded",
+        }) + "\n")
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match="recorded prompt for u"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+
+
 def test_attempt_mark_letters():
     assert bench.attempt_mark({"error": "boom"}, None) == "E"
     assert bench.attempt_mark({"finish_reason": "incomplete:max_output_tokens"}, {"pass": False}) == "T"

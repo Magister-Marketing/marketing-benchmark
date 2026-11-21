@@ -6,6 +6,10 @@
   (`max_output_tokens_by_model`). A run whose models have different ceilings
   records no single `max_output_tokens`, and its retries sent Anthropic and
   OpenRouter models without a cap of their own `max_tokens: null`.
+- Runner: `retry` checks every errored attempt's recorded prompt before it
+  asks to proceed or makes a call. It checked each one just before its own
+  call, so a changed prompt on a later attempt stopped the retry after the
+  earlier ones were paid for again, and their new results were not saved.
 - Skills: the six skill files the "with skills" arm pastes into a prompt are
   refreshed, unchanged, to marketingskills 2.8.23 (commit `2c38021`,
   2026-11-20). They were copies from 2026-08-31 (2.8.16), three months behind

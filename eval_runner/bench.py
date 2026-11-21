@@ -681,6 +681,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
         print("No errored attempts to retry.")
         return 0
     models = run_meta["models"]
+    # Every recorded prompt is checked before the first paid call: a refusal
+    # part-way would leave the attempts already re-paid unrecorded.
+    prompts = [_recorded_retry_prompt(run_dir, record) for record in errored]
     print(f"About to retry {len(errored)} errored paid model call(s) "
           f"from run {run_meta['run_id']}:")
     for record in errored:
@@ -691,15 +694,7 @@ def cmd_retry(args: argparse.Namespace) -> int:
         if answer != "RETRY":
             print("Aborted; nothing was called.")
             return 1
-    for record in errored:
-        prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
-        recorded_sha = record.get("prompt_sha256")
-        current_sha = hashlib.sha256(prompt.encode()).hexdigest()
-        if recorded_sha and recorded_sha != current_sha:
-            raise SystemExit(
-                f"recorded prompt for {record['task_id']} no longer matches its "
-                "attempt's prompt_sha256; refusing to retry a different experiment"
-            )
+    for record, prompt in zip(errored, prompts):
         spec = models[record["model_id"]]
         # The run-wide value is null when the models' ceilings differ; each
         # model's own is what its attempt ran with.
@@ -737,6 +732,17 @@ def cmd_retry(args: argparse.Namespace) -> int:
           f"{remaining} still errored. Regrade affected tasks with: "
           f"python3 -m eval_runner.bench grade --run {run_dir} --tasks {affected}")
     return 0 if remaining == 0 else 1
+
+
+def _recorded_retry_prompt(run_dir: Path, record: dict) -> str:
+    prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
+    recorded_sha = record.get("prompt_sha256")
+    if recorded_sha and recorded_sha != hashlib.sha256(prompt.encode()).hexdigest():
+        raise SystemExit(
+            f"recorded prompt for {record['task_id']} no longer matches its "
+            "attempt's prompt_sha256; refusing to retry a different experiment"
+        )
+    return prompt
 
 
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
