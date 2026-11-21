@@ -19,6 +19,8 @@ import datetime as dt
 import importlib.util
 import io
 import itertools
+import math
+import random
 import re
 
 import pytest
@@ -27,6 +29,8 @@ from eval_runner import bench, task_facts_strategy
 
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
 STRATEGY_TASKS = ["channel-budget-allocation", "competitor-comparison", "launch-timeline"]
+# Version 1 of each was run once (2026-11-20) and found too small; version 2 is the larger task.
+VERSIONS = {"channel-budget-allocation": (2, 2), "competitor-comparison": (1, 1), "launch-timeline": (1, 1)}
 
 
 @pytest.fixture(scope="module")
@@ -85,7 +89,7 @@ def test_the_fixtures_are_what_the_generator_writes(generator, tmp_path):
 def test_the_tasks_load_as_development_tasks_with_most_checks_by_program():
     for task_id in STRATEGY_TASKS:
         task = _task(task_id)
-        assert task["split"] == "development" and (task["prompt_version"], task["rubric_version"]) == (1, 1)
+        assert task["split"] == "development" and (task["prompt_version"], task["rubric_version"]) == VERSIONS[task_id]
         criteria = list(_by_id(task).values())
         programmatic = [c for c in criteria if c.get("programmatic")]
         assert 10 <= len(criteria) <= 18, task_id
@@ -116,253 +120,392 @@ def test_other_tasks_get_no_strategy_facts():
 # ─────────────────────────────────────────────────── channel-budget-allocation
 
 BUDGET = "channel-budget-allocation"
+B_MONTHS = ["apr", "may", "jun"]
+B_REGIONS = ["na", "emea", "apac"]
+BLOCK = 10_000
 
 
-def _budget_inputs() -> dict:
-    """The rules, read again from the fixtures with code of this file's own."""
+def _budget_world() -> dict:
+    """The rules and every block's leads, read again from the fixtures with code of this file's own."""
     brief = (FIXTURES / "channel-budget/planning_brief.md").read_text()
-    channels = {}
-    for row in _table("channel-budget/channel_terms.csv"):
-        channels[row["channel"]] = {
-            "max": int(row["max_blocks"]), "minimum": int(row["minimum_if_used_blocks"]),
-            "committed": int(row["committed_blocks"]), "fee": 3 * int(row["fee_usd_per_month"]),
-            "routed": row["routed_to_aes"] == "yes", "added": []}
-    for row in _table("channel-budget/channel_forecasts.csv"):
-        channels[row["channel"]]["added"].append(int(row["added_leads"]))
-    assert "**Quarter budget:** $128,000" in brief and "whole blocks of $5,000" in brief
-    assert "at most **520 new leads**" in brief and "pays three months\n  of its fee" in brief
-    return {"budget": 128_000, "block": 5_000, "capacity": 520, "channels": channels}
+    flat = " ".join(brief.split())
+    assert "**Quarter budget:** $1,400,000." in flat and "whole blocks of $10,000" in flat
+    assert "| webinars | $3,200 for each month it is live |" in brief
+    assert "| abm | $8,000 if it is live in one month, $13,000 if live in two, $17,000 if live in all three |" in brief
+    assert ("| podcasts | $5,000 one-off agency setup if it is live in any month, plus $2,000 for each month it is "
+            "live |") in brief
+    assert "buys at least one block in that month in any region" in flat and "charged per channel, not per region" in flat
+    licences = {"webinars": lambda months: 3_200 * months, "abm": lambda months: (0, 8_000, 13_000, 17_000)[months],
+                "podcasts": lambda months: 5_000 + 2_000 * months if months else 0}
+    regions = {}
+    for line in brief.splitlines():
+        parts = [part.strip() for part in line.strip("|").split("|")]
+        if len(parts) == 5 and parts[0] in B_REGIONS:
+            low, high, month = (int(part.strip("$").replace(",", "")) // BLOCK for part in parts[1:4])
+            regions[parts[0]] = {"min": low, "max": high, "month": month, "field": int(parts[4])}
+    assert set(regions) == set(B_REGIONS)
+    terms = {row["channel"]: row for row in _table("channel-budget/channel_terms.csv")}
+    field = {channel for channel, row in terms.items() if row["field_channel"] == "yes"}
+    assert field == {"webinars", "events", "abm"} and {c for c, r in terms.items() if r["licence"] == "yes"} == set(licences)
+    cells = {(row["channel"], row["region"], row["month"]): {"max": int(row["max_blocks"]),
+                                                              "committed": int(row["committed_blocks"]), "leads": []}
+             for row in _table("channel-budget/cell_limits.csv")}
+    for row in _table("channel-budget/forecasts.csv"):
+        cells[(row["channel"], row["region"], row["month"])]["leads"].append(int(row["added_leads"]))
+    before = {}
+    for row in _table("channel-budget/syndication_vendor_forecast.csv"):
+        key = ("syndication", row["region"], row["month"])
+        cells[key]["leads"].append(int(row["cumulative_leads"]) - before.get(key, 0))
+        before[key] = int(row["cumulative_leads"])
+    assert all(len(cell["leads"]) == cell["max"] for cell in cells.values())
+    return {"budget": 1_400_000, "regions": regions, "field": field, "licences": licences, "cells": cells}
 
 
-def _budget_search(capacity: int | None, inputs: dict | None = None) -> list[tuple[int, int, dict]]:
-    """Every split that keeps the rules, as (leads, cost, blocks), best first."""
-    inputs = inputs or _budget_inputs()
-    names = list(inputs["channels"])
-    found = []
+def _budget_live(blocks: dict, world: dict) -> dict[str, list[str]]:
+    return {channel: [month for month in B_MONTHS if any(n for (c, _r, m), n in blocks.items() if c == channel and m == month)]
+            for channel in world["licences"]}
 
-    def walk(index: int, blocks: dict, cost: int, leads: int, routed: int) -> None:
-        if cost > inputs["budget"] or (capacity is not None and routed > capacity):
-            return
-        if index == len(names):
-            found.append((leads, cost, dict(blocks)))
-            return
-        name = names[index]
-        channel = inputs["channels"][name]
-        for count in range(channel["max"] + 1):
-            if count < channel["committed"] or 0 < count < channel["minimum"]:
+
+def _budget_numbers(blocks: dict, world: dict, licences: dict | None = None) -> dict:
+    licences = licences or world["licences"]
+    cells = world["cells"]
+    leads = {key: sum(cells[key]["leads"][:count]) for key, count in blocks.items()}
+    live = _budget_live(blocks, world)
+    fees = {channel: licences[channel](len(months)) for channel, months in live.items()}
+    cost = BLOCK * sum(blocks.values()) + sum(fees.values())
+    total = sum(leads.values())
+    return {"cost": cost, "leads": total, "per_lead": round(cost / total, 2), "live": live, "fees": fees,
+            "regions": {region: sum(v for k, v in leads.items() if k[1] == region) for region in B_REGIONS},
+            "field": sum(v for k, v in leads.items() if k[0] in world["field"])}
+
+
+def _budget_breaks(blocks: dict, world: dict) -> list[str]:
+    """Every rule of the brief a split breaks, by name."""
+    cells, regions = world["cells"], world["regions"]
+    broken = [f"cell {key}" for key, n in blocks.items() if not cells[key]["committed"] <= n <= cells[key]["max"]]
+    if _budget_numbers(blocks, world)["cost"] > world["budget"]:
+        broken.append("budget")
+    for region, limit in regions.items():
+        mine = {key: n for key, n in blocks.items() if key[1] == region}
+        if not limit["min"] <= sum(mine.values()) <= limit["max"]:
+            broken.append(f"{region} total")
+        for month in B_MONTHS:
+            if sum(n for key, n in mine.items() if key[2] == month) > limit["month"]:
+                broken.append(f"{region} {month} pacing")
+            if sum(n for key, n in mine.items() if key[2] == month and key[0] in world["field"]) > limit["field"]:
+                broken.append(f"{region} {month} field")
+    return broken
+
+
+def _top(weights: list[int], forced: list[int]) -> dict[int, tuple[int, int]]:
+    """The best total of exactly b blocks from a pool with only cell limits, and the number of ways."""
+    rest = sorted(weights, reverse=True)
+    out, total = {len(forced): (sum(forced), 1)}, sum(forced)
+    for index, weight in enumerate(rest):
+        total += weight
+        ways = sum(1 for other in rest if other == weight)
+        chosen = sum(1 for other in rest[:index + 1] if other == weight)
+        out[len(forced) + index + 1] = (total, math.comb(ways, chosen))
+    return out
+
+
+def _combine(left: dict, right: dict, cap: int | None = None) -> dict:
+    out: dict[int, tuple[int, int]] = {}
+    for a, (va, wa) in left.items():
+        for b, (vb, wb) in right.items():
+            if cap is not None and a + b > cap:
                 continue
-            got = sum(channel["added"][:count])
-            blocks[name] = count
-            walk(index + 1, blocks, cost + count * inputs["block"] + (channel["fee"] if count else 0),
-                 leads + got, routed + (got if channel["routed"] else 0))
-        del blocks[name]
-
-    walk(0, {}, 0, 0, 0)
-    return sorted(found, key=lambda item: (-item[0], item[1]))
+            value, ways = va + vb, wa * wb
+            if a + b not in out or value > out[a + b][0]:
+                out[a + b] = (value, ways)
+            elif value == out[a + b][0]:
+                out[a + b] = (value, out[a + b][1] + ways)
+    return out
 
 
-def _budget_figures(blocks: dict) -> dict:
-    inputs = _budget_inputs()
-    cost = leads = routed = 0
-    for name, count in blocks.items():
-        channel = inputs["channels"][name]
-        got = sum(channel["added"][:count])
-        cost += count * inputs["block"] + (channel["fee"] if count else 0)
-        leads += got
-        routed += got if channel["routed"] else 0
-    return {"cost": cost, "leads": leads, "routed": routed}
+def _budget_exact(world: dict, live: dict, *, field_capacity: bool = True) -> tuple[int, int]:
+    """The most leads any split with these live months can project, and how many splits do.
+
+    Exact by decomposition, with no greedy step: within one region and month, the field
+    blocks and the other blocks are each a pool limited only by their cells, whose best b
+    blocks are its b largest; the month combines the two pools under its pacing and field
+    limits, the region combines its months under its maximum and minimum, and the quarter
+    combines the regions under the budget left after the licences."""
+    fees = sum(world["licences"][channel](len(months)) for channel, months in live.items())
+    blocks = (world["budget"] - fees) // BLOCK
+    totals = None
+    for region, limit in world["regions"].items():
+        quarter = {0: (0, 1)}
+        for month in B_MONTHS:
+            pools = {}
+            for group in (True, False):
+                weights, forced = [], []
+                for (channel, r, m), cell in world["cells"].items():
+                    if r == region and m == month and (channel in world["field"]) == group \
+                            and (channel not in live or month in live[channel]):
+                        forced += cell["leads"][:cell["committed"]]
+                        weights += cell["leads"][cell["committed"]:]
+                pool = _top(weights, forced)
+                if group and field_capacity:
+                    pool = {n: value for n, value in pool.items() if n <= limit["field"]}
+                pools[group] = pool
+            quarter = _combine(quarter, _combine(pools[True], pools[False], limit["month"]), limit["max"])
+        quarter = {n: value for n, value in quarter.items() if n >= limit["min"]}
+        totals = quarter if totals is None else _combine(totals, quarter, blocks)
+    best = max(value for value, _ways in totals.values())
+    return best, sum(ways for value, ways in totals.values() if value == best)
 
 
-def test_budget_oracle_matches_a_recomputation_from_the_fixtures():
-    splits = _budget_search(520)
-    (leads, cost, best), second = splits[0], splits[1]
-    assert best == {"search": 10, "linkedin": 1, "webinars": 3, "syndication": 4, "review_sites": 2, "meta": 4}
-    assert (leads, cost) == (2121, 124_200)
-    assert leads - second[0] >= 5                               # one best split, not a near-tie on a rounding
-    uncapped = _budget_search(None)
-    assert uncapped[0][0] - uncapped[1][0] >= 4 and uncapped[0][0] == 2206
-    routed = _budget_figures(best)["routed"]
-    per_lead = round(cost / leads, 2)
-    assert _near(BUDGET) == {
-        "a1_total_cost": cost, "a2_total_leads": leads, "a3_cost_per_lead": per_lead,
-        "a4_routed_leads": routed, "a5_capacity_cost": uncapped[0][0] - leads,
-    } == {"a1_total_cost": 124_200, "a2_total_leads": 2121, "a3_cost_per_lead": 58.56,
-          "a4_routed_leads": 475, "a5_capacity_cost": 85}
-    # The oracle the checker uses says the same.
+def _budget_patterns(world: dict):
+    for flags in itertools.product(*(list(itertools.product((False, True), repeat=3)) for _ in world["licences"])):
+        yield {channel: [month for month, on in zip(B_MONTHS, flag) if on] for channel, flag in zip(world["licences"], flags)}
+
+
+def test_budget_oracle_is_the_one_best_split_by_an_exact_search():
+    world = _budget_world()
     reference = task_facts_strategy.budget_reference()
-    assert reference["blocks"] == best
-    assert reference["answers"] == {1: 124_200.0, 2: 2121.0, 3: 58.56, 4: 475.0, 5: 85.0}
+    blocks = reference["blocks"]
+    numbers = _budget_numbers(blocks, world)
+    assert _budget_breaks(blocks, world) == []
+    assert (sum(blocks.values()), sum(1 for n in blocks.values() if n)) == (137, 68)
+    live = _budget_live(blocks, world)
+    assert live == {"webinars": ["apr", "may"], "abm": ["may", "jun"], "podcasts": ["apr", "may"]} == reference["live"]
+    # Exactly one split reaches the most leads for these live months, and it is the oracle's.
+    assert _budget_exact(world, live) == (numbers["leads"], 1)
+    # No other choice of live months comes close; the cheapest pattern with that value is this one.
+    by_pattern = sorted(((_budget_exact(world, pattern)[0], pattern) for pattern in _budget_patterns(world)),
+                        key=lambda item: -item[0])
+    assert by_pattern[0] == (numbers["leads"], live) and by_pattern[0][0] - by_pattern[1][0] >= 50
+    uncapped = max(_budget_exact(world, pattern, field_capacity=False)[0] for pattern in _budget_patterns(world))
+    assert uncapped == 34_707
+    assert _near(BUDGET) == {
+        "a1_total_cost": numbers["cost"], "a2_total_leads": numbers["leads"], "a3_cost_per_lead": numbers["per_lead"],
+        "a4_na_leads": numbers["regions"]["na"], "a5_emea_leads": numbers["regions"]["emea"],
+        "a6_apac_leads": numbers["regions"]["apac"], "a7_field_leads": numbers["field"],
+        "a8_field_capacity_cost": uncapped - numbers["leads"],
+        "best_split": 0,
+    }
+    assert (numbers["cost"], numbers["leads"], numbers["fees"]) == (
+        1_398_400, 33_728, {"webinars": 6_400, "abm": 13_000, "podcasts": 9_000})
     # Binding, from the brief's definitions applied by hand to the best split.
-    inputs = _budget_inputs()
-    ae = [name for name, channel in inputs["channels"].items() if channel["routed"]]
-    assert all(routed + inputs["channels"][name]["added"][best[name]] > 520 for name in ae)
-    assert 128_000 - cost == 3_800 < 5_000
-    assert reference["binding"] == {
-        "budget": "yes", "ae_capacity": "yes", "search_max": "yes", "linkedin_max": "no", "webinars_max": "no",
-        "syndication_min_order": "yes", "syndication_max": "no", "review_sites_commitment": "yes",
-        "review_sites_max": "no", "meta_max": "no"}
+    binding = {"budget": world["budget"] - numbers["cost"] < BLOCK}
+    for region, limit in world["regions"].items():
+        spend = sum(n for key, n in blocks.items() if key[1] == region)
+        binding[f"{region}_min"], binding[f"{region}_max"] = spend == limit["min"], spend == limit["max"]
+        for month in B_MONTHS:
+            binding[f"pacing_{region}_{month}"] = sum(
+                n for key, n in blocks.items() if key[1:] == (region, month)) == limit["month"]
+            binding[f"field_{region}_{month}"] = sum(
+                n for key, n in blocks.items() if key[1:] == (region, month) and key[0] in world["field"]) == limit["field"]
+    assert reference["binding"] == {name: "yes" if value else "no" for name, value in binding.items()}
+    said = sorted(name for name, value in binding.items() if value)
+    assert said == sorted(["budget", "na_max", "apac_min", "pacing_na_apr", "pacing_na_may", "pacing_na_jun",
+                           "pacing_apac_may"] + [f"field_{r}_{m}" for r in B_REGIONS for m in B_MONTHS
+                                                 if (r, m) != ("emea", "apr")])
     wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(_task(BUDGET)).items()}
-    assert "search 10, linkedin 1, webinars 3, syndication 4, review_sites 2, meta 4" in wording["best_split"]
-    assert ("yes exactly for budget, ae_capacity, search_max, syndication_min_order and review_sites_commitment"
-            in wording["binding_named"])
-    assert "the best split without it (2,206 leads)" in wording["a5_capacity_cost"]
+    assert "(137 blocks across 68 cells)" in wording["best_split"]
+    assert "the best split without the limits on field blocks (34,707 leads)" in wording["a8_field_capacity_cost"]
+    assert "every field_<region>_<month> except field_emea_apr" in wording["binding_named"]
+    sizes = sum(path.stat().st_size for path in (FIXTURES / "channel-budget").iterdir())
+    assert 30_000 < sizes < 60_000 and sum(len(cell["leads"]) for cell in world["cells"].values()) == 416
 
 
-def test_budget_each_rule_changes_the_answer():
-    """Every rule the brief states moves the best split when it is read wrongly,
-    and the choices it forces (open webinars, open syndication) win clearly."""
-    splits = _budget_search(520)
-    best = splits[0]
-    without_webinars = next(item for item in splits if item[2]["webinars"] == 0)
-    without_syndication = next(item for item in splits if item[2]["syndication"] == 0)
-    assert best[0] - without_webinars[0] >= 40 and best[0] - without_syndication[0] >= 100
-    # The licence read as one month's fee frees a block: the best split changes.
-    one_month = _budget_inputs()
-    one_month["channels"]["webinars"]["fee"] = 1_400
-    assert _budget_search(520, one_month)[0][2] == {**best[2], "meta": 5}
-    # The commitment or the minimum order ignored: a split that looks better and breaks a rule.
-    loose = _budget_inputs()
-    loose["channels"]["review_sites"]["committed"] = 0
-    assert _budget_search(520, loose)[0][0] > best[0]
-    loose = _budget_inputs()
-    loose["channels"]["syndication"]["minimum"] = 0
-    assert _budget_search(520, loose)[0][0] > best[0]
+def test_budget_the_oracles_procedure_is_optimal_on_every_small_instance_tried():
+    """Why taking blocks by most added leads is exact here: for a fixed set of live months,
+    the limits (budget, region maximum, region-month pacing, region-month field blocks, cell
+    maximum) are caps on a nested family of sets of blocks, and a cell's blocks add ever
+    fewer leads. Blocks under nested caps form a laminar matroid, on which the greedy choice
+    of the heaviest blocks is optimal; committed blocks contract the matroid, and a region
+    minimum is met first by the region's own heaviest blocks, which is the best way to meet
+    it because the regions meet only in the budget. The licence months are not concave, so
+    the oracle tries all of them. Here that claim is checked against brute force on small
+    random instances of the same shape."""
+    rng = random.Random(7)
+    months = ["m1", "m2"]
+    for _trial in range(40):
+        regions = {"r1": None, "r2": None}
+        cells = {}
+        for channel in ("c1", "c2", "c3"):
+            for region in regions:
+                for month in months:
+                    most = rng.randint(0, 2)
+                    leads = sorted(rng.sample(range(5, 60), most), reverse=True)
+                    cells[(channel, region, month)] = {"max": most, "committed": 0, "leads": leads}
+        cells[("c1", "r1", "m1")]["committed"] = min(1, cells[("c1", "r1", "m1")]["max"])
+        limits = {region: {"min": BLOCK * rng.randint(0, 2), "max": BLOCK * rng.randint(2, 5),
+                           "month": BLOCK * rng.randint(1, 3), "field": rng.randint(0, 2)} for region in regions}
+        inputs = {"budget": BLOCK * rng.randint(3, 7) + rng.choice([0, 3_000, 6_000]), "block": BLOCK,
+                  "regions": limits, "months": months, "field": {"c2"},
+                  "licences": {"c3": lambda live_months: 4_000 * live_months}, "cells": cells}
+        keys = list(cells)
+        best = None
+        for counts in itertools.product(*(range(cells[key]["max"] + 1) for key in keys)):
+            split = dict(zip(keys, counts))
+            if any(split[key] < cells[key]["committed"] for key in keys):
+                continue
+            live = [m for m in months if any(split[("c3", r, m)] for r in regions)]
+            cost = BLOCK * sum(counts) + 4_000 * len(live)
+            ok = cost <= inputs["budget"]
+            for region, limit in limits.items():
+                mine = [(key, n) for key, n in split.items() if key[1] == region]
+                ok = ok and limit["min"] <= BLOCK * sum(n for _k, n in mine) <= limit["max"]
+                for month in months:
+                    ok = ok and BLOCK * sum(n for key, n in mine if key[2] == month) <= limit["month"]
+                    ok = ok and sum(n for key, n in mine if key[2] == month and key[0] == "c2") <= limit["field"]
+            if ok:
+                rank = (sum(sum(cells[key]["leads"][:n]) for key, n in split.items()), -cost)
+                best = rank if best is None or rank > best else best
+        if best is None:
+            continue
+        solved = task_facts_strategy.budget_solve(inputs)
+        assert (solved["leads"], -solved["cost"]) == best
 
 
-BUDGET_REFERENCE_REPLY = """\
-Ines, here is the split that projects the most leads under every rule in the brief.
+def test_budget_each_rule_moves_the_best_split():
+    """Read any rule wrongly and the best split changes in at least four cells."""
+    inputs = task_facts_strategy.budget_inputs()
+    reference = task_facts_strategy.budget_reference()["blocks"]
 
-Review sites take their 2 committed blocks. Search gets all 10 of its blocks: every one of them
-adds more leads than the next-best use of the money. Webinars are worth their $4,200 licence for
-the quarter: their first three blocks add 153, 124 and 97 leads. The account executives can take
-520 leads, so the routed channels stop at 475 (webinars 374, LinkedIn 101): the next webinar block
-(73) or LinkedIn block (91) would take them past 520. Syndication's 4-block minimum order is worth
-buying (252 leads), and Meta takes 4 blocks. $3,800 is left, less than a block.
+    def moved(changed: dict, **options) -> int:
+        solved = task_facts_strategy.budget_solve(changed, **options)["blocks"]
+        return sum(solved[key] != reference[key] for key in reference)
 
-### allocation.csv
-```csv
-channel,blocks,media_spend_usd,fee_usd,leads
-search,10,50000,0,952
-linkedin,1,5000,0,101
-webinars,3,15000,4200,374
-syndication,4,20000,0,252
-review_sites,2,10000,0,74
-meta,4,20000,0,368
-```
-
-### constraints.csv
-```csv
-constraint,binds
-budget,yes
-ae_capacity,yes
-search_max,yes
-linkedin_max,no
-webinars_max,no
-syndication_min_order,yes
-syndication_max,no
-review_sites_commitment,yes
-review_sites_max,no
-meta_max,no
-```
-
-Without the AE capacity the best split would project 2,206 leads, so the capacity costs 85.
-
-A1: $124,200
-A2: 2,121
-A3: $58.56
-A4: 475
-A5: 85
-"""
+    import copy
+    assert moved(inputs, field_capacity=False) >= 30
+    no_minimum = copy.deepcopy(inputs)
+    for limit in no_minimum["regions"].values():
+        limit["min"] = 0
+    assert moved(no_minimum) >= 20
+    no_pacing = copy.deepcopy(inputs)
+    for limit in no_pacing["regions"].values():
+        limit["month"] = 10**9
+    assert moved(no_pacing) >= 4
+    for channel, misread in (("abm", lambda months: 8_000 * months), ("podcasts", lambda months: 7_000 * months)):
+        assert moved({**inputs, "licences": {**inputs["licences"], channel: misread}}) >= 4, channel
+    assert moved({**inputs, "licences": {channel: (lambda months: 0) for channel in inputs["licences"]}}) >= 10
 
 
-def _budget_reply(blocks: dict, *, fee_months: int = 3, binding: dict | None = None, answers: list | None = None) -> str:
-    """A reply built from a split, with its rows computed honestly from the tables."""
-    inputs = _budget_inputs()
-    lines = ["Recommendation.", "", "### allocation.csv", "```csv", "channel,blocks,media_spend_usd,fee_usd,leads"]
-    for name, count in blocks.items():
-        channel = inputs["channels"][name]
-        fee = channel["fee"] // 3 * fee_months if count else 0
-        lines.append(f"{name},{count},{count * 5000},{fee},{sum(channel['added'][:count])}")
+def _budget_reply(blocks: dict, *, lead_table: dict | None = None, fees: dict | None = None,
+                  binding: dict | None = None, answers: list | None = None) -> str:
+    """A reply built from a split, its rows computed from a table of leads (the right one unless given)."""
+    world = _budget_world()
+    table = lead_table or {key: cell["leads"] for key, cell in world["cells"].items()}
+    lines = ["Recommendation for Ines.", "", "### allocation.csv", "```csv", "channel,region,month,blocks,media_spend_usd,leads"]
+    for (channel, region, month), count in blocks.items():
+        lines.append(f"{channel},{region},{month},{count},{BLOCK * count},{sum(table[(channel, region, month)][:count])}")
+    live = _budget_live(blocks, world)
+    fees = fees or {channel: world["licences"][channel](len(months)) for channel, months in live.items()}
+    lines += ["```", "", "### fees.csv", "```csv", "channel,live_months,fee_usd"]
+    lines += [f"{channel},{' '.join(live[channel]) or 'none'},{fees[channel]}" for channel in world["licences"]]
     lines += ["```", "", "### constraints.csv", "```csv", "constraint,binds"]
     lines += [f"{name},{value}" for name, value in (binding or {}).items()]
-    lines += ["```", ""]
-    lines += [f"A{index}: {value}" for index, value in enumerate(answers or [], 1)]
+    lines += ["```", ""] + [f"A{index}: {value}" for index, value in enumerate(answers or [], 1)]
     return "\n".join(lines) + "\n"
 
 
+def _budget_reference_reply() -> str:
+    reference = task_facts_strategy.budget_reference()
+    numbers = _budget_numbers(reference["blocks"], _budget_world())
+    return _budget_reply(reference["blocks"], binding=reference["binding"], answers=[
+        f"${numbers['cost']:,}", f"{numbers['leads']:,}", f"${numbers['per_lead']:.2f}", numbers["regions"]["na"],
+        numbers["regions"]["emea"], numbers["regions"]["apac"], numbers["field"], 979])
+
+
 def test_budget_reference_reply_passes_every_programmatic_check():
-    results = _results(BUDGET, BUDGET_REFERENCE_REPLY)
-    assert len(results) == 13 and not _failed(results)
-    facts = bench.measured_facts(_task(BUDGET), BUDGET_REFERENCE_REPLY)
-    assert {key: value for key, value in facts.items() if key.startswith("budget_")} == {
-        "budget_missing_file_count": 0, "budget_channel_row_error_count": 0, "budget_infeasible_count": 0,
-        "budget_wrong_blocks_count": 0, "budget_row_arithmetic_error_count": 0, "budget_fee_error_count": 0,
-        "budget_binding_error_count": 0}
-    # The same reply as Markdown tables, unfenced, or with names in other cases, reads the same.
+    reply = _budget_reference_reply()
+    results = _results(BUDGET, reply)
+    assert len(results) == 16 and not _failed(results)
     table = re.sub(r"```csv\n(.*?)\n```", lambda m: "\n".join(
-        "| " + " | ".join(line.split(",")) + " |" + ("\n|---|---|---|---|---|" if i == 0 else "")
-        for i, line in enumerate(m.group(1).splitlines())), BUDGET_REFERENCE_REPLY, flags=re.DOTALL)
-    assert not _failed(_results(BUDGET, table))
-    assert not _failed(_results(BUDGET, BUDGET_REFERENCE_REPLY.replace("```csv\n", "").replace("```\n", "\n")))
-    assert not _failed(_results(BUDGET, BUDGET_REFERENCE_REPLY.replace("review_sites,2", "Review_Sites,2")
-                                .replace("$124,200", "124200")))
+        "| " + " | ".join(line.split(",")) + " |" + ("\n|" + "---|" * len(line.split(",")) if i == 0 else "")
+        for i, line in enumerate(m.group(1).splitlines())), reply, flags=re.DOTALL)
+    for variant in (table, reply.replace("```csv\n", "").replace("```\n", "\n"),
+                    reply.replace(",apac,", ",APAC,").replace("budget,yes", "Budget,Yes"),
+                    reply.replace("abm,may jun,", "abm,\"may, jun\",").replace("$1,398,400", "1398400")):
+        assert not _failed(_results(BUDGET, variant)), variant[:300]
 
 
-def test_budget_ignoring_the_ae_capacity_scores_zero_where_it_should():
-    """The tempting reading: buy the best blocks wherever they are, as if the
-    AEs could take every lead. It is infeasible, and every figure it changes is
-    outside its zero band."""
-    leads, cost, uncapped = _budget_search(None)[0]
-    figures = _budget_figures(uncapped)
-    assert figures["routed"] == 870 > 520
-    binding = dict(task_facts_strategy.budget_binding(uncapped))
-    careless = _budget_reply(uncapped, binding=binding, answers=[
-        f"${cost:,}", f"{leads:,}", f"${cost / leads:.2f}", figures["routed"], 0])
-    results = _results(BUDGET, careless)
-    assert {"split_keeps_every_rule", "best_split", "a2_total_leads", "a3_cost_per_lead", "a4_routed_leads",
-            "a5_capacity_cost", "binding_named"} == _zeroed(results) == _failed(results)
-    # Its rows are honest arithmetic, its fees right, and it spends the same: those checks pass.
-    assert results["rows_add_up"]["pass"] and results["fees_for_the_quarter"]["pass"] and results["a1_total_cost"]["pass"]
+def test_budget_ignoring_the_field_capacity_scores_zero_where_it_should():
+    """The tempting reading: buy the best blocks wherever they are, as if each region's field
+    team could run any number of webinars, events and mailings."""
+    world = _budget_world()
+    inputs = task_facts_strategy.budget_inputs()
+    blocks = task_facts_strategy.budget_solve(inputs, field_capacity=False)["blocks"]
+    numbers = _budget_numbers(blocks, world)
+    assert numbers["leads"] == 34_707 and any("field" in rule for rule in _budget_breaks(blocks, world))
+    reply = _budget_reply(blocks, binding=task_facts_strategy.budget_binding(blocks), answers=[
+        numbers["cost"], numbers["leads"], f"{numbers['per_lead']:.2f}", numbers["regions"]["na"],
+        numbers["regions"]["emea"], numbers["regions"]["apac"], numbers["field"], 0])
+    results = _results(BUDGET, reply)
+    assert _zeroed(results) == _failed(results) == {
+        "split_keeps_every_rule", "best_split", "a1_total_cost", "a2_total_leads", "a3_cost_per_lead", "a4_na_leads",
+        "a5_emea_leads", "a6_apac_leads", "a7_field_leads", "a8_field_capacity_cost", "binding_named"}
 
 
-def test_budget_reading_the_fee_as_one_month_scores_zero_where_it_should():
-    """The licence is per month and held all quarter. Read once, it frees a
-    block; the split, its fee and its total cost are then wrong."""
-    split = {"search": 10, "linkedin": 1, "webinars": 3, "syndication": 4, "review_sites": 2, "meta": 5}
-    figures = _budget_figures(split)
-    cost = figures["cost"] - 2 * 1_400                         # the fee counted once
-    assert cost == 126_400 <= 128_000 < figures["cost"]
-    careless = _budget_reply(split, fee_months=1, binding=task_facts_strategy.budget_binding(split),
-                             answers=[f"${cost:,}", figures["leads"], f"{cost / figures['leads']:.2f}", 475, 32])
-    results = _results(BUDGET, careless)
-    assert {"split_keeps_every_rule", "best_split", "fees_for_the_quarter", "a1_total_cost", "a2_total_leads",
-            "a3_cost_per_lead", "a5_capacity_cost"} <= _zeroed(results)
-    assert results["a4_routed_leads"]["pass"] and results["rows_add_up"]["pass"]
+@pytest.mark.parametrize("reading", ["no_minimum", "no_pacing", "abm_per_month", "podcast_setup_monthly", "no_licences"])
+def test_budget_each_wrong_reading_of_a_rule_scores_zero_where_it_should(reading):
+    import copy
+    world = _budget_world()
+    inputs = copy.deepcopy(task_facts_strategy.budget_inputs())
+    believed = dict(world["licences"])
+    if reading == "no_minimum":
+        for limit in inputs["regions"].values():
+            limit["min"] = 0
+    elif reading == "no_pacing":
+        for limit in inputs["regions"].values():
+            limit["month"] = 10**9
+    else:
+        misread = {"abm_per_month": {"abm": lambda months: 8_000 * months},
+                   "podcast_setup_monthly": {"podcasts": lambda months: 7_000 * months},
+                   "no_licences": {channel: (lambda months: 0) for channel in believed}}[reading]
+        believed.update(misread)
+        inputs["licences"] = {**inputs["licences"], **misread}
+    blocks = task_facts_strategy.budget_solve(inputs)["blocks"]
+    numbers = _budget_numbers(blocks, world, believed)            # the figures as that reading believes them
+    fees = {channel: believed[channel](len(months)) for channel, months in numbers["live"].items()}
+    reply = _budget_reply(blocks, fees=fees, binding=task_facts_strategy.budget_binding(blocks), answers=[
+        numbers["cost"], numbers["leads"], f"{numbers['per_lead']:.2f}", numbers["regions"]["na"],
+        numbers["regions"]["emea"], numbers["regions"]["apac"], numbers["field"], 979])
+    results = _results(BUDGET, reply)
+    touched = {"best_split", "a2_total_leads", "a3_cost_per_lead"}
+    touched |= {name for name, region in (("a4_na_leads", "na"), ("a5_emea_leads", "emea"), ("a6_apac_leads", "apac"))
+                if numbers["regions"][region] != _near(BUDGET)[name]}
+    if numbers["cost"] != 1_398_400:
+        touched.add("a1_total_cost")
+    if numbers["field"] != 8_301:
+        touched.add("a7_field_leads")
+    if reading in ("no_minimum", "no_pacing"):
+        touched.add("split_keeps_every_rule")
+    if reading not in ("no_minimum", "no_pacing"):
+        touched.add("licences_right")
+    assert touched <= _zeroed(results), reading
+    assert results["rows_add_up"]["pass"]                        # its rows are honest arithmetic
 
 
-def test_budget_dropping_a_commitment_or_a_minimum_order_is_infeasible():
-    for split in ({"search": 10, "linkedin": 1, "webinars": 3, "syndication": 4, "review_sites": 0, "meta": 6},
-                  {"search": 10, "linkedin": 1, "webinars": 3, "syndication": 3, "review_sites": 2, "meta": 5}):
-        figures = _budget_figures(split)
-        assert figures["leads"] > 2121 and figures["cost"] <= 128_000 and figures["routed"] <= 520
-        reply = _budget_reply(split, answers=[figures["cost"], figures["leads"], 58, 475, 85])
-        results = _results(BUDGET, reply)
-        assert {"split_keeps_every_rule", "best_split", "a2_total_leads"} <= _zeroed(results)
-        assert results["rows_add_up"]["pass"] and results["fees_for_the_quarter"]["pass"]
+def test_budget_the_vendors_cumulative_figures_read_as_added_leads_score_zero_where_they_should():
+    reference = task_facts_strategy.budget_reference()
+    world = _budget_world()
+    misread = {key: ([sum(cell["leads"][:i + 1]) for i in range(len(cell["leads"]))] if key[0] == "syndication"
+                     else cell["leads"]) for key, cell in world["cells"].items()}
+    blocks = reference["blocks"]
+    leads = {key: sum(misread[key][:n]) for key, n in blocks.items()}
+    regions = {region: sum(v for k, v in leads.items() if k[1] == region) for region in B_REGIONS}
+    total = sum(leads.values())
+    reply = _budget_reply(blocks, lead_table=misread, binding=reference["binding"], answers=[
+        1_398_400, total, f"{1_398_400 / total:.2f}", regions["na"], regions["emea"], regions["apac"], 8_301, 979])
+    results = _results(BUDGET, reply)
+    assert _failed(results) == _zeroed(results) == {
+        "rows_add_up", "a2_total_leads", "a3_cost_per_lead", "a4_na_leads", "a5_emea_leads", "a6_apac_leads"}
 
 
-def test_budget_rows_that_do_not_add_up_are_caught_one_by_one():
-    wrong_leads = BUDGET_REFERENCE_REPLY.replace("meta,4,20000,0,368", "meta,4,20000,0,350")
-    assert _failed(_results(BUDGET, wrong_leads)) == {"rows_add_up"}
-    cumulative = BUDGET_REFERENCE_REPLY.replace("search,10,50000,0,952", "search,10,50000,0,58")
-    assert "rows_add_up" in _failed(_results(BUDGET, cumulative))
-    missing_row = BUDGET_REFERENCE_REPLY.replace("syndication,4,20000,0,252\n", "")
-    assert {"six_channels_once", "best_split", "split_keeps_every_rule", "rows_add_up",
-            "fees_for_the_quarter"} <= _failed(_results(BUDGET, missing_row))
-    extra = BUDGET_REFERENCE_REPLY.replace("meta,4,20000,0,368\n", "meta,4,20000,0,368\ntotal,24,120000,4200,2121\n")
-    assert _failed(_results(BUDGET, extra)) == {"six_channels_once"}
-    assert not _failed(_results(BUDGET, BUDGET_REFERENCE_REPLY.replace("ae_capacity,yes", "AE capacity,Yes")))
-    flipped = BUDGET_REFERENCE_REPLY.replace("meta_max,no", "meta_max,yes")
+def test_budget_missing_rows_and_files_are_counted_not_excused():
+    reply = _budget_reference_reply()
+    no_row = "\n".join(line for line in reply.splitlines() if not line.startswith("search,na,apr,")) + "\n"
+    assert {"every_cell_once", "best_split", "rows_add_up", "split_keeps_every_rule"} <= _failed(_results(BUDGET, no_row))
+    no_fees = re.sub(r"### fees\.csv\n```csv\n.*?```\n", "", reply, flags=re.DOTALL)
+    assert _failed(_results(BUDGET, no_fees)) == {"three_files", "licences_right"}
+    wrong_fee = reply.replace("abm,may jun,13000", "abm,may jun,16000")
+    assert _failed(_results(BUDGET, wrong_fee)) == {"licences_right"}
+    flipped = reply.replace("field_emea_apr,no", "field_emea_apr,yes")
     assert _failed(_results(BUDGET, flipped)) == {"binding_named"}
 
 

@@ -54,179 +54,269 @@ def _yes_no(text: object) -> str | None:
 
 BUDGET_TASK_ID = "channel-budget-allocation"
 BUDGET_DIR = FIXTURES / "channel-budget"
-BUDGET_FILES = ["allocation.csv", "constraints.csv"]
+BUDGET_FILES = ["allocation.csv", "fees.csv", "constraints.csv"]
+
+
+def _licence_fee(text: str):
+    """A licence as the brief words it, as a function of the months a channel is live."""
+    per_month = re.fullmatch(r"\$([\d,]+) for each month it is live", text)
+    tiers = re.fullmatch(r"\$([\d,]+) if it is live in one month, \$([\d,]+) if live in two, "
+                         r"\$([\d,]+) if live in all three", text)
+    setup = re.fullmatch(r"\$([\d,]+) one-off agency setup if it is live in any month, plus \$([\d,]+) "
+                         r"for each month it is live", text)
+    amounts = [int(value.replace(",", "")) for value in (per_month or tiers or setup).groups()]
+    if per_month:
+        return lambda months: amounts[0] * months
+    if tiers:
+        return lambda months: ([0] + amounts)[months]
+    return lambda months: (amounts[0] + amounts[1] * months) if months else 0
 
 
 @lru_cache(maxsize=1)
 def budget_inputs() -> dict:
-    """The rules and the forecasts, as the three fixture files state them."""
+    """The rules, the limits and every block's leads, as the fixture files state them."""
     brief = (BUDGET_DIR / "planning_brief.md").read_text()
-
-    def dollars(label: str) -> int:
-        match = re.search(re.escape(label) + r"\*\*\s*\$([\d,]+)", brief)
-        return int(match.group(1).replace(",", ""))
-
-    budget = dollars("Quarter budget:")
+    regions: dict[str, dict] = {}
+    for region, low, high, month, field in re.findall(
+            r"(?m)^\| ([a-z]+) \| \$([\d,]+) \| \$([\d,]+) \| \$([\d,]+) \| (\d+) \|$", brief):
+        regions[region] = {"min": int(low.replace(",", "")), "max": int(high.replace(",", "")),
+                           "month": int(month.replace(",", "")), "field": int(field)}
+    licences = {channel: _licence_fee(text) for channel, text in re.findall(
+        r"(?m)^\| ([a-z_]+) \| (\$[^|]+?) \|$", brief.split("## Licences", 1)[1].split("## ", 1)[0])}
+    terms = {row["channel"]: row for row in _read_csv(BUDGET_DIR / "channel_terms.csv")}
+    cells: dict[tuple[str, str, str], dict] = {}
+    for row in _read_csv(BUDGET_DIR / "cell_limits.csv"):
+        cells[(row["channel"], row["region"], row["month"])] = {
+            "max": int(row["max_blocks"]), "committed": int(row["committed_blocks"]), "leads": []}
+    for row in _read_csv(BUDGET_DIR / "forecasts.csv"):
+        cell = cells[(row["channel"], row["region"], row["month"])]
+        assert int(row["block"]) == len(cell["leads"]) + 1
+        cell["leads"].append(int(row["added_leads"]))
     block = int(re.search(r"whole blocks of \$([\d,]+)", brief).group(1).replace(",", ""))
-    capacity = int(re.search(r"at most \*\*(\d+) new leads\*\*", brief).group(1))
-    channels: dict[str, dict] = {}
-    for row in _read_csv(BUDGET_DIR / "channel_terms.csv"):
-        channels[row["channel"]] = {
-            "max": int(row["max_blocks"]),
-            "min_if_used": int(row["minimum_if_used_blocks"]),
-            "committed": int(row["committed_blocks"]),
-            # The licence is held for each of the quarter's three months.
-            "fee": int(row["fee_usd_per_month"]) * 3,
-            "routed": row["routed_to_aes"] == "yes",
-            "leads": [],
-        }
-    for row in _read_csv(BUDGET_DIR / "channel_forecasts.csv"):
-        channel = channels[row["channel"]]
-        assert int(row["block"]) == len(channel["leads"]) + 1
-        channel["leads"].append(int(row["added_leads"]))
-    constraints = re.findall(r"`([a-z_]+)`", brief.split("## Constraints, by name", 1)[1].split("\n\n")[1])
-    return {"budget": budget, "block": block, "capacity": capacity, "channels": channels,
-            "constraints": constraints}
+    for row in _read_csv(BUDGET_DIR / "syndication_vendor_forecast.csv"):
+        cell = cells[("syndication", row["region"], row["month"])]
+        assert int(row["spend_usd"]) == block * (len(cell["leads"]) + 1)
+        cell["leads"].append(int(row["cumulative_leads"]) - sum(cell["leads"]))
+    for key, cell in cells.items():
+        assert len(cell["leads"]) == cell["max"], key
+        assert all(a > b for a, b in zip(cell["leads"], cell["leads"][1:])), key
+    names = brief.split("## Constraints, by name", 1)[1].split("\n\n")[1]
+    return {
+        "budget": int(re.search(r"\*\*Quarter budget:\*\* \$([\d,]+)", brief).group(1).replace(",", "")),
+        "block": block, "regions": regions, "months": list(dict.fromkeys(key[2] for key in cells)),
+        "field": {channel for channel, row in terms.items() if row["field_channel"] == "yes"},
+        "licences": licences, "cells": cells,
+        "constraints": re.findall(r"`([a-z_]+)`", names),
+    }
 
 
-def budget_split_figures(blocks: dict[str, int]) -> dict:
+def budget_solve(inputs: dict, *, field_capacity: bool = True) -> dict:
+    """The split with the most leads under every rule (the field capacity
+    optional), the cheaper on a tie.
+
+    Which licence months to pay for is tried every way (8 for each licensed
+    channel). For a given set of live months every other limit is a cap on a
+    nested family of block sets (the budget's blocks, a region's, a region's
+    month, its field blocks, a cell), and a cell's blocks add ever fewer
+    leads, so the blocks form a laminar matroid: taking blocks by most added
+    leads first, skipping any a cap forbids, is optimal. Committed blocks are
+    bought first, and a region below its minimum then takes its own best
+    blocks before the rest are taken in order. tests/test_tasks_strategy.py
+    proves the result with an exact search that assumes none of this."""
+    cells, regions, months, block = inputs["cells"], inputs["regions"], inputs["months"], inputs["block"]
+    licensed = list(inputs["licences"])
+    ranked = sorted(((leads, key, index) for key, cell in cells.items() for index, leads in enumerate(cell["leads"])),
+                    key=lambda item: (-item[0], item[1], item[2]))
+    best: tuple | None = None
+    for pattern in itertools.product(*(list(itertools.product((False, True), repeat=len(months))) for _ in licensed)):
+        live = {channel: [month for month, on in zip(months, flags) if on] for channel, flags in zip(licensed, pattern)}
+        fees = sum(inputs["licences"][channel](len(live[channel])) for channel in licensed)
+        if fees > inputs["budget"]:
+            continue
+        allowed = inputs["budget"] - fees
+        taken = {key: 0 for key in cells}
+        spend = {"all": 0, **{region: 0 for region in regions}}
+        monthly = {(region, month): 0 for region in regions for month in months}
+        field = {(region, month): 0 for region in regions for month in months}
+
+        def fits(key: tuple) -> bool:
+            channel, region, month = key
+            cell = cells[key]
+            if taken[key] >= cell["max"] or (channel in live and month not in live[channel]):
+                return False
+            if spend["all"] + block > allowed or spend[region] + block > regions[region]["max"]:
+                return False
+            if monthly[(region, month)] + block > regions[region]["month"]:
+                return False
+            return not (field_capacity and channel in inputs["field"]
+                        and field[(region, month)] + 1 > regions[region]["field"])
+
+        def buy(key: tuple) -> None:
+            channel, region, month = key
+            taken[key] += 1
+            spend["all"] += block
+            spend[region] += block
+            monthly[(region, month)] += block
+            field[(region, month)] += channel in inputs["field"]
+
+        feasible = True
+        for key, cell in cells.items():
+            for _ in range(cell["committed"]):
+                feasible = feasible and fits(key)
+                buy(key)
+        for region in regions:
+            for _leads, key, index in ranked:
+                if spend[region] >= regions[region]["min"]:
+                    break
+                if key[1] == region and index == taken[key] and fits(key):
+                    buy(key)
+            feasible = feasible and spend[region] >= regions[region]["min"]
+        for _leads, key, index in ranked:
+            if index == taken[key] and fits(key):
+                buy(key)
+        if not feasible:
+            continue
+        leads = sum(sum(cells[key]["leads"][:count]) for key, count in taken.items())
+        rank = (leads, -(spend["all"] + fees))
+        if best is None or rank > best[0]:
+            best = (rank, dict(taken), fees)
+    (leads, negative_cost), taken, fees = best
+    return {"blocks": taken, "leads": leads, "cost": -negative_cost, "fees": fees}
+
+
+def budget_live_months(blocks: dict) -> dict[str, list[str]]:
+    inputs = budget_inputs()
+    return {channel: [month for month in inputs["months"]
+                      if any(count for (c, _region, m), count in blocks.items() if c == channel and m == month)]
+            for channel in inputs["licences"]}
+
+
+def budget_figures(blocks: dict) -> dict:
     """What a split costs and projects, by the brief's rules."""
     inputs = budget_inputs()
-    channels = inputs["channels"]
-    cost = leads = routed = 0
-    for name, count in blocks.items():
-        channel = channels[name]
-        if count:
-            got = sum(channel["leads"][:count])
-            cost += count * inputs["block"] + channel["fee"]
-            leads += got
-            routed += got if channel["routed"] else 0
-    return {"cost": cost, "leads": leads, "routed": routed}
+    cells, block = inputs["cells"], inputs["block"]
+    live = budget_live_months(blocks)
+    fees = {channel: inputs["licences"][channel](len(months)) for channel, months in live.items()}
+    leads = {key: sum(cells[key]["leads"][:count]) for key, count in blocks.items()}
+    by_region = {region: sum(value for key, value in leads.items() if key[1] == region) for region in inputs["regions"]}
+    media = sum(blocks.values()) * block
+    return {
+        "media": media, "fees": fees, "cost": media + sum(fees.values()), "leads": sum(leads.values()),
+        "by_region": by_region, "field_leads": sum(value for key, value in leads.items() if key[0] in inputs["field"]),
+        "region_spend": {region: block * sum(n for key, n in blocks.items() if key[1] == region) for region in inputs["regions"]},
+        "month_spend": {(region, month): block * sum(n for key, n in blocks.items() if key[1] == region and key[2] == month)
+                        for region in inputs["regions"] for month in inputs["months"]},
+        "field_blocks": {(region, month): sum(n for key, n in blocks.items()
+                                              if key[0] in inputs["field"] and key[1] == region and key[2] == month)
+                         for region in inputs["regions"] for month in inputs["months"]},
+        "live": live,
+    }
 
 
-def _budget_options(channel: dict) -> list[int]:
-    low = max(1, channel["min_if_used"], channel["committed"])
-    return ([] if channel["committed"] else [0]) + list(range(low, channel["max"] + 1))
-
-
-def best_budget_split(*, with_capacity: bool = True) -> dict[str, int]:
-    """The split with the most leads under every rule (the AE capacity
-    optional), the cheaper one on a tie. Every split is tried: there are
-    under a hundred thousand."""
-    inputs = budget_inputs()
-    names = list(inputs["channels"])
-    best: tuple | None = None
-    for combo in itertools.product(*(_budget_options(inputs["channels"][name]) for name in names)):
-        blocks = dict(zip(names, combo))
-        figures = budget_split_figures(blocks)
-        if figures["cost"] > inputs["budget"]:
-            continue
-        if with_capacity and figures["routed"] > inputs["capacity"]:
-            continue
-        key = (figures["leads"], -figures["cost"])
-        if best is None or key > best[0]:
-            best = (key, blocks)
-    return best[1]
-
-
-def budget_binding(blocks: dict[str, int]) -> dict[str, str]:
+def budget_binding(blocks: dict) -> dict[str, str]:
     """Whether each named constraint binds in a split, by the brief's definitions."""
     inputs = budget_inputs()
-    channels = inputs["channels"]
-    figures = budget_split_figures(blocks)
-    below_max = [name for name, channel in channels.items() if channel["routed"] and blocks[name] < channel["max"]]
-    over = all(figures["routed"] + channels[name]["leads"][blocks[name]] > inputs["capacity"] for name in below_max)
-    binding = {
-        "budget": inputs["budget"] - figures["cost"] < inputs["block"],
-        "ae_capacity": bool(below_max) and over,
-    }
-    for name, channel in channels.items():
-        if channel["min_if_used"]:
-            binding[f"{name}_min_order"] = blocks[name] == channel["min_if_used"]
-        if channel["committed"]:
-            binding[f"{name}_commitment"] = blocks[name] == channel["committed"]
-        binding[f"{name}_max"] = blocks[name] == channel["max"]
+    figures = budget_figures(blocks)
+    binding = {"budget": inputs["budget"] - figures["cost"] < inputs["block"]}
+    for region, limits in inputs["regions"].items():
+        binding[f"{region}_min"] = figures["region_spend"][region] == limits["min"]
+        binding[f"{region}_max"] = figures["region_spend"][region] == limits["max"]
+        for month in inputs["months"]:
+            binding[f"pacing_{region}_{month}"] = figures["month_spend"][(region, month)] == limits["month"]
+            binding[f"field_{region}_{month}"] = figures["field_blocks"][(region, month)] == limits["field"]
     assert set(binding) == set(inputs["constraints"]), "the brief names the constraints the definitions cover"
     return {name: "yes" if binding[name] else "no" for name in inputs["constraints"]}
+
+
+def budget_violations(blocks: dict) -> int:
+    """How many of the brief's rules a split breaks."""
+    inputs = budget_inputs()
+    figures = budget_figures(blocks)
+    broken = sum(1 for key, count in blocks.items()
+                 if not inputs["cells"][key]["committed"] <= count <= inputs["cells"][key]["max"])
+    broken += figures["cost"] > inputs["budget"]
+    for region, limits in inputs["regions"].items():
+        broken += not limits["min"] <= figures["region_spend"][region] <= limits["max"]
+        for month in inputs["months"]:
+            broken += figures["month_spend"][(region, month)] > limits["month"]
+            broken += figures["field_blocks"][(region, month)] > limits["field"]
+    return broken
 
 
 @lru_cache(maxsize=1)
 def budget_reference() -> dict:
     """The one right answer, and the figures the answer block asks for."""
     inputs = budget_inputs()
-    split = best_budget_split()
-    figures = budget_split_figures(split)
-    uncapped = budget_split_figures(best_budget_split(with_capacity=False))
+    best = budget_solve(inputs)
+    blocks = best["blocks"]
+    figures = budget_figures(blocks)
+    assert (figures["cost"], figures["leads"]) == (best["cost"], best["leads"])
+    uncapped = budget_solve(inputs, field_capacity=False)
     per_lead = (Decimal(figures["cost"]) / Decimal(figures["leads"])).quantize(Decimal("0.01"), ROUND_HALF_UP)
     return {
-        "blocks": split,
-        "binding": budget_binding(split),
+        "blocks": blocks,
+        "live": figures["live"],
+        "fees": figures["fees"],
+        "binding": budget_binding(blocks),
         "answers": {
-            1: float(figures["cost"]),
-            2: float(figures["leads"]),
-            3: float(per_lead),
-            4: float(figures["routed"]),
-            5: float(uncapped["leads"] - figures["leads"]),
+            1: float(figures["cost"]), 2: float(figures["leads"]), 3: float(per_lead),
+            4: float(figures["by_region"]["na"]), 5: float(figures["by_region"]["emea"]),
+            6: float(figures["by_region"]["apac"]), 7: float(figures["field_leads"]),
+            8: float(uncapped["leads"] - figures["leads"]),
         },
-        "left_over": inputs["budget"] - figures["cost"],
     }
 
 
 def budget_facts(response_text: str) -> dict:
     inputs = budget_inputs()
-    channels = inputs["channels"]
+    cells = inputs["cells"]
     reference = budget_reference()
     found = common.tables(response_text, BUDGET_FILES)
-    rows = found["allocation.csv"] or []
-    by_channel: dict[str, list[dict]] = {}
+    by_cell: dict[tuple, list[dict]] = {}
     unknown = 0
-    for row in rows:
-        name = common.norm(common.cell(row, "channel")).replace(" ", "_")
-        if name in channels:
-            by_channel.setdefault(name, []).append(row)
+    for row in found["allocation.csv"] or []:
+        key = tuple(common.norm(common.cell(row, name)).replace(" ", "_") for name in ("channel", "region", "month"))
+        if key in cells:
+            by_cell.setdefault(key, []).append(row)
         elif any(str(value).strip() for value in row.values()):
             unknown += 1
-    single = {name: found_rows[0] for name, found_rows in by_channel.items() if len(found_rows) == 1}
-    blocks = {name: _integer(common.cell(row, "blocks")) for name, row in single.items()}
+    single = {key: rows[0] for key, rows in by_cell.items() if len(rows) == 1}
+    blocks = {key: _integer(common.cell(row, "blocks")) for key, row in single.items()}
 
-    channel_errors = unknown + sum(1 for name in channels if name not in single)
-    wrong_blocks = sum(1 for name, count in reference["blocks"].items() if blocks.get(name) != count)
+    readable = {key: count for key, count in blocks.items() if count is not None and 0 <= count <= cells[key]["max"]}
+    split = {key: readable.get(key, 0) for key in cells}
+    infeasible = budget_violations(split) + (found["allocation.csv"] is None)
+    infeasible += sum(1 for key in cells if key not in readable)          # a cell that cannot be read keeps no rule
 
-    # The reply's own split, held to every rule. A split that cannot be read
-    # cannot be shown to keep them.
-    infeasible = 0
-    readable = {name: count for name, count in blocks.items() if count is not None}
-    if found["allocation.csv"] is None or len(readable) != len(channels):
-        infeasible += 1
-    split = {name: readable.get(name, 0) for name in channels}
-    for name, count in split.items():
-        channel = channels[name]
-        if count < 0 or count > channel["max"]:
-            infeasible += 1
-            split[name] = max(0, min(count, channel["max"]))
-        if split[name] < channel["committed"]:
-            infeasible += 1
-        if 0 < split[name] < channel["min_if_used"]:
-            infeasible += 1
-    figures = budget_split_figures(split)
-    infeasible += figures["cost"] > inputs["budget"]
-    infeasible += figures["routed"] > inputs["capacity"]
-
-    # Each row agrees with its own block count: spend, leads and fee.
-    arithmetic_errors = fee_errors = 0
-    for name, channel in channels.items():
-        row, count = single.get(name), blocks.get(name)
-        if row is None or count is None or not 0 <= count <= channel["max"]:
-            arithmetic_errors += 1
-            fee_errors += 1
+    arithmetic = 0
+    for key, cell in cells.items():
+        row, count = single.get(key), readable.get(key)
+        if row is None or count is None:
+            arithmetic += 1
             continue
         spend = common.money(common.cell(row, "media_spend_usd", "media_spend", "spend_usd"))
         leads = _integer(common.cell(row, "leads", "projected_leads"))
-        if spend != count * inputs["block"] or leads != sum(channel["leads"][:count]):
-            arithmetic_errors += 1
-        fee = common.money(common.cell(row, "fee_usd", "fee"))
-        if fee != (channel["fee"] if count else 0):
+        arithmetic += spend != count * inputs["block"] or leads != sum(cell["leads"][:count])
+
+    live = budget_live_months(split)
+    fee_rows: dict[str, list[dict]] = {}
+    extra_fees = 0
+    for row in found["fees.csv"] or []:
+        channel = common.norm(common.cell(row, "channel")).replace(" ", "_")
+        if channel in inputs["licences"]:
+            fee_rows.setdefault(channel, []).append(row)
+        elif any(str(value).strip() for value in row.values()):
+            extra_fees += 1
+    fee_errors = extra_fees
+    for channel, months in live.items():
+        rows = fee_rows.get(channel, [])
+        if len(rows) != 1 or found["allocation.csv"] is None:
             fee_errors += 1
+            continue
+        stated = [month for month in inputs["months"]
+                  if re.search(rf"\b{month}\b", common.norm(common.cell(rows[0], "live_months", "months_live")))]
+        fee = common.money(common.cell(rows[0], "fee_usd", "fee"))
+        fee_errors += stated != months or fee != inputs["licences"][channel](len(months))
 
     stated: dict[str, list[str | None]] = {}
     extra_constraints = 0
@@ -241,10 +331,10 @@ def budget_facts(response_text: str) -> dict:
 
     return {
         "budget_missing_file_count": sum(1 for name in BUDGET_FILES if found[name] is None),
-        "budget_channel_row_error_count": channel_errors,
+        "budget_cell_row_error_count": unknown + sum(1 for key in cells if key not in single),
         "budget_infeasible_count": infeasible,
-        "budget_wrong_blocks_count": wrong_blocks,
-        "budget_row_arithmetic_error_count": arithmetic_errors,
+        "budget_wrong_cell_count": sum(1 for key, count in reference["blocks"].items() if blocks.get(key) != count),
+        "budget_row_arithmetic_error_count": arithmetic,
         "budget_fee_error_count": fee_errors,
         "budget_binding_error_count": binding_errors,
     }

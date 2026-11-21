@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Tasks: `channel-budget-allocation` version 2 (prompt and rubric 2). Version
+  1 (six channels, 4.7 KB) was passed outright by a strong model with no tools
+  or skills, so the task is now a quarter split across 12 channels, 3 regions
+  and 3 months from 416 forecast blocks (32 KB of fixtures): regional
+  minimums and maximums, monthly pacing, a field-marketing limit per region
+  and month, contracted blocks, three licences priced by how many months a
+  channel is live, a syndication vendor forecast given as cumulative leads,
+  and a forecast range and Q1 actuals that play no part. Every one of the 108
+  cells is checked, with the licences, 25 binding verdicts and eight figures;
+  16 of 17 checks are a program's. The oracle tries every licence pattern and
+  takes blocks greedily within each, which is exact because the other limits
+  are nested (a laminar matroid); the test proves the answer with an exact
+  dynamic programme that assumes nothing of the kind, shows it is the only
+  best split, and checks the oracle against brute force on small instances.
 - Tasks: `launch-timeline` (development split, strategy area): schedule a
   24-task product launch under written rules (working days, three holidays,
   dependencies, owners who take their tasks one at a time in ID order, two

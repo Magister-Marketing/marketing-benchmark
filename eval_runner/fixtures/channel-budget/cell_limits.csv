@@ -1,0 +1,109 @@
+channel,region,month,max_blocks,committed_blocks,note
+search,na,apr,9,0,keyword inventory at target bids
+search,na,may,9,0,keyword inventory at target bids
+search,na,jun,9,0,keyword inventory at target bids
+search,emea,apr,8,0,keyword inventory at target bids
+search,emea,may,8,0,keyword inventory at target bids
+search,emea,jun,8,0,keyword inventory at target bids
+search,apac,apr,5,0,keyword inventory at target bids
+search,apac,may,5,0,keyword inventory at target bids
+search,apac,jun,5,0,keyword inventory at target bids
+linkedin,na,apr,6,0,target-account audience size
+linkedin,na,may,6,0,target-account audience size
+linkedin,na,jun,6,0,target-account audience size
+linkedin,emea,apr,6,0,target-account audience size
+linkedin,emea,may,6,0,target-account audience size
+linkedin,emea,jun,6,0,target-account audience size
+linkedin,apac,apr,5,0,target-account audience size
+linkedin,apac,may,5,0,target-account audience size
+linkedin,apac,jun,5,0,target-account audience size
+meta,na,apr,6,0,audience size
+meta,na,may,6,0,audience size
+meta,na,jun,6,0,audience size
+meta,emea,apr,5,0,audience size
+meta,emea,may,5,0,audience size
+meta,emea,jun,5,0,audience size
+meta,apac,apr,5,0,audience size
+meta,apac,may,5,0,audience size
+meta,apac,jun,5,0,audience size
+programmatic,na,apr,5,0,demand-side platform inventory
+programmatic,na,may,5,0,demand-side platform inventory
+programmatic,na,jun,5,0,demand-side platform inventory
+programmatic,emea,apr,5,0,demand-side platform inventory
+programmatic,emea,may,5,0,demand-side platform inventory
+programmatic,emea,jun,5,0,demand-side platform inventory
+programmatic,apac,apr,4,0,demand-side platform inventory
+programmatic,apac,may,4,0,demand-side platform inventory
+programmatic,apac,jun,4,0,demand-side platform inventory
+video,na,apr,4,0,booked inventory
+video,na,may,4,0,booked inventory
+video,na,jun,4,0,booked inventory
+video,emea,apr,3,0,booked inventory
+video,emea,may,3,0,booked inventory
+video,emea,jun,3,0,booked inventory
+video,apac,apr,3,0,booked inventory
+video,apac,may,3,0,booked inventory
+video,apac,jun,3,0,booked inventory
+syndication,na,apr,6,0,publisher network inventory
+syndication,na,may,6,0,publisher network inventory
+syndication,na,jun,6,0,publisher network inventory
+syndication,emea,apr,6,0,publisher network inventory
+syndication,emea,may,6,0,publisher network inventory
+syndication,emea,jun,6,0,publisher network inventory
+syndication,apac,apr,4,0,publisher network inventory
+syndication,apac,may,4,0,publisher network inventory
+syndication,apac,jun,4,0,publisher network inventory
+review_sites,na,apr,3,1,marketplace lead program; contracted in 2026
+review_sites,na,may,3,1,marketplace lead program; contracted in 2026
+review_sites,na,jun,3,1,marketplace lead program; contracted in 2026
+review_sites,emea,apr,3,1,marketplace lead program; contracted in 2026
+review_sites,emea,may,3,1,marketplace lead program; contracted in 2026
+review_sites,emea,jun,3,1,marketplace lead program; contracted in 2026
+review_sites,apac,apr,2,0,marketplace lead program
+review_sites,apac,may,2,0,marketplace lead program
+review_sites,apac,jun,2,0,marketplace lead program
+podcasts,na,apr,3,0,available sponsorship slots
+podcasts,na,may,3,0,available sponsorship slots
+podcasts,na,jun,3,0,available sponsorship slots
+podcasts,emea,apr,2,0,available sponsorship slots
+podcasts,emea,may,2,0,available sponsorship slots
+podcasts,emea,jun,2,0,available sponsorship slots
+podcasts,apac,apr,2,0,available sponsorship slots
+podcasts,apac,may,2,0,available sponsorship slots
+podcasts,apac,jun,2,0,available sponsorship slots
+webinars,na,apr,3,0,webinar slots
+webinars,na,may,3,0,webinar slots
+webinars,na,jun,3,0,webinar slots
+webinars,emea,apr,3,0,webinar slots
+webinars,emea,may,3,0,webinar slots
+webinars,emea,jun,3,0,webinar slots
+webinars,apac,apr,2,0,webinar slots
+webinars,apac,may,2,0,webinar slots
+webinars,apac,jun,2,0,webinar slots
+events,na,apr,3,1,"booth at ClinicOps Summit, Denver; contracted in 2026"
+events,na,may,0,0,no trade show this month
+events,na,jun,3,0,"booth at Physio Business Expo, Toronto"
+events,emea,apr,0,0,no trade show this month
+events,emea,may,3,0,"booth at Rehab Practice Forum, Manchester"
+events,emea,jun,3,0,"booth at PhysioTech Europe, Rotterdam"
+events,apac,apr,0,0,no trade show this month
+events,apac,may,2,0,"booth at Allied Health Congress, Melbourne"
+events,apac,jun,0,0,no trade show this month
+abm,na,apr,3,0,mailing list size
+abm,na,may,3,0,mailing list size
+abm,na,jun,3,0,mailing list size
+abm,emea,apr,2,0,mailing list size
+abm,emea,may,2,0,mailing list size
+abm,emea,jun,2,0,mailing list size
+abm,apac,apr,2,0,mailing list size
+abm,apac,may,2,0,mailing list size
+abm,apac,jun,2,0,mailing list size
+partners,na,apr,3,0,partner co-marketing calendar
+partners,na,may,3,0,partner co-marketing calendar
+partners,na,jun,3,0,partner co-marketing calendar
+partners,emea,apr,3,0,partner co-marketing calendar
+partners,emea,may,3,0,partner co-marketing calendar
+partners,emea,jun,3,0,partner co-marketing calendar
+partners,apac,apr,3,0,partner co-marketing calendar
+partners,apac,may,3,0,partner co-marketing calendar
+partners,apac,jun,3,0,partner co-marketing calendar

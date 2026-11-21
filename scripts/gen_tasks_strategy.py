@@ -36,119 +36,263 @@ def _csv_text(header: list[str], rows: list[list]) -> str:
 # ─────────────────────────────────────────────── channel-budget-allocation
 
 BUDGET_DIR = "channel-budget"
-QUARTER_BUDGET = 128_000
-BLOCK_USD = 5_000
-AE_CAPACITY = 520
-
-# (id, description, max blocks, minimum blocks if used, committed blocks,
-#  fee per month in dollars, routed to the account executives)
-CHANNELS = [
-    ("search", "Google Ads search, non-brand keywords", 10, 0, 0, 0, "no"),
-    ("linkedin", "LinkedIn Ads sponsored content to the target-account list", 8, 0, 0, 0, "yes"),
-    ("webinars", "Monthly webinar series promoted to the house list and partner lists", 5, 0, 0, 1400, "yes"),
-    ("syndication", "Content syndication of the clinic benchmark report through a B2B publisher network", 8, 4, 0, 0, "no"),
-    ("review_sites", "Paid profile and lead program on software review marketplaces", 4, 0, 2, 0, "no"),
-    ("meta", "Meta retargeting of site visitors and trial drop-offs", 6, 0, 0, 0, "no"),
-]
-
-# Leads each successive $5,000 block adds, strictly decreasing within a channel.
-ADDED_LEADS = {
-    "search": [142, 129, 117, 106, 96, 87, 79, 72, 66, 58],
-    "linkedin": [101, 91, 84, 77, 70, 62, 55, 49],
-    "webinars": [153, 124, 97, 73, 51],
-    "syndication": [89, 80, 46, 37, 31, 26, 22, 19],
-    "review_sites": [41, 33, 25, 19],
-    "meta": [118, 99, 83, 68, 53, 41],
+BUDGET_SEED = 2
+QUARTER_BUDGET = 1_400_000
+BLOCK_USD = 10_000
+LEAD_SCALE = 2  # leads of a $10,000 block
+REGIONS = ["na", "emea", "apac"]
+REGION_NAMES = {"na": "North America", "emea": "Europe, Middle East and Africa", "apac": "Asia-Pacific"}
+MONTHS = ["apr", "may", "jun"]
+MONTH_NAMES = {"apr": "April", "may": "May", "jun": "June"}
+FIELD_CHANNELS = ["webinars", "events", "abm"]
+# id: (description, base leads of a first block by region, decay per block,
+#      month multipliers, most blocks in a cell by region)
+BUDGET_CHANNELS = {
+    "search": ("Google Ads search, non-brand keywords",
+               {"na": 190, "emea": 150, "apac": 95}, 0.88, (1.0, 1.04, 0.97), {"na": 7, "emea": 6, "apac": 4}),
+    "linkedin": ("LinkedIn Ads sponsored content to the target-account list",
+                 {"na": 150, "emea": 135, "apac": 80}, 0.86, (1.0, 1.0, 0.95), {"na": 5, "emea": 5, "apac": 4}),
+    "meta": ("Meta prospecting and retargeting",
+             {"na": 120, "emea": 100, "apac": 88}, 0.82, (0.95, 1.0, 1.05), {"na": 5, "emea": 4, "apac": 4}),
+    "programmatic": ("Programmatic display through the demand-side platform",
+                     {"na": 85, "emea": 70, "apac": 62}, 0.84, (1.0, 0.98, 1.0), {"na": 4, "emea": 4, "apac": 3}),
+    "video": ("Online video and connected TV",
+              {"na": 95, "emea": 75, "apac": 50}, 0.8, (0.9, 1.0, 1.08), {"na": 4, "emea": 3, "apac": 3}),
+    "syndication": ("Content syndication of the clinic benchmark report through a publisher network",
+                    {"na": 160, "emea": 140, "apac": 100}, 0.72, (1.0, 1.0, 1.0), {"na": 5, "emea": 5, "apac": 4}),
+    "review_sites": ("Paid profiles and lead programs on software review marketplaces",
+                     {"na": 70, "emea": 64, "apac": 40}, 0.8, (1.0, 1.0, 1.0), {"na": 3, "emea": 3, "apac": 2}),
+    "podcasts": ("Sponsorships on physiotherapy and practice-management podcasts",
+                 {"na": 150, "emea": 115, "apac": 60}, 0.8, (1.0, 1.1, 0.7), {"na": 3, "emea": 2, "apac": 2}),
+    "webinars": ("Regional webinar series run with partner clinics",
+                 {"na": 175, "emea": 160, "apac": 120}, 0.78, (1.0, 1.0, 0.92), {"na": 3, "emea": 3, "apac": 2}),
+    "events": ("Trade-show and conference booths",
+               {"na": 230, "emea": 190, "apac": 130}, 0.72, (1.0, 1.0, 1.0), {"na": 3, "emea": 3, "apac": 2}),
+    "abm": ("Account-based direct mail and gifting to target clinics",
+            {"na": 195, "emea": 150, "apac": 85}, 0.8, (0.75, 1.0, 1.1), {"na": 3, "emea": 2, "apac": 2}),
+    "partners": ("Co-marketing with referral partners: equipment suppliers and training providers",
+                 {"na": 105, "emea": 95, "apac": 75}, 0.8, (1.0, 0.95, 1.0), {"na": 3, "emea": 3, "apac": 3}),
 }
+# Extra blocks on top of the maxima above, by channel and region.
+EXTRA_BLOCKS = {
+    "search": {"na": 2, "emea": 2, "apac": 1}, "linkedin": {"na": 1, "emea": 1, "apac": 1},
+    "meta": {"na": 1, "emea": 1, "apac": 1}, "programmatic": {"na": 1, "emea": 1, "apac": 1},
+    "syndication": {"na": 1, "emea": 1},
+}
+# Trade shows run only in these region-months.
+EVENT_MONTHS = {("na", "apr"), ("na", "jun"), ("emea", "may"), ("emea", "jun"), ("apac", "may")}
+# Blocks already contracted: review sites in NA and EMEA every month, and the NA April show.
+COMMITTED_BLOCKS = {**{("review_sites", region, month): 1 for region in ("na", "emea") for month in MONTHS},
+                    ("events", "na", "apr"): 1}
+# (minimum, maximum, most in one month) of media spend, and field blocks a month, by region.
+REGION_LIMITS = {"na": (400_000, 600_000, 200_000, 4), "emea": (340_000, 500_000, 170_000, 3),
+                 "apac": (360_000, 440_000, 130_000, 2)}
+LICENCES = {
+    "webinars": "$3,200 for each month it is live",
+    "abm": "$8,000 if it is live in one month, $13,000 if live in two, $17,000 if live in all three",
+    "podcasts": "$5,000 one-off agency setup if it is live in any month, plus $2,000 for each month it is live",
+}
+
+
+def budget_cells() -> dict[tuple[str, str, str], list[int]]:
+    """The leads each block of each cell adds, from a seeded draw: strictly
+    decreasing within a cell. The seed is one whose best split is unique."""
+    import random
+
+    rng = random.Random(BUDGET_SEED)
+    cells: dict[tuple[str, str, str], list[int]] = {}
+    for channel, (_description, base, decay, months, maxima) in BUDGET_CHANNELS.items():
+        for region in REGIONS:
+            for index, month in enumerate(MONTHS):
+                most = maxima[region]
+                if channel == "events" and (region, month) not in EVENT_MONTHS:
+                    most = 0
+                leads: list[int] = []
+                value = LEAD_SCALE * base[region] * months[index] * rng.uniform(0.85, 1.15)
+                for _block in range(most):
+                    drawn = int(round(value * rng.uniform(0.95, 1.05)))
+                    if leads and drawn >= leads[-1]:
+                        drawn = leads[-1] - 1
+                    leads.append(drawn)
+                    value *= decay
+                cells[(channel, region, month)] = leads
+    # Deeper inventory in the always-on channels: more blocks, each adding fewer leads, drawn
+    # from a stream of their own so the blocks above keep their values.
+    tail = random.Random(BUDGET_SEED * 1000 + 7)
+    for (channel, region, month), leads in cells.items():
+        for _extra in range(EXTRA_BLOCKS.get(channel, {}).get(region, 0)):
+            drawn = int(round(leads[-1] * BUDGET_CHANNELS[channel][2] * tail.uniform(0.95, 1.05)))
+            leads.append(min(drawn, leads[-1] - 1))
+    return cells
 
 
 def budget_terms_csv() -> str:
     return _csv_text(
-        ["channel", "description", "max_blocks", "minimum_if_used_blocks", "committed_blocks",
-         "fee_usd_per_month", "routed_to_aes"],
-        [list(channel) for channel in CHANNELS],
+        ["channel", "description", "field_channel", "licence"],
+        [[channel, spec[0], "yes" if channel in FIELD_CHANNELS else "no", "yes" if channel in LICENCES else "no"]
+         for channel, spec in BUDGET_CHANNELS.items()],
     )
+
+
+SHOWS = {("na", "apr"): "ClinicOps Summit, Denver", ("na", "jun"): "Physio Business Expo, Toronto",
+         ("emea", "may"): "Rehab Practice Forum, Manchester", ("emea", "jun"): "PhysioTech Europe, Rotterdam",
+         ("apac", "may"): "Allied Health Congress, Melbourne"}
+LIMIT_SOURCES = {
+    "search": "keyword inventory at target bids", "linkedin": "target-account audience size",
+    "meta": "audience size", "programmatic": "demand-side platform inventory", "video": "booked inventory",
+    "syndication": "publisher network inventory", "review_sites": "marketplace lead program",
+    "podcasts": "available sponsorship slots", "webinars": "webinar slots", "abm": "mailing list size",
+    "partners": "partner co-marketing calendar",
+}
+
+
+def budget_cell_limits_csv() -> str:
+    rows = []
+    for (channel, region, month), leads in budget_cells().items():
+        committed = COMMITTED_BLOCKS.get((channel, region, month), 0)
+        if channel == "events":
+            note = f"booth at {SHOWS[(region, month)]}" if (region, month) in SHOWS else "no trade show this month"
+        else:
+            note = LIMIT_SOURCES[channel]
+        if committed:
+            note += "; contracted in 2026"
+        rows.append([channel, region, month, len(leads), committed, note])
+    return _csv_text(["channel", "region", "month", "max_blocks", "committed_blocks", "note"], rows)
 
 
 def budget_forecasts_csv() -> str:
     rows = []
-    for channel, *_rest in CHANNELS:
-        for block, leads in enumerate(ADDED_LEADS[channel], 1):
-            rows.append([channel, block, block * BLOCK_USD, leads])
-    return _csv_text(["channel", "block", "spend_through_block_usd", "added_leads"], rows)
+    for (channel, region, month), leads in budget_cells().items():
+        if channel == "syndication":
+            continue
+        for block, added in enumerate(leads, 1):
+            low, high = int(added * 0.8), int(added * 1.25 + 0.5)
+            rows.append([channel, region, month, block, block * BLOCK_USD, added, low, high,
+                         f"{BLOCK_USD / added:.2f}"])
+    return _csv_text(["channel", "region", "month", "block", "spend_through_block_usd", "added_leads",
+                      "added_leads_low", "added_leads_high", "cost_per_added_lead_usd"], rows)
+
+
+def budget_syndication_csv() -> str:
+    rows = []
+    for (channel, region, month), leads in budget_cells().items():
+        if channel != "syndication":
+            continue
+        for block in range(1, len(leads) + 1):
+            rows.append([region, month, block * BLOCK_USD, sum(leads[:block])])
+    return _csv_text(["region", "month", "spend_usd", "cumulative_leads"], rows)
+
+
+def budget_q1_actuals_csv() -> str:
+    """What each channel did last quarter: a distractor, drawn apart from the forecasts."""
+    import random
+
+    rng = random.Random(2027)
+    rows = []
+    for channel, (_description, base, _decay, _months, maxima) in BUDGET_CHANNELS.items():
+        for region in REGIONS:
+            for month in ("jan", "feb", "mar"):
+                blocks = rng.randint(0, maxima[region])
+                leads = int(sum(LEAD_SCALE * base[region] * rng.uniform(0.6, 1.0) * 0.8 ** k for k in range(blocks)))
+                impressions = int(leads * rng.uniform(180, 420)) if blocks else 0
+                clicks = int(leads * rng.uniform(6, 14)) if blocks else 0
+                opportunities = int(leads * rng.uniform(0.04, 0.12))
+                pipeline = opportunities * rng.randrange(9_000, 16_000, 100)
+                rows.append([channel, region, month, blocks * BLOCK_USD, impressions, clicks, leads, opportunities,
+                             pipeline])
+    return _csv_text(["channel", "region", "month", "spend_usd", "impressions", "clicks", "leads", "opportunities",
+                      "pipeline_usd"], rows)
 
 
 def budget_constraint_names() -> list[str]:
-    names = ["budget", "ae_capacity"]
-    for channel, _description, _max, minimum, committed, _fee, _routed in CHANNELS:
-        if minimum:
-            names.append(f"{channel}_min_order")
-        if committed:
-            names.append(f"{channel}_commitment")
-        names.append(f"{channel}_max")
+    names = ["budget"]
+    names += [f"{region}_min" for region in REGIONS] + [f"{region}_max" for region in REGIONS]
+    names += [f"pacing_{region}_{month}" for region in REGIONS for month in MONTHS]
+    names += [f"field_{region}_{month}" for region in REGIONS for month in MONTHS]
     return names
 
 
 def budget_brief_md() -> str:
-    routed = [channel for channel, *_rest, flag in CHANNELS if flag == "yes"]
-    maxima = ", ".join(f"`{channel}_max`" for channel, *_rest in CHANNELS)
-    syndication_min = next(minimum for channel, _d, _m, minimum, *_r in CHANNELS if channel == "syndication")
-    review_committed = next(committed for channel, _d, _m, _n, committed, *_r in CHANNELS if channel == "review_sites")
+    limits = "\n".join(
+        f"| {region} | ${low:,} | ${high:,} | ${month:,} | {field} |"
+        for region, (low, high, month, field) in REGION_LIMITS.items())
+    licences = "\n".join(f"| {channel} | {text} |" for channel, text in LICENCES.items())
+    regions = ", ".join(f"{REGION_NAMES[region]} (`{region}`)" for region in REGIONS)
+    months = ", ".join(f"{MONTH_NAMES[month]} (`{month}`)" for month in MONTHS)
     names = ", ".join(f"`{name}`" for name in budget_constraint_names())
+    field = ", ".join(f"`{channel}`" for channel in FIELD_CHANNELS)
     return f"""# Fernmoor: Q2 2027 demand budget, planning brief
 
-From Ines Varga, Head of Demand Generation. Fernmoor sells practice-management
-software to physiotherapy clinics. This brief sets the rules for splitting next
-quarter's demand budget across our six paid channels. The two files beside it
-are `channel_terms.csv` (each channel's limits and fees) and
-`channel_forecasts.csv` (the leads each block of spend is projected to bring).
+From Ines Varga, Head of Demand Generation. Fernmoor sells practice-management software to
+physiotherapy clinics in three regions: {regions}. This brief sets the rules for splitting the
+demand budget for Q2 2027, the months {months}, across twelve channels in the three regions.
+The files beside it:
+
+- `channel_terms.csv`: each channel, whether it is a field channel, and whether it needs a licence.
+- `cell_limits.csv`: for each channel, region and month (a "cell"), the most blocks the cell can
+  take and the blocks already committed in it.
+- `forecasts.csv`: the leads each block is projected to add, for every channel except syndication.
+- `syndication_vendor_forecast.csv`: the syndication vendor's own forecast, in its own format.
+- `q1_actuals.csv`: what each channel delivered last quarter. It is context for the regional
+  teams, not a forecast, and plays no part in the split.
 
 ## The money
 
 - **Quarter budget:** ${QUARTER_BUDGET:,}. Everything the plan buys comes out of it: media blocks
-  and channel fees. The plan may not go over it. Money left over stays unspent.
-- **Blocks:** spend is bought in whole blocks of ${BLOCK_USD:,}. A channel's blocks are bought in
-  order: block 1, then block 2, and so on.
-- **Forecasts:** `added_leads` in `channel_forecasts.csv` is the number of qualified leads that
-  block adds on top of the channel's earlier blocks. A channel's projected leads for n blocks are
-  the sum of its first n rows. `spend_through_block_usd` is the media spend once that block is
-  bought.
-- **Fees:** `fee_usd_per_month` is a licence the channel needs for every month of the quarter in
-  which it runs. A channel that buys any block runs for the whole quarter, so it pays three months
-  of its fee. A channel that buys no block pays nothing.
+  and licences. The plan may not go over it. Money left over stays unspent.
+- **Blocks:** media is bought in whole blocks of ${BLOCK_USD:,}, each in one channel, one region
+  and one month. A cell's blocks are bought in order: block 1, then block 2, and so on, up to its
+  `max_blocks`.
+- **Forecasts:** in `forecasts.csv`, `added_leads` is the number of qualified leads a block adds
+  on top of the earlier blocks of its cell. A cell's projected leads for n blocks are the sum of
+  its first n rows. `added_leads_low` and `added_leads_high` are the forecast's range for the same
+  block; plan on `added_leads` alone. The syndication vendor states instead `cumulative_leads`, the cell's leads
+  once the block at that spend is bought: the leads a syndication block adds are its cumulative
+  figure minus the one before it.
 
-## Channel terms
+## Licences
 
-- `max_blocks`: the most blocks the channel can take this quarter.
-- `minimum_if_used_blocks`: if the channel is used at all, it must buy at least this many blocks.
-  0 means there is no minimum.
-- `committed_blocks`: blocks already contracted for this quarter. The plan must buy at least this
-  many, and they are paid from this quarter's budget like any other block.
-- `routed_to_aes`: whether the channel's leads go to the account executives.
+Three channels need a licence. A licence is charged per channel, not per region, for the months
+the channel is live, and it comes out of the quarter budget. A channel is live in a month when it
+buys at least one block in that month in any region; a channel that buys no block pays nothing.
 
-## Account executive capacity
+| channel | licence for the quarter |
+|---|---|
+{licences}
 
-Leads from the channels routed to the AEs ({" and ".join(routed)}) ask for a demo and go to our
-four account executives, who can take at most **{AE_CAPACITY} new leads** this quarter in total. The
-projected leads of the routed channels together may not exceed {AE_CAPACITY}. Leads from the other
-channels go to the self-serve trial and do not count against it.
+## Regional limits
+
+Media spend only: licences are not regional.
+
+| region | minimum media spend in the quarter | maximum media spend in the quarter | most media spend in any one month | most field blocks in any one month |
+|---|---|---|---|---|
+{limits}
+
+The field channels are {field}. Each block of a field channel needs the regional field
+marketing team, so in each month a region can buy at most the number of field blocks above, the
+three field channels together.
+
+## Commitments
+
+`committed_blocks` in `cell_limits.csv` are already contracted: the plan must buy at least that
+many blocks in the cell. They count against every limit and are paid from the quarter budget like
+any other block.
 
 ## What I need
 
-The split of the budget that projects the most leads while keeping every rule above. If two splits
-project the same number of leads, take the one that costs less.
+The split of the budget that projects the most leads while keeping every rule above. If two
+splits project the same number of leads, take the one that costs less.
 
 ## Constraints, by name
 
 For each of these constraints, say whether it binds in your split: {names}.
 
 - `budget` binds when less than ${BLOCK_USD:,} of the quarter budget is left unspent.
-- `ae_capacity` binds when at least one routed channel is below its maximum and, for every routed
-  channel that is below its maximum, buying its next block would take the routed leads above
-  {AE_CAPACITY}.
-- {maxima}: each binds when that channel buys exactly its `max_blocks`.
-- `syndication_min_order` binds when syndication buys exactly its minimum order ({syndication_min} blocks).
-- `review_sites_commitment` binds when review sites buy exactly their committed blocks ({review_committed}).
+- `<region>_min` binds when the region's media spend is exactly its minimum, and `<region>_max`
+  when it is exactly its maximum.
+- `pacing_<region>_<month>` binds when the region's media spend in that month is exactly its
+  most in any one month.
+- `field_<region>_<month>` binds when the region buys exactly its most field blocks in that month.
 """
 
 
@@ -156,7 +300,10 @@ def budget_fixtures() -> dict[str, str]:
     return {
         f"{BUDGET_DIR}/planning_brief.md": budget_brief_md(),
         f"{BUDGET_DIR}/channel_terms.csv": budget_terms_csv(),
-        f"{BUDGET_DIR}/channel_forecasts.csv": budget_forecasts_csv(),
+        f"{BUDGET_DIR}/cell_limits.csv": budget_cell_limits_csv(),
+        f"{BUDGET_DIR}/forecasts.csv": budget_forecasts_csv(),
+        f"{BUDGET_DIR}/syndication_vendor_forecast.csv": budget_syndication_csv(),
+        f"{BUDGET_DIR}/q1_actuals.csv": budget_q1_actuals_csv(),
     }
 
 
