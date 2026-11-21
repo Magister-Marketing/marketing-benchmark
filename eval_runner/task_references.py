@@ -1,4 +1,4 @@
-"""Reference totals for the judge on the six data tasks added in November 2026.
+"""Reference totals for the judge on the data tasks added in November 2026.
 
 A judge cannot count 260 rows, so without these it would have to take a
 response's word for every figure. Each function below recomputes, from the
@@ -10,7 +10,8 @@ from today's fixture files and nothing comes from the response.
 `scripts/gen_more_tasks.py` computes the task files' `near` targets with the
 same functions, so the judge's reference and the oracle cannot disagree.
 `tests/test_more_tasks.py` recomputes every answer and every other figure
-returned here with separate code.
+returned here with separate code. The conversion tasks (ab-test-readout
+among them since version 4) keep theirs in `task_facts_conversion`.
 
 `task_reference` never raises: a prompt it cannot read yields no reference,
 which is what every task had before this module existed, and a warning that
@@ -20,10 +21,11 @@ import collections
 import csv
 import datetime as dt
 import io
-import math
 import re
 import warnings
 from decimal import ROUND_HALF_UP, Decimal
+
+from . import task_facts_conversion
 
 VERSION = 4
 
@@ -353,60 +355,6 @@ def lifecycle_reference(sources: dict[str, str]) -> dict:
     }
 
 
-# -------------------------------------------------------------------- ab-test-readout
-
-def two_proportion_p_value(x1: int, n1: int, x2: int, n2: int) -> float:
-    """Two-sided p-value of a pooled two-proportion z-test."""
-    pooled = (x1 + x2) / (n1 + n2)
-    z = (x2 / n2 - x1 / n1) / math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
-    return math.erfc(abs(z) / math.sqrt(2))
-
-
-def ab_test_reference(sources: dict[str, str]) -> dict:
-    rows = _rows(sources["experiment_results.csv"])
-    fields = ("visitors", "signups", "paid_conversions")
-
-    def totals(variant: str, device: str | None = None) -> dict:
-        return {field: sum(int(row[field]) for row in rows
-                           if row["variant"] == variant and device in (None, row["device"]))
-                for field in fields}
-
-    control, variant = totals("control"), totals("variant_b")
-    rate_control = control["signups"] / control["visitors"]
-    rate_variant = variant["signups"] / variant["visitors"]
-    expected = (control["visitors"] + variant["visitors"]) / 2
-    return {
-        "answers": {
-            "q1_control_visitors": control["visitors"],
-            "q2_variant_visitors": variant["visitors"],
-            "q3_control_rate": round(rate_control * 100, 2),
-            "q4_variant_rate": round(rate_variant * 100, 2),
-            "q5_relative_lift": round((rate_variant / rate_control - 1) * 100, 1),
-            "q6_srm_chi_square": round(
-                ((control["visitors"] - expected) ** 2 + (variant["visitors"] - expected) ** 2) / expected, 1),
-            "q7_p_value": round(two_proportion_p_value(
-                control["signups"], control["visitors"], variant["signups"], variant["visitors"]), 3),
-        },
-        "totals": {"control": control, "variant_b": variant},
-        "by_device": {
-            device: {"control": totals("control", device), "variant_b": totals("variant_b", device)}
-            for device in sorted({row["device"] for row in rows})
-        },
-        "weeks": len({row["week"] for row in rows}),
-        # What the sample-ratio check compares each variant with: half of the visitors the test received.
-        "expected_visitors_per_variant_under_the_planned_50_50_split": int(expected) if expected == int(expected) else expected,
-        "secondary_metric_p_value": round(two_proportion_p_value(
-            control["paid_conversions"], control["visitors"],
-            variant["paid_conversions"], variant["visitors"]), 3),
-        "interpretation": (
-            "The plan's sample size, split and decision rule are in test_plan.md in the prompt. "
-            "expected_visitors_per_variant_under_the_planned_50_50_split is half of the visitors the two variants "
-            "received. A readout may state it, also as the count the planned split called for: it is derived from "
-            "the results. It is not the sample size the plan required of each variant."
-        ),
-    }
-
-
 # ------------------------------------------------------------- monthly-report-reconcile
 
 def monthly_reference(sources: dict[str, str]) -> dict:
@@ -461,14 +409,14 @@ REFERENCES = {
     "seo-technical-triage": seo_crawl_reference,
     "search-terms-negatives": search_terms_reference,
     "lifecycle-reengagement": lifecycle_reference,
-    "ab-test-readout": ab_test_reference,
     "monthly-report-reconcile": monthly_reference,
 }
 
 
 def task_reference(task_id: str | None, exact_prompt: str) -> dict:
     """The judge's reference for one recorded prompt, or {} when there is none."""
-    build = REFERENCES.get(task_id)
+    # The conversion tasks keep their figures in a module of their own.
+    build = REFERENCES.get(task_id) or task_facts_conversion.REFERENCES.get(task_id)
     if build is None:
         return {}
     try:

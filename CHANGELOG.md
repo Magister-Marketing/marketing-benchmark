@@ -103,6 +103,62 @@
   that is not a `YYYY-MM-` date, and retired products with no signal at all.
   Vendors `seo-audit` unchanged from marketingskills `2c38021` for its "with
   skills" arm.
+- Tasks: `ab-test-readout` hardened (prompt version 4, rubric version 5; the
+  id is kept, as the 35-task board plan asks). Every setup passed all 17
+  checks of version 3. The fixtures are now 616 daily rows by device and
+  traffic source over 28 days (32 KB) and a plan with written decision rules:
+  mobile is split 70/30 by design, so the pooled lift (+11.7%) is up while
+  variant B is down on desktop (-1.7%) and mobile (-6.9%); the first week's
+  lift (+15.7%) fades, and the plan leaves that week out of every figure; a
+  cache problem in days 1-3 fails the sample-ratio check over 28 days but not
+  over the window; QA visits forced into variant B (source `internal`, one
+  row a day per device) must come out, or the split fails and every lift
+  moves; the billing-ticket guardrail is breached over the window (+27.5%,
+  limit 20%) and not over 28 days. Eleven banded figures, the last the number of the decision rule that
+  decides (rule 3, do not ship). 12 of its 15 checks are a program's.
+  `no_invented_data` is no longer critical: every figure it guarded is a
+  banded check now, and the visitor counts it named carry the burn-in trap.
+  The skills are `ab-testing` and `analytics`. Runs of version 3 cannot be
+  regraded against this rubric (`--current-rubric` refuses a changed
+  prompt). The task moved out of `scripts/gen_more_tasks.py` and
+  `task_references.py` (whose `VERSION` is now 4) into
+  `task_facts_conversion.py` and `fixtures/ab-test/generate.py`; the parser
+  tests in `tests/test_more_tasks.py` read the version-3 task from
+  `tests/data/ab-test-readout-v3.json`, the block they were written against.
+- Tasks: `funnel-dropoff` (development split): a four-week checkout funnel
+  by day, device, browser and step over ten segments (1,131 rows, 47 KB of
+  sources), the analytics team's rules, a release log and ten suspected
+  causes in; the day and place of the break, the conversion rate before and
+  after, the orders and revenue lost and a ruling on each cause out, as 17
+  labeled figures. Two double-firings must be halved first (every order row
+  on 10-12 March; the Safari payment rows on the last three days, which left
+  doubled make desktop and tablet Safari seem to break at the end of the
+  export) and a crawler left out. Look-alikes: dips inside the normal range
+  in four segments, a day and a four-day run below it that recover, and a
+  change two days before the break. 14 of its 16 checks are a program's.
+  Same layout as `test-plan-sizing`.
+- Tasks: `test-plan-sizing` (development split): a 150-test backlog across
+  twelve country storefronts, their settings, eight weeks of traffic for 72
+  pages (576 rows, 36 KB of sources in all) and the team's experimentation
+  rules in; a calendar file out, `test_calendar.csv`, with each test's page
+  weekly users, sample size per variant, weeks, start week and status (run,
+  too long, no slot), every row checked by program, and a short note for the
+  growth lead. Traps spread through the data, one kind per test: 40 tests on
+  storefronts that count sessions (each with its own users per session), 20
+  on pages with a tracking-outage week to leave out, 26 lifts in percentage
+  points, 22 tests on half their page's traffic; weeks round up; each
+  storefront has its own freeze week and limit on tests at once, and one
+  priority order runs over all of them (101 run, 33 too long, 16 no slot).
+  Wrong rows are counted by kind of test (zero credit at 5), status and start
+  week over every test (zero credit at 1), so each careless reading zeroes
+  its own count and the two it cascades into. 8 of its 10 checks are a
+  program's; `task_facts_conversion.facts_for` reads the file and is called
+  from `bench.measured_facts`. The fixtures' generator sits beside them
+  (`eval_runner/fixtures/test-plan-sizing/generate.py`), the oracle is in
+  `eval_runner/task_facts_conversion.py`, which `task_references` now
+  consults for the judge's reference, and `tests/test_tasks_conversion.py`
+  recomputes every target. Vendors `ab-testing/SKILL.md` unchanged from
+  marketingskills `2c38021` (2.0.2) for the "with skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

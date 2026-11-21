@@ -232,6 +232,8 @@ rather than inline:
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
 | development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
 | development | `seo-content-brief` | choosing the target topic from a 455-keyword export by winnable clicks (a click-through table, already-won keywords removed), when the topic with the most searches, or the most eligible searches, is another; prompt 4 (drafted as a holdout; development since its recorded answers were read) |
+| development | `ab-test-readout` | 616 daily rows by device and source and a plan with written decision rules: the pooled lift is up while both devices are down (a device mix the plan set), the first week's lift fades, QA visits forced into variant B must come out, the planned 70/30 mobile split is not a mismatch, and a guardrail breaches over the analysis window only; eleven banded figures (hardened on 2026-11-20: prompt version 4, rubric version 5) |
+| development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
 | development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
 | development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
 | development | `search-account-build` | a workflow task: five dependent files for a new search account from a 208-keyword export and a seven-step account standard; 18 of its 19 checks are a program's, counted against a reference its own module computes |
@@ -239,6 +241,8 @@ rather than inline:
 | development | `launch-trafficking` | a workflow task: a launch brief, platform specs and a tracking standard in; a budget, 114 text fields across 36 assets and 36 tracked URLs out; 18 of its 19 checks are a program's |
 | development | `outbound-sequence` | a workflow task: a 200-lead list, an outbound standard and product facts in; exclusions with reasons, segment and country-group assignments and 30 emails across 10 sequences out; 21 of its 22 checks are a program's |
 | development | `price-change-rollout` | a workflow task: a change brief and 14 assets in; every asset returned in full, changed exactly as the brief says, with a change log; 18 of its 19 checks are a program's |
+| development | `test-plan-sizing` | a 150-test backlog across twelve storefronts sized by a stated formula and put on one calendar with a four-week limit, per-storefront freeze weeks and limits on tests at once, and a priority order; sessions to turn into users, outage weeks to leave out, lifts in points, half-traffic tests; a 150-row calendar file checked row by row |
+| development | `funnel-dropoff` | a 1,131-row daily checkout funnel over ten segments, a release log and ten suspected causes: one segment's step breaks, two double-firings and a crawler to remove by stated rules, look-alike dips and recoveries; 17 labeled figures |
 | development | `headline-forecast`, `headline-forecast-unpublished` | 100 pairs of headlines each from real tests with a clear winner (Upworthy Research Archive, CC BY 4.0): pick the one that got the higher click rate and say how sure; graded on picks right (a coin flip scores nothing, nine in ten passes) and on the Brier score of the stated confidence |
 
 The ad-performance CSV has planted, exactly computable findings
@@ -277,6 +281,16 @@ every figure of the judge's reference from the committed fixtures with
 separate code, and it writes out the bands and the oracle lists again, so a
 band changed in the generator and synced into a task file still fails until
 it is changed in the test as well.
+
+`ab-test-readout` left that pair when it was hardened on 2026-11-20. It and the
+conversion tasks added that day (`funnel-dropoff`, `test-plan-sizing`) keep
+their oracle in `task_facts_conversion.py`, which `task_references` consults
+for the judge's reference, their generator beside their fixtures
+(`fixtures/<folder>/generate.py`, which refuses data whose planted effects did
+not come out as designed), and their tests in `tests/test_tasks_conversion.py`,
+which recompute every target with code of their own. `test-plan-sizing`'s
+deliverable is a file, read by `task_facts_conversion.facts_for` (called from
+`bench.measured_facts`), which counts its wrong rows by the kind of test.
 
 Three rules these tasks follow, each learned from a review:
 

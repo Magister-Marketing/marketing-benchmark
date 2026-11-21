@@ -42,11 +42,11 @@ from pathlib import Path
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from eval_runner import (  # type: ignore
-        brand_assets, providers, reference_facts, response_facts, task_references, workflows,
+        brand_assets, providers, reference_facts, response_facts, task_facts_conversion, task_references, workflows,
     )
     from eval_runner import task_facts_strategy  # type: ignore
 else:
-    from . import brand_assets, providers, reference_facts, response_facts, task_references, workflows
+    from . import brand_assets, providers, reference_facts, response_facts, task_facts_conversion, task_references, workflows
     from . import task_facts_strategy
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
@@ -1756,6 +1756,8 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # The SEO tasks of the 35-task board check their files and links by program.
     from eval_runner import task_facts_seo
     facts.update(task_facts_seo.facts_for(task, response_text))
+    # A conversion task's own checker: counts of what the reply's file got wrong.
+    facts.update(task_facts_conversion.facts_for(task, response_text))
     return facts
 
 

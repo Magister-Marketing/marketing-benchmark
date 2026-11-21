@@ -1,0 +1,151 @@
+test_id,site,page,change,baseline_rate_pct,expected_lift,lift_unit,traffic_share_pct
+T001,us,collection page,Sort by roast date by default,4.3,10,relative %,100
+T002,us,homepage,Roaster's story moved below the products,3.0,12,relative %,100
+T003,us,cart,Subscription upsell for one-off bags,28.8,15,relative %,100
+T004,us,checkout,Order summary collapsed on phones,60.0,5.5,percentage points,100
+T005,us,product page,Tasting notes above the price,5.4,5,relative %,100
+T006,us,checkout,Guest checkout first,67.2,12.6,percentage points,100
+T007,us,cart,Free-shipping progress bar,32.9,15,relative %,50
+T008,us,product page,Grind selector before add-to-cart,5.2,10,relative %,50
+T009,us,subscribe page,Delivery-frequency picker replaces the dropdown,7.7,18,relative %,50
+T010,us,collection page,Sort by roast date by default,4.8,0.8,percentage points,100
+T011,us,subscribe page,Fewer plan options,5.5,30,relative %,100
+T012,us,checkout,Address autocomplete,67.7,22,relative %,100
+T013,us,homepage,Free-shipping threshold in the announcement bar,2.6,0.4,percentage points,100
+T014,us,homepage,Shorter top navigation,3.0,0.3,percentage points,100
+T015,us,subscribe page,Pause-anytime promise above the button,6.1,30,relative %,100
+T016,us,cart,Subscription upsell for one-off bags,26.3,15,relative %,100
+T017,us,product page,Subscribe-and-save selected by default,5.4,0.8,percentage points,100
+T018,us,collection page,Sort by roast date by default,4.2,0.4,percentage points,100
+T019,us,product page,Reviews summary next to the price,5.8,0.6,percentage points,100
+T020,us,checkout,Order summary collapsed on phones,61.6,20,relative %,100
+T021,us,collection page,Roast-level filter shown first,4.8,15,relative %,100
+T022,us,homepage,Roaster's story moved below the products,2.8,10,relative %,100
+T023,uk,collection page,Best-seller badges on the grid,4.6,0.5,percentage points,100
+T024,uk,product page,Tasting notes above the price,6.4,25,relative %,100
+T025,uk,homepage,Roaster's story moved below the products,3.1,25,relative %,100
+T026,uk,cart,Delivery date estimate under the total,32.3,4.7,percentage points,100
+T027,uk,cart,Subscription upsell for one-off bags,27.4,10,relative %,50
+T028,uk,subscribe page,First-bag discount in the plan cards,8.0,14,relative %,100
+T029,uk,collection page,Sort by roast date by default,4.7,5,relative %,100
+T030,uk,checkout,Order summary collapsed on phones,62.9,9.5,percentage points,100
+T031,uk,homepage,Customer photos replace the studio hero,3.2,25,relative %,100
+T032,uk,homepage,Roaster's story moved below the products,2.9,20,relative %,100
+T033,uk,product page,Subscribe-and-save selected by default,6.5,30,relative %,100
+T034,uk,checkout,One-page checkout,63.3,12,relative %,100
+T035,uk,subscribe page,Delivery-frequency picker replaces the dropdown,7.4,0.7,percentage points,100
+T036,uk,cart,Filter-paper cross-sell removed,31.8,25,relative %,100
+T037,uk,collection page,Two-column grid on phones,5.6,12,relative %,50
+T038,uk,product page,Brew-guide video in the gallery,5.9,25,relative %,100
+T039,de,cart,Express wallets at the top,31.9,30,relative %,100
+T040,de,checkout,One-page checkout,60.0,22,relative %,100
+T041,de,homepage,Shorter top navigation,2.8,30,relative %,100
+T042,de,cart,Express wallets at the top,27.5,15,relative %,100
+T043,de,homepage,Hero leads with the subscription offer,2.6,30,relative %,100
+T044,de,checkout,Guest checkout first,67.0,5,relative %,100
+T045,de,subscribe page,Fewer plan options,6.0,20,relative %,100
+T046,de,collection page,Best-seller badges on the grid,4.3,14,relative %,100
+T047,de,collection page,Roast-level filter shown first,5.6,18,relative %,100
+T048,de,product page,Subscribe-and-save selected by default,6.4,20,relative %,100
+T049,de,cart,Subscription upsell for one-off bags,30.2,5,relative %,100
+T050,de,cart,Express wallets at the top,32.3,14,relative %,100
+T051,de,collection page,Two-column grid on phones,4.7,18,relative %,100
+T052,de,subscribe page,Fewer plan options,6.8,18,relative %,100
+T053,de,product page,Brew-guide video in the gallery,6.1,20,relative %,100
+T054,de,checkout,Order summary collapsed on phones,59.6,12,relative %,100
+T055,ca,cart,Delivery date estimate under the total,28.2,5,relative %,100
+T056,ca,cart,Filter-paper cross-sell removed,26.5,4.6,percentage points,100
+T057,ca,homepage,Coffee quiz above the fold,3.2,6,relative %,100
+T058,ca,collection page,Best-seller badges on the grid,4.5,0.6,percentage points,100
+T059,ca,collection page,Tasting-note chips under each bag,5.5,18,relative %,100
+T060,ca,homepage,Hero leads with the subscription offer,3.1,18,relative %,100
+T061,ca,collection page,Roast-level filter shown first,5.3,20,relative %,50
+T062,ca,checkout,Order summary collapsed on phones,57.4,14,relative %,50
+T063,ca,checkout,One-page checkout,64.8,15,relative %,100
+T064,ca,product page,Brew-guide video in the gallery,6.6,12,relative %,50
+T065,ca,product page,Brew-guide video in the gallery,6.1,14,relative %,100
+T066,ca,cart,Subscription upsell for one-off bags,30.3,3.2,percentage points,100
+T067,au,product page,Tasting notes above the price,6.5,8,relative %,100
+T068,au,cart,Filter-paper cross-sell removed,30.9,6,relative %,100
+T069,au,homepage,Customer photos replace the studio hero,3.4,15,relative %,100
+T070,au,subscribe page,First-bag discount in the plan cards,7.4,6,relative %,100
+T071,au,subscribe page,First-bag discount in the plan cards,6.0,6,relative %,100
+T072,au,homepage,Roaster's story moved below the products,3.3,10,relative %,100
+T073,au,cart,Filter-paper cross-sell removed,30.4,14,relative %,100
+T074,au,homepage,Roaster's story moved below the products,2.7,8,relative %,100
+T075,au,product page,Subscribe-and-save selected by default,6.2,10,relative %,100
+T076,au,product page,Reviews summary next to the price,5.3,20,relative %,100
+T077,au,homepage,Roaster's story moved below the products,3.2,15,relative %,100
+T078,au,checkout,One-page checkout,64.0,22,relative %,100
+T079,fr,homepage,Customer photos replace the studio hero,3.4,12,relative %,100
+T080,fr,cart,Subscription upsell for one-off bags,26.4,12,relative %,100
+T081,fr,cart,Express wallets at the top,30.6,22,relative %,100
+T082,fr,product page,Reviews summary next to the price,6.5,15,relative %,100
+T083,fr,cart,Delivery date estimate under the total,30.5,18,relative %,100
+T084,fr,product page,Reviews summary next to the price,5.6,5,relative %,100
+T085,fr,subscribe page,Plan comparison table,5.7,10,relative %,100
+T086,fr,checkout,Address autocomplete,62.9,6,relative %,100
+T087,fr,homepage,Coffee quiz above the fold,3.1,12,relative %,100
+T088,fr,collection page,Tasting-note chips under each bag,4.2,18,relative %,100
+T089,fr,checkout,Trust badges next to the card fields,58.1,10,relative %,100
+T090,fr,collection page,Sort by roast date by default,4.8,6,relative %,100
+T091,nl,product page,Subscribe-and-save selected by default,6.7,1.1,percentage points,100
+T092,nl,product page,Grind selector before add-to-cart,6.5,22,relative %,100
+T093,nl,product page,Subscribe-and-save selected by default,5.3,10,relative %,100
+T094,nl,checkout,Order summary collapsed on phones,65.1,6,relative %,100
+T095,nl,collection page,Tasting-note chips under each bag,4.5,0.9,percentage points,100
+T096,nl,homepage,Hero leads with the subscription offer,3.3,0.6,percentage points,100
+T097,nl,homepage,Coffee quiz above the fold,2.7,0.2,percentage points,100
+T098,nl,collection page,Roast-level filter shown first,5.1,0.5,percentage points,100
+T099,nl,subscribe page,First-bag discount in the plan cards,5.7,22,relative %,50
+T100,nl,cart,Filter-paper cross-sell removed,32.7,25,relative %,100
+T101,nl,checkout,Guest checkout first,60.7,8,relative %,50
+T102,nl,subscribe page,Plan comparison table,7.0,1.3,percentage points,100
+T103,se,cart,Subscription upsell for one-off bags,26.3,18,relative %,100
+T104,se,homepage,Shorter top navigation,2.7,18,relative %,100
+T105,se,collection page,Tasting-note chips under each bag,5.1,20,relative %,100
+T106,se,homepage,Shorter top navigation,2.8,8,relative %,100
+T107,se,subscribe page,Fewer plan options,6.6,30,relative %,50
+T108,se,subscribe page,First-bag discount in the plan cards,7.8,1.2,percentage points,100
+T109,se,checkout,Guest checkout first,61.9,25,relative %,100
+T110,se,collection page,Two-column grid on phones,5.2,22,relative %,100
+T111,se,subscribe page,Plan comparison table,7.9,8,relative %,50
+T112,se,cart,Express wallets at the top,27.1,22,relative %,100
+T113,ch,checkout,Address autocomplete,62.7,25,relative %,100
+T114,ch,subscribe page,First-bag discount in the plan cards,7.0,15,relative %,100
+T115,ch,product page,Subscribe-and-save selected by default,5.4,0.6,percentage points,100
+T116,ch,cart,Express wallets at the top,32.5,5,relative %,100
+T117,ch,collection page,Roast-level filter shown first,4.4,5,relative %,100
+T118,ch,product page,Brew-guide video in the gallery,6.5,1.0,percentage points,100
+T119,ch,subscribe page,Plan comparison table,7.3,18,relative %,100
+T120,ch,subscribe page,Delivery-frequency picker replaces the dropdown,6.1,10,relative %,100
+T121,ch,checkout,Address autocomplete,62.6,11.8,percentage points,100
+T122,ch,subscribe page,Fewer plan options,6.3,20,relative %,100
+T123,at,cart,Delivery date estimate under the total,28.1,22,relative %,100
+T124,at,homepage,Customer photos replace the studio hero,3.3,25,relative %,100
+T125,at,checkout,Address autocomplete,63.2,18,relative %,100
+T126,at,checkout,Order summary collapsed on phones,65.5,10,relative %,50
+T127,at,cart,Delivery date estimate under the total,33.4,10,relative %,100
+T128,at,cart,Express wallets at the top,28.5,6,relative %,50
+T129,at,subscribe page,Delivery-frequency picker replaces the dropdown,7.9,5,relative %,100
+T130,at,product page,Grind selector before add-to-cart,6.1,10,relative %,100
+T131,at,product page,Tasting notes above the price,6.1,14,relative %,100
+T132,at,collection page,Tasting-note chips under each bag,5.4,25,relative %,50
+T133,ie,checkout,Address autocomplete,67.9,22,relative %,50
+T134,ie,product page,"Bag size as buttons, not a dropdown",6.4,12,relative %,100
+T135,ie,checkout,One-page checkout,61.4,8,relative %,50
+T136,ie,homepage,Roaster's story moved below the products,3.1,8,relative %,50
+T137,ie,subscribe page,Fewer plan options,7.8,22,relative %,100
+T138,ie,cart,Free-shipping progress bar,30.6,14,relative %,50
+T139,ie,checkout,Address autocomplete,60.1,18,relative %,100
+T140,ie,homepage,Coffee quiz above the fold,2.8,18,relative %,50
+T141,ie,cart,Free-shipping progress bar,30.1,8,relative %,100
+T142,nz,subscribe page,First-bag discount in the plan cards,7.3,30,relative %,50
+T143,nz,cart,Delivery date estimate under the total,31.4,8,relative %,50
+T144,nz,checkout,One-page checkout,64.6,22,relative %,100
+T145,nz,checkout,Address autocomplete,56.9,5,relative %,100
+T146,nz,product page,Subscribe-and-save selected by default,6.4,1.1,percentage points,100
+T147,nz,subscribe page,Pause-anytime promise above the button,6.1,5,relative %,100
+T148,nz,collection page,Roast-level filter shown first,5.4,5,relative %,100
+T149,nz,cart,Express wallets at the top,33.4,22,relative %,100
+T150,nz,cart,Subscription upsell for one-off bags,28.1,14,relative %,100
