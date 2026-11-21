@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Tasks: `launch-workflow-chain` (development split, experimental area): a
+  paid social launch built as six dependent deliverables in one reply, from a
+  build brief, a 22-segment audience table and a 20-product catalogue: the
+  segments six ordered rules choose (8), the campaigns and ad groups a naming
+  convention builds (8 and 30), one ad per ad group under character limits
+  with only its own product's facts, a tracked URL per ad group built from
+  the names, daily budgets shared by segment size, and a pre-launch count.
+  It isolates consistency along the chain: the files after the structure are
+  checked against the reply's own structure (a name, product or count that
+  drifts between files fails that file's agreement check, and only that),
+  and the structure and segments against the oracle. 13 of its 14 checks are
+  a program's. Oracle and reader in the new `eval_runner/task_facts_experiments.py`,
+  hooked into `bench.measured_facts`; generator beside the fixtures; tests in
+  `tests/test_tasks_experiments.py`.
 - Report: a decoy task's cost and time include its earlier turn, for every
   harness, since the task as given is both messages. They were the task
   turn's alone, so the published cost and time of `ads-ledger-analysis-decoy`
