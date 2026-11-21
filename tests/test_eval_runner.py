@@ -5,6 +5,7 @@ import base64
 import hashlib
 from html import unescape
 import json
+from pathlib import Path
 import re
 
 import pytest
@@ -50,8 +51,10 @@ def test_tasks_load_and_validate():
     assert len(tasks) == 34
     assert sum(task["split"] == "development" for task in tasks.values()) == 30
     assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
-    # One task needs a harness that can send a prior turn; the direct arms never see it.
-    assert [t for t in tasks if not bench.task_supports_harness(tasks[t], bench.HARNESS_ID)] == [
+    # Every task runs on the direct arms. The decoy task needs a harness that
+    # can send a prior turn, which a Claude Code session cannot.
+    assert all(bench.task_supports_harness(t, bench.HARNESS_ID) for t in tasks.values())
+    assert [t for t in tasks if not bench.task_supports_harness(tasks[t], "claude-code")] == [
         "ads-ledger-analysis-decoy"
     ]
     for task in tasks.values():
@@ -611,29 +614,33 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 29
+    assert len(bench._select_tasks(None, "development", tasks)) == 30
     assert len(bench._select_tasks(None, "holdout", tasks)) == 4
-    assert len(bench._select_tasks(None, "all", tasks)) == 33
+    assert len(bench._select_tasks(None, "all", tasks)) == 34
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
 
 
-def test_harness_only_tasks_are_excluded_from_direct_arms_and_refused_by_name():
-    """The direct-API runner inlines fixtures into one prompt, so a decoy task
-    would silently become the plain ledger task there. It never appears in a
-    split or `all` selection and is refused, not skipped, when named."""
+def test_the_decoy_task_runs_wherever_a_prior_turn_can_be_sent_and_nowhere_else():
+    """The direct arms and Magister both send the decoy as an earlier turn,
+    so all 30 development tasks are shared. A Claude Code session cannot, so
+    there it is left out of a split and refused, not skipped, when named."""
+    assert bench.PRIOR_TURN_HARNESSES == ("direct-api", "magister-agent")
     tasks = bench.load_tasks()
-    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "all", tasks)
-    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "development", tasks)
-    with pytest.raises(SystemExit, match="not runnable on the direct-api harness"):
-        bench._select_tasks("headline,ads-ledger-analysis-decoy", "all", tasks)
-    # The Magister bridge's harness id lists it alongside the rest.
-    agent = bench._select_tasks(None, "development", tasks, harness="magister-agent")
-    assert "ads-ledger-analysis-decoy" in agent and len(agent) == 30
-    assert bench._select_tasks(
-        "ads-ledger-analysis-decoy", "all", tasks, harness="magister-agent"
-    ) == ["ads-ledger-analysis-decoy"]
+    for harness in bench.PRIOR_TURN_HARNESSES:
+        development = bench._select_tasks(None, "development", tasks, harness=harness)
+        assert "ads-ledger-analysis-decoy" in development and len(development) == 30
+        assert bench._select_tasks(
+            "ads-ledger-analysis-decoy", "all", tasks, harness=harness
+        ) == ["ads-ledger-analysis-decoy"]
+    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(
+        None, "all", tasks, harness="claude-code"
+    )
+    with pytest.raises(SystemExit, match="not runnable on the claude-code harness"):
+        bench._select_tasks(
+            "headline,ads-ledger-analysis-decoy", "all", tasks, harness="claude-code"
+        )
 
 
 def test_labeled_artifact_paths_preserve_default(tmp_path):
@@ -2582,7 +2589,7 @@ def test_decoy_task_is_its_parent_plus_a_prior_turn():
     tasks = bench.load_tasks()
     decoy, parent = tasks["ads-ledger-analysis-decoy"], tasks["ads-ledger-analysis"]
     assert decoy["derived_from"] == "ads-ledger-analysis"
-    assert decoy["harnesses"] == ["magister-agent"]
+    assert decoy["harnesses"] == ["direct-api", "magister-agent"]
     for key in ("prompt", "answers", "fixtures", "skills"):
         assert decoy[key] == parent[key]
     parent_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in parent["rubric"][s]}
@@ -2661,18 +2668,20 @@ def test_decoy_export_reproduces_and_every_answer_falls_outside_the_zero_band():
         assert error >= tolerance["zero"], criterion_id
 
 
-def test_task_validation_rejects_a_decoy_the_direct_arm_could_see_or_that_earns_credit(tmp_path):
+def test_task_validation_rejects_a_decoy_a_listed_harness_cannot_deliver_or_that_earns_credit(tmp_path):
     tasks = bench.load_tasks()
     task = json.loads(json.dumps(tasks["ads-ledger-analysis-decoy"]))
     path = tmp_path / "ads-ledger-analysis-decoy.json"
 
     naked = dict(task)
     del naked["harnesses"]
-    with pytest.raises(ValueError, match="'direct-api' cannot"):
+    with pytest.raises(ValueError, match="a decoy task must list its harnesses"):
         bench._validate_task(naked, path)
-    exposed = dict(task, harnesses=["magister-agent", "direct-api"])
-    with pytest.raises(ValueError, match="'direct-api' cannot"):
-        bench._validate_task(exposed, path)
+    for listed in (["claude-code"], ["direct-api", "magister-agent", "claude-code"]):
+        with pytest.raises(ValueError, match="'claude-code' cannot send a prior turn"):
+            bench._validate_task(dict(task, harnesses=listed), path)
+    for listed in (["direct-api", "magister-agent"], ["direct-api"], ["magister-agent"]):
+        bench._validate_task(dict(task, harnesses=listed), path)
 
     inline = dict(task, fixtures=task["fixtures"] + [task["decoy"]["fixture"]])
     with pytest.raises(ValueError, match="must not also be a supplied fixture"):
@@ -2730,6 +2739,315 @@ def test_a_derived_task_cannot_drift_from_its_parent():
     chained["ads-ledger-analysis"]["derived_from"] = "headline"
     with pytest.raises(ValueError, match="not itself derived"):
         bench._validate_derived_tasks(chained)
+
+
+def test_validate_passes_on_the_shipped_tasks(capsys):
+    assert bench.cmd_validate(argparse.Namespace()) == 0
+    assert "OK: 34 tasks" in capsys.readouterr().out
+
+
+# --- the direct harness's decoy turn ----------------------------------------
+
+DECOY_TASK = "ads-ledger-analysis-decoy"
+DECOY_REPLY = "Noted. I will keep the preliminary export for reference."
+
+
+def _receipt(text: str, **changes) -> dict:
+    return {"text": text, "provider": "anthropic", "model": "claude-haiku-4-5",
+            "input_tokens": 1000, "output_tokens": 1000, "tool_calls": {},
+            "web_search_calls": 0, "finish_reason": "end_turn",
+            "ceiling_retried": False, "latency_seconds": 5.0, **changes}
+
+
+def _openrouter_receipt(text: str, **changes) -> dict:
+    return _receipt(text, **{
+        "provider": "openrouter", "model": "google/gemini-3.8-flash",
+        "resolved_model": "google/gemini-3.8-flash",
+        "resolved_provider": "Google Vertex", "response_id": "gen-test",
+        "provider_cost_usd": .01, "finish_reason": "stop", **changes})
+
+
+def _stub_provider(monkeypatch, *, decoy=None, task=None, receipt=_receipt):
+    """Record every call. The decoy turn (its earlier message, sent alone)
+    answers DECOY_REPLY and any other call "the submission", unless `decoy` /
+    `task` give the receipt to return or the exception to raise."""
+    calls = []
+    decoy_message = bench.load_tasks()[DECOY_TASK]["decoy"]["message"]
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None, **options):
+        calls.append({"spec": model_spec, "prompt": prompt, "max": max_output_tokens,
+                      "web_search": web_search, "settings": settings, "options": options})
+        is_decoy = isinstance(prompt, str) and prompt.startswith(decoy_message)
+        outcome = decoy if is_decoy else task
+        if isinstance(outcome, Exception):
+            raise outcome
+        if outcome is not None:
+            return dict(outcome)
+        if is_decoy:
+            return receipt(DECOY_REPLY, input_tokens=100, output_tokens=50, latency_seconds=2.0)
+        return receipt("the submission")
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    return calls
+
+
+def _run_args(**changes) -> argparse.Namespace:
+    values = dict(models="claude-haiku-4-5", tasks=DECOY_TASK, repetitions=1,
+                  no_skills=False, tools=False, yes=True)
+    return argparse.Namespace(**{**values, **changes})
+
+
+def test_the_direct_harness_sends_a_decoy_task_as_two_calls_and_every_other_task_as_one(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args(tasks=f"headline,{DECOY_TASK}", tools=True)) == 0
+    assert "About to make 3 paid model calls" in capsys.readouterr().out
+    tasks = bench.load_tasks()
+    decoy_prompt = bench.assemble_decoy_prompt(tasks[DECOY_TASK])
+    single = [c for c in calls if c["prompt"] == bench.assemble_prompt(tasks["headline"], True)]
+    first = [c for c in calls if c["prompt"] == decoy_prompt]
+    second = [c for c in calls if isinstance(c["prompt"], list)]
+    assert len(calls) == 3 and len(single) == len(first) == len(second) == 1
+    # Call 2 is the conversation so far: the earlier message, the model's own
+    # reply to it as plain text, then the task prompt exactly as one call has it.
+    assert second[0]["prompt"] == [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": DECOY_REPLY},
+        {"role": "user", "content": bench.assemble_prompt(tasks[DECOY_TASK], True)},
+    ]
+    # Same model, ceiling, settings, tools and options on both turns as on a
+    # single call.
+    same = ("spec", "max", "web_search", "settings", "options")
+    assert ({k: first[0][k] for k in same} == {k: second[0][k] for k in same}
+            == {k: single[0][k] for k in same})
+    assert first[0]["web_search"] is True
+    responses = next(tmp_path.iterdir()) / "responses"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.md").read_text() == "the submission"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md").read_text() == DECOY_REPLY
+    assert not (responses / "headline--claude-haiku-4-5--r1.decoy.md").exists()
+
+
+def test_the_decoy_conversation_reaches_the_wire_through_the_real_provider_path(
+        tmp_path, monkeypatch):
+    """Stubbed at the HTTP layer, so the real generate and build_request
+    carry the model's first reply into the second request body."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only")
+    bodies = []
+
+    def fake_post(url, headers, body, provider, **options):
+        bodies.append(body)
+        text = DECOY_REPLY if len(bodies) == 1 else "the submission"
+        return {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 5}}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    assert bench.cmd_run(_run_args(models="claude-opus-5-5-medium")) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    first, second = bodies
+    assert first["messages"] == [{"role": "user", "content": bench.assemble_decoy_prompt(task)}]
+    assert second["messages"] == [
+        {"role": "user", "content": bench.assemble_decoy_prompt(task)},
+        {"role": "assistant", "content": DECOY_REPLY},
+        {"role": "user", "content": bench.assemble_prompt(task, include_skills=True)},
+    ]
+    assert {k: v for k, v in first.items() if k != "messages"} == {
+        k: v for k, v in second.items() if k != "messages"}
+
+
+@pytest.mark.parametrize("no_skills", [False, True])
+def test_a_decoy_task_carries_the_skills_only_where_the_single_call_path_puts_them(
+        tmp_path, monkeypatch, no_skills):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args(no_skills=no_skills)) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    task_prompt = bench.assemble_prompt(task, include_skills=not no_skills)
+    decoy_prompt = bench.assemble_decoy_prompt(task)
+    assert ("Skill guidance you should follow" in task_prompt) is not no_skills
+    first, second = calls
+    assert first["prompt"] == decoy_prompt
+    assert "Skill guidance you should follow" not in decoy_prompt
+    assert second["prompt"][-1] == {"role": "user", "content": task_prompt}
+    assert "Skill guidance you should follow" not in second["prompt"][0]["content"]
+
+    run_dir = next(tmp_path.iterdir())
+    assert (run_dir / "prompts" / f"{DECOY_TASK}.md").read_text() == task_prompt
+    assert (run_dir / "prompts" / f"{DECOY_TASK}.decoy.md").read_text() == decoy_prompt
+    meta = json.loads((run_dir / "run.json").read_text())
+    assert meta["task_manifest"][DECOY_TASK]["decoy"] is True
+    attempts = bench._read_jsonl(run_dir / "attempts.jsonl")
+    # prompt_sha256 covers the task prompt only, as for every task, so the
+    # grade step's hash rule finds it; the earlier message has its own hash.
+    assert attempts[0]["prompt_sha256"] == hashlib.sha256(task_prompt.encode()).hexdigest()
+    assert attempts[0]["decoy_prompt_sha256"] == hashlib.sha256(decoy_prompt.encode()).hexdigest()
+    assert bench._resolve_recorded_prompt(run_dir, task, meta, attempts) == (task_prompt, 1)
+    recorded = bench._load_task_snapshots(run_dir)[DECOY_TASK]
+    assert bench._resolve_recorded_prompt(
+        run_dir, recorded, meta, attempts, require_known_version=False
+    ) == (task_prompt, 1)
+
+
+@pytest.mark.parametrize("failure", [
+    "provider-error", "refusal", "cut-off", "strict-empty", "strict-wrong-model",
+])
+def test_a_failed_decoy_turn_fails_the_attempt_and_the_task_prompt_is_never_sent(
+        tmp_path, monkeypatch, failure):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    strict = failure.startswith("strict")
+    decoy = {
+        "provider-error": providers.ProviderError(
+            "anthropic call failed (HTTP 529: overloaded)",
+            receipt={"input_tokens": 7, "output_tokens": 0}),
+        "refusal": _receipt("I can't help with that.", finish_reason="refusal"),
+        "cut-off": _receipt("Noted, I will", finish_reason="max_tokens"),
+        "strict-empty": _openrouter_receipt(""),
+        "strict-wrong-model": _openrouter_receipt(DECOY_REPLY, resolved_model="another-model"),
+    }[failure]
+    calls = _stub_provider(monkeypatch, decoy=decoy)
+    args = _run_args()
+    if strict:
+        args = _run_args(models="gemini-3.8-flash-high", strict_attempts=True,
+                         request_timeout_seconds=75., stop_after_cost_usd=5.)
+    assert bench.cmd_run(args) == 1
+    assert len(calls) == 1 and isinstance(calls[0]["prompt"], str)
+    run_dir = next(tmp_path.iterdir())
+    (attempt,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert attempt["error"].startswith("decoy turn: ")
+    assert attempt["dispatched"] is True
+    assert "response_path" not in attempt and "input_tokens" not in attempt
+    model_id = args.models
+    assert not (run_dir / "responses" / f"{DECOY_TASK}--{model_id}--r1.md").exists()
+    if failure == "provider-error":
+        assert "HTTP 529" in attempt["error"]
+        assert attempt["decoy_input_tokens"] == 7
+        assert attempt["cost_unknown"] is True
+    else:
+        assert attempt["decoy_sent"] is True
+        assert attempt["cost_unknown"] is False
+    if strict:
+        assert calls[0]["options"]["retry_empty_completion"] is False
+        assert calls[0]["options"]["retry_transport"] is False
+        assert attempt["decoy_provider_cost_usd"] == .01
+    expected = {"refusal": "finish_reason='refusal'", "cut-off": "finish_reason='max_tokens'",
+                "strict-empty": "empty completion",
+                "strict-wrong-model": "model does not match"}.get(failure)
+    if expected:
+        assert expected in attempt["error"]
+
+
+def test_the_decoy_turn_is_recorded_apart_and_left_out_of_the_tasks_cost_and_time(
+        tmp_path, monkeypatch):
+    """Like the Magister bridge's decoy_* fields: the earlier turn's tokens,
+    cost and time are on the attempt, and the attempt's own figures, which
+    the report sums, are the task turn's alone."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args()) == 0
+    run_dir = next(tmp_path.iterdir())
+    (attempt,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert {key: attempt[key] for key in attempt if key.startswith("decoy_")} == {
+        "decoy_prompt_sha256": attempt["decoy_prompt_sha256"],
+        "decoy_sent": True,
+        "decoy_response_path": f"responses/{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md",
+        "decoy_reply_chars": len(DECOY_REPLY),
+        "decoy_latency_seconds": 2.0,
+        "decoy_input_tokens": 100,
+        "decoy_output_tokens": 50,
+        "decoy_tool_calls": {},
+        "decoy_web_search_calls": 0,
+        "decoy_finish_reason": "end_turn",
+        "decoy_ceiling_retried": False,
+    }
+    assert (attempt["input_tokens"], attempt["output_tokens"], attempt["latency_seconds"]) == (
+        1000, 1000, 5.0)
+    spec = bench.load_models()["claude-haiku-4-5"]
+    assert bench.attempt_cost_usd(attempt, spec) == pytest.approx(0.006)
+    assert bench.decoy_cost_usd(attempt, spec) == pytest.approx((100 * 1 + 50 * 5) / 1e6)
+    assert bench.decoy_cost_usd({"input_tokens": 1}, spec) == 0.0  # no earlier turn
+
+    (run_dir / "judgments.jsonl").write_text(json.dumps({
+        "task_id": DECOY_TASK, "model_id": "claude-haiku-4-5", "repetition": 1,
+        "judge_model": "claude-sonnet-5", "completed": True,
+        "criteria": [{"id": "q1_blended_cpa", "pass": True, "evidence": "x"}],
+    }) + "\n")
+    assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
+    summary = json.loads((run_dir / "report.json").read_text())
+    assert summary["models"]["claude-haiku-4-5"]["candidate_cost_usd"] == 0.006
+    assert summary["models"]["claude-haiku-4-5"]["average_task_time_seconds"] == 5.0
+    (submission,) = summary["submissions"]
+    assert submission["metrics"]["candidate_cost_usd"] == 0.006
+    assert submission["metrics"]["average_latency_seconds"] == 5.0
+    assert submission["assembled_prompt"] == (run_dir / "prompts" / f"{DECOY_TASK}.md").read_text()
+
+
+def test_the_strict_spend_guard_counts_what_the_decoy_turn_cost(tmp_path, monkeypatch):
+    """The guard stops on money spent, so it adds the earlier turn: here the
+    task turn alone (0.01) is under the 0.015 threshold, both turns are not."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch, receipt=_openrouter_receipt)
+    args = _run_args(models="gemini-3.8-flash-high", tasks=f"{DECOY_TASK},headline",
+                     strict_attempts=True, request_timeout_seconds=75.,
+                     stop_after_cost_usd=.015)
+    assert bench.cmd_run(args) == 1
+    assert len(calls) == 2
+    assert all(call["options"] == {"request_timeout_seconds": 75., "retry_transport": False,
+                                   "retry_empty_completion": False} for call in calls)
+    rows = bench._read_jsonl(next(tmp_path.iterdir()) / "attempts.jsonl")
+    assert "error" not in rows[0] and rows[0]["cost_unknown"] is False
+    assert rows[0]["provider_cost_usd"] == rows[0]["decoy_provider_cost_usd"] == .01
+    assert rows[1]["error"] == "not dispatched: observed spend threshold reached"
+
+
+def _errored_decoy_run(tmp_path, monkeypatch) -> Path:
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    _stub_provider(monkeypatch, task=providers.ProviderError("anthropic call failed (HTTP 529)"))
+    assert bench.cmd_run(_run_args()) == 1
+    return next(tmp_path.iterdir())
+
+
+def test_retry_replays_both_turns_of_an_errored_decoy_attempt(tmp_path, monkeypatch):
+    run_dir = _errored_decoy_run(tmp_path, monkeypatch)
+    (before,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert before["error"] == "anthropic call failed (HTTP 529)"
+    assert before["decoy_sent"] is True  # the first turn had answered
+
+    calls = _stub_provider(monkeypatch, decoy=_receipt("Got it, for reference only.",
+                                                        input_tokens=90, output_tokens=40,
+                                                        latency_seconds=1.5))
+    assert bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True)) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    decoy_prompt = bench.assemble_decoy_prompt(task)
+    assert [call["prompt"] for call in calls] == [decoy_prompt, [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": "Got it, for reference only."},
+        {"role": "user", "content": bench.assemble_prompt(task, include_skills=True)},
+    ]]
+    (after,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert "error" not in after and after["retried"] is True
+    assert (after["decoy_input_tokens"], after["decoy_latency_seconds"]) == (90, 1.5)
+    assert after["decoy_prompt_sha256"] == before["decoy_prompt_sha256"]
+    responses = run_dir / "responses"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.md").read_text() == "the submission"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md").read_text() == (
+        "Got it, for reference only.")
+
+
+def test_retry_refuses_a_decoy_attempt_whose_earlier_message_changed(tmp_path, monkeypatch):
+    run_dir = _errored_decoy_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    decoy_path = run_dir / "prompts" / f"{DECOY_TASK}.decoy.md"
+    decoy_path.write_text("a different earlier message")
+    with pytest.raises(SystemExit, match="decoy_prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+    decoy_path.unlink()
+    with pytest.raises(SystemExit, match="decoy_prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
 # --- scoring rules from the 2026-09-01 blank-deliverable probe -------------

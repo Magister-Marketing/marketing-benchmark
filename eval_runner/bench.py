@@ -62,6 +62,11 @@ HARNESS_ID = "direct-api"
 # without skill files; nothing follows it.
 AGENT_HARNESSES = ("claude-code", "magister-agent")
 AGENT_TASK_MARKER = "\n\nTask:\n"
+# Harnesses that can send a decoy task's earlier message as a turn of its own
+# before the task: this runner, as the first call of a two-call conversation,
+# and the Magister bridge, as a chat turn in the task's session. A Claude Code
+# session takes one prompt.
+PRIOR_TURN_HARNESSES = (HARNESS_ID, "magister-agent")
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
@@ -126,6 +131,20 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
     ) / 1_000_000
 
 
+def decoy_cost_usd(attempt: dict, spec: dict) -> float | None:
+    """What a decoy task's earlier turn cost, from its `decoy_*` receipt; 0.0
+    for an attempt that had none. It is never in `attempt_cost_usd`, so the
+    report's cost and time are the task turn's alone, as they are for the
+    Magister bridge's decoy turn. Only the strict spend guard adds it."""
+    if "decoy_prompt_sha256" not in attempt:
+        return 0.0
+    return attempt_cost_usd({
+        "provider_cost_usd": attempt.get("decoy_provider_cost_usd"),
+        "input_tokens": attempt.get("decoy_input_tokens"),
+        "output_tokens": attempt.get("decoy_output_tokens"),
+    }, spec)
+
+
 def load_tasks() -> dict:
     tasks = {}
     for path in sorted(TASKS_DIR.glob("*.json")):
@@ -175,8 +194,8 @@ def _validate_derived_tasks(tasks: dict) -> None:
 
 def task_supports_harness(task: dict, harness_id: str) -> bool:
     """Absent `harnesses` means every harness. A task lists them only when its
-    input cannot be delivered by all of them — a decoy task needs a harness
-    that can send a prior turn into the same session."""
+    input cannot be delivered by all of them — a decoy task needs one of
+    PRIOR_TURN_HARNESSES."""
     harnesses = task.get("harnesses")
     return harnesses is None or harness_id in harnesses
 
@@ -327,14 +346,20 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
             raise ValueError(
                 f"{path.name}: the decoy fixture must not also be a supplied fixture"
             )
-        # The direct-API runner inlines every fixture into one prompt; it has
-        # no prior turn to hide a decoy in, so a decoy task must say which
-        # harnesses can deliver it — and this one is never among them.
-        if harnesses is None or HARNESS_ID in harnesses:
+        # Inlined into the task prompt the decoy would change the task, so a
+        # decoy task runs only where its message can go in a turn of its own.
+        if harnesses is None:
             raise ValueError(
-                f"{path.name}: a decoy task must list the harnesses that can "
-                f"send a prior turn, and {HARNESS_ID!r} cannot"
+                f"{path.name}: a decoy task must list its harnesses, each one "
+                f"that can send a prior turn ({', '.join(PRIOR_TURN_HARNESSES)})"
             )
+        for harness in harnesses:
+            if harness not in PRIOR_TURN_HARNESSES:
+                raise ValueError(
+                    f"{path.name}: a decoy task lists {harness!r}, and "
+                    f"{harness!r} cannot send a prior turn (only "
+                    f"{', '.join(PRIOR_TURN_HARNESSES)} can)"
+                )
     seen: set[str] = set()
     for section in RUBRIC_SECTIONS:
         criteria = task["rubric"].get(section)
@@ -438,8 +463,8 @@ def assemble_decoy_prompt(task: dict) -> str | None:
     source` heading `assemble_prompt` uses, so a harness that saves pastes to
     files infers the same file name for both and only that turn's own note
     tells them apart. Never part of the task prompt itself — `assemble_prompt`
-    ignores `decoy` — which is why a harness that cannot send a prior turn is
-    kept off the task by `harnesses`."""
+    ignores `decoy`. This runner sends it alone as the first of two calls
+    (`_decoy_turn`); the Magister bridge sends it as an earlier chat turn."""
     decoy = task.get("decoy")
     if not decoy:
         return None
@@ -457,6 +482,87 @@ def _prompt_candidate(task: dict, prompt_text: str, include_skills: bool) -> str
 
 
 # ------------------------------------------------------------------ run
+
+def _strict_receipt_error(result: dict, model_spec: str) -> str | None:
+    """Why a strict attempt cannot trust this call's route receipt, if it
+    cannot. OpenRouter must return the requested model, a provider inside the
+    candidate's allowlist, and a response id."""
+    provider, requested_model = providers.split_model_spec(model_spec)
+    if provider != "openrouter":
+        return None
+    error = None
+    if result.get("resolved_model") != requested_model:
+        error = "provider-returned model does not match the requested model"
+    if not result.get("resolved_provider") or not result.get("response_id"):
+        error = "provider-returned route receipt is incomplete"
+    policy = providers.OPENROUTER_MODEL_POLICIES.get(requested_model, {})
+    allowed = set().union(*(providers.OPENROUTER_PROVIDER_LABELS.get(slug, set())
+                            for slug in policy.get("providers", [])))
+    if result.get("resolved_provider") not in allowed:
+        error = "provider-returned route is outside the allowed policy"
+    return error
+
+
+def _decoy_receipt(receipt: dict) -> dict:
+    """A decoy turn's receipt under `decoy_*`, kept apart from the task turn's
+    own fields; its provider and model are the task turn's."""
+    return {
+        f"decoy_{key}": value for key, value in receipt.items()
+        if key not in ("text", "provider", "model")
+    }
+
+
+def _decoy_turn(
+    run_dir: Path, response_stem: str, model_spec: str, decoy_prompt: str,
+    max_output_tokens: int, *, web_search: bool, settings: dict, strict: bool,
+    **options,
+) -> tuple[str, dict, str | None]:
+    """Call 1 of a decoy task: its earlier message, alone, to the same model
+    with the same ceiling, settings, tools and options as any call. Returns
+    the reply, its `decoy_*` receipt (the reply is saved beside the task's
+    response as `<stem>.decoy.md`), and why the attempt must fail without a
+    second call, if it must: the reply is empty, did not finish normally (a
+    refusal, a cut-off), or, in strict mode, came back on an untrusted route.
+    A provider failure raises ProviderError with its receipt under `decoy_*`.
+    The task prompt is never sent on its own in place of the conversation."""
+    try:
+        result = providers.generate(
+            model_spec, decoy_prompt, max_output_tokens,
+            web_search=web_search, settings=settings, **options,
+        )
+    except providers.ProviderError as exc:
+        raise providers.ProviderError(
+            f"decoy turn: {exc}", receipt=_decoy_receipt(exc.receipt),
+            failure_kind=exc.failure_kind, status_code=exc.status_code,
+        ) from None
+    reply = result["text"]
+    reply_path = f"responses/{response_stem}.decoy.md"
+    (run_dir / reply_path).write_text(reply)
+    receipt = {
+        "decoy_sent": True,
+        "decoy_response_path": reply_path,
+        "decoy_reply_chars": len(reply),
+        **_decoy_receipt(result),
+    }
+    problem = None
+    if not reply.strip():
+        problem = "provider returned an empty completion"
+    elif result.get("finish_reason") not in NORMAL_FINISH_REASONS:
+        problem = f"the reply did not finish normally (finish_reason={result.get('finish_reason')!r})"
+    elif strict:
+        problem = _strict_receipt_error(result, model_spec)
+    return reply, receipt, problem and f"decoy turn: {problem}; the task prompt was not sent"
+
+
+def _decoy_conversation(decoy_prompt: str, reply: str, prompt: str) -> list[dict]:
+    """Call 2 of a decoy task: the earlier message, the model's own reply to
+    it as plain text, then the task prompt exactly as a single call sends it."""
+    return [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": reply},
+        {"role": "user", "content": prompt},
+    ]
+
 
 def cmd_run(args: argparse.Namespace) -> int:
     if getattr(args, "env_file", None):
@@ -489,10 +595,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         for task_id in selected_tasks
         for rep in range(1, repetitions + 1)
     ]
+    # A decoy task's attempt is two calls: its earlier message, then the task.
+    decoy_jobs = sum(1 for _, task_id, _ in jobs if tasks[task_id].get("decoy"))
     print(
-        f"About to make {len(jobs)} paid model calls "
-        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs, "
-        f"harness {HARNESS_ID}, "
+        f"About to make {len(jobs) + decoy_jobs} paid model calls "
+        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs"
+        + (f", {decoy_jobs} of them decoy-task attempts of two calls" if decoy_jobs else "")
+        + f", harness {HARNESS_ID}, "
         f"skills {'ON' if include_skills else 'OFF'}, "
         f"tools {'ON (web search)' if tools_enabled else 'OFF'})."
     )
@@ -516,6 +625,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     for task_id in selected_tasks:
         prompt_text = assemble_prompt(tasks[task_id], include_skills)
         (run_dir / "prompts" / f"{task_id}.md").write_text(prompt_text)
+        decoy_prompt = assemble_decoy_prompt(tasks[task_id])
+        if decoy_prompt is not None:  # the bridge saves it under the same name
+            (run_dir / "prompts" / f"{task_id}.decoy.md").write_text(decoy_prompt)
         (run_dir / "tasks" / f"{task_id}.json").write_text(
             json.dumps(tasks[task_id], indent=2) + "\n"
         )
@@ -531,6 +643,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "prompt_version": tasks[task_id]["prompt_version"],
                 "rubric_version": tasks[task_id]["rubric_version"],
                 "rubric_sha256": _rubric_sha256(tasks[task_id]),
+                **({"decoy": True} if tasks[task_id].get("decoy") else {}),
             }
             for task_id in selected_tasks
         },
@@ -554,7 +667,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     def one(job: tuple[str, str, int]) -> dict:
         model_id, task_id, rep = job
         task = tasks[task_id]
+        spec = models[model_id]
         prompt = assemble_prompt(task, include_skills)
+        decoy_prompt = assemble_decoy_prompt(task)
+        response_stem = f"{task_id}--{model_id}--r{rep}"
         record = {
             "run_id": run_id,
             "harness": HARNESS_ID,
@@ -563,18 +679,31 @@ def cmd_run(args: argparse.Namespace) -> int:
             "repetition": rep,
             "skills_included": include_skills,
             "tools_enabled": tools_enabled,
+            # The task prompt only, as for every task; a decoy task's earlier
+            # message is covered by its own hash.
             "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         }
+        if decoy_prompt is not None:
+            record["decoy_prompt_sha256"] = hashlib.sha256(decoy_prompt.encode()).hexdigest()
         try:
             options = {"request_timeout_seconds": request_timeout}
             if strict:
                 options.update(retry_transport=False, retry_empty_completion=False)
-            result = providers.generate(
-                models[model_id]["model"], prompt, MAX_OUTPUT_TOKENS,
-                web_search=tools_enabled,
-                settings=_candidate_settings(models[model_id]),
-                **options,
-            )
+            request = dict(web_search=tools_enabled, settings=_candidate_settings(spec), **options)
+            conversation: str | list[dict] = prompt
+            if decoy_prompt is not None:
+                reply, receipt, problem = _decoy_turn(
+                    run_dir, response_stem, spec["model"], decoy_prompt,
+                    MAX_OUTPUT_TOKENS, strict=strict, **request,
+                )
+                record.update(receipt)
+                if problem:
+                    record.update(error=problem, dispatched=True,
+                                  cost_unknown=decoy_cost_usd(record, spec) is None)
+                    print(f"  FAIL {task_id} / {model_id} r{rep}: {problem}")
+                    return record
+                conversation = _decoy_conversation(decoy_prompt, reply, prompt)
+            result = providers.generate(spec["model"], conversation, MAX_OUTPUT_TOKENS, **request)
         except Exception as exc:
             if not strict and not isinstance(exc, providers.ProviderError):
                 raise
@@ -583,26 +712,20 @@ def cmd_run(args: argparse.Namespace) -> int:
             record.update(dispatched=True, cost_unknown=True)
             print(f"  FAIL {task_id} / {model_id} r{rep}: {exc}")
             return record
-        response_name = f"{task_id}--{model_id}--r{rep}.md"
+        response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
         record.update(result)
         record["response_path"] = f"responses/{response_name}"
         record["dispatched"] = True
         if strict:
-            provider, requested_model = providers.split_model_spec(models[model_id]["model"])
-            if provider == "openrouter" and result.get("resolved_model") != requested_model:
-                record["error"] = "provider-returned model does not match the requested model"
-            if provider == "openrouter" and (not result.get("resolved_provider") or not result.get("response_id")):
-                record["error"] = "provider-returned route receipt is incomplete"
-            if provider == "openrouter":
-                policy = providers.OPENROUTER_MODEL_POLICIES.get(requested_model, {})
-                allowed = set().union(*(providers.OPENROUTER_PROVIDER_LABELS.get(slug, set())
-                                        for slug in policy.get("providers", [])))
-                if result.get("resolved_provider") not in allowed:
-                    record["error"] = "provider-returned route is outside the allowed policy"
+            route_error = _strict_receipt_error(result, spec["model"])
+            if route_error:
+                record["error"] = route_error
             if not (run_dir / record["response_path"]).read_text().strip():
                 record["error"] = "provider returned an empty completion; no retry dispatched"
-            record["cost_unknown"] = attempt_cost_usd(record, models[model_id]) is None
+            record["cost_unknown"] = (
+                attempt_cost_usd(record, spec) is None or decoy_cost_usd(record, spec) is None
+            )
         print(f"  done {task_id} / {model_id} r{rep} ({record['latency_seconds']}s)")
         return record
 
@@ -627,7 +750,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                         dispatches.flush()
                         os.fsync(dispatches.fileno())
                     record = one((model_id, task_id, rep))
-                    spent += attempt_cost_usd(record, models[model_id]) or 0.0
+                    # Money spent: a decoy task's earlier turn was paid for
+                    # too, though the report leaves it out of the task's cost.
+                    spent += (attempt_cost_usd(record, models[model_id]) or 0.0) + (
+                        decoy_cost_usd(record, models[model_id]) or 0.0)
                     if record.get("error") or record.get("cost_unknown"):
                         halted = "previous attempt failed or has unknown cost"
                     elif stop_after_cost is not None and spent >= stop_after_cost:
@@ -684,7 +810,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
     # Every recorded prompt is checked before the first paid call: a refusal
     # part-way would leave the attempts already re-paid unrecorded.
     prompts = [_recorded_retry_prompt(run_dir, record) for record in errored]
-    print(f"About to retry {len(errored)} errored paid model call(s) "
+    calls = sum(1 if decoy_prompt is None else 2 for _prompt, decoy_prompt in prompts)
+    print(f"About to retry {len(errored)} errored attempt(s), {calls} paid model "
+          f"call(s) (a decoy task's attempt replays both of its turns), "
           f"from run {run_meta['run_id']}:")
     for record in errored:
         print(f"  {record['task_id']} / {record['model_id']} "
@@ -694,7 +822,7 @@ def cmd_retry(args: argparse.Namespace) -> int:
         if answer != "RETRY":
             print("Aborted; nothing was called.")
             return 1
-    for record, prompt in zip(errored, prompts):
+    for record, (prompt, decoy_prompt) in zip(errored, prompts):
         spec = models[record["model_id"]]
         # The run-wide value is null when the models' ceilings differ; each
         # model's own is what its attempt ran with.
@@ -703,22 +831,32 @@ def cmd_retry(args: argparse.Namespace) -> int:
             or run_meta.get("max_output_tokens")
             or MAX_OUTPUT_TOKENS
         )
+        request = dict(web_search=run_meta["tools_enabled"], settings=_candidate_settings(spec))
+        response_stem = f"{record['task_id']}--{record['model_id']}--r{record['repetition']}"
         try:
-            result = providers.generate(
-                spec["model"], prompt, ceiling,
-                web_search=run_meta["tools_enabled"],
-                settings=_candidate_settings(spec),
-            )
+            conversation: str | list[dict] = prompt
+            if decoy_prompt is not None:
+                # Both turns are replayed: the old reply belongs to the failed
+                # attempt, and its receipt is replaced, never mixed in.
+                for key in [key for key in record if key.startswith("decoy_")]:
+                    if key != "decoy_prompt_sha256":
+                        del record[key]
+                reply, receipt, problem = _decoy_turn(
+                    run_dir, response_stem, spec["model"], decoy_prompt, ceiling,
+                    strict=False, **request,
+                )
+                record.update(receipt)
+                if problem:
+                    raise providers.ProviderError(problem)
+                conversation = _decoy_conversation(decoy_prompt, reply, prompt)
+            result = providers.generate(spec["model"], conversation, ceiling, **request)
         except providers.ProviderError as exc:
             record["error"] = str(exc)
             print(f"  FAIL {record['task_id']} / {record['model_id']} "
                   f"r{record['repetition']}: {exc}")
             continue
         record.pop("error", None)
-        response_name = (
-            f"{record['task_id']}--{record['model_id']}"
-            f"--r{record['repetition']}.md"
-        )
+        response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
         record.update(result)
         record["response_path"] = f"responses/{response_name}"
@@ -734,15 +872,29 @@ def cmd_retry(args: argparse.Namespace) -> int:
     return 0 if remaining == 0 else 1
 
 
-def _recorded_retry_prompt(run_dir: Path, record: dict) -> str:
-    prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
+def _recorded_retry_prompt(run_dir: Path, record: dict) -> tuple[str, str | None]:
+    """The task prompt and, for a decoy task, the earlier message the
+    attempt sent, each checked against the hash its attempt recorded."""
+    prompts = run_dir / "prompts"
+    prompt = (prompts / f"{record['task_id']}.md").read_text()
     recorded_sha = record.get("prompt_sha256")
     if recorded_sha and recorded_sha != hashlib.sha256(prompt.encode()).hexdigest():
         raise SystemExit(
             f"recorded prompt for {record['task_id']} no longer matches its "
             "attempt's prompt_sha256; refusing to retry a different experiment"
         )
-    return prompt
+    decoy_path = prompts / f"{record['task_id']}.decoy.md"
+    decoy_sha = record.get("decoy_prompt_sha256")
+    if decoy_sha is None and not decoy_path.exists():
+        return prompt, None
+    decoy_prompt = decoy_path.read_text() if decoy_path.is_file() else None
+    if decoy_prompt is None or decoy_sha != hashlib.sha256(decoy_prompt.encode()).hexdigest():
+        raise SystemExit(
+            f"recorded earlier message for {record['task_id']} is missing or no "
+            "longer matches its attempt's decoy_prompt_sha256; refusing to retry "
+            "a different experiment"
+        )
+    return prompt, decoy_prompt
 
 
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
+  development tasks are shared by the model alone, the model with the skills
+  and Magister. A decoy task is one conversation of two calls to the same
+  model with the same settings: call 1 sends only the look-alike message
+  (`assemble_decoy_prompt`), call 2 sends that message, the model's own reply
+  as plain text, and the task prompt as a single call has it (skills only on
+  the "with skills" arm). Only call 2 is graded. A call 1 that fails, is
+  empty, refused or cut off fails the attempt; the task is never sent alone.
+  Call 1's tokens, cost and time are recorded under `decoy_*` and, as for
+  the Magister bridge's decoy turn, are not in the report's cost, tokens or
+  time, so the published cost of this task leaves the earlier turn out in
+  every setup; `--stop-after-cost-usd` does count them. `retry` replays both
+  calls. Validation now names the harnesses that can send a prior turn
+  (`PRIOR_TURN_HARNESSES`: `direct-api`, `magister-agent`), and the task lists
+  both. Its prompt, rubric, fixtures and versions are unchanged. Providers
+  accept a text conversation (Anthropic and OpenRouter `messages`, OpenAI
+  Responses `input`); a single prompt goes on the wire as before.
 - Runner: `retry` sends each model the output ceiling its run recorded
   (`max_output_tokens_by_model`). A run whose models have different ceilings
   records no single `max_output_tokens`, and its retries sent Anthropic and

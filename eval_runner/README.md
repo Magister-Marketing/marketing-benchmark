@@ -30,6 +30,23 @@ point for direct-model marketing quality.
   model's own per-request maximum, never sent; optional in `models.json`,
   and its `max_output_tokens` may not exceed it). A ceiling already at that
   maximum is not retried.
+- A `decoy` task is one conversation of two calls, to the same model with
+  the same ceiling, settings and tools. Call 1 sends only the earlier message
+  (`assemble_decoy_prompt`, saved as `prompts/<task>.decoy.md`; no task
+  prompt, rubric or skills). Call 2 sends that message, the model's own reply
+  as a plain assistant text turn (saved as `responses/<…>.decoy.md`), and
+  the task prompt exactly as a single call has it, skill text included only
+  when the arm includes it. Only call 2's reply is graded. A call 1 that
+  fails, comes back empty, or does not finish normally (a refusal, a cut-off)
+  fails the attempt like a failed call; the task prompt is then never sent
+  on its own. Call 1's receipt is kept under `decoy_*` on the attempt
+  (`decoy_input_tokens`, `decoy_output_tokens`, `decoy_latency_seconds`,
+  `decoy_provider_cost_usd` when OpenRouter reports one, and the rest of its
+  receipt), and `decoy_prompt_sha256` covers its prompt while
+  `prompt_sha256` stays the task prompt's. As for the Magister bridge's decoy
+  turn, the report's cost, tokens and time are call 2's alone, so they leave
+  the earlier turn out; `--stop-after-cost-usd` counts both calls. `retry`
+  replays both.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
     prompt by default. Each task explicitly lists its skill files, whose full
@@ -157,12 +174,15 @@ rather than inline:
   not list `direct-api`, and refuses it by name rather than running a
   degraded version.
 - `decoy` — `{fixture, message, answers}`: a look-alike source the harness
-  sends as its own chat turn *before* the task prompt (`assemble_decoy_prompt`
+  sends as its own turn *before* the task prompt (`assemble_decoy_prompt`
   builds that turn: the message, then the export under the same
   `## Supplied source: <name>` heading the real fixture gets, so a harness
-  that saves pastes to files names both alike). `assemble_prompt` ignores it,
-  which is why a decoy task must list `harnesses` and never `direct-api`:
-  inlined into one prompt, the decoy would change the task. `answers` maps
+  that saves pastes to files names both alike). `assemble_prompt` ignores it:
+  inlined into the task prompt, the decoy would change the task. So a decoy
+  task must list `harnesses`, each one that can send a prior turn
+  (`PRIOR_TURN_HARNESSES`: `direct-api` and `magister-agent`; a Claude Code
+  session cannot). `direct-api` runs it as one conversation of two calls,
+  described under Protocol. `answers` maps
   every banded check to the value the decoy yields; `bench validate` proves
   each scores 0 against the real target, so computing from the wrong file
   fails on oracle evidence.
@@ -195,7 +215,7 @@ rather than inline:
 | holdout | `rate-card-reconciliation` | cross-fixture invoice audit with distractor rates and three planted errors |
 | holdout | `unsupportable-claims-brief` | partial refusal: deliver the brief, decline the four unsupportable claims |
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
-| development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
+| development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; runs on `direct-api` (two calls) and `magister-agent`, not `claude-code` (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 | development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
@@ -354,10 +374,10 @@ generates the response, so results remain comparable:
 
 | Harness | Generator | Status |
 |---|---|---|
-| `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
+| `direct-api` | Raw model API call (`skills` x `tools` arms); two calls in one conversation for a `decoy` task | available |
 | `claude-code` | Headless Claude Code: stock tools, optionally a skills plugin and MCP servers (`eval_runner/claude_code.py`) | available |
 | Other coding agents | Codex CLI | planned; adapt from `evals/runner/adapters/` |
-| `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; the only harness that runs `decoy` tasks |
+| `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; sends a `decoy` task's earlier message as a chat turn of its own |
 
 Rules that keep the ladder honest:
 
@@ -370,7 +390,8 @@ Rules that keep the ladder honest:
 
 ## The Claude Code harness
 
-`direct-api` asks a model one question. `claude-code` gives the same task to
+`direct-api` asks a model one question (for a `decoy` task, one earlier
+message and then the question). `claude-code` gives the same task to
 the Claude Code agent as a person would use it, and writes the same run
 directory, so `grade` and `report` read it unchanged.
 
@@ -478,7 +499,8 @@ What a run refuses or records instead of guessing:
 
 It needs the `claude` CLI on the PATH and an `ANTHROPIC_API_KEY`; sessions
 are billed to that key, about one to three cents a task on Haiku 5.5. Tasks
-that need a prior turn (`decoy`) are left out, as on `direct-api`.
+that need a prior turn (`decoy`) are left out: a session here takes one
+prompt.
 
 ## Deliberately deferred
 

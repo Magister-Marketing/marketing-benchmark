@@ -127,7 +127,7 @@ which sets the tasks and the judge, and Python 3.11 or newer (`PYTHON=.venv/bin/
 # 1. See the plan and the cost estimate; spends nothing
 make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web dry_run=1
 
-# 2. Run it: one call per task with the skills in the prompt, 3 attempts each
+# 2. Run it: one call per task (two for the decoy task) with the skills in the prompt, 3 attempts each
 make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web \
     env_file=.env.local confirm=SPEND
 
