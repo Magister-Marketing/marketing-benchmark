@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Tasks: `blog-post` hardened (prompt 3, rubric 4; same id). Every direct
+  setup passed all nine checks of rubric 3. The facts now come from a dated
+  `sources.md`, where the diagnostic price of the older service menu ($89,
+  listed last) is superseded by a later office note ($95), and the prompt no
+  longer states the price. The post must use at least three figures from the
+  sources and state no price, percentage, number of calls or span of time or
+  distance that is not a current one, link exactly the five pages a written
+  rule picks from `site_map.csv` (live, tagged furnace, most sessions, a tie
+  at fifth place broken by URL; a redirect, a noindex page and a furnace URL
+  that is not tagged furnace all have more sessions), with each page's
+  keyword as the link text, and link its call to action to the booking page
+  with the current price in the link text. 10 of the 13 checks are a
+  program's (`eval_runner/task_facts_seo.py`). The Brightline brand fixtures
+  stay for the tasks that still use them; the archived version 1 prompt is
+  dropped, since rubric 4 cannot grade it.
 - Tasks: `seo-titles-meta` (development split): a title and a meta
   description for each of the 41 indexed pages of a 46-page inventory, under
   written rules, as `titles_meta.csv`, with three labeled counts. All 16

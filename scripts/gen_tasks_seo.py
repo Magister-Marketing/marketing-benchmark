@@ -452,9 +452,87 @@ def build_titles_meta() -> dict[str, str]:
     }
 
 
+# --------------------------------------------------------------------- blog-post
+
+# The price source comes first in the file and is the later one; the older menu,
+# with the superseded price, comes last.
+BLOG_SOURCES_MD = """\
+# Brightline Heating: sources for the furnace-noise article
+
+Brightline Heating is a local heating service for homeowners in North Valley. Each source gives the date it was published.
+
+## Office note: diagnostic visit price (published 2026-01-05)
+- Furnace diagnostic visit: $95.
+
+## Approved homeowner checks (published 2025-09-03)
+- Thermostat: set to heat, with the set point above the room temperature.
+- Air filter: a 1-inch filter is due for replacement every 90 days.
+- Clearance: keep 3 feet clear around the furnace.
+- Registers: supply registers open and not blocked by furniture.
+- When a noise happens: note whether it starts with the burner, with the blower, or runs all the time.
+
+## 2025 service-call summary (published 2026-01-14)
+- Brightline answered 1,412 furnace calls about a noise in 2025. By the noise the homeowner described:
+- Whistling or howling, usually airflow (a clogged filter, closed registers): 31%.
+- Rattling, often a loose panel or duct: 22%.
+- Banging or a boom when the burner lights: 18%.
+- Squealing or screeching, often the blower: 14%.
+- Clicking that repeats without the burner lighting: 9%.
+- Grinding or scraping: 6%.
+
+## Safety (published 2025-09-03)
+- If you smell gas: leave the building, do not use switches or flames, and call the gas emergency line from outside.
+- Banging when the burner lights, grinding, repeated clicking without ignition, an electrical burning smell, or a furnace that keeps shutting down need a licensed technician.
+- Never open, bypass or repair gas or electrical parts yourself.
+
+## Service menu (published 2025-02-10)
+- Service area: North Valley.
+- Furnace diagnostic visit: $89.
+- Booking: times vary, and Brightline makes no promise about response times.
+"""
+BLOG_SITE_HEADER = ["url", "title", "tags", "status", "noindex", "primary_keyword", "sessions_28d"]
+# The five live furnace pages with the most sessions are the links; the fifth place is a tie
+# the URL order breaks. Above them sit a redirect, a noindex page, a furnace URL that is not
+# tagged furnace, and two other noises.
+BLOG_SITE_MAP = [
+    ("/", "Brightline Heating", "home", 200, "no", "brightline heating", 5400),
+    ("/services/furnace-maintenance", "Furnace Maintenance", "furnace;services", 200, "no", "furnace maintenance", 1320),
+    ("/blog/heat-pump-vs-furnace", "Heat Pump or Furnace?", "heat-pump", 200, "no", "heat pump vs furnace", 2600),
+    ("/blog/furnace-short-cycling", "Why Your Furnace Short Cycles", "furnace", 301, "no", "furnace short cycling", 1650),
+    ("/blog/carbon-monoxide-safety", "Carbon Monoxide Safety at Home", "furnace;safety", 200, "yes", "carbon monoxide safety", 1540),
+    ("/book/furnace-diagnostic", "Book a Furnace Diagnostic", "booking", 200, "no", "book a furnace diagnostic", 1900),
+    ("/blog/furnace-filter-guide", "The Furnace Filter Guide", "furnace;maintenance", 200, "no", "furnace filter guide", 2140),
+    ("/blog/ac-making-noise", "Why Is My AC Making Noise?", "cooling", 200, "no", "ac making noise", 2300),
+    ("/services/furnace-repair", "Furnace Repair", "furnace;services", 200, "no", "furnace repair", 1760),
+    ("/blog/why-is-my-furnace-blowing-cold-air", "Why Is My Furnace Blowing Cold Air?", "furnace", 200, "no", "furnace blowing cold air", 1980),
+    ("/blog/water-heater-noises", "Water Heater Noises Explained", "water-heater", 200, "no", "water heater noises", 1210),
+    ("/blog/thermostat-troubleshooting", "Thermostat Troubleshooting", "furnace;thermostat", 200, "no", "thermostat troubleshooting", 1450),
+    ("/blog/pilot-light-out", "Pilot Light Out?", "furnace", 404, "no", "pilot light out", 900),
+    ("/blog/furnace-keeps-turning-off", "My Furnace Keeps Turning Off", "furnace", 200, "no", "furnace keeps turning off", 1320),
+    ("/blog/winter-furnace-checklist", "A Winter Furnace Checklist", "furnace;seasonal", 200, "no", "winter furnace checklist", 1100),
+    ("/blog/furnace-smells", "Furnace Smells and What They Mean", "furnace", 200, "no", "furnace smells", 870),
+    ("/services/furnace-installation", "Furnace Installation", "furnace;services", 200, "no", "furnace installation", 760),
+    ("/services/heat-pump-repair", "Heat Pump Repair", "heat-pump;services", 200, "no", "heat pump repair", 980),
+    ("/services/ac-repair", "AC Repair", "cooling;services", 200, "no", "ac repair", 1450),
+    ("/blog/how-old-is-my-furnace", "How Old Is My Furnace?", "furnace", 200, "no", "how old is my furnace", 610),
+    ("/blog/furnace-efficiency-ratings", "Furnace Efficiency Ratings", "furnace", 200, "no", "furnace efficiency ratings", 540),
+    ("/blog/space-heater-safety", "Space Heater Safety", "safety", 200, "no", "space heater safety", 700),
+    ("/about", "About Brightline", "about", 200, "no", "about brightline", 400),
+    ("/contact", "Contact Brightline", "contact", 200, "no", "contact brightline", 820),
+    ("/reviews", "What Customers Say", "about", 200, "yes", "brightline reviews", 300),
+]
+
+
+def build_blog_post() -> dict[str, str]:
+    return {
+        "blog-post/sources.md": BLOG_SOURCES_MD,
+        "blog-post/site_map.csv": _csv_text(BLOG_SITE_HEADER, [list(row) for row in BLOG_SITE_MAP]),
+    }
+
+
 # ------------------------------------------------------------------------- driver
 
-BUILDERS = (build_redirect_map, build_titles_meta)
+BUILDERS = (build_redirect_map, build_titles_meta, build_blog_post)
 
 
 def build_all() -> dict[str, str]:

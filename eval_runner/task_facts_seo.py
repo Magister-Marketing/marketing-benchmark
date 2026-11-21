@@ -320,11 +320,152 @@ def meta_facts(response_text: str) -> dict:
     }
 
 
+# --------------------------------------------------------------------- blog-post
+
+BLOG_TASK = "blog-post"
+BLOG_BOOKING = "/book/furnace-diagnostic"
+BLOG_LINKS = 5
+BLOG_TITLE_PHRASE = "furnace making noise"
+BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX = 60, 155
+BLOG_MIN_WORDS_FOR_A_POST = 300
+_NUMBER = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
+# What the prompt calls a figure: a price, a percentage, a number of calls, a span of time or distance.
+_FIGURES = (
+    ("$", re.compile(r"\$\s?(" + _NUMBER + r")")),
+    ("%", re.compile(r"(?<![\d.,$])(" + _NUMBER + r")\s?(?:%|percent\b)", re.IGNORECASE)),
+    ("calls", re.compile(r"(?<![\d.,$])(" + _NUMBER + r")(?:[ \t]+[a-z'-]+){0,3}?[ \t]+calls\b", re.IGNORECASE)),
+    ("span", re.compile(r"(?<![\d.,$])(" + _NUMBER + r")[ \t-]?(second|minute|hour|day|week|month|year|inch|inche|foot|feet|ft|mile)s?\b",
+                        re.IGNORECASE)),
+)
+_UNITS = {"inche": "inch", "feet": "foot", "ft": "foot"}
+
+
+def figures(text: str) -> set[tuple[str, float]]:
+    """The figures a text states, as (kind, value): ("$", 95.0), ("%", 31.0), ("day", 90.0).
+
+    A year is not a count: "Brightline's 2025 service calls" states no number of calls.
+    """
+    found = set()
+    for kind, pattern in _FIGURES:
+        for match in pattern.finditer(text):
+            value = float(match.group(1).replace(",", ""))
+            if kind == "calls" and re.fullmatch(r"(?:19|20)\d\d", match.group(1)):
+                continue
+            if kind == "span":
+                unit = match.group(2).lower()
+                found.add((_UNITS.get(unit, unit), value))
+            else:
+                found.add((kind, value))
+    return found
+
+
+def blog_reference(sources_md: str, site_map_csv: str) -> dict:
+    """The current and the superseded figures of sources.md, and the five pages the link rule picks."""
+    dated: list[tuple[str, str, str]] = []   # (published, label, line)
+    published = ""
+    for line in sources_md.splitlines():
+        heading = re.match(r"^## .*\(published (\d{4}-\d{2}-\d{2})\)", line)
+        if heading:
+            published = heading.group(1)
+        elif line.startswith("- "):
+            label = line[2:].split(": ", 1)[0].strip().lower() if ": " in line else line
+            dated.append((published, label, line))
+    latest: dict[str, str] = {}
+    for when, label, _line in dated:
+        latest[label] = max(latest.get(label, ""), when)
+    current = set().union(*(figures(line) for when, label, line in dated if when == latest[label]))
+    superseded = set().union(*(figures(line) for when, label, line in dated if when != latest[label])) - current
+    pages = _rows(site_map_csv)
+    live = [row for row in pages if "furnace" in row["tags"].split(";") and row["status"] == "200" and row["noindex"] == "no"]
+    chosen = sorted(live, key=lambda row: (-int(row["sessions_28d"]), row["url"]))[:BLOG_LINKS]
+    price = sorted(value for kind, value in current if kind == "$")
+    return {
+        "current_figures": sorted(current),
+        "superseded_figures": sorted(superseded),
+        "price": price[0] if len(price) == 1 else None,
+        "links": {row["url"]: row["primary_keyword"] for row in chosen},
+    }
+
+
+@lru_cache(maxsize=1)
+def blog_oracle() -> dict:
+    return blog_reference(_fixture("blog-post/sources.md"), _fixture("blog-post/site_map.csv"))
+
+
+_MARKDOWN_LINK = re.compile(r"(?<!!)\[([^\]\n]{1,300})\]\(\s*<?([^)\s>]{1,500})>?(?:\s+\"[^\"\n]*\")?\s*\)")
+_HTML_LINK = re.compile(r"<a\s[^>]{0,500}?href=[\"']([^\"']{1,500})[\"'][^>]{0,500}>(.{0,300}?)</a>", re.IGNORECASE | re.DOTALL)
+
+
+def _links(text: str) -> list[tuple[str, str]]:
+    """(link text, target) for every Markdown or HTML link, images aside."""
+    found = [(match.group(1), match.group(2)) for match in _MARKDOWN_LINK.finditer(text)]
+    found += [(re.sub(r"<[^>]+>", "", match.group(2)), match.group(1)) for match in _HTML_LINK.finditer(text)]
+    return found
+
+
+def _site_path(target: str) -> str | None:
+    """The path of a link on Brightline's own site, or None for any other site."""
+    value = target.strip()
+    if re.match(r"^(?:https?:)?//", value, re.IGNORECASE):
+        host_and_path = re.sub(r"^(?:https?:)?//", "", value, flags=re.IGNORECASE)
+        host, _, path = host_and_path.partition("/")
+        if not re.fullmatch(r"(?:www\.)?brightlineheating\.[a-z.]+", host.lower()):
+            return None
+        value = "/" + path
+    value = value.split("#", 1)[0]
+    return value[:-1] if len(value) > 1 and value.endswith("/") else value
+
+
+def _labelled(text: str, names: str) -> str | None:
+    match = re.search(r"(?im)^[ \t>#*_-]*(?:" + names + r")[ \t*_]*[:：][ \t*_]*(.+?)[ \t]*$", text)
+    return match.group(1).strip().strip("*_`\"'“”").strip() if match else None
+
+
+def blog_facts(response_text: str) -> dict:
+    ref = blog_oracle()
+    text = response_text
+    is_post = len(text.split()) >= BLOG_MIN_WORDS_FOR_A_POST
+    title = _labelled(text, r"seo title|title tag")
+    description = _labelled(text, r"meta description")
+    seo_errors = int(not (title and len(title) <= BLOG_TITLE_MAX and _contains(title, BLOG_TITLE_PHRASE)))
+    seo_errors += int(not (description and len(description) <= BLOG_DESCRIPTION_MAX))
+    headings = re.findall(r"(?m)^[ \t]{0,3}##(?!#)[ \t]+(.+)$", text) + re.findall(r"(?is)<h2[^>]*>(.*?)</h2>", text)
+    stated = figures(text)
+    current = {tuple(item) for item in ref["current_figures"]}
+    superseded = {tuple(item) for item in ref["superseded_figures"]}
+    links = [(link_text, _site_path(target)) for link_text, target in _links(text) if not target.strip().startswith(("#", "mailto:", "tel:"))]
+    booking = [link_text for link_text, path in links if path == BLOG_BOOKING]
+    internal = [path for _text, path in links if path not in (None, BLOG_BOOKING)]
+    external = sum(1 for _text, path in links if path is None)
+    wanted = set(ref["links"])
+    first_text = {}
+    for link_text, path in links:
+        first_text.setdefault(path, link_text)
+    return {
+        "seo_blog_seo_fields_error_count": seo_errors,
+        "seo_blog_professional_heading_count": sum(1 for heading in headings if _contains(heading, "when to call a professional")),
+        # The call to action's link goes to the booking page and its text states the current price.
+        "seo_blog_booking_link_error_count": int(not any(("$", ref["price"]) in figures(link_text) for link_text in booking)),
+        # The current price is stated and the superseded one nowhere.
+        "seo_blog_price_error_count": int(("$", ref["price"]) not in stated) + len({item for item in stated if item in superseded}),
+        # Figures that are neither current nor superseded (that one is the price check's). No post, no reading.
+        "seo_blog_unsourced_figure_count": len(stated - current - superseded) if is_post else None,
+        "seo_blog_sourced_figure_count": len(stated & current),
+        # The five pages the rule picks, each linked once, and no other page or site.
+        "seo_blog_link_selection_error_count": (
+            len(wanted - set(internal)) + len(set(internal) - wanted) + (len(internal) - len(set(internal))) + external),
+        "seo_blog_anchor_error_count": sum(
+            1 for url, keyword in ref["links"].items()
+            if url not in first_text or _phrase(first_text[url]).strip(" *_`\"'“”.,:;") != _phrase(keyword).strip()),
+    }
+
+
 # ------------------------------------------------------------------------- dispatch
 
 FACTS = {
     REDIRECT_TASK: redirect_facts,
     META_TASK: meta_facts,
+    BLOG_TASK: blog_facts,
 }
 
 

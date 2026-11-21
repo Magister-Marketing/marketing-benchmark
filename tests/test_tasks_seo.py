@@ -74,7 +74,7 @@ def _answer_block(values: list) -> str:
 
 def test_the_fixtures_are_what_the_generator_writes(generator):
     assert generator.drift() == []
-    for task_id in ("seo-redirect-map", "seo-titles-meta"):
+    for task_id in ("seo-redirect-map", "seo-titles-meta", "blog-post"):
         task = _task(task_id)
         assert task["split"] == "development"
         assert all((bench.REPO_ROOT / path).is_file() for path in task["fixtures"])
@@ -427,3 +427,195 @@ def test_titles_meta_careless_readings_score_zero_on_their_checks():
     assert {"price_only_in_stock", "q3_priced"} <= zeroed(out_of_stock, [41, 6, 20])
     rounded = [[page_id, title, meta.replace(".00.", ".")] for page_id, title, meta in reference]
     assert "price_only_in_stock" in zeroed(rounded, [41, 6, 13])
+
+
+# --------------------------------------------------------------------- blog-post
+
+BLOG_POST = """\
+SEO title: Why Is My Furnace Making Noise? A Homeowner's Guide
+Meta description: Whistling, rattling, banging or grinding? Learn which furnace noises you can safely watch and which need a licensed Brightline technician.
+
+# Why Is My Furnace Making Noise?
+
+A furnace is never silent. You hear the burner light, the blower start and the air move through the ducts, and most of the time those sounds fade into the background of a North Valley winter. When a new sound appears, or a familiar one gets louder, it is worth paying attention. Some noises point to something you can check yourself in a few calm minutes. Others are a sign that a licensed technician should look at the system, and a few mean you should leave the house and call for help from outside.
+
+This guide walks through the noises Brightline Heating hears about most often, what you can safely observe on your own, and when it is time to stop and call a professional. In 2025 Brightline answered 1,412 furnace calls about a noise, so you are far from alone if your furnace has started to sound different.
+
+## What to check before you worry
+
+Before you try to name a noise, take a few simple, safe observations. None of them involves opening the furnace or touching any part inside it.
+
+- **Look at the thermostat.** Make sure it is set to heat and that the set point is above the temperature of the room. A thermostat set too low can make the system start and stop in a way that sounds odd.
+- **Check the air filter.** A 1-inch filter is due for replacement every 90 days. If yours looks grey and clogged, airflow through the system drops, and that alone changes how the furnace sounds.
+- **Walk the house and look at the registers.** Supply registers should be open and not blocked by furniture, rugs or curtains. A room full of closed registers forces air through a smaller path.
+- **Give the furnace room to breathe.** Keep 3 feet clear around the furnace. Boxes, laundry and storage pushed against the cabinet are a safety problem as well as an airflow one.
+- **Notice when the noise happens.** Does it start when the burner lights, when the blower comes on, or does it run the whole time the furnace is working? That one detail helps a technician more than any description of the sound itself.
+
+Write down what you notice. A short note on when the sound starts and how long it lasts is the most useful thing you can bring to a service visit.
+
+## Whistling and howling: usually airflow
+
+Whistling or howling was the most common complaint in Brightline's 2025 service calls, at 31% of noise calls. It is usually about air rather than anything mechanical. A clogged filter, closed registers or a blocked return grille all make the blower work harder to move the same air, and the air whistles as it squeezes through.
+
+This is the noise you are most likely to be able to influence yourself. Replace an overdue filter, open the registers and clear anything blocking the returns, then listen again over the next day or two. If the whistle is gone, airflow was the cause. If it stays, or it comes with weak airflow from the vents, a technician should check the ducts and the blower.
+
+## Rattling: something is loose
+
+Rattling made up 22% of the noise calls. It is often a loose panel or a loose section of duct that vibrates when the blower runs. You can safely look for anything obvious from the outside: a register cover that buzzes, something stored on top of the furnace, or a duct you can see that shakes when the air comes on.
+
+Do not take panels off the furnace to look for the source. Panels are there to keep you away from electrical and gas parts. If the rattle is coming from the cabinet itself, or it gets worse over time, book an inspection so a technician can secure what is loose without putting you near those parts.
+
+## Banging or a boom when the burner lights
+
+A bang or a small boom right as the burner lights accounted for 18% of the calls. This one deserves more caution than a whistle or a rattle. A bang at ignition can mean the burner is not lighting the way it should, and that is a gas-side problem, not something to investigate yourself.
+
+Note when it happens and how often, and leave the furnace alone. Banging when the burner lights is on the list of signs that need a licensed technician, so this is the moment to call a professional rather than wait to see whether it settles down.
+
+## Squealing, clicking and grinding
+
+**Squealing or screeching** was 14% of the calls and often comes from the blower. You may hear it when the fan starts or while it runs. It is not an emergency on its own, but it rarely fixes itself, and a blower that keeps working under strain can fail.
+
+**Clicking that repeats without the burner lighting** was 9% of the calls. A single click as the system starts is normal. Clicking that goes on and on while the burner never lights is not, and repeated clicking without ignition needs a licensed technician.
+
+**Grinding or scraping** was the least common at 6%, but it is one of the most important to act on. Grinding usually means metal is wearing against metal somewhere in a moving part. Turn the system off at the thermostat and book an inspection.
+
+If you want a quick reference for other heating questions, our guide to the [furnace filter guide](/blog/furnace-filter-guide) covers filters in detail, [furnace blowing cold air](/blog/why-is-my-furnace-blowing-cold-air) explains a different common complaint, and [thermostat troubleshooting](/blog/thermostat-troubleshooting) helps when the problem starts at the wall.
+
+## When to call a professional
+
+Some sounds are worth watching for a day or two. Others are not. Call a licensed technician when you notice any of these:
+
+- Banging or a boom when the burner lights.
+- Grinding or scraping from the furnace.
+- Clicking that repeats without the burner lighting.
+- An electrical burning smell.
+- A furnace that keeps shutting down on its own. If that is what you are seeing, our article on why a [furnace keeps turning off](/blog/furnace-keeps-turning-off) explains what a technician will look for.
+
+Whatever the noise, never open, bypass or repair gas or electrical parts yourself. That includes removing panels to get a better look, resetting parts inside the cabinet, or taping over anything that seems loose. Brightline's [furnace repair](/services/furnace-repair) team can diagnose the source safely. Booking times vary, so book as soon as you notice one of the signs above rather than waiting for the noise to get worse.
+
+## When it is an emergency
+
+If you smell gas, do not stop to listen to the furnace. Leave the building right away. Do not use light switches, phones or anything with a flame on your way out. Once you are outside and at a safe distance, call the gas emergency line. Stay out until you are told it is safe to go back in.
+
+A gas smell is different from the slightly dusty smell some furnaces give off the first time they run in the autumn. If you are ever unsure which one you are smelling, treat it as gas and leave.
+
+## A simple way to think about furnace noises
+
+It can help to sort what you hear into three groups:
+
+1. **Safe to observe and adjust:** whistling or howling that may be airflow. Check the filter, the registers and the space around the furnace, then listen again.
+2. **Book an inspection:** rattling from the cabinet, squealing from the blower, and anything that keeps coming back after you have checked the basics.
+3. **Call a professional now, or leave:** banging when the burner lights, grinding, repeated clicking without ignition, an electrical burning smell, a furnace that keeps shutting down, and above all a gas smell, which means leaving the house first.
+
+Most furnace noises are a message rather than a crisis. Listening carefully, noting when the sound happens and keeping your hands off the inside of the furnace will get you to the right fix faster and keep your household safe.
+
+## Book a furnace diagnostic
+
+If your furnace is making a noise you cannot explain, or one of the signs above sounds familiar, a Brightline technician can find the cause. Brightline serves homeowners across North Valley, and a diagnostic visit means someone with the right training looks at the system before any repair is discussed.
+
+[Book a $95 furnace diagnostic visit](/book/furnace-diagnostic)
+"""
+
+
+def _blog_oracle():
+    """The figures and the links the rules give, recomputed from the two fixtures."""
+    sources = (FIXTURES / "blog-post/sources.md").read_text()
+    sections = re.split(r"(?m)^## ", sources)[1:]
+    by_date = sorted((re.search(r"published (\d{4}-\d{2}-\d{2})", section).group(1), section) for section in sections)
+    prices = [(date, re.findall(r"Furnace diagnostic visit: \$(\d+)", section)) for date, section in by_date]
+    prices = [(date, found[0]) for date, found in prices if found]
+    site = _table("blog-post/site_map.csv")
+    live = [row for row in site if "furnace" in row["tags"].split(";") and row["status"] == "200" and row["noindex"] == "no"]
+    live.sort(key=lambda row: row["url"])
+    live.sort(key=lambda row: int(row["sessions_28d"]), reverse=True)
+    return sources, prices, site, {row["url"]: row["primary_keyword"] for row in live[:5]}
+
+
+def test_blog_post_oracle_matches_an_independent_recomputation():
+    task = _task("blog-post")
+    sources, prices, site, links = _blog_oracle()
+    ref = task_facts_seo.blog_oracle()
+    # The later source is first in the file, and its price is the current one.
+    assert prices == [("2025-02-10", "89"), ("2026-01-05", "95")]
+    assert sources.index("$95") < sources.index("$89")
+    assert ref["price"] == 95.0 and ref["superseded_figures"] == [("$", 89.0)]
+    percentages = sorted(float(value) for value in re.findall(r": (\d+)%\.", sources))
+    assert percentages == [6.0, 9.0, 14.0, 18.0, 22.0, 31.0] and sum(percentages) == 100
+    assert sorted(tuple(item) for item in ref["current_figures"]) == sorted(
+        [("$", 95.0), ("calls", 1412.0), ("day", 90.0), ("foot", 3.0), ("inch", 1.0)] + [("%", value) for value in percentages])
+    assert ref["links"] == links
+    by_id = _by_id(task)
+    assert all(url in by_id["links_chosen"]["check"] for url in links)
+    # The fifth place is a tie the URL order breaks, and the page that loses it comes first in the file.
+    sessions = {row["url"]: int(row["sessions_28d"]) for row in site}
+    assert sessions["/blog/furnace-keeps-turning-off"] == sessions["/services/furnace-maintenance"]
+    urls = [row["url"] for row in site]
+    assert urls.index("/services/furnace-maintenance") < urls.index("/blog/furnace-keeps-turning-off")
+    # Pages with more sessions that the rule leaves out: a redirect, a noindex page, a furnace URL
+    # not tagged furnace, and another noise.
+    for url in ("/blog/furnace-short-cycling", "/blog/carbon-monoxide-safety", "/blog/heat-pump-vs-furnace", "/blog/ac-making-noise"):
+        assert sessions[url] > min(sessions[link] for link in links) and url not in links
+    # The prompt no longer gives the price, and the brand fixture that did is not supplied.
+    assert "$" not in task["prompt"] and "95" not in task["prompt"]
+    assert task["fixtures"] == ["eval_runner/fixtures/blog-post/sources.md", "eval_runner/fixtures/blog-post/site_map.csv"]
+    assert (task["prompt_version"], task["rubric_version"]) == (3, 4) and "rubric_compatible_prompts" not in task
+    code = sum("programmatic" in c for c in by_id.values())
+    assert (code, len(by_id)) == (10, 13)
+
+
+def test_blog_post_reference_passes_every_check_and_a_blank_reply_none():
+    results = _results("blog-post", BLOG_POST)
+    assert _all_pass(results), {name: item["evidence"] for name, item in results.items() if not item["pass"]}
+    assert len(BLOG_POST.split()) >= 1200
+    assert not any(item["pass"] for item in _results("blog-post", "").values())
+    # Links written as HTML or as full URLs on the brand's domain read the same.
+    as_html = BLOG_POST.replace("[furnace repair](/services/furnace-repair)",
+                                '<a href="https://www.brightlineheating.example/services/furnace-repair/">Furnace Repair</a>')
+    assert as_html != BLOG_POST and _all_pass(_results("blog-post", as_html))
+
+
+def test_blog_post_careless_readings_score_zero_on_their_checks():
+    def failed(text: str) -> set[str]:
+        return _failed(_results("blog-post", text))
+
+    def zeroed(text: str) -> set[str]:
+        return _zeroed(_results("blog-post", text))
+
+    # The price from the older menu, which comes later in the file.
+    old_price = BLOG_POST.replace("$95", "$89")
+    assert {"price_current", "booking_cta"} <= failed(old_price)
+    # A figure the sources do not give: a sum of two shares and a filter interval in months.
+    invented = BLOG_POST.replace("at 31% of noise calls", "at 31% of noise calls (with rattling, 53%)").replace(
+        "every 90 days", "every 3 months")
+    assert "figures_from_sources" in zeroed(invented)
+    # Links picked by a furnace URL, or by sessions without the live test, or a tie broken by file order.
+    by_url = BLOG_POST.replace("(/blog/thermostat-troubleshooting)", "(/blog/heat-pump-vs-furnace)")
+    assert "links_chosen" in zeroed(by_url)
+    redirect = BLOG_POST.replace("(/blog/furnace-keeps-turning-off)", "(/blog/furnace-short-cycling)")
+    assert "links_chosen" in zeroed(redirect)
+    tie = BLOG_POST.replace("[furnace keeps turning off](/blog/furnace-keeps-turning-off)",
+                            "[furnace maintenance](/services/furnace-maintenance)")
+    assert "links_chosen" in zeroed(tie)
+    # The page title as the link text, instead of the keyword.
+    titles = BLOG_POST
+    for keyword, title in (("furnace filter guide", "The Furnace Filter Guide"),
+                           ("furnace blowing cold air", "Why Is My Furnace Blowing Cold Air?"),
+                           ("thermostat troubleshooting", "Thermostat Troubleshooting Tips")):
+        titles = titles.replace(f"[{keyword}]", f"[{title}]")
+    assert "anchors_exact" in zeroed(titles)
+    # A link to another website, and a post with no call to action link.
+    assert "links_chosen" in failed(BLOG_POST.replace("[furnace repair](/services/furnace-repair)",
+                                                      "[furnace repair](https://example.org/furnaces)"))
+    assert "booking_cta" in failed(BLOG_POST.replace("(/book/furnace-diagnostic)", "(/contact)"))
+
+
+def test_the_figures_a_post_states_are_read_as_the_prompt_defines_them():
+    read = task_facts_seo.figures
+    assert read("Brightline answered 1,412 furnace calls.") == {("calls", 1412.0)}
+    assert read("In Brightline's 2025 service calls, 31% were whistling.") == {("%", 31.0)}   # a year is not a count
+    assert read("A 1-inch filter every 90 days; keep 3 feet clear.") == {("inch", 1.0), ("day", 90.0), ("foot", 3.0)}
+    assert read("every 3 months, or 31 percent, for $95.00") == {("month", 3.0), ("%", 31.0), ("$", 95.0)}
+    # What the prompt does not call a figure: a temperature, a phone number, a count of noises, a list number.
+    assert read("Set it to 68°F, call 911, and listen for these 6 noises.\n1. Whistling") == set()
+    # A singular "call" after a number is not a number of calls.
+    assert read("Raise it 2 degrees and call a technician.") == set()
