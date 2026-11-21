@@ -737,9 +737,14 @@ def test_casebook_reference_reply_passes_every_check_and_a_blank_reply_none():
     # Written the ways replies write them: capitals, "Clause 2.4 (a)", "CL2", spaces in a condition, a Markdown table.
     def loose(case):
         ruling, condition, clause = _procedure(case)[0]
-        clause = {"2.4(a)": "Clause 2.4 (a)", "CL-2": "CL2", "CL-3": "Change log CL-3"}.get(clause, clause)
-        return ruling.capitalize(), (condition or "").replace("-", " "), clause
+        clause = {"2.4(a)": "Clause 2.4 (a)", "CL-2": "CL2", "CL-3": "Change log CL-3", "1.6": "1.6 (default)",
+                  "3.4": "§3.4", "CL-7": "CL-7 (replaces 6.1)"}.get(clause, clause)
+        condition = {"ad-label": "ad label (#ad first)"}.get(condition, (condition or "").replace("-", " "))
+        return ruling.capitalize(), condition, clause
     assert _failed(_results(BOOK, _book_reply(loose))) == set()
+    for cell, read in (("2.4a", "2.4(a)"), ("Clause 3.4", "3.4"), ("CL 5", "CL-5"), ("see 4.1", "4.1"), ("none", "none")):
+        assert task_facts_experiments._clause_cell(cell) == read, cell
+    assert task_facts_experiments._condition_cell("legal-signoff or study-on-file") != "legal-signoff"
     table = "| case_id | ruling | condition | clause |\n|---|---|---|---|\n" + "\n".join(
         f"| {c['id']} | {r[0]} | {r[1] or ''} | {r[2]} |" for c in task_facts_experiments.CASEBOOK_CASES
         for r in [_procedure(c)[0]])

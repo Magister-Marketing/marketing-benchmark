@@ -1051,15 +1051,16 @@ def casebook_rulings(cases: list[dict]) -> dict[str, dict]:
 
 
 def _clause_cell(text: object) -> str:
-    value = re.sub(r"(?i)\b(clause|section|entry|change[- ]log)\b|§", " ", str(text or ""))
-    value = re.sub(r"\s+", "", value).strip("*`.,;:").upper()
-    match = re.fullmatch(r"CL-?(\d+)", value)
-    if match:
+    """The first clause number a cell gives: "2.4(a)", "Clause 2.4 (a)", "CL2",
+    "1.6 (default)". A cell with none is returned as it is, and matches nothing."""
+    value = str(text or "")
+    match = re.search(r"(?i)\bCL\s*-?\s*(\d+)\b|\b(\d)\.(\d+)(?:\s*\(([a-z])\)|([a-z])\b)?", value)
+    if not match:
+        return value.strip()
+    if match.group(1):
         return f"CL-{int(match.group(1))}"
-    match = re.fullmatch(r"(\d+)\.(\d+)(?:\(?([A-Z])\)?)?", value)
-    if match:
-        return f"{match.group(1)}.{match.group(2)}" + (f"({match.group(3).lower()})" if match.group(3) else "")
-    return value
+    letter = (match.group(4) or match.group(5) or "").lower()
+    return f"{match.group(2)}.{match.group(3)}" + (f"({letter})" if letter else "")
 
 
 def _ruling_cell(text: object) -> str | None:
@@ -1076,7 +1077,11 @@ def _ruling_cell(text: object) -> str | None:
 
 
 def _condition_cell(text: object) -> str:
-    return re.sub(r"[\s_]+", "-", _fold(text).strip("*`.\"' "))
+    """The condition a cell names: the one name of the policy's list it
+    contains ("ad-label", "ad label (#ad first)"), else the cell itself."""
+    value = re.sub(r"[\s_]+", "-", _fold(text).strip("*`.\"' "))
+    named = [name for name in CONDITIONS if name in value]
+    return named[0] if len(named) == 1 else value
 
 
 @lru_cache(maxsize=1)
