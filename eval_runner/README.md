@@ -197,7 +197,7 @@ rather than inline:
 | Split | Task | What it probes |
 |---|---|---|
 | development | `headline` | grounded, distinct launch positioning |
-| development | `blog-post` | long-form search intent and safety triage; current figures from dated sources (a superseded price), five internal links a written rule picks from a site map, checked by program |
+| development | `blog-post` | long-form search intent and safety triage; current figures from dated sources (four superseded), eight internal links a written rule picks from a 139-page site map, checked by program |
 | development | `ad-creatives` | operational creative hypotheses |
 | development | `ad-performance-analysis` | oracle math, missing-data denominator integrity, bounded decisions |
 | development | `marketing-plan` | budget, sequencing, and mature activation cohorts |

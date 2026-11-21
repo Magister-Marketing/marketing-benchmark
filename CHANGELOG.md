@@ -21,17 +21,19 @@
   `tests/test_more_tasks.py` to `tests/test_tasks_seo.py`.
 - Tasks: `blog-post` hardened (prompt 3, rubric 4; same id). Every direct
   setup passed all nine checks of rubric 3. The facts now come from a dated
-  `sources.md`, where the diagnostic price of the older service menu ($89,
-  listed last) is superseded by a later office note ($95), and the prompt no
-  longer states the price. The post must use at least three figures from the
-  sources and state no price, percentage, number of calls or span of time or
-  distance that is not a current one, link exactly the five pages a written
-  rule picks from `site_map.csv` (live, tagged furnace, most sessions, a tie
-  at fifth place broken by URL; a redirect, a noindex page and a furnace URL
-  that is not tagged furnace all have more sessions), with each page's
-  keyword as the link text, and link its call to action to the booking page
-  with the current price in the link text. 10 of the 13 checks are a
-  program's (`eval_runner/task_facts_seo.py`). The Brightline brand fixtures
+  `sources.md` in which later sources replace four figures of earlier ones,
+  each earlier source listed after the one that replaces it: the service
+  menu's price ($89 to $95, and the prompt no longer states it), the 2024 tip
+  sheet's filter interval, and the interim call summary's count and shares.
+  The post must use at least three figures from the sources and state no
+  price, percentage, number of calls or span of time or distance that is not
+  a current one, link exactly the eight pages a written rule picks from a
+  139-page `site_map.csv` (live, tagged furnace, most sessions, a tie at
+  eighth place broken by URL; redirects, noindex pages, a dead page, a page
+  tagged furnace-parts and furnace URLs tagged otherwise all have more
+  sessions), with each page's keyword as the link text, and link its call to
+  action to the booking page with the current price in the link text. 11 of
+  the 14 checks are a program's (`eval_runner/task_facts_seo.py`). The Brightline brand fixtures
   stay for the tasks that still use them; the archived version 1 prompt is
   dropped, since rubric 4 cannot grade it.
 - Tasks: `seo-titles-meta` (development split): a title and a meta

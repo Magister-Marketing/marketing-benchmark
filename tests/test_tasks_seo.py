@@ -484,7 +484,7 @@ Do not take panels off the furnace to look for the source. Panels are there to k
 
 A bang or a small boom right as the burner lights accounted for 18% of the calls. This one deserves more caution than a whistle or a rattle. A bang at ignition can mean the burner is not lighting the way it should, and that is a gas-side problem, not something to investigate yourself.
 
-Note when it happens and how often, and leave the furnace alone. Banging when the burner lights is on the list of signs that need a licensed technician, so this is the moment to call a professional rather than wait to see whether it settles down.
+Note when it happens and how often, and leave the furnace alone. Banging when the burner lights is on the list of signs that need a licensed technician, so this is the moment to call a professional rather than wait to see whether it settles down. If you want to understand what lights the burner in the first place, our explainer on the [furnace pilot light](/blog/furnace-pilot-light) walks through it without asking you to touch anything.
 
 ## Squealing, clicking and grinding
 
@@ -512,7 +512,7 @@ Whatever the noise, never open, bypass or repair gas or electrical parts yoursel
 
 If you smell gas, do not stop to listen to the furnace. Leave the building right away. Do not use light switches, phones or anything with a flame on your way out. Once you are outside and at a safe distance, call the gas emergency line. Stay out until you are told it is safe to go back in.
 
-A gas smell is different from the slightly dusty smell some furnaces give off the first time they run in the autumn. If you are ever unsure which one you are smelling, treat it as gas and leave.
+A gas smell is different from the slightly dusty smell some furnaces give off the first time they run in the autumn. If you are ever unsure which one you are smelling, treat it as gas and leave. Our guide to [furnace smells](/blog/furnace-smells) explains the difference between the harmless ones and the ones that mean you should get out.
 
 ## A simple way to think about furnace noises
 
@@ -522,7 +522,7 @@ It can help to sort what you hear into three groups:
 2. **Book an inspection:** rattling from the cabinet, squealing from the blower, and anything that keeps coming back after you have checked the basics.
 3. **Call a professional now, or leave:** banging when the burner lights, grinding, repeated clicking without ignition, an electrical burning smell, a furnace that keeps shutting down, and above all a gas smell, which means leaving the house first.
 
-Most furnace noises are a message rather than a crisis. Listening carefully, noting when the sound happens and keeping your hands off the inside of the furnace will get you to the right fix faster and keep your household safe.
+Before the cold sets in, our [winter furnace checklist](/blog/winter-furnace-checklist) covers the same safe checks in one place. Most furnace noises are a message rather than a crisis. Listening carefully, noting when the sound happens and keeping your hands off the inside of the furnace will get you to the right fix faster and keep your household safe.
 
 ## Book a furnace diagnostic
 
@@ -543,7 +543,7 @@ def _blog_oracle():
     live = [row for row in site if "furnace" in row["tags"].split(";") and row["status"] == "200" and row["noindex"] == "no"]
     live.sort(key=lambda row: row["url"])
     live.sort(key=lambda row: int(row["sessions_28d"]), reverse=True)
-    return sources, prices, site, {row["url"]: row["primary_keyword"] for row in live[:5]}
+    return sources, prices, site, {row["url"]: row["primary_keyword"] for row in live[:8]}
 
 
 def test_blog_post_oracle_matches_an_independent_recomputation():
@@ -553,8 +553,9 @@ def test_blog_post_oracle_matches_an_independent_recomputation():
     # The later source is first in the file, and its price is the current one.
     assert prices == [("2025-02-10", "89"), ("2026-01-05", "95")]
     assert sources.index("$95") < sources.index("$89")
-    assert ref["price"] == 95.0 and ref["superseded_figures"] == [("$", 89.0)]
-    percentages = sorted(float(value) for value in re.findall(r": (\d+)%\.", sources))
+    assert ref["price"] == 95.0 and ref["superseded_price"] == 89.0
+    full_year = sources.split("full year")[1].split("## ")[0]
+    percentages = sorted(float(value) for value in re.findall(r": (\d+)%\.", full_year))
     assert percentages == [6.0, 9.0, 14.0, 18.0, 22.0, 31.0] and sum(percentages) == 100
     assert sorted(tuple(item) for item in ref["current_figures"]) == sorted(
         [("$", 95.0), ("calls", 1412.0), ("day", 90.0), ("foot", 3.0), ("inch", 1.0)] + [("%", value) for value in percentages])
@@ -568,14 +569,21 @@ def test_blog_post_oracle_matches_an_independent_recomputation():
     assert urls.index("/services/furnace-maintenance") < urls.index("/blog/furnace-keeps-turning-off")
     # Pages with more sessions that the rule leaves out: a redirect, a noindex page, a furnace URL
     # not tagged furnace, and another noise.
-    for url in ("/blog/furnace-short-cycling", "/blog/carbon-monoxide-safety", "/blog/heat-pump-vs-furnace", "/blog/ac-making-noise"):
+    for url in ("/blog/furnace-short-cycling", "/blog/furnace-making-clicking-noise", "/blog/carbon-monoxide-safety",
+                "/blog/furnace-reset-button", "/blog/pilot-light-out", "/blog/heat-pump-vs-furnace", "/blog/furnace-vs-boiler",
+                "/blog/furnace-parts-explained", "/blog/ac-making-noise"):
         assert sessions[url] > min(sessions[link] for link in links) and url not in links
     # The prompt no longer gives the price, and the brand fixture that did is not supplied.
     assert "$" not in task["prompt"] and "95" not in task["prompt"]
     assert task["fixtures"] == ["eval_runner/fixtures/blog-post/sources.md", "eval_runner/fixtures/blog-post/site_map.csv"]
     assert (task["prompt_version"], task["rubric_version"]) == (3, 4) and "rubric_compatible_prompts" not in task
     code = sum("programmatic" in c for c in by_id.values())
-    assert (code, len(by_id)) == (10, 13)
+    assert (code, len(by_id)) == (11, 14)
+    # Three more figures were replaced by a later source, which comes before them in the file.
+    assert ref["superseded_figures"] == sorted([("$", 89.0), ("day", 60.0), ("calls", 1180.0)] + [
+        ("%", value) for value in (27.0, 24.0, 19.0, 13.0, 10.0, 7.0)])
+    assert sources.index("1,412 calls") < sources.index("1,180 calls") and sources.index("90 days") < sources.index("60 days")
+    assert len(site) >= 130
 
 
 def test_blog_post_reference_passes_every_check_and_a_blank_reply_none():
@@ -603,6 +611,13 @@ def test_blog_post_careless_readings_score_zero_on_their_checks():
     invented = BLOG_POST.replace("at 31% of noise calls", "at 31% of noise calls (with rattling, 53%)").replace(
         "every 90 days", "every 3 months")
     assert "figures_from_sources" in zeroed(invented)
+    # The interim summary's figures and the 2024 filter interval, which later sources replaced.
+    interim = BLOG_POST.replace("1,412 furnace calls", "1,180 furnace calls").replace("every 90 days", "every 60 days").replace(
+        "at 31% of noise calls", "at 27% of noise calls")
+    assert "no_superseded_figures" in zeroed(interim) and "figures_from_sources" not in failed(interim)
+    # A page tagged furnace-parts is not tagged furnace.
+    parts = BLOG_POST.replace("[furnace smells](/blog/furnace-smells)", "[furnace parts](/blog/furnace-parts-explained)")
+    assert "links_chosen" in zeroed(parts)
     # Links picked by a furnace URL, or by sessions without the live test, or a tie broken by file order.
     by_url = BLOG_POST.replace("(/blog/thermostat-troubleshooting)", "(/blog/heat-pump-vs-furnace)")
     assert "links_chosen" in zeroed(by_url)

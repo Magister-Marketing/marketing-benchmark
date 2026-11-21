@@ -324,7 +324,7 @@ def meta_facts(response_text: str) -> dict:
 
 BLOG_TASK = "blog-post"
 BLOG_BOOKING = "/book/furnace-diagnostic"
-BLOG_LINKS = 5
+BLOG_LINKS = 8
 BLOG_TITLE_PHRASE = "furnace making noise"
 BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX = 60, 155
 BLOG_MIN_WORDS_FOR_A_POST = 300
@@ -379,10 +379,12 @@ def blog_reference(sources_md: str, site_map_csv: str) -> dict:
     live = [row for row in pages if "furnace" in row["tags"].split(";") and row["status"] == "200" and row["noindex"] == "no"]
     chosen = sorted(live, key=lambda row: (-int(row["sessions_28d"]), row["url"]))[:BLOG_LINKS]
     price = sorted(value for kind, value in current if kind == "$")
+    old_price = sorted(value for kind, value in superseded if kind == "$")
     return {
         "current_figures": sorted(current),
         "superseded_figures": sorted(superseded),
         "price": price[0] if len(price) == 1 else None,
+        "superseded_price": old_price[0] if len(old_price) == 1 else None,
         "links": {row["url"]: row["primary_keyword"] for row in chosen},
     }
 
@@ -447,8 +449,11 @@ def blog_facts(response_text: str) -> dict:
         # The call to action's link goes to the booking page and its text states the current price.
         "seo_blog_booking_link_error_count": int(not any(("$", ref["price"]) in figures(link_text) for link_text in booking)),
         # The current price is stated and the superseded one nowhere.
-        "seo_blog_price_error_count": int(("$", ref["price"]) not in stated) + len({item for item in stated if item in superseded}),
-        # Figures that are neither current nor superseded (that one is the price check's). No post, no reading.
+        "seo_blog_price_error_count": int(("$", ref["price"]) not in stated) + int(("$", ref["superseded_price"]) in stated),
+        # The other figures a later source replaced. No post, no reading.
+        "seo_blog_superseded_figure_count": (
+            len({item for item in stated & superseded if item != ("$", ref["superseded_price"])}) if is_post else None),
+        # Figures that are neither current nor superseded. No post, no reading.
         "seo_blog_unsourced_figure_count": len(stated - current - superseded) if is_post else None,
         "seo_blog_sourced_figure_count": len(stated & current),
         # The five pages the rule picks, each linked once, and no other page or site.
