@@ -81,7 +81,7 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
-Strategy tasks added on 2026-11-20 for the 35-task board (not run yet; the judged checks are not calibrated). Every figure a program checks is computed from the fixtures by `eval_runner/task_facts_strategy.py` and recomputed by separate code in `tests/test_tasks_strategy.py`:
+Strategy tasks added on 2026-11-20 for the 35-task board. Version 1 of each was run once, by one model, and passed outright, so these are version 2, much larger; version 2 has not been run, and its judged checks are not calibrated. Every figure a program checks is computed from the fixtures by `eval_runner/task_facts_strategy.py` and recomputed by separate code in `tests/test_tasks_strategy.py`:
 
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
