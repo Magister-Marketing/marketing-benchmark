@@ -25,6 +25,7 @@ Each file's own version is in its frontmatter. At this pin:
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
 | `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
 | `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |
+| `influencer-marketing/SKILL.md` | `skills/influencer-marketing/SKILL.md` | 1.4.3 |
 | `launch/SKILL.md` | `skills/launch/SKILL.md` | 2.0.1 |
 | `seo-audit/SKILL.md` | `skills/seo-audit/SKILL.md` | 2.0.0 |
 | `site-architecture/SKILL.md` | `skills/site-architecture/SKILL.md` | 2.0.0 |

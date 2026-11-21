@@ -754,11 +754,542 @@ def amend_facts(response_text: str, task: dict | None = None) -> dict:
     return facts
 
 
+# ═════════════════════════════════════════════════════════════════ policy-casebook
+#
+# The policy's deciding clauses, as a machine-readable copy of the text the
+# generator writes (`fixtures/policy-casebook/policy.md`), and the forty cases
+# as the attributes their prose states (`cases.md`). `casebook_decide` applies
+# the policy's own decision procedure (its clause 1.5) to one case and returns
+# the ruling, the condition and the deciding clause, with the clauses still
+# standing at the last step, so a test can prove each case has exactly one.
+
+CASEBOOK_FOLDER = "policy-casebook"
+CASEBOOK_SOURCES = ("policy.md", "cases.md")
+CASEBOOK_FILE = "rulings.csv"
+CASEBOOK_COLUMNS = ("case_id", "ruling", "condition", "clause")
+ALLOWED, CONDITIONAL, NOT_ALLOWED = "allowed", "allowed with condition", "not allowed"
+STRICTNESS = {ALLOWED: 0, CONDITIONAL: 1, NOT_ALLOWED: 2}
+CONDITIONS = (
+    "ad-label", "gift-note", "employee-tag", "skill-question", "terms-link", "price-record",
+    "legal-signoff", "study-on-file", "partner-approval",
+)
+DEFAULT_CLAUSE = "1.6"
+# The policy's numbers, rendered into its text by the generator.
+POLICY = {
+    "depth": 40, "depth_cl": 50, "clearance_depth": 60, "new_days": 90, "reference_days": 28,
+    "price_check_days": 7, "superlative_months": 12, "improvement_months": 12, "prize_cap": 5_000,
+    "contest_cap": 20_000, "gift_value": 100, "minor_share": 25, "soft_months": 24,
+    "quiet": ("20:00", "09:00"), "quiet_cl": ("21:00", "08:00"), "surge_age_cl": 21,
+}
+CLEARANCE_EVENTS = (
+    ("Winter Clearance 2026", "2026-01-05", "2026-01-25"),
+    ("Summer Clearance 2026", "2026-07-20", "2026-08-09"),
+    ("Winter Clearance 2027", "2027-01-04", "2027-01-24"),
+)
+SCHEDULE_C = ("Hydra+ Electrolyte Mix", "Surge Pre-Workout")
+
+
+def _clearance(case: dict) -> bool:
+    day = _iso(case["date"])
+    return any(_iso(start) <= day <= _iso(end) for _name, start, end in CLEARANCE_EVENTS)
+
+
+def _person(case: dict) -> dict:
+    return case.get("person") or {}
+
+
+def _influencer(case: dict) -> bool:
+    """1.3(h): paid in any amount, or given product worth more than the gift
+    value, to post; never an employee."""
+    person = _person(case)
+    return bool(person) and person["kind"] != "employee" and (
+        person.get("paid", 0) > 0 or person.get("gift", 0) > POLICY["gift_value"])
+
+
+def _gifted_creator(case: dict) -> bool:
+    person = _person(case)
+    return bool(person) and person["kind"] != "employee" and not person.get("paid", 0) and 0 < person.get("gift", 0) <= POLICY["gift_value"]
+
+
+def _minor_directed(case: dict) -> bool:
+    """1.3(j): targeting that includes under-18s, a placement over the stated
+    under-18 share, or a person under 18 shown in it."""
+    return bool(case.get("targets_minors") or case.get("under_18_share", 0) > POLICY["minor_share"]
+                or case.get("shows_minor") or (_person(case).get("age", 99) < 18))
+
+
+def _marketing_message(case: dict) -> bool:
+    """1.3(m): an email or SMS that promotes; a transactional one that carries a promotion counts."""
+    return case.get("channel") in ("email", "sms")
+
+
+def _reductions(case: dict) -> list[tuple[str, int]]:
+    return case.get("reductions", [])
+
+
+def _co_branded(case: dict) -> bool:
+    return (case.get("co_brand") or {}).get("kind") in ("partner", "beneficiary")
+
+
+def _claims(case: dict) -> dict:
+    return case.get("claims", {})
+
+
+def _quiet(time: str, window: tuple[str, str]) -> bool:
+    start, end = window
+    return time >= start or time < end
+
+
+def _outcome(ruling: str, condition: str | None = None) -> tuple[str, str | None]:
+    return (ruling, condition)
+
+
+DISPLACE = ("displace", None)   # an exception to an exception: it puts the clause back, and decides nothing
+
+
+def _rule_3_1(depth: int):
+    return lambda c: _outcome(NOT_ALLOWED) if any(p > depth for _k, p in _reductions(c)) else None
+
+
+def _rule_3_5(markets: tuple[str, ...] | None):
+    def test(c):
+        kinds = sorted(kind for kind, _p in _reductions(c))
+        if kinds == ["code", "loyalty"] and (markets is None or c["market"] in markets):
+            return _outcome(CONDITIONAL, "terms-link")
+        return None
+    return test
+
+
+def _rule_4_5(with_studies: bool):
+    def test(c):
+        claim = _claims(c).get("clinically_proven")
+        if claim is None:
+            return None
+        if with_studies and claim.get("product") in SCHEDULE_C:
+            return _outcome(CONDITIONAL, "study-on-file")
+        return _outcome(NOT_ALLOWED)
+    return test
+
+
+def _rule_5_4(markets: tuple[str, ...]):
+    return lambda c: _outcome(NOT_ALLOWED) if c.get("promotion") == "giveaway" and c["market"] in markets else None
+
+
+def _rule_6_1(surge_age: int | None):
+    def test(c):
+        if not _influencer(c):
+            return None
+        age = _person(c).get("age", 99)
+        if age < 18 or (surge_age and c.get("range") == "surge" and age < surge_age):
+            return _outcome(NOT_ALLOWED)
+        return None
+    return test
+
+
+def _rule_7_5(window: tuple[str, str]):
+    return lambda c: _outcome(NOT_ALLOWED) if c.get("channel") == "sms" and _quiet(c.get("send_time", "12:00"), window) else None
+
+
+def _superlative(c):
+    claim = _claims(c).get("superlative")
+    if claim is None:
+        return None
+    age = claim.get("data_months")
+    if age is not None and age < POLICY["superlative_months"]:
+        return _outcome(CONDITIONAL, "study-on-file")
+    return _outcome(NOT_ALLOWED)
+
+
+def _reference_price(c):
+    days = c.get("reference_days")
+    if days is None:
+        return None
+    return _outcome(CONDITIONAL, "price-record") if days >= POLICY["reference_days"] else _outcome(NOT_ALLOWED)
+
+
+# id, part, the clauses it is an exception to (empty for a rule), and its test.
+CASEBOOK_CLAUSES = [
+    ("2.1", 2, (), lambda c: _outcome(NOT_ALLOWED) if "disease" in _claims(c) else None),
+    ("2.2", 2, (), lambda c: _outcome(NOT_ALLOWED) if c.get("promotion") == "giveaway" and c.get("purchase_required") else None),
+    ("2.3", 2, (), lambda c: _outcome(CONDITIONAL, "skill-question") if c.get("promotion") == "giveaway" and c["market"] == "CA" else None),
+    ("2.4", 2, (), lambda c: _outcome(NOT_ALLOWED) if _marketing_message(c) and c.get("consent") != "opted-in" else None),
+    ("2.4(a)", 2, ("2.4",), lambda c: _outcome(ALLOWED) if (
+        c.get("channel") == "email" and c["market"] in ("UK", "IE") and c.get("consent") == "past-customer"
+        and c.get("last_order_months", 99) <= POLICY["soft_months"] and c.get("opt_out_offered")) else None),
+    ("2.5", 2, (), lambda c: _outcome(CONDITIONAL, "ad-label") if _influencer(c) else None),
+    ("2.6", 2, (), lambda c: _outcome(NOT_ALLOWED) if c.get("range") == "surge" and _minor_directed(c) else None),
+    ("3.1", 3, (), _rule_3_1(POLICY["depth"])),
+    ("3.2", 3, ("3.1",), lambda c: _outcome(ALLOWED) if _clearance(c) and all(p <= POLICY["clearance_depth"] for _k, p in _reductions(c)) else None),
+    ("3.3", 3, ("3.2",), lambda c: DISPLACE if c.get("first_sold_days", 9999) < POLICY["new_days"] else None),
+    ("3.4", 3, (), lambda c: _outcome(NOT_ALLOWED) if len(_reductions(c)) >= 2 else None),
+    ("3.5", 3, ("3.4",), _rule_3_5(None)),
+    ("3.6", 3, ("3.5",), lambda c: DISPLACE if _clearance(c) else None),
+    ("3.7", 3, (), _reference_price),
+    ("4.1", 4, (), lambda c: _outcome(CONDITIONAL, "legal-signoff") if "comparative" in _claims(c) else None),
+    ("4.2", 4, ("4.1",), lambda c: _outcome(ALLOWED) if (
+        _claims(c).get("comparative", {}).get("price_only")
+        and _claims(c)["comparative"].get("checked_days", 99) <= POLICY["price_check_days"]) else None),
+    ("4.3", 4, (), _superlative),
+    ("4.4", 4, (), lambda c: None if "function" not in _claims(c) else (
+        _outcome(ALLOWED) if _claims(c)["function"].get("listed") else _outcome(NOT_ALLOWED))),
+    ("4.5", 4, (), _rule_4_5(False)),
+    ("4.6", 4, (), lambda c: _outcome(NOT_ALLOWED) if _claims(c).get("improvement", {}).get("months", 0) > POLICY["improvement_months"] else None),
+    ("5.1", 5, (), lambda c: _outcome(NOT_ALLOWED) if c.get("promotion") in ("giveaway", "contest") and not c.get("rules_published") else None),
+    ("5.2", 5, (), lambda c: _outcome(NOT_ALLOWED) if c.get("promotion") and c.get("prize", 0) > POLICY["prize_cap"] else None),
+    ("5.3", 5, ("5.2",), lambda c: _outcome(ALLOWED) if c.get("promotion") == "contest" and c.get("prize", 0) <= POLICY["contest_cap"] else None),
+    ("5.4", 5, (), _rule_5_4(("DE",))),
+    ("6.1", 6, (), _rule_6_1(None)),
+    ("6.2", 6, (), lambda c: _outcome(CONDITIONAL, "gift-note") if _gifted_creator(c) else None),
+    ("6.3", 6, (), lambda c: _outcome(CONDITIONAL, "employee-tag") if _person(c).get("kind") == "employee" else None),
+    ("6.4", 6, (), lambda c: _outcome(NOT_ALLOWED) if c.get("review") == "unverified" else None),
+    ("6.5", 6, ("6.2", "2.5"), lambda c: _outcome(ALLOWED) if _person(c).get("platform_label") else None),
+    ("7.1", 7, (), lambda c: _outcome(CONDITIONAL, "partner-approval") if _co_branded(c) else None),
+    ("7.2", 7, (), lambda c: _outcome(NOT_ALLOWED) if _co_branded(c) and c["co_brand"].get("category") in ("alcohol", "gambling", "tobacco") else None),
+    ("7.3", 7, ("7.1",), lambda c: _outcome(ALLOWED) if (c.get("co_brand") or {}).get("kind") == "beneficiary" else None),
+    ("7.4", 7, (), lambda c: _outcome(NOT_ALLOWED) if _co_branded(c) and c.get("channel") == "email" and c["co_brand"].get("list") == "partner" else None),
+    ("7.5", 7, (), _rule_7_5(POLICY["quiet"])),
+]
+# The change log: id, the date it takes effect, the clause it replaces or
+# deletes, and the replacement's test (None deletes the clause; an entry with
+# no clause changes process only).
+CHANGE_LOG = [
+    ("CL-1", "2026-05-01", "7.5", _rule_7_5(POLICY["quiet_cl"])),
+    ("CL-2", "2026-06-01", "3.5", _rule_3_5(("US", "CA"))),
+    ("CL-3", "2026-07-01", "4.5", _rule_4_5(True)),
+    ("CL-4", "2026-09-01", "5.4", _rule_5_4(("DE", "AU"))),
+    ("CL-5", "2026-10-15", "3.1", _rule_3_1(POLICY["depth_cl"])),
+    ("CL-6", "2026-12-01", None, None),
+    ("CL-7", "2027-01-01", "6.1", _rule_6_1(POLICY["surge_age_cl"])),
+    ("CL-8", "2027-06-01", "4.3", None),
+]
+
+
+def _clause_key(clause_id: str) -> tuple:
+    """Order of clause numbers: 2.4 before 2.4(a) before 2.5, change-log entries last."""
+    if clause_id.startswith("CL-"):
+        return (99, int(clause_id[3:]), "")
+    head, _, letter = clause_id.partition("(")
+    part, number = head.split(".")
+    return (int(part), int(number), letter)
+
+
+def casebook_in_force(date: str) -> dict[str, dict]:
+    """Step A: the policy in force on a date, each clause under the number to cite."""
+    clauses = {
+        cid: {"id": cid, "part": part, "targets": targets, "test": test}
+        for cid, part, targets, test in CASEBOOK_CLAUSES
+    }
+    for entry_id, start, replaces, test in CHANGE_LOG:
+        if replaces is None or _iso(start) > _iso(date):
+            continue
+        old = next(key for key, clause in clauses.items() if key == replaces or clause.get("replaces") == replaces)
+        if test is None:
+            del clauses[old]
+        else:
+            clauses[old] = dict(clauses[old], id=entry_id, test=test, replaces=replaces)
+    return clauses
+
+
+def casebook_decide(case: dict) -> dict:
+    """Clause 1.5, step by step. Returns the ruling, condition and deciding
+    clause, and the clauses still standing at step D (for the uniqueness proof)."""
+    clauses = casebook_in_force(case["date"])
+    rules = {key: c for key, c in clauses.items() if not c["targets"]}
+    exceptions = {key: c for key, c in clauses.items() if c["targets"]}
+    covered = {key: outcome for key, c in rules.items() if (outcome := c["test"](case)) is not None}
+    # Step C. An exception applies only to an action a clause it names covers.
+    applied = {}
+    for depth in (1, 2):
+        for key, c in exceptions.items():
+            targets_here = [t for t in c["targets"] if t in covered or t in applied]
+            is_second = any(t in exceptions for t in c["targets"])
+            if (depth == 2) != is_second or not targets_here:
+                continue
+            outcome = c["test"](case)
+            if outcome is not None:
+                applied[key] = outcome
+    standing = dict(covered)
+    for key, outcome in applied.items():
+        if outcome == DISPLACE:
+            continue
+        put_back = [x for x, o in applied.items() if o == DISPLACE and key in exceptions[x]["targets"]]
+        if put_back:
+            continue
+        for target in exceptions[key]["targets"]:
+            if target in standing and (clauses[target]["part"] != 2 or exceptions[key]["part"] == 2):
+                del standing[target]
+        standing[key] = outcome
+    if not standing:
+        return {"ruling": ALLOWED, "condition": None, "clause": DEFAULT_CLAUSE, "standing": {}}
+    # Step D, then step E.
+    top = max(STRICTNESS[outcome[0]] for outcome in standing.values())
+    group = sorted((key for key, outcome in standing.items() if STRICTNESS[outcome[0]] == top), key=_clause_key)
+    part_two = [key for key in group if clauses[key]["part"] == 2]
+    chosen = part_two[0] if part_two else group[0]
+    ruling, condition = standing[chosen]
+    return {"ruling": ruling, "condition": condition, "clause": clauses[chosen]["id"],
+            "standing": {clauses[key]["id"]: standing[key] for key in standing}, "top": [clauses[k]["id"] for k in group],
+            "part_two_in_top": [clauses[k]["id"] for k in part_two]}
+
+
+# The forty cases: their trap group, the attributes the prose states, and the prose.
+CASEBOOK_GROUPS = {
+    "plain": "one clause decides, as it reads",
+    "offer_definitions": "a definition of an offer or a claim decides which clause covers it",
+    "people_definitions": "a definition of a person or an audience decides which clause covers it",
+    "exceptions": "an exception displaces the clause it names",
+    "exception_limits": "an exception to an exception, or an exception that does not reach the case",
+    "log_decides": "a change-log entry in force replaces a clause and decides",
+    "log_takes_out": "a change-log entry in force takes the case out of a clause",
+    "log_not_in_force": "a change-log entry dated after the action does not apply",
+    "part_two": "a Part 2 clause outranks, or cannot be displaced by, a clause elsewhere",
+}
+
+
+def casebook_rulings(cases: list[dict]) -> dict[str, dict]:
+    return {case["id"]: casebook_decide(case) for case in cases}
+
+
+def _clause_cell(text: object) -> str:
+    value = re.sub(r"(?i)\b(clause|section|entry|change[- ]log)\b|§", " ", str(text or ""))
+    value = re.sub(r"\s+", "", value).strip("*`.,;:").upper()
+    match = re.fullmatch(r"CL-?(\d+)", value)
+    if match:
+        return f"CL-{int(match.group(1))}"
+    match = re.fullmatch(r"(\d+)\.(\d+)(?:\(?([A-Z])\)?)?", value)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}" + (f"({match.group(3).lower()})" if match.group(3) else "")
+    return value
+
+
+def _ruling_cell(text: object) -> str | None:
+    value = _fold(text).strip("*`. ")
+    if not value:
+        return None
+    if re.search(r"\bnot\b|\bdisallowed\b|\bprohibited\b", value):
+        return NOT_ALLOWED
+    if "condition" in value or value == "conditional":
+        return CONDITIONAL
+    if value.startswith("allowed") or value == "allow":
+        return ALLOWED
+    return None
+
+
+def _condition_cell(text: object) -> str:
+    return re.sub(r"[\s_]+", "-", _fold(text).strip("*`.\"' "))
+
+
+@lru_cache(maxsize=1)
+def _casebook_on_disk() -> dict[str, dict]:
+    return casebook_rulings(CASEBOOK_CASES)
+
+
+def casebook_facts(response_text: str, task: dict | None = None) -> dict:
+    expected = _casebook_on_disk()
+    rows = common.tables(response_text, [CASEBOOK_FILE])[CASEBOOK_FILE]
+    found: dict[str, list[dict]] = {}
+    for row in rows or []:
+        found.setdefault(_fold(row.get("case_id")).upper(), []).append(row)
+    coverage = sum(len(found.get(case_id, [])) != 1 for case_id in expected) + sum(
+        len(items) for case_id, items in found.items() if case_id not in expected)
+    facts = {"casebook_missing_file_count": int(rows is None), "casebook_coverage_error_count": coverage}
+    wrong = {group: 0 for group in CASEBOOK_GROUPS}
+    for case in CASEBOOK_CASES:
+        want = expected[case["id"]]
+        items = found.get(case["id"], [])
+        right = len(items) == 1
+        if right:
+            row = items[0]
+            right = (
+                _ruling_cell(row.get("ruling")) == want["ruling"]
+                and _clause_cell(row.get("clause")) == want["clause"]
+                and (want["ruling"] != CONDITIONAL or _condition_cell(row.get("condition")) == want["condition"])
+            )
+        wrong[case["group"]] += not right
+    for group, count in wrong.items():
+        facts[f"casebook_wrong_{group}_count"] = count
+    return facts
+
+
+def _case(cid, group, title, date, market, channel, text, **attributes) -> dict:
+    return {"id": cid, "group": group, "title": title, "date": date, "market": market, "channel": channel,
+            "text": text, **attributes}
+
+
+CASEBOOK_CASES = [
+    _case("C01", "log_decides", "Clinically proven, dissolving", "2026-09-10", "US", "paid social",
+          "A paid social ad for Hydra+ Electrolyte Mix with the line \"Clinically proven to dissolve fully in "
+          "10 seconds\", the property the March 2026 laboratory study of the mix measured. No price, no "
+          "promotion; the ad targets adults aged 25 to 54.",
+          range="hydration", claims={"clinically_proven": {"product": "Hydra+ Electrolyte Mix"}}),
+    _case("C02", "offer_definitions", "Spring markdown with free shipping", "2026-03-03", "US", "website",
+          "The Whey Isolate product page shows \"Was $59, now $47\" (a 20% markdown) for two weeks, and every "
+          "order of it ships free during those weeks. The $59 price was charged for 40 days in the six months "
+          "before. No code, no loyalty discount.",
+          range="core", reductions=[("markdown", 20)], free_shipping=True, reference_days=40),
+    _case("C03", "plain", "Comparison with a rival's taste", "2026-05-18", "UK", "paid social",
+          "A paid social ad for Whey Isolate that says \"Smoother than Maxlift Whey\", naming the rival brand. "
+          "The claim is about taste and texture, not price. The ad targets adults.",
+          range="core", claims={"comparative": {"price_only": False}}),
+    _case("C04", "exceptions", "Summer Clearance on bars", "2026-07-28", "UK", "website",
+          "During the summer sale the site takes 55% off the Oat Protein Bar (chocolate), a flavour first sold "
+          "in the UK two years ago. One price reduction per order; no code.",
+          range="core", reductions=[("sale", 55)], first_sold_days=730),
+    _case("C05", "part_two", "A 16-year-old on Surge", "2026-10-20", "US", "influencer post",
+          "A paid creator, aged 16, is offered $700 for a TikTok video in which she takes Surge Pre-Workout "
+          "before a race. The video shows her throughout. The post would carry #ad in its first line, and the "
+          "campaign targets viewers aged 18 and over.",
+          range="surge", person={"kind": "creator", "paid": 700, "age": 16}),
+    _case("C06", "people_definitions", "Freelance photographer's post", "2026-04-08", "US", "influencer post",
+          "A freelance photographer who shoots our product images on contract (she is not on Northvane's "
+          "payroll) is paid $400 to post a reel about the Oat Protein Bar on her own Instagram account. She is 31.",
+          range="core", person={"kind": "contractor", "paid": 400, "age": 31}),
+    _case("C07", "log_not_in_force", "Evening text in April", "2026-04-10", "UK", "sms",
+          "A marketing SMS about the Hydra+ spring flavours to customers who opted in to texts, scheduled for "
+          "20:30 UK time.",
+          range="hydration", consent="opted-in", send_time="20:30"),
+    _case("C08", "log_decides", "Australian giveaway", "2026-10-05", "AU", "organic social",
+          "An Instagram giveaway in Australia: follow the account and comment to enter, no purchase needed, "
+          "winners drawn at random. The prize is a year of Hydra+ worth $800, and the official rules are "
+          "published with the post.",
+          range="hydration", promotion="giveaway", purchase_required=False, rules_published=True, prize=800),
+    _case("C09", "exception_limits", "Clearance on a new flavour", "2026-07-30", "US", "website",
+          "In the summer sale, 55% off the Hydra+ Berry flavour, first sold in the US six weeks before the sale "
+          "starts. One price reduction per order; no code.",
+          range="hydration", reductions=[("sale", 55)], first_sold_days=42),
+    _case("C10", "plain", "Paid creator on whey", "2026-06-02", "US", "influencer post",
+          "A fitness creator aged 26 is paid $1,500 for one Instagram post about Whey Isolate. The post is on "
+          "her own account; there is no giveaway and no discount code.",
+          range="core", person={"kind": "creator", "paid": 1500, "age": 26}),
+    _case("C11", "exceptions", "Ten dollars less than Maxlift", "2026-05-06", "US", "paid social",
+          "A paid social ad: \"Whey Isolate: $10 less than Maxlift Whey\". The claim is about price only, and "
+          "Maxlift's published price was checked three days before the ad goes live.",
+          range="core", claims={"comparative": {"price_only": True, "checked_days": 3}}),
+    _case("C12", "log_takes_out", "Loyalty and a code in the UK, August", "2026-08-24", "UK", "email",
+          "An email to UK loyalty members who opted in: their 10% member discount plus a 15% code on one order "
+          "of Whey Isolate, with a link to the offer's terms.",
+          range="core", consent="opted-in", reductions=[("loyalty", 10), ("code", 15)]),
+    _case("C13", "people_definitions", "A gifted box", "2026-03-19", "UK", "influencer post",
+          "A runner aged 24 is sent a box of Hydra+ worth $60, with no payment and nothing else, and plans to "
+          "post about it on her own Instagram account.",
+          range="hydration", person={"kind": "creator", "gift": 60, "age": 24}),
+    _case("C14", "log_decides", "Clinically proven, mixing", "2026-08-01", "US", "website",
+          "The Whey Isolate page adds \"Clinically proven to mix without clumps\". The claims register holds no "
+          "study for Whey Isolate.",
+          range="core", claims={"clinically_proven": {"product": "Northvane Whey Isolate"}}),
+    _case("C15", "plain", "Gym partnership email", "2026-09-14", "US", "email",
+          "An email to our opted-in subscribers announcing a joint offer with IronHouse Gyms: a free month at "
+          "IronHouse with any Whey Isolate order, under both brands' logos.",
+          range="core", consent="opted-in", co_brand={"kind": "partner", "category": "fitness", "list": "own"}),
+    _case("C16", "part_two", "Cure-all bar", "2026-11-09", "US", "paid social",
+          "A paid social ad for the Oat Protein Bar: \"The best bar there is, and it helps prevent colds\". There "
+          "is no independent data behind \"the best\".",
+          range="core", claims={"disease": {}, "superlative": {"data_months": None}}),
+    _case("C17", "exception_limits", "Loyalty and a code in the January sale", "2026-01-12", "US", "email",
+          "During the January sale, an email to US loyalty members who opted in: their 10% member discount plus "
+          "a 15% code on one order of the Oat Protein Bar.",
+          range="core", consent="opted-in", reductions=[("loyalty", 10), ("code", 15)]),
+    _case("C18", "people_definitions", "Surge on a teen-heavy placement", "2026-05-27", "US", "paid social",
+          "A paid ad for Surge Pre-Workout, targeted at people aged 18 to 34, in a placement the platform "
+          "reports as 31% under 18. The ad shows two adult athletes.",
+          range="surge", under_18_share=31),
+    _case("C19", "log_not_in_force", "Surge creator aged 19, December", "2026-12-01", "US", "influencer post",
+          "A creator aged 19 is paid $900 to post a video about Surge Pre-Workout on her own TikTok account. "
+          "The video shows only her, and targets viewers aged 18 and over.",
+          range="surge", person={"kind": "creator", "paid": 900, "age": 19}),
+    _case("C20", "exceptions", "Donation email", "2026-10-07", "UK", "email",
+          "An email to our opted-in UK subscribers: for every order this month we donate £1 to RunFree Trust, a "
+          "registered charity, named in the email with its logo. No other partner.",
+          range="core", consent="opted-in", co_brand={"kind": "beneficiary", "category": "charity", "list": "own"}),
+    _case("C21", "offer_definitions", "Order confirmation with a code", "2026-06-23", "US", "email",
+          "The order-confirmation email adds a 10% code for the customer's next order. It goes to every US "
+          "customer who orders, including those who have never opted in to marketing.",
+          range="core", consent="no", transactional=True, reductions=[("code", 10)]),
+    _case("C22", "plain", "Sitewide sale in April", "2026-04-10", "US", "website",
+          "A sitewide sale taking 45% off every product for a weekend. One price reduction per order; no code, "
+          "no loyalty discount.",
+          range="core", reductions=[("sale", 45)]),
+    _case("C23", "log_takes_out", "Sitewide sale in November", "2026-11-20", "US", "website",
+          "A sitewide sale taking 45% off every product for a weekend. One price reduction per order; no code, "
+          "no loyalty discount.",
+          range="core", reductions=[("sale", 45)]),
+    _case("C24", "exceptions", "Gifted box with the platform label", "2026-09-02", "UK", "influencer post",
+          "A cyclist aged 29 is sent a box of the Oat Protein Bar worth $45, with no payment, and posts about it "
+          "with the platform's own \"Paid partnership\" label switched on.",
+          range="core", person={"kind": "creator", "gift": 45, "age": 29, "platform_label": True}),
+    _case("C25", "exception_limits", "Text to past customers in Ireland", "2026-05-12", "IE", "sms",
+          "A marketing SMS at 12:00 to customers in Ireland who last ordered six months ago, were offered the "
+          "chance to opt out at checkout, have never opted in to marketing and have never opted out.",
+          range="hydration", consent="past-customer", last_order_months=6, opt_out_offered=True, send_time="12:00"),
+    _case("C26", "part_two", "Purchase-to-enter in Germany", "2026-05-05", "DE", "organic social",
+          "An Instagram giveaway in Germany that needs a purchase to enter (upload your receipt), winners drawn "
+          "at random, prize worth $500, official rules published.",
+          range="core", promotion="giveaway", purchase_required=True, rules_published=True, prize=500),
+    _case("C27", "log_decides", "Surge creator aged 19, February", "2027-02-10", "US", "influencer post",
+          "A creator aged 19 is paid $900 to post a video about Surge Pre-Workout on her own TikTok account. "
+          "The video shows only her, and targets viewers aged 18 and over.",
+          range="surge", person={"kind": "creator", "paid": 900, "age": 19}),
+    _case("C28", "exceptions", "Twelve-thousand-dollar contest", "2026-06-15", "US", "organic social",
+          "A recipe contest: entrants post a recipe using Whey Isolate and a panel of chefs picks the winner. "
+          "No purchase needed. The prize is a kitchen worth $12,000, and the official rules are published.",
+          range="core", promotion="contest", purchase_required=False, rules_published=True, prize=12000),
+    _case("C29", "log_takes_out", "Evening text in June", "2026-06-15", "UK", "sms",
+          "A marketing SMS about the Hydra+ summer flavours to customers who opted in to texts, scheduled for "
+          "20:30 UK time.",
+          range="hydration", consent="opted-in", send_time="20:30"),
+    _case("C30", "offer_definitions", "Photo contest with a receipt", "2026-08-18", "US", "organic social",
+          "A photo contest judged by a panel on creativity: to enter, buy any Northvane product and post a photo "
+          "with the receipt. Prize worth $2,000; official rules published.",
+          range="core", promotion="contest", purchase_required=True, rules_published=True, prize=2000),
+    _case("C31", "plain", "Canadian giveaway", "2026-03-24", "CA", "organic social",
+          "An Instagram giveaway in Canada: follow and comment to enter, no purchase needed, winners drawn at "
+          "random, prize worth $300, official rules published.",
+          range="hydration", promotion="giveaway", purchase_required=False, rules_published=True, prize=300),
+    _case("C32", "exception_limits", "Price comparison checked twelve days before", "2026-05-20", "US", "paid social",
+          "A paid social ad: \"Whey Isolate: $10 less than Maxlift Whey\", about price only. Maxlift's published "
+          "price was last checked twelve days before the ad goes live.",
+          range="core", claims={"comparative": {"price_only": True, "checked_days": 12}}),
+    _case("C33", "exceptions", "Email to past customers in the UK", "2026-05-20", "UK", "email",
+          "A marketing email about Whey Isolate to UK customers who last ordered ten months ago, were offered "
+          "the chance to opt out at checkout, have never opted in to marketing and have never opted out.",
+          range="core", consent="past-customer", last_order_months=10, opt_out_offered=True),
+    _case("C34", "plain", "Warehouse staff post", "2026-07-07", "UK", "organic social",
+          "A part-time member of our warehouse staff, on Northvane's payroll, posts about the Oat Protein Bar on "
+          "her own TikTok after we give her a box worth $40.",
+          range="core", person={"kind": "employee", "gift": 40, "age": 22}),
+    _case("C35", "log_decides", "Loyalty and a code in the US, August", "2026-08-24", "US", "email",
+          "An email to US loyalty members who opted in: their 10% member discount plus a 15% code on one order "
+          "of Whey Isolate, with a link to the offer's terms.",
+          range="core", consent="opted-in", reductions=[("loyalty", 10), ("code", 15)]),
+    _case("C36", "people_definitions", "A 16-year-old swimmer on whey", "2026-06-20", "US", "influencer post",
+          "A swimmer aged 16 is paid $500 to post about Whey Isolate on her own Instagram account. The post shows "
+          "her, carries #ad and targets adults.",
+          range="core", person={"kind": "creator", "paid": 500, "age": 16}),
+    _case("C37", "offer_definitions", "New formula claim", "2026-10-26", "US", "paid social",
+          "A paid social ad: \"New formula: 20% more protein than our previous Whey Isolate\". The formula "
+          "changed 18 months before the ad goes live. No other brand is named or shown.",
+          range="core", claims={"improvement": {"months": 18}}),
+    _case("C38", "log_not_in_force", "Best-tasting whey", "2027-03-01", "US", "paid social",
+          "A paid social ad calling Whey Isolate \"the best-tasting whey\". The independent taste panel behind "
+          "it reported 20 months before the ad goes live.",
+          range="core", claims={"superlative": {"data_months": 20}}),
+    _case("C39", "part_two", "Paid creator with the platform label", "2026-08-11", "US", "influencer post",
+          "A creator aged 30 is paid $900 to post about Hydra+ with the platform's own \"Paid partnership\" label "
+          "switched on, and no #ad in the post itself.",
+          range="hydration", person={"kind": "creator", "paid": 900, "age": 30, "platform_label": True}),
+    _case("C40", "exception_limits", "Clearance at sixty-five percent", "2026-08-03", "UK", "website",
+          "In the summer sale, 65% off the Oat Protein Bar (vanilla), a flavour first sold in the UK three years "
+          "ago. One price reduction per order.",
+          range="core", reductions=[("sale", 65)], first_sold_days=1095),
+]
+
+
 # ══════════════════════════════════════════════════════════════════ entry point
 
 FACTS = {
     "launch-workflow-chain": chain_facts,
     "brief-amendment": amend_facts,
+    "policy-casebook": casebook_facts,
 }
 
 

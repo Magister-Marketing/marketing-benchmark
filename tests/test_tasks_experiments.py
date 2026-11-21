@@ -28,7 +28,7 @@ import pytest
 from eval_runner import bench, task_facts_experiments
 
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
-TASKS = ("launch-workflow-chain", "brief-amendment")
+TASKS = ("launch-workflow-chain", "brief-amendment", "policy-casebook")
 
 
 def _generator(folder: str):
@@ -568,3 +568,229 @@ def test_amendment_reader_takes_the_formats_replies_use():
     still_claimed = _amend_reply(plan).replace("Forty grind settings", "Forty grind settings and a dishwasher safe hopper")
     assert _failed(_results(AMEND, still_claimed)) == {
         "claim_replaced_everywhere", "untouched_ads_unchanged", "ireland_ads_built_by_the_brief"}
+
+
+# ═════════════════════════════════════════════════════════════════ policy-casebook
+
+BOOK = "policy-casebook"
+RANK = {"allowed": 0, "allowed with condition": 1, "not allowed": 2}
+
+
+def _in_force(date: str) -> dict:
+    """Step A of the policy, written again: the body with every entry dated
+    on or before the action's date, keyed by the body's numbers."""
+    table = {cid: {"part": part, "of": targets, "test": test, "cite": cid}
+             for cid, part, targets, test in task_facts_experiments.CASEBOOK_CLAUSES}
+    for entry, start, replaces, test in task_facts_experiments.CHANGE_LOG:
+        if replaces and dt.date.fromisoformat(start) <= dt.date.fromisoformat(date):
+            if test is None:
+                del table[replaces]
+            else:
+                table[replaces] = dict(table[replaces], test=test, cite=entry)
+    return table
+
+
+def _procedure(case: dict) -> tuple[tuple, list[str], dict]:
+    """Steps B to F of clause 1.5 over the machine-readable copy, written
+    apart from the oracle. Returns (ruling, condition, clause), the clauses of
+    the strictest ruling still counting, and every clause that counted."""
+    table = _in_force(case["date"])
+    counting = {cid: o for cid, c in table.items() if not c["of"] and (o := c["test"](case))}
+    first = {cid: c for cid, c in table.items() if c["of"] and not any(table.get(t, {}).get("of") for t in c["of"])}
+    second = {cid: c for cid, c in table.items() if c["of"] and cid not in first}
+    live = {cid: o for cid, c in first.items() if any(t in counting for t in c["of"]) and (o := c["test"](case))}
+    for cid, c in second.items():
+        if any(t in live for t in c["of"]) and c["test"](case):
+            for target in c["of"]:
+                live.pop(target, None)                         # it puts the clause back
+    for cid, outcome in live.items():
+        for target in table[cid]["of"]:
+            if target in counting and (table[target]["part"] != 2 or table[cid]["part"] == 2):
+                del counting[target]
+        counting[cid] = outcome
+    if not counting:
+        return ("allowed", None, "1.6"), [], {}
+    best = max(RANK[o[0]] for o in counting.values())
+    top = [cid for cid, o in counting.items() if RANK[o[0]] == best]
+    part_two = [cid for cid in top if table[cid]["part"] == 2]
+    chosen = top[0] if len(top) == 1 else part_two[0]
+    ruling, condition = counting[chosen]
+    return (ruling, condition, table[chosen]["cite"]), [table[c]["cite"] for c in top], {
+        table[c]["cite"]: o for c, o in counting.items()}
+
+
+def test_every_case_has_exactly_one_deciding_clause_by_the_stated_precedence():
+    """The proof the task rests on: for each of the 40 cases, the policy's
+    procedure leaves one clause of the strictest ruling, or a tie that exactly
+    one Part 2 clause breaks (step E), and a conditional ruling never owes two
+    conditions at once. What it decides is what the oracle and the task file say."""
+    oracle = task_facts_experiments._casebook_on_disk()
+    criteria = _by_id(_task(BOOK))
+    ties = []
+    for case in task_facts_experiments.CASEBOOK_CASES:
+        decided, top, counting = _procedure(case)
+        part_two = [cid for cid in top if cid[0] == "2"]
+        assert len(top) <= 1 or (len(part_two) == 1 and decided[0] == "not allowed"), (case["id"], top)
+        if decided[0] == "allowed with condition":
+            assert len([o for o in counting.values() if o[0] == decided[0]]) == 1, case["id"]
+        if len(top) > 1:
+            ties.append(case["id"])
+        assert decided == (oracle[case["id"]]["ruling"], oracle[case["id"]]["condition"], oracle[case["id"]]["clause"]), case["id"]
+        cond = f" `{decided[1]}`" if decided[1] else ""
+        assert any(f"{case['id']} {decided[0]}{cond}, {decided[2]}" in c["check"] for c in criteria.values()), case["id"]
+    assert ties == ["C05", "C16", "C26"]
+    rulings = [o["ruling"] for o in oracle.values()]
+    assert (rulings.count("allowed"), rulings.count("allowed with condition"), rulings.count("not allowed")) == (9, 13, 18)
+    # Most cases turn on more than one clause: a definition, an exception, an entry or a tie.
+    plain = [c["id"] for c in task_facts_experiments.CASEBOOK_CASES if c["group"] == "plain"]
+    assert len(plain) == 6
+
+
+def test_the_policy_text_states_what_the_machine_copy_decides():
+    policy = (FIXTURES / BOOK / "policy.md").read_text()
+    sections = re.split(r"(?m)^### ", policy)[1:]
+    headings = {section.split(" ", 1)[0]: section for section in sections}
+    deciding = {cid: test for cid, _part, _of, test in task_facts_experiments.CASEBOOK_CLAUSES}
+    for cid, text in headings.items():
+        if re.fullmatch(r"[2-7]\.\d+(\([a-z]\))?", cid):
+            # A clause states a ruling exactly when the machine copy has it as a deciding clause
+            # (or it is an exception to an exception, which puts a clause back and decides nothing).
+            states = "**Ruling:" in text
+            displaces = "decides\nnothing itself" in text or "decides nothing itself" in text
+            assert states == (cid in deciding and not displaces), cid
+            assert (cid in deciding) == (states or displaces), cid
+    assert "**Ruling: allowed.**" in headings["1.6"] and "**Ruling:" not in "".join(
+        text for cid, text in headings.items() if cid.startswith("1.") and cid != "1.6")
+    for cid, _part, targets, _test in task_facts_experiments.CASEBOOK_CLAUSES:
+        heading = headings[cid].splitlines()[0]
+        if targets:
+            assert heading.startswith(f"{cid} Exception to {' and '.join(targets)}"), heading
+        else:
+            assert "Exception" not in heading, heading
+    for entry, start, replaces, test in task_facts_experiments.CHANGE_LOG:
+        heading = headings[entry].splitlines()[0]
+        day = dt.date.fromisoformat(start)
+        assert f"(effective {day.day} {day:%B %Y}" in heading
+        if replaces:
+            assert (f"deletes {replaces}" if test is None else f"replaces {replaces}") in heading
+        else:
+            assert "process only" in heading and "**Ruling:" not in headings[entry]
+    # The rulings and conditions each clause states are the ones the machine copy can return.
+    for cid, text in headings.items():
+        for found in re.findall(r"\*\*Ruling: (allowed with condition `([a-z-]+)`|not allowed|allowed)\.\*\*", text):
+            if found[1]:
+                assert found[1] in task_facts_experiments.CONDITIONS
+    p = task_facts_experiments.POLICY
+    for phrase in (f"more than {p['depth']}% off", f"up to {p['clearance_depth']}%", f"less than {p['new_days']} days",
+                   f"at least {p['reference_days']} days", f"no more than {p['price_check_days']} days",
+                   f"less than {p['superlative_months']} months", f"for {p['improvement_months']} months",
+                   f"more than ${p['prize_cap']:,}", f"up to ${p['contest_cap']:,}", f"more than ${p['gift_value']} in",
+                   f"more than {p['minor_share']}% under", f"last {p['soft_months']} months",
+                   f"between {p['quiet'][0]} and {p['quiet'][1]}", f"between {p['quiet_cl'][0]} and {p['quiet_cl'][1]}",
+                   f"more than {p['depth_cl']}% off", f"at\nleast {p['surge_age_cl']} for"):
+        assert phrase in policy, phrase
+    for name, start, end in task_facts_experiments.CLEARANCE_EVENTS:
+        assert f"| {name} | " in policy
+    assert len(policy.encode()) >= 30_000
+
+
+def test_each_case_states_the_facts_its_clauses_turn_on():
+    text = (FIXTURES / BOOK / "cases.md").read_text()
+    blocks = dict(re.findall(r"(?ms)^## (C\d\d): .*?\n(.*?)(?=^## C|\Z)", text))
+    assert list(blocks) == [f"C{i:02d}" for i in range(1, 41)]
+    for case in task_facts_experiments.CASEBOOK_CASES:
+        block = blocks[case["id"]]
+        day = dt.date.fromisoformat(case["date"])
+        assert f"- Date: {day.day} {day:%B %Y}\n- Market: {case['market']}\n- Channel: {case['channel']}" in block
+        person = case.get("person") or {}
+        for key in ("paid", "gift"):
+            if person.get(key):
+                assert f"${person[key]:,}" in block, case["id"]
+        if person.get("age") and person["kind"] != "employee":
+            assert f"aged {person['age']}" in block or f"is {person['age']}" in block, case["id"]
+        for _kind, pct in case.get("reductions", []):
+            assert f"{pct}%" in block, case["id"]
+        if case.get("prize"):
+            assert f"${case['prize']:,}" in block, case["id"]
+        if case.get("send_time"):
+            assert case["send_time"] in block, case["id"]
+        if case.get("under_18_share"):
+            assert f"{case['under_18_share']}% under 18" in block, case["id"]
+
+
+def _book_reply(decide=None, note: str = "Rulings below.") -> str:
+    rows = []
+    for case in task_facts_experiments.CASEBOOK_CASES:
+        ruling, condition, clause = (decide or (lambda c: _procedure(c)[0]))(case)
+        rows.append([case["id"], ruling, condition or "", clause])
+    return note + "\n\n" + _csv_file("rulings.csv", list(task_facts_experiments.CASEBOOK_COLUMNS), rows)
+
+
+def _group(name: str) -> set[str]:
+    return {c["id"] for c in task_facts_experiments.CASEBOOK_CASES if c["group"] == name}
+
+
+def test_casebook_reference_reply_passes_every_check_and_a_blank_reply_none():
+    results = _results(BOOK, _book_reply())
+    assert _failed(results) == set() and len(results) == 10
+    assert all(result["score"] == 0 for result in _results(BOOK, "").values())
+    # Written the ways replies write them: capitals, "Clause 2.4 (a)", "CL2", spaces in a condition, a Markdown table.
+    def loose(case):
+        ruling, condition, clause = _procedure(case)[0]
+        clause = {"2.4(a)": "Clause 2.4 (a)", "CL-2": "CL2", "CL-3": "Change log CL-3"}.get(clause, clause)
+        return ruling.capitalize(), (condition or "").replace("-", " "), clause
+    assert _failed(_results(BOOK, _book_reply(loose))) == set()
+    table = "| case_id | ruling | condition | clause |\n|---|---|---|---|\n" + "\n".join(
+        f"| {c['id']} | {r[0]} | {r[1] or ''} | {r[2]} |" for c in task_facts_experiments.CASEBOOK_CASES
+        for r in [_procedure(c)[0]])
+    assert _failed(_results(BOOK, "### rulings.csv\n\n" + table + "\n")) == set()
+
+
+def test_a_right_ruling_with_the_wrong_clause_does_not_count():
+    def body_clause(case):                   # cite the clause an entry replaced, not the entry
+        ruling, condition, clause = _procedure(case)[0]
+        if clause.startswith("CL-"):
+            clause = next(r for e, _s, r, _t in task_facts_experiments.CHANGE_LOG if e == clause)
+        return ruling, condition, clause
+    results = _results(BOOK, _book_reply(body_clause))
+    assert _zeroed(results) == _failed(results) == {"change_log_entries_cited"}
+
+    def the_rule_not_the_exception(case):    # an allowed case cited to the rule its exception displaced
+        ruling, condition, clause = _procedure(case)[0]
+        rules = dict((cid, of) for cid, _p, of, _t in task_facts_experiments.CASEBOOK_CLAUSES)
+        if case["group"] == "exceptions":
+            clause = rules[clause][0] if rules[clause] else clause
+        return ruling, condition, clause
+    results = _results(BOOK, _book_reply(the_rule_not_the_exception))
+    assert _zeroed(results) == _failed(results) == {"exception_cases_ruled"}
+
+
+def test_the_obvious_readings_score_zero_on_the_groups_they_touch():
+    # Every entry applied whatever its date: the body's own clause is never read.
+    def every_entry(case):
+        return _procedure(dict(case, date="2027-12-31"))[0]
+    results = _results(BOOK, _book_reply(every_entry))
+    assert {"future_entries_not_applied"} <= _zeroed(results)
+
+    # The brand clause that names the subject, not the Part 2 clause that outranks it or that no exception displaces.
+    obvious = {"C05": ("not allowed", None, "6.1"), "C16": ("not allowed", None, "4.3"),
+               "C26": ("not allowed", None, "5.4"), "C39": ("allowed", None, "6.5")}
+    results = _results(BOOK, _book_reply(lambda c: obvious.get(c["id"]) or _procedure(c)[0]))
+    assert _zeroed(results) == _failed(results) == {"part_two_precedence_applied"}
+
+    # Definitions read loosely: free shipping as a price reduction, a transactional email as not marketing,
+    # any contest needing a purchase as a giveaway, our own old formula as a competitor.
+    loose = {"C02": ("not allowed", None, "3.4"), "C21": ("allowed", None, "1.6"),
+             "C30": ("not allowed", None, "2.2"), "C37": ("allowed with condition", "legal-signoff", "4.1")}
+    results = _results(BOOK, _book_reply(lambda c: loose.get(c["id"]) or _procedure(c)[0]))
+    assert _zeroed(results) == _failed(results) == {"offer_definition_cases_ruled"}
+
+    # An exception taken at face value: the exception to the exception, and an exception's own limits, ignored.
+    unlimited = {"C09": ("allowed", None, "3.2"), "C17": ("allowed with condition", "terms-link", "3.5"),
+                 "C25": ("allowed", None, "2.4(a)"), "C40": ("allowed", None, "3.2")}
+    results = _results(BOOK, _book_reply(lambda c: unlimited.get(c["id"]) or _procedure(c)[0]))
+    assert _zeroed(results) == _failed(results) == {"exception_limit_cases_ruled"}
+
+    # A condition already met read as no condition at all.
+    met = lambda c: ("allowed", None, _procedure(c)[0][2]) if c["id"] in ("C01", "C35") else _procedure(c)[0]  # noqa: E731
+    assert _failed(_results(BOOK, _book_reply(met))) == {"change_log_entries_cited"}

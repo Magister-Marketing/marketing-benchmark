@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Tasks: `policy-casebook` (development split, experimental area): 40
+  proposed marketing actions ruled allowed, allowed with a named condition
+  or not allowed, each with the one clause that decides it, under a 30 KB
+  brand and promotions policy for a fictional sports nutrition brand: 16
+  definitions, rules and exceptions across six Parts, exceptions to
+  exceptions, a six-step procedure for deciding (change log in force,
+  definitions, exceptions, strictest ruling, Part 2 on a tie, a default), a
+  change log of eight dated entries (one approved but not yet in force) and
+  three schedules. It isolates judgement against a long rulebook with no
+  arithmetic: the cases fall in nine groups by what decides them, and each
+  group is one check, scored per case on the ruling, the condition and the
+  clause together. The rules are kept as a machine-readable copy beside the
+  oracle (`task_facts_experiments.CASEBOOK_CLAUSES`, `CHANGE_LOG`), and a
+  test applies the policy's procedure to it with code of its own to prove
+  each case has exactly one deciding clause. All 10 checks are a program's.
+  The `influencer-marketing` skill is vendored unchanged at `2c38021`.
 - Tasks: `brief-amendment` (development split, experimental area): the
   signed-off launch brief and its product sheet arrive one turn earlier,
   "for reference, the request follows", through the existing `decoy`
