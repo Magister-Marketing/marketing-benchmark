@@ -1,4 +1,9 @@
-"""The six data tasks added in November 2026: fixtures, oracles, traps and parsing.
+"""Five data tasks added in November 2026: fixtures, oracles, traps and parsing.
+
+The sixth, ab-test-readout, was hardened on 2026-11-20 (prompt version 4) and is
+tested in tests/test_tasks_conversion.py. The parser tests below were written
+against its version-3 answer block and read that version of the task
+(tests/data/ab-test-readout-v3.json).
 
 What is pinned here, for every task:
 
@@ -23,7 +28,6 @@ import importlib.util
 import io
 import json
 import re
-import statistics
 from decimal import Decimal
 
 import pytest
@@ -33,7 +37,6 @@ from eval_runner import bench, reference_facts, task_references
 NEW_TASKS = {
     "seo-technical-triage": "development",
     "search-terms-negatives": "development",
-    "ab-test-readout": "development",
     # Drafted as holdout tasks. Their recorded answers were read, and one rubric was changed
     # because of them, so by the repository's rule they are development tasks.
     "seo-content-brief": "development",
@@ -47,7 +50,6 @@ HOLDOUT = {"launch-capacity-trap", "platform-limits-gauntlet", "rate-card-reconc
 VERSIONS = {
     "seo-technical-triage": (3, 3),
     "search-terms-negatives": (3, 4),
-    "ab-test-readout": (3, 4),
     "seo-content-brief": (3, 4),
     "lifecycle-reengagement": (2, 2),
     "monthly-report-reconcile": (2, 3),
@@ -74,12 +76,6 @@ BANDS = {
         "q3_lapsed_buyers": ("absolute", 0, 6), "q4_lapsed_non_buyers": ("absolute", 0, 6),
         "q5_long_dormant": ("absolute", 0, 5),
     },
-    "ab-test-readout": {
-        "q1_control_visitors": ("relative", 0.001, 0.1), "q2_variant_visitors": ("relative", 0.001, 0.1),
-        "q3_control_rate": ("absolute", 0.02, 0.5), "q4_variant_rate": ("absolute", 0.02, 0.5),
-        "q5_relative_lift": ("absolute", 0.15, 3.0), "q6_srm_chi_square": ("relative", 0.02, 0.3),
-        "q7_p_value": ("absolute", 0.015, 0.1),
-    },
     "monthly-report-reconcile": {
         "q1_ad_spend": ("relative", 0.005, 0.1), "q2_real_orders": ("absolute", 0, 8),
         "q3_net_revenue": ("relative", 0.005, 0.03), "q4_duplicate_rows": ("absolute", 0, 8),
@@ -91,7 +87,6 @@ ORACLE = {
     "seo-technical-triage": ["q6_sessions_at_risk"],
     "search-terms-negatives": ["q1_zero_conversion_spend"],
     "lifecycle-reengagement": ["q1_mailable"],
-    "ab-test-readout": ["q1_control_visitors", "q2_variant_visitors"],
     "monthly-report-reconcile": ["q1_ad_spend", "q6_platform_conversions"],
 }
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
@@ -129,8 +124,8 @@ def _reference(task_id: str) -> dict:
     return bench.judge_source_reference(task, bench.assemble_prompt(task, False))
 
 
-def _results(task_id: str, response: str) -> dict:
-    task = bench.load_tasks()[task_id]
+def _results(task_id: str | dict, response: str) -> dict:
+    task = task_id if isinstance(task_id, dict) else bench.load_tasks()[task_id]
     return bench.programmatic_results(task, bench.measured_facts(task, response))
 
 
@@ -146,9 +141,9 @@ def _zeroed(results: dict) -> set[str]:
     return {criterion_id for criterion_id, result in results.items() if result["score"] == 0}
 
 
-def _critical_tripped(task_id: str, response: str) -> bool:
+def _critical_tripped(task_id: str | dict, response: str) -> bool:
     """Whether the oracle alone fails the task's critical criterion."""
-    task = bench.load_tasks()[task_id]
+    task = task_id if isinstance(task_id, dict) else bench.load_tasks()[task_id]
     critical = next(iter(bench.critical_criterion_ids(task)))
     programmatic = list(bench.programmatic_results(task, bench.measured_facts(task, response)).values())
     judged = [{"id": critical, "pass": True, "score": 1.0, "evidence": "the judge saw nothing wrong"}]
@@ -234,16 +229,14 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
 
     for task_id, old, new, restorable in (
         ("monthly-report-reconcile", '"zero": 0.03', '"zero": 0.06', True),                    # a tolerance
-        ("ab-test-readout", '"near": 0.209', '"near": 0.219', True),                           # a target
+        ("monthly-report-reconcile", '"near": 3.14', '"near": 3.24', True),                   # a target
         ("seo-content-brief", '"fails_if_zero": ["q5_ranking_volume"]', '"fails_if_zero": ["q3_topic_volume"]', True),
         ("lifecycle-reengagement", '"single_number": true', '"single_number": false', True),
-        ("ab-test-readout", "variant B has 5,400 visitors against control's 6,900", "variant B has 5,400 visitors against control's 6,800", True),
         ("search-terms-negatives", "('sablewood', 'sablewood blinds' and 'sablewood blinds reviews')", "('sablewood' and 'sablewood blinds')", True),
         ("seo-technical-triage", "duplicate titles, bad canonicals, broken linked pages", "bad canonicals, duplicate titles, broken linked pages", True),
         ("lifecycle-reengagement", "valid for 14 days, offered", "valid for 10 days, offered", True),
         ("search-terms-negatives", "All 5 promote candidates", "All 4 promote candidates", True),
         ("search-terms-negatives", '"kind": "absolute", "full": 0.5, "zero": 400', '"kind": "relative", "full": 0.02, "zero": 0.25', True),
-        ("ab-test-readout", "(11,750), is derived from the results", "(18,000), is derived from the results", True),
         ("seo-content-brief", "zero credit beyond 25% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", "zero credit beyond 50% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", True),
         # What sync cannot rewrite stays reported: a definition, a dropped flag.
         ("seo-content-brief", "a difficulty of 45 or lower", "a difficulty of 50 or lower", False),
@@ -271,10 +264,11 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
 
 AB_BLOCK = "A1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209"
 AB_ANSWERS = [12480.0, 11020.0, 6.0, 6.4, 6.6, 90.7, 0.209]
+AB_V3 = json.loads((bench.REPO_ROOT / "tests" / "data" / "ab-test-readout-v3.json").read_text())
 
 
 def _ab(response: str) -> list:
-    facts = bench.measured_facts(bench.load_tasks()["ab-test-readout"], response)
+    facts = bench.measured_facts(AB_V3, response)
     return [facts[f"answer_q{index}"] for index in range(1, 8)]
 
 
@@ -317,7 +311,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
                  "\nA1: sum of 8 rows", "\n\n- A1: 8 weekly rows per variant",
                  "\nA7: one-sided it would be 0.104"):  # the last label again, straight after the block
         assert _ab("Readout.\n\n" + AB_BLOCK + note) == AB_ANSWERS, note
-        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + note), note
+        assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + note), note
     # A labelled line before the block does not shadow it either.
     assert _ab("A1: the two totals are 8 rows each.\n\nReadout.\n\n" + AB_BLOCK) == AB_ANSWERS
     # Method notes that repeat every label, as recorded responses write them, lose to a
@@ -328,7 +322,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     ])
     assert _ab("Method:\n" + notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
     assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes) == AB_ANSWERS
-    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
+    assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
     # A notes list can also carry exactly one number on every line, so every line reads
     # as a number. The block's lines are the number alone; the notes' lines are not.
     one_number_notes = "\n".join([
@@ -340,7 +334,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     assert _ab(one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]           # alone, the notes are all there is to read
     assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
     assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
-    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes)
+    assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes)
     # Symbols around the number leave it alone; a unit word does not.
     decorated = "A1: **12,480**\nA2: `11,020`\nA3: ~6.00%\nA4: 6.40 %\nA5: +6.6%\nA6: ≈ 90.7\nA7: (0.209)"
     assert _ab("Readout.\n\n" + decorated + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
@@ -353,7 +347,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
         assert _ab("Readout.\n\n" + flawed) == expected, unreadable
         assert _ab("Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes) == expected, unreadable
         assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + flawed) == expected, unreadable
-        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes)
+        assert not _critical_tripped(AB_V3, "Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes)
     # A word on a line or two does not unmake a block either.
     worded = AB_BLOCK.replace("A1: 12,480", "A1: 12,480 visitors").replace("A2: 11,020", "A2: 11,020 visitors")
     assert _ab(worded) == AB_ANSWERS
@@ -433,7 +427,7 @@ def test_a_final_block_that_marks_its_corrected_line_is_the_block():
     readout = ("Readout.\n\nFirst pass:\n\nA1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.104\n\n"
                "The p-value above is one-sided; the plan's test is two-sided. Answer block:\n\n"
                "A1: 12,480 visitors\nA2: 11,020 visitors\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209\n")
-    assert _ab(readout) == AB_ANSWERS and not _failed(_results("ab-test-readout", readout))
+    assert _ab(readout) == AB_ANSWERS and not _failed(_results(AB_V3, readout))
 
     triage = ("Triage.\n\nA1: 7\nA2: 9\nA3: 4\nA4: 6\nA5: 4\nA6: 8,865\n\n"
               "On re-checking the redirects, four of those are single hops, not chains. Final answers:\n\n"
@@ -449,16 +443,16 @@ def test_a_format_slip_is_absence_not_invention():
     assert not _critical_tripped("seo-technical-triage", slip)
     working = ("A1: 5,580 + 6,900 = 12,480\nA2: 5,620 + 5,400 = 11,020\nA3: 749 / 12,480 = 6.00%\n"
                "A4: 705 / 11,020 = 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209")
-    assert not _critical_tripped("ab-test-readout", working)
+    assert not _critical_tripped(AB_V3, working)
     # Rates given as fractions are a unit slip: wrong, but not invented data.
     fractions = "A1: 12,480\nA2: 11,020\nA3: 0.0600\nA4: 0.0640\nA5: 0.066\nA6: 90.7\nA7: 0.209"
-    assert {"q3_control_rate", "q4_variant_rate", "q5_relative_lift"} == _failed(_results("ab-test-readout", fractions))
-    assert not _critical_tripped("ab-test-readout", fractions)
+    assert {"q3_control_rate", "q4_variant_rate", "q5_relative_lift"} == _failed(_results(AB_V3, fractions))
+    assert not _critical_tripped(AB_V3, fractions)
     # A lift with the wrong sign is a wrong lift, however the minus is typed.
     for minus in ("-", "−", "–"):
-        assert "q5_relative_lift" in _zeroed(_results("ab-test-readout", AB_BLOCK.replace("A5: 6.6%", f"A5: {minus}6.6%")))
+        assert "q5_relative_lift" in _zeroed(_results(AB_V3, AB_BLOCK.replace("A5: 6.6%", f"A5: {minus}6.6%")))
     # A single clear figure that no reading of the data supports still trips it.
-    assert _critical_tripped("ab-test-readout", AB_BLOCK.replace("12,480", "20,000"))
+    assert _critical_tripped(AB_V3, AB_BLOCK.replace("12,480", "20,000"))
 
 
 def test_tasks_without_the_flag_parse_answers_as_before():
@@ -482,7 +476,7 @@ def test_the_judge_gets_reference_totals_computed_from_the_recorded_prompt():
         task = tasks[task_id]
         for include_skills in (True, False):
             reference = bench.judge_source_reference(task, bench.assemble_prompt(task, include_skills))
-            assert reference["version"] == task_references.VERSION == 3
+            assert reference["version"] == task_references.VERSION == 4
             assert reference["answers"] == _targets(task), task_id
         prompt = bench.assemble_prompt(task, True)
         assert set(task_references.supplied_sources(prompt)) == {path.rsplit("/", 1)[1] for path in task["fixtures"]}
@@ -527,7 +521,7 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
     args = argparse.Namespace(run=str(run_dir), judge="claude-sonnet-5", current_rubric=True, label=None, tasks=None)
     assert bench.cmd_grade(args) == 0
     grading = json.loads((run_dir / "grading.json").read_text())
-    assert grading["task_reference_version"] == task_references.VERSION == 3
+    assert grading["task_reference_version"] == task_references.VERSION == 4
     assert grading["source_reference_version"] == reference_facts.VERSION
     # The judge was shown the reference: both redirecting URLs of each chain, 38 inlinks.
     (judge_prompt,) = judge_prompts
@@ -997,105 +991,6 @@ def test_lifecycle_reference_and_the_policy_the_rubric_quotes():
         assert in_policy in policy and in_check in wording[criterion_id], criterion_id
     assert "which has exactly three emails" in task["prompt"]
     assert "one for lapsed buyers and one for lapsed non-buyers" in task["prompt"]
-
-
-# -------------------------------------------------------------------- ab-test-readout
-
-def _ab_totals():
-    rows = _table("ab-test/experiment_results.csv")
-    totals = collections.defaultdict(lambda: collections.Counter())
-    for row in rows:
-        for field in ("visitors", "signups", "paid_conversions"):
-            totals[row["variant"]][field] += int(row[field])
-            totals[row["variant"], row["device"]][field] += int(row[field])
-    return rows, totals
-
-
-def _ab_p(totals, field: str) -> float:
-    control, variant = totals["control"], totals["variant_b"]
-    n1, n2 = control["visitors"], variant["visitors"]
-    pooled = (control[field] + variant[field]) / (n1 + n2)
-    z = (variant[field] / n2 - control[field] / n1) / (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5
-    return 2 * (1 - statistics.NormalDist().cdf(abs(z)))
-
-
-def test_ab_test_readout_oracle_and_trap():
-    task = bench.load_tasks()["ab-test-readout"]
-    rows, totals = _ab_totals()
-    control, variant = totals["control"], totals["variant_b"]
-    rate_control = control["signups"] / control["visitors"] * 100
-    rate_variant = variant["signups"] / variant["visitors"] * 100
-    half = (control["visitors"] + variant["visitors"]) / 2
-    chi = sum((arm["visitors"] - half) ** 2 / half for arm in (control, variant))
-    answers = [control["visitors"], variant["visitors"], round(rate_control, 2), round(rate_variant, 2),
-               round((rate_variant / rate_control - 1) * 100, 1), round(chi, 1), round(_ab_p(totals, "signups"), 3)]
-    assert list(_targets(task).values()) == pytest.approx(answers)
-    assert answers == [12480, 11020, 6.0, 6.4, 6.6, 90.7, 0.209]
-    # The traps: read early, a split no 50/50 assignment produces, the gap on
-    # mobile only, and a secondary metric that just clears 5%.
-    secondary_p = _ab_p(totals, "paid_conversions")
-    assert max(control["visitors"], variant["visitors"]) < 18000
-    assert answers[6] > 0.05 > secondary_p > 0.04
-    assert not _failed(_results("ab-test-readout", _answer_block(
-        ["12,480", "11,020", f"{answers[2]:.2f}%", f"{answers[3]:.2f}%", f"{answers[4]}%", answers[5], answers[6]])))
-    # A continuity-corrected test (0.219) is inside the full-credit band; a one-sided one is not.
-    block = [12480, 11020, 6.0, 6.4, 6.6, 90.7]
-    assert "q7_p_value" not in _failed(_results("ab-test-readout", _answer_block(block + [0.219])))
-    assert "q7_p_value" in _zeroed(_results("ab-test-readout", _answer_block(block + [0.104])))
-    # Careless: the lift in percentage points and the secondary metric's p-value.
-    careless = _answer_block(["12,480", "11,020", "6.00%", "6.40%", "0.4%", answers[5], round(secondary_p, 3)])
-    assert {"q5_relative_lift", "q7_p_value"} == _zeroed(_results("ab-test-readout", careless))
-    assert not _critical_tripped("ab-test-readout", careless)
-
-
-def test_ab_reference_and_the_wording_that_quotes_it():
-    task = bench.load_tasks()["ab-test-readout"]
-    rows, totals = _ab_totals()
-    reference = _reference("ab-test-readout")
-    assert {key: reference[key] for key in reference if key not in ("version", "answers", "interpretation")} == {
-        "totals": {variant: dict(totals[variant]) for variant in ("control", "variant_b")},
-        "by_device": {device: {variant: dict(totals[variant, device]) for variant in ("control", "variant_b")}
-                      for device in ("desktop", "mobile")},
-        "weeks": 4,
-        # Half of the visitors the test received: what each variant is compared with in the sample-ratio check.
-        "expected_visitors_per_variant_under_the_planned_50_50_split":
-            sum(int(row["visitors"]) for row in rows) // 2,
-        "secondary_metric_p_value": round(_ab_p(totals, "paid_conversions"), 3),
-    }
-    assert reference["expected_visitors_per_variant_under_the_planned_50_50_split"] == 11750
-    assert sum(int(row["visitors"]) for row in rows) == 23500
-    assert reference["by_device"]["mobile"] == {
-        "control": {"visitors": 6900, "signups": 347, "paid_conversions": 66},
-        "variant_b": {"visitors": 5400, "signups": 283, "paid_conversions": 67}}
-    assert reference["by_device"]["desktop"]["control"]["visitors"] == 5580
-    assert reference["by_device"]["desktop"]["variant_b"]["visitors"] == 5620
-    assert reference["secondary_metric_p_value"] == 0.049
-    # The plan's numbers and the checks that quote them come from the same constants.
-    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
-    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
-    assert "18,000 visitors per variant (two-sided test, 5% significance" in plan and "not a decision metric" in plan
-    assert "the 18,000 visitors the plan required" in wording["stop_rule_respected"]
-    assert "at the plan's 5% level" in wording["not_significant_stated"]
-    assert "(12,480 control against 11,020 variant B)" in wording["srm_flagged"]
-    assert ("the mobile rows, where variant B has 5,400 visitors against control's 6,900 (desktop is balanced, "
-            "5,620 against 5,580). Naming mobile is enough") in wording["imbalance_located"]
-    # The prompt's own definition speaks of "the 50/50 split the plan called for", so a readout that
-    # gives the count that split expects is not misquoting the plan, whose sample size is 18,000.
-    assert "with the 50/50 split the plan called for" in task["prompt"]
-    assert ("half of the visitors the two variants received (11,750), is derived from the results: stating it, also as "
-            "what the planned split called for, is not an invented figure") in wording["no_invented_data"]
-    assert "every figure about the plan matches the test plan" in wording["no_invented_data"]
-    assert "It is not the sample size the plan required of each variant." in reference["interpretation"]
-
-
-def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
-    prompt = bench.load_tasks()["ab-test-readout"]["prompt"]
-    for hint in ("which device", "which week", "split of visitors between the variants is not", "mobile"):
-        assert hint not in prompt, hint
-    assert "whether the test can be trusted and why" in prompt                                # srm_flagged
-    assert "point to the rows of the results that show it" in prompt                         # imbalance_located
-    assert "a clear recommendation with the next step" in prompt                             # next_step_concrete
-    assert "from the supplied files" in prompt                                               # the plan is citable
 
 
 # ------------------------------------------------------------- monthly-report-reconcile

@@ -219,7 +219,7 @@ rather than inline:
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 | development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
-| development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
+| development | `ab-test-readout` | 112 daily rows and a plan with written decision rules: the pooled lift is up while both devices are down (a device mix the plan set), the first week's lift fades, the planned 70/30 mobile split is not a mismatch, and a guardrail breaches over the analysis window only; eleven banded figures (hardened on 2026-11-20: prompt version 4, rubric version 5) |
 | development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
 | development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
 | development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
@@ -268,6 +268,14 @@ every figure of the judge's reference from the committed fixtures with
 separate code, and it writes out the bands and the oracle lists again, so a
 band changed in the generator and synced into a task file still fails until
 it is changed in the test as well.
+
+`ab-test-readout` left that pair when it was hardened on 2026-11-20. It and the
+conversion tasks added that day (`funnel-dropoff`, `test-plan-sizing`) keep
+their oracle in `task_facts_conversion.py`, which `task_references` consults
+for the judge's reference, their generator beside their fixtures
+(`fixtures/<folder>/generate.py`, which refuses data whose planted effects did
+not come out as designed), and their tests in `tests/test_tasks_conversion.py`,
+which recompute every target with code of their own.
 
 Three rules these tasks follow, each learned from a review:
 

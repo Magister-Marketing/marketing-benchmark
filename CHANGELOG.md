@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Tasks: `ab-test-readout` hardened (prompt version 4, rubric version 5; the
+  id is kept, as the 35-task board plan asks). Every setup passed all 17
+  checks of version 3. The fixtures are now 112 daily rows over 28 days and a
+  plan with written decision rules: mobile is split 70/30 by design, so the
+  pooled lift (+12.7%) is up while variant B is down on desktop (-1.5%) and
+  mobile (-4.5%); the first week's lift (+12.3%) fades, and the plan leaves
+  that week out of every figure; a cache problem in days 1-3 fails the
+  sample-ratio check over 28 days but not over the window; the billing-ticket
+  guardrail is breached over the window (+25.9%, limit 20%) and not over 28
+  days. Eleven banded figures, the last the number of the decision rule that
+  decides (rule 3, do not ship). 12 of its 15 checks are a program's.
+  `no_invented_data` is no longer critical: every figure it guarded is a
+  banded check now, and the visitor counts it named carry the burn-in trap.
+  The skills are `ab-testing` and `analytics`. Runs of version 3 cannot be
+  regraded against this rubric (`--current-rubric` refuses a changed
+  prompt). The task moved out of `scripts/gen_more_tasks.py` and
+  `task_references.py` (whose `VERSION` is now 4) into
+  `task_facts_conversion.py` and `fixtures/ab-test/generate.py`; the parser
+  tests in `tests/test_more_tasks.py` read the version-3 task from
+  `tests/data/ab-test-readout-v3.json`, the block they were written against.
 - Tasks: `funnel-dropoff` (development split): a four-week checkout funnel
   by day, device, browser and step (459 rows), the analytics team's rules, a
   release log and six suspected causes in; the day and place of the break,

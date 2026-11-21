@@ -1,4 +1,4 @@
-"""The conversion tasks: test-plan-sizing and funnel-dropoff.
+"""The conversion tasks: test-plan-sizing, funnel-dropoff and ab-test-readout (version 4).
 
 What is pinned here, for every task:
 
@@ -32,6 +32,7 @@ FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
 FOLDERS = {
     "test-plan-sizing": "test-plan-sizing",
     "funnel-dropoff": "funnel-dropoff",
+    "ab-test-readout": "ab-test",
 }
 
 
@@ -528,3 +529,208 @@ def test_the_funnel_prompt_asks_for_the_work_without_pointing_at_the_traps():
         assert hint not in prompt.lower(), hint
     assert "for each suspected cause, whether the data rules it out and why" in prompt
     assert "what to do first" in prompt                              # first_action_on_the_cause
+
+
+# ------------------------------------------------------------------- ab-test-readout
+
+AB_REPLY = """\
+Readout: pricing-page test, variant B (annual pricing first)
+
+Recommendation: do not ship variant B. The plan's rule 3 decides: the billing-ticket guardrail is
+breached.
+
+Analysis window (days 8-28; the burn-in week is left out as the plan says):
+- Visitors: control 16,963, variant B 10,571; both clear the 10,000 minimum.
+- The split holds: desktop chi-square 0.0 against 50/50, mobile 0.1 against the planned 70/30.
+  The burn-in week did not hold it (a cache problem in days 1-3), which is why it is left out.
+- Signup rate: desktop 7.95% control, 7.83% B (-1.5%); mobile 3.99% control, 3.81% B (-4.5%).
+  Device-weighted lift: -2.7%. Variant B is lower on both devices.
+- The dashboard's pooled +12.7% is not the result: B got a larger share of desktop visitors, who
+  sign up about twice as often as mobile visitors, because mobile was split 70/30 by design.
+- The first week's +12.3% (device-weighted, days 1-7) did not last.
+- Guardrail: 3.78 billing tickets per 1,000 visitors on B against 3.01 on control, +25.9%, above
+  the 20% limit.
+
+Next step: keep control, and look at why annual-first pricing sends people to billing support
+before any new version is tested.
+
+A1: 16,963
+A2: 10,571
+A3: 12.7%
+A4: -1.5%
+A5: -4.5%
+A6: -2.7%
+A7: 12.3%
+A8: 0.0
+A9: 0.1
+A10: 25.9%
+A11: 3
+"""
+
+
+def _ab(days: range = range(8, 29), planned_mobile: Decimal = Decimal("0.7"), weighting: str = "plan",
+        guardrail_days: range | None = None) -> list:
+    """The 11 answers, recomputed from the fixture; the arguments are the careless readings."""
+    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
+    split = re.search(r"Mobile visitors are split (\d+)/(\d+)", plan)
+    assert Decimal(split.group(1)) / 100 == Decimal("0.7")
+    rows = _table("ab-test/experiment_results.csv")
+
+    def cells(period: range) -> dict:
+        found = collections.defaultdict(collections.Counter)
+        for row in rows:
+            if int(row["day"]) in period:
+                for field in ("visitors", "signups", "billing_tickets"):
+                    found[row["variant"], row["device"]][field] += int(row[field])
+                    found[row["variant"], "both"][field] += int(row[field])
+        return found
+
+    def lifts(period: range) -> dict:
+        found = cells(period)
+        rate = {key: Decimal(value["signups"]) / value["visitors"] for key, value in found.items()}
+        visitors = {device: found["control", device]["visitors"] + found["variant_b", device]["visitors"]
+                    for device in ("desktop", "mobile")}
+        share = {device: Decimal(visitors[device]) / sum(visitors.values()) for device in visitors}
+        device = {where: rate["variant_b", where] / rate["control", where] - 1 for where in ("desktop", "mobile")}
+        if weighting == "plan":
+            weighted = (sum(rate["variant_b", d] * share[d] for d in share)
+                        / sum(rate["control", d] * share[d] for d in share) - 1)
+        elif weighting == "pooled":
+            weighted = rate["variant_b", "both"] / rate["control", "both"] - 1
+        else:   # the visitor-weighted average of the two device lifts
+            weighted = sum(device[d] * share[d] for d in share)
+        return {"found": found, "pooled": rate["variant_b", "both"] / rate["control", "both"] - 1,
+                "device": device, "weighted": weighted}
+
+    window, burn_in = lifts(days), lifts(range(1, 8))
+    found = window["found"]
+    chi = {}
+    for device, part in (("desktop", Decimal("0.5")), ("mobile", planned_mobile)):
+        total = found["control", device]["visitors"] + found["variant_b", device]["visitors"]
+        chi[device] = sum((Decimal(found[variant, device]["visitors"]) - total * share) ** 2 / (total * share)
+                          for variant, share in (("control", part), ("variant_b", 1 - part)))
+    tickets = cells(guardrail_days or days)
+    per_1000 = {variant: Decimal(tickets[variant, "both"]["billing_tickets"]) * 1000 / tickets[variant, "both"]["visitors"]
+                for variant in ("control", "variant_b")}
+    guardrail = per_1000["variant_b"] / per_1000["control"] - 1
+    visitors = [found["control", "both"]["visitors"], found["variant_b", "both"]["visitors"]]
+    if min(visitors) < 10000:
+        rule = 1
+    elif max(chi.values()) > Decimal("3.841"):
+        rule = 2
+    elif guardrail > Decimal("0.2"):
+        rule = 3
+    elif window["weighted"] >= Decimal("0.03") and min(window["device"].values()) > 0:
+        rule = 4
+    else:
+        rule = 5
+    percent = lambda value: round(float(value) * 100, 1)  # noqa: E731
+    return visitors + [percent(window["pooled"]), percent(window["device"]["desktop"]),
+                       percent(window["device"]["mobile"]), percent(window["weighted"]),
+                       percent(burn_in["weighted"]), round(float(chi["desktop"]), 1),
+                       round(float(chi["mobile"]), 1), percent(guardrail), rule]
+
+
+def test_ab_targets_are_recomputed_from_the_fixtures():
+    answers = _ab()
+    assert list(_targets(_task("ab-test-readout")).values()) == answers
+    assert answers == [16963, 10571, 12.7, -1.5, -4.5, -2.7, 12.3, 0.0, 0.1, 25.9, 3]
+
+
+def test_ab_data_holds_the_traps_it_was_built_with():
+    reference = task_facts_conversion.ab_test_reference(_sources("ab-test-readout"))
+    window = reference["analysis_window_days_8_to_28"]
+    whole = reference["all_28_days_not_the_plans_reading"]
+    # The reversal: pooled up, both devices down, from a mix the plan set.
+    assert window["pooled_lift_percent"] > 10 and max(window["device_lift_percent"].values()) < -1
+    rates = window["signup_rates_percent"]
+    assert rates["control desktop"] > 1.9 * rates["control mobile"]
+    # The first week's lift fades; over all 28 days the split fails and the guardrail does not.
+    assert reference["burn_in_week_days_1_to_7"]["device_weighted_lift_percent"] > 10
+    assert min(whole["sample_ratio_chi_square"].values()) > 3.841 > max(window["sample_ratio_chi_square"].values())
+    assert whole["guardrail_increase_percent"] < 20 < window["guardrail_increase_percent"]
+    assert whole["decision_rule_it_would_give"] == 2 and reference["decision"]["rule"] == 3
+    # Against 50/50, mobile fails the check by far.
+    assert _ab(planned_mobile=Decimal("0.5"))[8] > 1000
+
+
+def test_the_ab_reference_reply_passes_and_a_blank_earns_nothing():
+    assert not _failed(_results("ab-test-readout", AB_REPLY))
+    assert _zeroed(_results("ab-test-readout", "")) == set(_results("ab-test-readout", ""))
+    # Computed from rounded inputs (rates to two decimals, shares to two), the weighted lift is still exact enough.
+    control = Decimal("7.95") * Decimal("0.42") + Decimal("3.99") * Decimal("0.58")
+    variant = Decimal("7.83") * Decimal("0.42") + Decimal("3.81") * Decimal("0.58")
+    assert abs(float(variant / control - 1) * 100 - (-2.7)) <= 0.15
+    control = Decimal("7.85") * Decimal("0.43") + Decimal("4.06") * Decimal("0.57")    # the burn-in week
+    variant = Decimal("8.95") * Decimal("0.43") + Decimal("4.47") * Decimal("0.57")
+    assert abs(float(variant / control - 1) * 100 - 12.3) <= 0.15
+
+
+def test_the_ab_traps_score_zero_on_the_checks_they_touch():
+    right = _ab()
+
+    def zeroed(answers):
+        results = _results("ab-test-readout", _block([f"{value:,}" for value in answers]))
+        assert _failed(results) == _zeroed(results)               # no partial credit anywhere
+        return _zeroed(results)
+
+    # The burn-in week read in: every window figure moves, and the 28-day split fails the check.
+    whole = _ab(days=range(1, 29))
+    assert whole[10] == 2
+    assert zeroed(whole) == {"q1_control_visitors", "q2_variant_visitors", "q3_pooled_lift", "q4_desktop_lift",
+                             "q5_mobile_lift", "q6_weighted_lift", "q8_desktop_srm", "q9_mobile_srm",
+                             "q10_guardrail", "q11_decision_rule"}
+    # The planned 70/30 mobile split taken for a sample-ratio mismatch.
+    assert zeroed(_ab(planned_mobile=Decimal("0.5"))) == {"q9_mobile_srm", "q11_decision_rule"}
+    # The dashboard's pooled lift, or an average of the device lifts, as the primary estimate.
+    # Read that way in the burn-in week too, A7 is off as well.
+    assert zeroed(_ab(weighting="pooled")) == {"q6_weighted_lift", "q7_burn_in_lift"}
+    assert zeroed(_ab(weighting="average of lifts")) == {"q6_weighted_lift", "q7_burn_in_lift"}
+    # The guardrail over all 28 days: not breached, so rule 5 (keep control) instead of rule 3.
+    guardrail = _ab(guardrail_days=range(1, 29))
+    assert guardrail[9] < 20 and guardrail[10] == 5
+    assert zeroed(guardrail) == {"q10_guardrail", "q11_decision_rule"}
+    # The burn-in week's lift with both devices pooled.
+    reference = task_facts_conversion.ab_test_reference(_sources("ab-test-readout"))
+    burn_in_pooled = round(reference["burn_in_week_days_1_to_7"]["pooled_lift_percent"], 1)
+    assert zeroed(right[:6] + [burn_in_pooled] + right[7:]) == {"q7_burn_in_lift"}
+
+
+def test_the_ab_plan_states_what_the_oracle_applies():
+    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
+    for phrase in (
+        "Desktop visitors are split 50/50", "Mobile visitors are split 70/30: 70% to control and 30% to variant B",
+        "the burn-in week is left out of every metric, check and decision rule below",
+        "The analysis window is days 8 to 28",
+        "where a device's share counts the visitors of both variants",
+        "Device-weighted lift = variant B's device-weighted rate ÷ control's − 1",
+        "expected visitors = the device's visitors × the variant's planned share on that device",
+        "when its chi-square is above 3.841", "more than 20% above control's",
+        "1. Either variant has fewer than 10,000 visitors: keep the test running.",
+        "2. The sample-ratio check fails on either device",
+        "3. The guardrail is breached: do not ship variant B.",
+        "4. The device-weighted lift is +3.0% or more and variant B's signup rate is higher than control's on both devices",
+        "5. Otherwise: keep control.",
+    ):
+        assert phrase in plan, phrase
+    # The judged checks name the split the plan set and the devices the data shows.
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(_task("ab-test-readout")).items()}
+    assert "because mobile was split 70/30 by design" in wording["reversal_explained"]
+    assert "lower than control's on desktop and on mobile" in wording["reversal_explained"]
+
+
+def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
+    prompt = _task("ab-test-readout")["prompt"]
+    for hint in ("mix", "70/30", "cache", "simpson", "revers", "fade", "28 days", "breach"):
+        assert hint not in prompt.lower(), hint
+    assert "Follow the plan exactly" in prompt
+    assert "which of the plan's decision rules decides and what it decides" in prompt   # recommendation_stated
+    assert "with both devices pooled" in prompt                                         # what the manager saw
+
+
+def test_the_parser_tests_keep_the_version_3_task_they_were_written_against():
+    frozen = json.loads((bench.REPO_ROOT / "tests/data/ab-test-readout-v3.json").read_text())
+    assert (frozen["id"], frozen["prompt_version"], frozen["rubric_version"]) == ("ab-test-readout", 3, 4)
+    assert frozen["answers"] == {"count": 7, "single_number": True}
+    task = _task("ab-test-readout")
+    assert (task["prompt_version"], task["rubric_version"]) == (4, 5)

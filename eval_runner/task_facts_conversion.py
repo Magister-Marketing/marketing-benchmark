@@ -1,6 +1,6 @@
 """The figures of the conversion tasks, computed from the text of their sources.
 
-Tasks: test-plan-sizing, funnel-dropoff.
+Tasks: test-plan-sizing, funnel-dropoff, ab-test-readout (from its version 4).
 
 Each `*_reference` function takes a task's supplied sources (file name ->
 text, as `task_references.supplied_sources` reads them from a recorded
@@ -290,7 +290,141 @@ def funnel_reference(sources: dict[str, str]) -> dict:
     }
 
 
+# ------------------------------------------------------------------- ab-test-readout
+
+AB_DAYS = 28
+AB_WINDOW_FIRST_DAY = 8                       # days 1-7 are the burn-in week
+AB_PLANNED_CONTROL_SHARE = {"desktop": Decimal("0.5"), "mobile": Decimal("0.7")}
+AB_MIN_VISITORS = 10_000                      # per variant, in the analysis window
+AB_CHI_SQUARE_LIMIT = Decimal("3.841")
+AB_GUARDRAIL_LIMIT_PERCENT = 20
+AB_SHIP_LIFT_PERCENT = Decimal("3.0")
+AB_DECISIONS = {
+    1: "keep the test running",
+    2: "fix the assignment and run the test again",
+    3: "do not ship variant B",
+    4: "ship variant B",
+    5: "keep control",
+}
+
+
+def ab_totals(rows: list[dict], days: range) -> dict:
+    """(variant, device) -> visitors, signups and billing tickets over some days."""
+    totals: dict = {}
+    for row in rows:
+        if int(row["day"]) in days:
+            cell = totals.setdefault((row["variant"], row["device"]), {"visitors": 0, "signups": 0, "billing_tickets": 0})
+            for field in cell:
+                cell[field] += int(row[field])
+    return totals
+
+
+def ab_readout(totals: dict) -> dict:
+    """Every figure the plan reads from one period's totals, as exact fractions."""
+    devices = sorted({device for _variant, device in totals})
+
+    def summed(variant: str, field: str, device: str | None = None) -> int:
+        return sum(cell[field] for (arm, where), cell in totals.items()
+                   if arm == variant and device in (None, where))
+
+    def rate(variant: str, device: str | None = None) -> Fraction:
+        return Fraction(summed(variant, "signups", device), summed(variant, "visitors", device))
+
+    everyone = summed("control", "visitors") + summed("variant_b", "visitors")
+    share = {device: Fraction(summed("control", "visitors", device) + summed("variant_b", "visitors", device), everyone)
+             for device in devices}
+    weighted = {variant: sum(rate(variant, device) * share[device] for device in devices)
+                for variant in ("control", "variant_b")}
+    chi_square = {}
+    for device in devices:
+        total = summed("control", "visitors", device) + summed("variant_b", "visitors", device)
+        planned = Fraction(AB_PLANNED_CONTROL_SHARE[device])
+        chi_square[device] = sum(
+            (summed(variant, "visitors", device) - total * part) ** 2 / (total * part)
+            for variant, part in (("control", planned), ("variant_b", 1 - planned)))
+    tickets = {variant: Fraction(summed(variant, "billing_tickets") * 1000, summed(variant, "visitors"))
+               for variant in ("control", "variant_b")}
+    return {
+        "visitors": {variant: summed(variant, "visitors") for variant in ("control", "variant_b")},
+        "pooled_lift": rate("variant_b") / rate("control") - 1,
+        "device_lift": {device: rate("variant_b", device) / rate("control", device) - 1 for device in devices},
+        "weighted_lift": weighted["variant_b"] / weighted["control"] - 1,
+        "chi_square": chi_square,
+        "tickets_per_1000": tickets,
+        "guardrail_increase": tickets["variant_b"] / tickets["control"] - 1,
+        "rates": {f"{variant} {device or 'pooled'}": rate(variant, device)
+                  for variant in ("control", "variant_b") for device in (*devices, None)},
+        "device_share": share,
+    }
+
+
+def ab_decision(readout: dict) -> int:
+    """The number of the first decision rule whose condition holds."""
+    if min(readout["visitors"].values()) < AB_MIN_VISITORS:
+        return 1
+    if max(readout["chi_square"].values()) > Fraction(AB_CHI_SQUARE_LIMIT):
+        return 2
+    if readout["guardrail_increase"] * 100 > AB_GUARDRAIL_LIMIT_PERCENT:
+        return 3
+    if readout["weighted_lift"] * 100 >= Fraction(AB_SHIP_LIFT_PERCENT) and all(
+            lift > 0 for lift in readout["device_lift"].values()):
+        return 4
+    return 5
+
+
+def _percent(value: Fraction, places: int) -> float:
+    return round(float(value) * 100, places)
+
+
+def ab_test_reference(sources: dict[str, str]) -> dict:
+    rows = _rows(sources["experiment_results.csv"])
+    window = ab_readout(ab_totals(rows, range(AB_WINDOW_FIRST_DAY, AB_DAYS + 1)))
+    burn_in = ab_readout(ab_totals(rows, range(1, AB_WINDOW_FIRST_DAY)))
+    whole = ab_readout(ab_totals(rows, range(1, AB_DAYS + 1)))
+    decision = ab_decision(window)
+    answers = [
+        window["visitors"]["control"],
+        window["visitors"]["variant_b"],
+        _percent(window["pooled_lift"], 1),
+        _percent(window["device_lift"]["desktop"], 1),
+        _percent(window["device_lift"]["mobile"], 1),
+        _percent(window["weighted_lift"], 1),
+        _percent(burn_in["weighted_lift"], 1),
+        round(float(window["chi_square"]["desktop"]), 1),
+        round(float(window["chi_square"]["mobile"]), 1),
+        _percent(window["guardrail_increase"], 1),
+        decision,
+    ]
+
+    def summary(readout: dict) -> dict:
+        return {
+            "visitors": readout["visitors"],
+            "signup_rates_percent": {key: _percent(value, 2) for key, value in readout["rates"].items()},
+            "device_share_of_visitors": {key: round(float(value), 4) for key, value in readout["device_share"].items()},
+            "pooled_lift_percent": _percent(readout["pooled_lift"], 2),
+            "device_lift_percent": {key: _percent(value, 2) for key, value in readout["device_lift"].items()},
+            "device_weighted_lift_percent": _percent(readout["weighted_lift"], 2),
+            "sample_ratio_chi_square": {key: round(float(value), 2) for key, value in readout["chi_square"].items()},
+            "billing_tickets_per_1000_visitors": {key: round(float(value), 3)
+                                                  for key, value in readout["tickets_per_1000"].items()},
+            "guardrail_increase_percent": _percent(readout["guardrail_increase"], 2),
+        }
+
+    return {
+        "answers": {f"A{index}": value for index, value in enumerate(answers, 1)},
+        "analysis_window_days_8_to_28": summary(window),
+        "burn_in_week_days_1_to_7": summary(burn_in),
+        "all_28_days_not_the_plans_reading": {**summary(whole), "decision_rule_it_would_give": ab_decision(whole)},
+        "decision": {"rule": decision, "outcome": AB_DECISIONS[decision]},
+        "interpretation": (
+            "The plan reads every metric, check and decision rule over the analysis window (days 8-28). The "
+            "all-28-days figures are what reading the burn-in week in gives; they are not the plan's result."
+        ),
+    }
+
+
 REFERENCES = {
     "test-plan-sizing": sizing_reference,
     "funnel-dropoff": funnel_reference,
+    "ab-test-readout": ab_test_reference,
 }
