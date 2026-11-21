@@ -184,10 +184,147 @@ def redirect_facts(response_text: str) -> dict:
     }
 
 
+# ------------------------------------------------------------------ seo-titles-meta
+
+META_TASK = "seo-titles-meta"
+META_FILE = "titles_meta.csv"
+META_BRAND = "Quillon"
+# The suffix every title ends with, by page type, in the order a keyword tie is broken.
+META_SUFFIXES = {
+    "category": " | Shop Quillon Pets",
+    "product": " | Quillon Pets",
+    "guide": " | Quillon Pets Guides",
+}
+META_TITLE_MAX = 60
+META_DESCRIPTION_RANGE = (100, 155)
+
+
+def _phrase(text: object) -> str:
+    """Lower case, a hyphen read as a space, one space between words."""
+    return " " + re.sub(r"\s+", " ", str(text or "").lower().replace("-", " ")).strip() + " "
+
+
+def _contains(text: object, keyword: object) -> bool:
+    """Whether the keyword is in the text as whole words, capitals and hyphens aside."""
+    wanted = _phrase(keyword).strip()
+    return bool(wanted) and bool(re.search(r"(?<![a-z0-9])" + re.escape(wanted) + r"(?![a-z0-9])", _phrase(text)))
+
+
+def _numeral(text: str, number: str) -> bool:
+    """Whether the number is written in the text as a whole numeral."""
+    return bool(re.search(r"(?<![\d.,$])" + re.escape(number) + r"(?![\d]|[.,]\d)", text))
+
+
+def meta_reference(inventory_csv: str) -> dict:
+    """The target keyword of every indexed page and what its title and description must carry."""
+    rows = _rows(inventory_csv)
+    indexed = [row for row in rows if row["index"] == "index"]
+    order = list(META_SUFFIXES)
+    groups: dict[str, list[dict]] = {}
+    for row in indexed:
+        groups.setdefault(_phrase(row["primary_keyword"]), []).append(row)
+    pages, conceded = {}, {}
+    for group in groups.values():
+        keeper = min(group, key=lambda row: (-int(row["clicks_28d"]), order.index(row["page_type"]), row["page_id"]))
+        for row in group:
+            keeps = row is keeper
+            if not keeps:
+                conceded[row["page_id"]] = row["primary_keyword"]
+            pages[row["page_id"]] = {
+                "page_type": row["page_type"],
+                "target": row["primary_keyword"] if keeps else row["secondary_keyword"],
+                "also_in_description": [row["secondary_keyword"]] if keeps else [],
+                "price": f"${row['price']}" if row["page_type"] == "product" and row["in_stock"] == "yes" else None,
+                "own_price": row["price"],
+                "attribute": row["attributes"].split(";")[0].strip() if row["page_type"] == "product" else None,
+                "count": row["product_count"] if row["page_type"] == "category" else None,
+            }
+    return {
+        "pages": pages,
+        "conceded": conceded,
+        "noindex": sorted(row["page_id"] for row in rows if row["index"] != "index"),
+        "answers": {
+            "q1_rows": len(pages),
+            "q2_conceded": len(conceded),
+            "q3_priced": sum(1 for page in pages.values() if page["price"]),
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def meta_oracle() -> dict:
+    return meta_reference(_fixture("seo-titles-meta/page_inventory.csv"))
+
+
+def meta_facts(response_text: str) -> dict:
+    ref = meta_oracle()
+    pages = ref["pages"]
+    found = common.tables(response_text, [META_FILE])[META_FILE]
+    missing_file = found is None
+    rows = [(common.cell(row, "page_id", "id", "page").strip().strip("`*").upper(),
+             common.cell(row, "title", "title_tag", "seo_title").strip(),
+             common.cell(row, "meta_description", "meta", "description").strip())
+            for row in found or []]
+    rows = [row for row in rows if row[0]]
+    given: dict[str, tuple[str, str]] = {}
+    for page_id, title, description in rows:
+        given.setdefault(page_id, (title, description))
+    known = set(pages) | set(ref["noindex"])
+    listed = [page_id for page_id, _title, _description in rows]
+
+    def errors(test) -> int:
+        """Pages of the oracle whose row is missing or fails the test."""
+        return sum(1 for page_id, page in pages.items() if page_id not in given or not test(page, *given[page_id]))
+
+    def suffix_right(page, title, _description):
+        suffix = META_SUFFIXES[page["page_type"]]
+        return title.endswith(suffix) and META_BRAND.lower() not in title[:-len(suffix)].lower()
+
+    def price_right(page, title, description):
+        if "$" in title:
+            return False
+        if page["price"]:
+            return page["price"] in description
+        return "$" not in description and not (page["own_price"] and _numeral(description, page["own_price"]))
+
+    def facts_right(page, _title, description):
+        if page["attribute"] is not None:
+            return _contains(description, page["attribute"])
+        if page["count"] is not None:
+            return _numeral(description, page["count"])
+        return True
+
+    titles = [_phrase(title) for _page_id, title, _description in rows]
+    descriptions = [_phrase(description) for _page_id, _title, description in rows]
+    low, high = META_DESCRIPTION_RANGE
+    return {
+        "seo_meta_missing_file_count": int(missing_file),
+        "seo_meta_accounting_error_count": (
+            len(set(pages) - set(listed)) + len(set(listed) - known) + (len(listed) - len(set(listed)))),
+        "seo_meta_noindex_error_count": (
+            len(ref["noindex"]) if missing_file else sum(1 for page_id in ref["noindex"] if page_id in given)),
+        "seo_meta_title_length_error_count": errors(lambda _p, title, _d: 0 < len(title) <= META_TITLE_MAX),
+        "seo_meta_suffix_error_count": errors(suffix_right),
+        "seo_meta_title_keyword_error_count": errors(lambda page, title, _d: _contains(title, page["target"])),
+        "seo_meta_conceded_keyword_error_count": sum(
+            1 for page_id, keyword in ref["conceded"].items()
+            if page_id not in given or any(_contains(text, keyword) for text in given[page_id])),
+        "seo_meta_description_length_error_count": errors(lambda _p, _t, description: low <= len(description) <= high),
+        "seo_meta_description_keyword_error_count": errors(lambda page, _t, description: all(
+            _contains(description, keyword) for keyword in [page["target"], *page["also_in_description"]])),
+        "seo_meta_price_error_count": errors(price_right),
+        "seo_meta_page_fact_error_count": errors(facts_right),
+        "seo_meta_duplicate_count": (
+            len(pages) if missing_file else
+            (len(titles) - len(set(titles))) + (len(descriptions) - len(set(descriptions)))),
+    }
+
+
 # ------------------------------------------------------------------------- dispatch
 
 FACTS = {
     REDIRECT_TASK: redirect_facts,
+    META_TASK: meta_facts,
 }
 
 

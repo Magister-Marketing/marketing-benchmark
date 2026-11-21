@@ -1,0 +1,43 @@
+{
+  "id": "seo-titles-meta",
+  "title": "Titles and meta descriptions from a page inventory",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/seo-titles-meta/title_rules.md",
+    "eval_runner/fixtures/seo-titles-meta/page_inventory.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/seo-audit/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Quillon Pet Supply is reworking the titles and meta descriptions of its online shop. You are supplied the rules the SEO lead wrote and the page inventory. Write the title and the meta description of every page the rules cover.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly the header shown: one row per page, no totals row, and nothing inside the file but its rows. Put every title and every meta description in double quotes.\n\n### titles_meta.csv\npage_id,title,meta_description\n\nEnd your reply with this answer block, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number.\n\nA1: <number of rows in titles_meta.csv>\nA2: <number of pages that give up their primary keyword>\nA3: <number of meta descriptions that show a price>\n\nThis is a draft for review. Change nothing on the site and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {"id": "file_delivered", "check": "titles_meta.csv is in the reply, under a line with its file name.", "programmatic": {"fact": "seo_meta_missing_file_count", "equals": 0}},
+      {"id": "every_page_once", "check": "Each of the 41 indexed pages has exactly one row, and no row names a page_id that is not in the inventory. Full credit for none missing, invented or repeated; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_accounting_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "answer_block_complete", "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 3}},
+      {"id": "q1_rows", "check": "A1 states the number of rows the rules give; full credit for the exact figure, zero credit 3 or more off.", "programmatic": {"fact": "answer_q1", "near": 41, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "q2_conceded", "check": "A2 states the number of pages that give up their primary keyword under the keyword rule; full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q2", "near": 6, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "q3_priced", "check": "A3 states the number of meta descriptions that show a price under the rules; full credit for the exact figure, zero credit 3 or more off.", "programmatic": {"fact": "answer_q3", "near": 13, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}}
+    ],
+    "skill_adherence": [
+      {"id": "noindex_left_out", "check": "None of the 5 noindex pages has a row; the file is the claim, so a reply without it fails. Full credit for none; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_noindex_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "titles_within_limit", "check": "Every title is present and at most 60 characters. Full credit for none missing or over; zero credit at 4 or more.", "programmatic": {"fact": "seo_meta_title_length_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}},
+      {"id": "suffix_right", "check": "Every title ends with the exact suffix for its page type and names the brand nowhere else. Full credit for none wrong or missing; zero credit at 4 or more.", "programmatic": {"fact": "seo_meta_suffix_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}},
+      {"id": "descriptions_within_range", "check": "Every meta description is present and 100 to 155 characters. Full credit for none missing or outside; zero credit at 4 or more.", "programmatic": {"fact": "seo_meta_description_length_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}}
+    ],
+    "best_practices": [
+      {"id": "title_keyword", "check": "Every title contains its page's target keyword: the primary keyword, or the secondary keyword for a page that gave the primary up. Full credit for none wrong or missing; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_title_keyword_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "keyword_given_up", "check": "None of the 6 pages that give up their primary keyword uses it in its title or meta description. Full credit for none; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_conceded_keyword_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "description_keywords", "check": "Every meta description contains its page's target keyword, and, on a page that keeps its primary keyword, its secondary keyword too. Full credit for none wrong or missing; zero credit at 4 or more.", "programmatic": {"fact": "seo_meta_description_keyword_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}},
+      {"id": "price_only_in_stock", "check": "Each of the 13 in-stock product pages shows its price in its meta description exactly as the inventory writes it, and no title and no other meta description shows a price or a $. Full credit for none wrong or missing; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_price_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "page_facts", "check": "Every product's meta description contains its first attribute word for word, and every category's contains its product count in digits. Full credit for none wrong or missing; zero credit at 4 or more.", "programmatic": {"fact": "seo_meta_page_fact_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}},
+      {"id": "no_duplicates", "check": "No two titles are the same and no two meta descriptions are the same. Full credit for none repeated; zero credit at 3 or more.", "programmatic": {"fact": "seo_meta_duplicate_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}}
+    ]
+  }
+}

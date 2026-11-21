@@ -88,6 +88,7 @@ separate code. No model has been run on them yet:
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
 | [Redirect map](../eval_runner/tasks/seo-redirect-map.json) | A redirect file for a shop moving platform, from a 214-URL crawl of the old site, the new site's URL list and ten migration rules in order, with four labeled counts | Applying the first rule that fits to every URL: products matched by SKU when a successor took a retired product's slug, old redirects and the new site's own redirects followed to a live page, parameter URLs and unchanged pages left out, a date stripped only when it is a date, and retired products with no signal at all gone instead of redirected | 15 |
+| [Titles and meta descriptions](../eval_runner/tasks/seo-titles-meta.json) | A title and a meta description for each of the 41 indexed pages of a 46-page inventory, with three labeled counts | Hard length limits, a suffix per page type, the exact keyword in each, prices only on in-stock products, a product's attribute and a category's count, and pages that share a keyword: the one with the most clicks keeps it (ties by page type, then id), the rest switch to their secondary keyword and may not use the one they gave up, while a noindex page takes no part and a singular is not a plural | 16 |
 
 ### Forecast tasks
 

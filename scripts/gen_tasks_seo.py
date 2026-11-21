@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 FIXTURES = REPO_ROOT / "eval_runner" / "fixtures"
 
 
@@ -348,9 +349,112 @@ def build_redirect_map() -> dict[str, str]:
     }
 
 
+# ------------------------------------------------------------------ seo-titles-meta
+
+META_HEADER = ["page_id", "url", "page_type", "name", "primary_keyword", "secondary_keyword", "attributes",
+               "price", "in_stock", "product_count", "index", "clicks_28d"]
+# page_id, url, type, name, primary, secondary, attributes, price, in stock, product count, index, clicks.
+# Six groups share a primary keyword among indexed pages; two more share one only with a noindex page.
+META_PAGES = [
+    ("C-01", "/collections/dog-beds", "category", "Dog Beds", "dog beds", "orthopedic dog beds", "", "", "", 38, "index", 1840),
+    ("C-02", "/collections/cat-trees", "category", "Cat Trees", "cat trees", "cat towers", "", "", "", 24, "index", 880),
+    ("C-03", "/collections/dog-harnesses", "category", "Dog Harnesses", "dog harness", "harnesses for dogs", "", "", "", 31, "index", 540),
+    ("C-04", "/collections/dog-bowls", "category", "Dog Bowls", "dog bowls", "dog food bowls", "", "", "", 19, "index", 310),
+    ("C-05", "/collections/puppy-training", "category", "Puppy Training", "puppy training pads", "puppy pads", "", "", "", 12, "index", 410),
+    ("C-06", "/collections/aquarium-filters", "category", "Aquarium Filters", "aquarium filter", "fish tank filters", "", "", "", 15, "index", 300),
+    ("C-07", "/collections/cat-litter", "category", "Cat Litter", "cat litter", "clumping cat litter", "", "", "", 22, "index", 1210),
+    ("C-08", "/collections/bird-cages", "category", "Bird Cages", "bird cages", "large bird cage", "", "", "", 9, "index", 140),
+    ("C-09", "/collections/small-animal-bedding", "category", "Small Animal Bedding", "small animal bedding", "hamster bedding", "", "", "", 14, "index", 95),
+    ("C-10", "/collections/dog-toys", "category", "Dog Toys", "dog toys", "durable dog toys", "", "", "", 46, "index", 1500),
+    ("C-11", "/collections/cat-toys", "category", "Cat Toys", "cat toys", "interactive cat toys", "", "", "", 33, "index", 620),
+    ("C-12", "/collections/dog-beds?size=large", "category", "Dog Beds: Large", "dog beds", "large dog beds", "", "", "", 11, "noindex", 210),
+    ("C-13", "/collections/clearance", "category", "Clearance", "pet supplies clearance", "discount pet supplies", "", "", "", 57, "noindex", 640),
+    ("P-101", "/products/cloudrest-orthopedic-dog-bed", "product", "CloudRest Orthopedic Dog Bed", "dog bed", "orthopedic dog bed", "memory foam base; washable cover", "89.00", "yes", "", "index", 420),
+    ("P-104", "/products/summit-cat-tree", "product", "Summit Cat Tree", "cat tree with hammock", "multi level cat tree", "sisal scratching posts; two hammocks", "129.00", "no", "", "index", 260),
+    ("P-107", "/products/trailmate-no-pull-harness", "product", "TrailMate No-Pull Harness", "dog harness", "no pull harness for dogs", "front clip; reflective stitching", "34.00", "yes", "", "index", 540),
+    ("P-110", "/products/steel-dog-bowl-small", "product", "Steel Dog Bowl, Small", "stainless steel dog bowl", "dog water bowl", "non-slip rubber base; dishwasher safe", "12.00", "yes", "", "index", 75),
+    ("P-113", "/products/steel-dog-bowl-large", "product", "Steel Dog Bowl, Large", "stainless steel dog bowl", "elevated dog bowl", "raised bamboo stand; dishwasher safe", "18.00", "yes", "", "index", 75),
+    ("P-116", "/products/leakguard-training-pads", "product", "LeakGuard Training Pads, 50 Pack", "puppy training pads", "absorbent puppy pads", "five-layer core; scented attractant", "24.00", "yes", "", "index", 655),
+    ("P-119", "/products/clearflow-aquarium-filter", "product", "ClearFlow Aquarium Filter", "aquarium filter", "hang on back filter", "three-stage filtration; quiet motor", "46.00", "yes", "", "index", 420),
+    ("P-122", "/products/catnip-mouse-trio", "product", "Catnip Mouse Trio", "catnip toys", "catnip mice", "organic catnip; set of three", "9.00", "yes", "", "index", 90),
+    ("P-125", "/products/chew-ring-xl", "product", "Chew Ring XL", "tough dog chew toy", "dog chew ring", "natural rubber; floats in water", "15.00", "no", "", "index", 130),
+    ("P-128", "/products/feather-wand", "product", "Feather Wand", "cat feather wand", "wand toy for cats", "telescoping rod; refill feathers", "11.00", "yes", "", "index", 210),
+    ("P-131", "/products/pine-litter-20lb", "product", "Pine Litter, 20 lb", "pine cat litter", "natural cat litter", "compostable pine pellets; low dust", "27.00", "no", "", "index", 340),
+    ("P-134", "/products/flight-cage-xl", "product", "Flight Cage XL", "flight cage for birds", "large parakeet cage", "rolling stand; seed guard", "189.00", "yes", "", "index", 60),
+    ("P-137", "/products/paper-bedding-30l", "product", "Paper Bedding, 30 L", "paper small animal bedding", "dust free hamster bedding", "unbleached paper; odour control", "19.00", "no", "", "index", 115),
+    ("P-140", "/products/slow-feeder-bowl", "product", "Slow Feeder Bowl", "slow feeder dog bowl", "puzzle feeder bowl", "maze pattern; non-slip base", "16.00", "yes", "", "index", 380),
+    ("P-143", "/products/travel-water-bottle", "product", "Travel Water Bottle", "dog travel water bottle", "portable dog water bottle", "leak-proof lock; fold-out bowl", "21.00", "no", "", "index", 170),
+    ("P-146", "/products/heated-cat-bed", "product", "Heated Cat Bed", "heated cat bed", "self warming cat bed", "low-voltage pad; removable cover", "49.00", "yes", "", "index", 290),
+    ("P-149", "/products/automatic-litter-box", "product", "Automatic Litter Box", "self cleaning litter box", "automatic litter box", "sealed waste drawer; app alerts", "249.00", "no", "", "index", 510),
+    ("P-152", "/products/rope-tug-toy", "product", "Rope Tug Toy", "rope dog toy", "tug toy for dogs", "cotton rope; two handles", "13.00", "yes", "", "index", 150),
+    ("P-155", "/products/hamster-wheel-silent", "product", "Silent Hamster Wheel", "silent hamster wheel", "quiet exercise wheel", "ball-bearing spin; solid running track", "22.00", "no", "", "index", 140),
+    ("P-158", "/products/aquarium-heater-100w", "product", "Aquarium Heater, 100 W", "aquarium heater", "fish tank heater", "adjustable thermostat; shatterproof glass", "29.00", "yes", "", "index", 230),
+    ("P-161", "/products/cloudrest-orthopedic-dog-bed-copy", "product", "CloudRest Orthopedic Dog Bed (copy)", "dog bed", "orthopedic dog bed", "memory foam base; washable cover", "89.00", "yes", "", "noindex", 30),
+    ("G-201", "/guides/cat-tree-buying-guide", "guide", "How to Choose a Cat Tree", "cat trees", "how to choose a cat tree", "", "", "", "", "index", 1320),
+    ("G-202", "/guides/puppy-potty-training", "guide", "Potty Training a Puppy", "puppy training pads", "potty training a puppy", "", "", "", "", "index", 120),
+    ("G-203", "/guides/introduce-dog-to-cat", "guide", "Introducing a Dog to a Cat", "how to introduce a dog to a new cat", "dogs and cats living together", "", "", "", "", "index", 260),
+    ("G-204", "/guides/aquarium-cycling", "guide", "Cycling a New Aquarium", "how to cycle a fish tank", "nitrogen cycle aquarium", "", "", "", "", "index", 340),
+    ("G-205", "/guides/dog-bed-sizes", "guide", "Dog Bed Sizes", "dog bed size chart", "what size dog bed", "", "", "", "", "index", 510),
+    ("G-206", "/guides/litter-box-placement", "guide", "Litter Box Placement", "where to put a litter box", "litter box placement", "", "", "", "", "index", 190),
+    ("G-207", "/guides/harness-fitting", "guide", "Fitting a Dog Harness", "how to fit a dog harness", "dog harness sizing", "", "", "", "", "index", 230),
+    ("G-208", "/guides/hamster-cage-setup", "guide", "Setting Up a Hamster Cage", "hamster cage setup", "hamster habitat ideas", "", "", "", "", "index", 80),
+    ("G-209", "/guides/catnip-guide-old", "guide", "Catnip Guide (old)", "catnip toys", "what is catnip", "", "", "", "", "noindex", 300),
+    ("G-210", "/guides/senior-dog-care", "guide", "Caring for a Senior Dog", "senior dog care", "caring for an older dog", "", "", "", "", "index", 450),
+    ("G-211", "/guides/2023-gift-guide", "guide", "Gift Guide 2023", "gifts for dog lovers", "dog lover gift ideas", "", "", "", "", "noindex", 150),
+    ("G-212", "/guides/hot-weather-dogs", "guide", "Keeping Dogs Cool", "how to keep a dog cool in hot weather", "dog heatstroke signs", "", "", "", "", "index", 390),
+]
+
+
+def meta_rules_md() -> str:
+    from eval_runner import task_facts_seo as facts  # the checker's own constants
+
+    low, high = facts.META_DESCRIPTION_RANGE
+    order = ", ".join(facts.META_SUFFIXES)
+    suffixes = "\n".join(f"  - {kind}: `{suffix}`" for kind, suffix in facts.META_SUFFIXES.items())
+    return f"""\
+# Quillon Pet Supply: rules for titles and meta descriptions
+
+Quillon Pet Supply sells pet food, beds, toys and supplies online at www.quillonpets.example. Write a title and a meta description for every page in `page_inventory.csv` that is indexed, following these rules.
+
+## Which pages
+- A page whose `index` is `noindex` gets no row, and it takes no part in the keyword rule below.
+
+## The target keyword
+- Each page targets its `primary_keyword`.
+- When two or more indexed pages have the same `primary_keyword`, only one of them keeps it: the page with the most `clicks_28d`; on a tie, the page whose type comes first in this order: {order}; on a further tie, the page whose `page_id` comes first. Every other page of the group targets its `secondary_keyword` instead, and neither its title nor its meta description may contain the primary keyword it gave up.
+- Keywords are matched as whole words. Capital letters may differ, and a hyphen may stand for a space; nothing else may.
+
+## Titles
+- At most {facts.META_TITLE_MAX} characters, counting spaces and the suffix.
+- Contain the page's target keyword.
+- End with the suffix for the page type, exactly:
+{suffixes}
+- The brand name "{facts.META_BRAND}" appears in a title only in its suffix.
+- No price and no `$`.
+
+## Meta descriptions
+- {low} to {high} characters, counting spaces.
+- Contain the page's target keyword. A page that keeps its primary keyword also contains its `secondary_keyword`.
+- A product page contains the first of its `attributes` (they are separated by semicolons), word for word.
+- A category page contains its `product_count`, written in digits.
+- An in-stock product page (`in_stock` is yes) contains its price, written as `$` and the `price` value exactly as the inventory gives it (`$34.00`). No other meta description contains a price or a `$`: an out-of-stock product's price is not shown anywhere.
+
+## No duplicates
+- No two titles are the same, and no two meta descriptions are the same.
+"""
+
+
+def build_titles_meta() -> dict[str, str]:
+    rows = sorted((list(page) for page in META_PAGES), key=lambda row: row[1])
+    return {
+        "seo-titles-meta/page_inventory.csv": _csv_text(META_HEADER, rows),
+        "seo-titles-meta/title_rules.md": meta_rules_md(),
+    }
+
+
 # ------------------------------------------------------------------------- driver
 
-BUILDERS = (build_redirect_map,)
+BUILDERS = (build_redirect_map, build_titles_meta)
 
 
 def build_all() -> dict[str, str]:

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Tasks: `seo-titles-meta` (development split): a title and a meta
+  description for each of the 41 indexed pages of a 46-page inventory, under
+  written rules, as `titles_meta.csv`, with three labeled counts. All 16
+  checks are a program's: limits, suffixes, keywords, prices, attributes,
+  counts and duplicates, page by page. The trap is the keyword rule: when
+  pages share a primary keyword the one with the most clicks keeps it (ties
+  by page type, then id) and the others target their secondary keyword
+  without the one they gave up; a guide out-clicks its category, a noindex
+  page with more clicks takes no part, and "dog bed" is not "dog beds".
+  Out-of-stock products carry a price in the inventory that may not be shown.
 - Tasks: `seo-redirect-map` (development split): a shop moving platform on the
   same domain. A 214-URL crawl of the old site, the new site's URL list and
   ten migration rules in order in; a `redirects.csv` of 301s and 410s and four
