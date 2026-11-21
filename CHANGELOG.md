@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Tasks: `email-compliance-audit` (development split): 18 email drafts, a
+  sending policy with six violation codes, a consent table by audience and
+  the DNS records of three sending domains in; a verdict per draft, a fix
+  per violation and three labeled counts out. 14 violations are planted
+  across 11 drafts and the other 7 drafts are look-alikes that pass. 12 of
+  its 13 checks are a program's: one per code, each failed by a single
+  missed or false flag. It lives in `eval_runner/task_facts_email.py` beside
+  `email-send-calendar`; `tests/test_tasks_email.py` reads the four fixture
+  files with its own parser, recomputes every verdict and figure, and shows
+  that each of 13 tempting misreadings of the policy (DMARC `sp=` read as
+  `p=`, `~all` read as a fail, a PO box refused, transactional drafts held
+  to the marketing footer rules, only the first audience checked, and more)
+  scores zero on the checks it touches and full on the rest.
 - Tasks: `email-send-calendar` (development split): a 12-campaign plan, a
   300-subscriber export with six overlapping segments and a calendar policy
   in; each campaign's send date, audience size and reason out, with five

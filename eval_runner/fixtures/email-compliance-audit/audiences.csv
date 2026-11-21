@@ -1,0 +1,13 @@
+audience_id,name,region,consent,double_opt_in,max_months_since_purchase
+A01,US newsletter sign-ups,US,express,no,
+A02,US customers,US,customer,,22
+A03,UK newsletter sign-ups,UK,express,no,
+A04,UK customers,UK,customer,,30
+A05,"EU newsletter, confirmed",EU,express,yes,
+A06,"EU newsletter, unconfirmed",EU,express,no,
+A07,EU customers,EU,customer,,14
+A08,Canada customers,CA,customer,,24
+A09,"Canada customers, lapsed",CA,customer,,38
+A10,Clean Beauty Expo badge scans,US,event,,
+A11,Partner giveaway entrants,US,imported,,
+A12,Order and account notifications,all,none,,
