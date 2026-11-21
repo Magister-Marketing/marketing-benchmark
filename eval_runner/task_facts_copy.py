@@ -398,7 +398,7 @@ REGISTER: list[RegisterRow] = [
     RegisterRow("Halo Max", "Replacement filter price", "$59", APPROVED, "email; push"),
     RegisterRow("Halo Pet", "Replacement filter price", "$45", APPROVED, "email; push"),
     RegisterRow("all", "A filter subscription saves", "15% on filters", APPROVED, "email",
-                note="Subscription page only"),
+                note="For the filter subscription"),
     RegisterRow("all", "Filter subscription launch discount", "25% on filters", APPROVED, "email",
                 date(2027, 1, 31), "Holiday promotion"),
     RegisterRow("Halo One", "Stand accessory price", "$49", PENDING, note="Stand ships in May"),
@@ -497,7 +497,7 @@ PLACEMENTS: list[Placement] = [
 PLACEMENT = {placement.code: placement for placement in PLACEMENTS}
 SMS_CODE = "SM"
 MUST_LABELS = {"full name": "the product's full name", "name": "the product's name", "brand": f"`{BRAND}`",
-               "offer end": "the date its launch offer ends"}
+               "offer end": "the date its launch offer ends (voice rule 6)"}
 
 
 def launch_assets() -> list[tuple[str, LaunchProduct, Placement]]:
@@ -639,18 +639,45 @@ def uncleared_figures(product: LaunchProduct, channel: str, text: str) -> int:
     return sum(1 for value in figures(text) if value not in allowed)
 
 
+NEGATIONS = ("no", "without")
+ARTICLES = ("a", "an", "the")
+
+
+def makes_claim(text: str, phrase: str) -> bool:
+    """Whether the text makes the claim a phrase carries: its words, whole and
+    in order, the last one also as a plural ("odors"), and not right after no
+    or without, an article between or not ("no app needed", "without the app"
+    claim no app)."""
+    words, wanted = word_list(text), word_list(phrase)
+    n = len(wanted)
+    for start in range(len(words) - n + 1):
+        found = words[start:start + n]
+        if found[:-1] == wanted[:-1] and found[-1] in (wanted[-1], wanted[-1] + "s"):
+            before = words[max(0, start - 2):start]
+            if before[-1:] and before[-1] in ARTICLES:
+                before = before[:-1]
+            if not before or before[-1] not in NEGATIONS:
+                return True
+    return False
+
+
 def uncleared_claims(product: LaunchProduct, channel: str, text: str) -> int:
     """Claim phrases from the register that copy of this product may not make
     in this channel: pending, withdrawn or internal, another product's, or
     approved for other channels only, or expired by the launch day."""
-    return sum(1 for phrase in PHRASES if has_words(text, phrase) and not any(
+    return sum(1 for phrase in PHRASES if makes_claim(text, phrase) and not any(
         row.wording == phrase and row.usable(product, channel) for row in REGISTER))
+
+
+# A product on sale named as a product: after Larkspur or a determiner, with a
+# capital ("your Breeze"); "a breeze" and "drift off" are ordinary words.
+_ON_SALE = re.compile(r"\b(?:Larkspur|[Tt]he|[Yy]our|[Oo]ur|[Mm]y|[Aa]n?|[Ee]ach|[Ee]very)\s+(Breeze|Drift|Ember)\b")
 
 
 def other_products_named(product: LaunchProduct, text: str) -> int:
     """Other Larkspur products the text names: another Halo, or one already on sale."""
-    names = [other.name for other in LAUNCH_PRODUCTS if other is not product] + list(OTHER_PRODUCTS)
-    return sum(1 for name in names if has_words(text, name))
+    halos = sum(1 for other in LAUNCH_PRODUCTS if other is not product and has_words(text, other.name))
+    return halos + len(set(_ON_SALE.findall(str(text)[:_MAX_TEXT])))
 
 
 def states_price(product: LaunchProduct, text: str) -> bool:
@@ -669,11 +696,27 @@ def price_rule_errors(product: LaunchProduct, placement: Placement, text: str) -
     errors = 0
     if not placement.price and states_price(product, text):
         errors += 1
-    if launch in values and not missing_strings(text, (product.offer_ends,)) == 0:
+    if launch in values and not states_date(text, product.offer_ends):
         errors += 1
     if regular in values and launch not in values:
         errors += 1
     return errors
+
+
+def states_date(text: str, written: str) -> bool:
+    """Whether the text states a date the register writes "Mar 7": as Mar 7,
+    Mar. 7 or March 7, any case, and not Mar 17."""
+    month, day = written.split()
+    return bool(re.search(rf"\b{month}(?:\.|ch)?\s+{day}(?!\d)", str(text)[:_MAX_TEXT], re.IGNORECASE))
+
+
+def missing_required(asset_id: str, product: LaunchProduct, placement: Placement, text: str) -> int:
+    """What the placement makes this asset carry and it does not: a name as
+    its characters, any case; the offer's end date as states_date reads it."""
+    strings = required_strings(asset_id, product, placement)
+    if placement.must == "offer end":
+        return sum(1 for string in strings if not states_date(text, string))
+    return missing_strings(text, strings)
 
 
 def sms_format_errors(product: LaunchProduct, text: str) -> int:
@@ -857,16 +900,20 @@ These apply to every asset of the launch.
    your own.
 3. The phrases in `copy_wording` that carry no figure (`app`, `pet dander`,
    `HEPA` and the rest) are claims too: an asset uses one only when a row
-   with that wording is usable for it.
+   with that wording is usable for it. A plural is the same claim (`odors`);
+   a phrase right after `no` or `without`, with or without `a`, `an` or `the`
+   between (`no app needed`, `without the app`), claims nothing.
 4. Each asset is about its own product: it names no other Halo product
-   and no other Larkspur product (the Breeze, the Drift or the Ember).
+   and no other Larkspur product (the Breeze, the Drift or the Ember). The
+   everyday words (`a breeze`, `drift off`) are not names.
 5. Nothing else about a product: no award, endorsement, ranking, review,
    comparison with another product, or health outcome.
 
 ## Prices
 
 6. An asset that states its product's launch price also states the date
-   that product's launch offer ends, as the register writes it. An asset may
+   that product's launch offer ends (`Mar 7`, `Mar. 7` and `March 7` are the
+   same date; `Mar 17` is not). An asset may
    state its product's regular price only when it also states the launch
    price. An asset in a placement that allows no price (see placements.md)
    states no amount of money at all.
@@ -1029,8 +1076,7 @@ def launch_facts(response_text: str) -> dict[str, int]:
         out["workflow_over_limit_count"] += len(text) > limit_for(placement, text)
         if placement.code == SMS_CODE:
             out["workflow_sms_format_error_count"] += sms_format_errors(product, text)
-        out["workflow_required_string_missing_count"] += missing_strings(
-            text, required_strings(asset_id, product, placement))
+        out["workflow_required_string_missing_count"] += missing_required(asset_id, product, placement, text)
         out["workflow_placement_exclusion_count"] += exclusions_in(placement, text)
         out["workflow_price_rule_error_count"] += price_rule_errors(product, placement, text)
         out["workflow_uncleared_figure_count"] += uncleared_figures(product, placement.channel, text)

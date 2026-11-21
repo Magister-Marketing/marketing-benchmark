@@ -17,16 +17,20 @@ These apply to every asset of the launch.
    your own.
 3. The phrases in `copy_wording` that carry no figure (`app`, `pet dander`,
    `HEPA` and the rest) are claims too: an asset uses one only when a row
-   with that wording is usable for it.
+   with that wording is usable for it. A plural is the same claim (`odors`);
+   a phrase right after `no` or `without`, with or without `a`, `an` or `the`
+   between (`no app needed`, `without the app`), claims nothing.
 4. Each asset is about its own product: it names no other Halo product
-   and no other Larkspur product (the Breeze, the Drift or the Ember).
+   and no other Larkspur product (the Breeze, the Drift or the Ember). The
+   everyday words (`a breeze`, `drift off`) are not names.
 5. Nothing else about a product: no award, endorsement, ranking, review,
    comparison with another product, or health outcome.
 
 ## Prices
 
 6. An asset that states its product's launch price also states the date
-   that product's launch offer ends, as the register writes it. An asset may
+   that product's launch offer ends (`Mar 7`, `Mar. 7` and `March 7` are the
+   same date; `Mar 17` is not). An asset may
    state its product's regular price only when it also states the launch
    price. An asset in a placement that allows no price (see placements.md)
    states no amount of money at all.

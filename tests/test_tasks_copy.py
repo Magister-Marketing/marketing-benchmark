@@ -400,7 +400,10 @@ def test_the_edges_of_the_word_rules(text, count):
     ("ONE", "SH", "The launch price ends Mar 14", 0),
     ("ONE", "SD", "$199 until Mar 14, then $249", 0),
     ("ONE", "SD", "$199 until mar 14th", 0),          # the date's characters, any case
-    ("ONE", "SD", "$199 until Mar. 14", 1),           # not the date as the register writes it
+    ("ONE", "SD", "$199 until Mar. 14", 0),           # Mar 14, Mar. 14 and March 14 are one date
+    ("ONE", "SD", "$199 until March 14", 0),
+    ("ONE", "SD", "$199 until Mar 4", 1),             # another date
+    ("PET", "SD", "$229 until Mar 1", 1),             # not Mar 14 cut short
     ("ONE", "SD", "Regular price $249", 1),
     ("MINI", "SD", "$99 until Mar 14", 1),            # Halo One's date
     ("PET", "SD", "$199 for early birds", 0),          # not this product's launch or regular price
@@ -439,11 +442,38 @@ def test_the_edges_of_headline_openings(first, second, clash):
     ("PET", "social", "Catches pet hair", 0, 0),
     ("PET", "push", "Catches pet hair", 0, 1),
     ("MAX", "email", "Carbon filter for odor", 0, 1),          # odor is the Pet's claim
+    ("MAX", "email", "Carbon filter for odors", 0, 1),         # a plural is the same claim
+    ("MINI", "search", "No app needed.", 0, 0),                 # a negation claims nothing
+    ("MINI", "social", "Halo Mini: no Wi-Fi, no setup", 0, 0),
+    ("MINI", "social", "Works without the app", 0, 0),           # an article between
+    ("MINI", "social", "Works with the app", 0, 1),
+    ("MINI", "social", "Works without Wi-Fi", 0, 0),
 ])
 def test_the_edges_of_the_register(code, channel, text, figures_wrong, claims_wrong):
     product = m.LAUNCH_PRODUCT[code]
     assert m.uncleared_figures(product, channel, text) == figures_wrong
     assert m.uncleared_claims(product, channel, text) == claims_wrong
+
+
+@pytest.mark.parametrize("code, text, named", [
+    ("MINI", "Drift off to cleaner air", 0),          # everyday words, not the products
+    ("ONE", "Halo One: setup is a breeze", 0),
+    ("PET", "Pairs with your Breeze", 1),
+    ("MAX", "Works with the Larkspur Ember", 1),
+    ("ONE", "Halo One or Halo Max", 1),
+    ("ONE", "Halo One, the One for you", 0),
+])
+def test_the_edges_of_naming_another_product(code, text, named):
+    assert m.other_products_named(m.LAUNCH_PRODUCT[code], text) == named
+
+
+def test_launch_the_offer_date_reads_the_same_in_both_rules():
+    preheader = m.PLACEMENT["EP"]
+    one = m.LAUNCH_PRODUCT["ONE"]
+    for text, missing in (("The launch price ends March 14.", 0), ("The launch price ends Mar. 14.", 0),
+                          ("The launch price ends Mar 4.", 1)):
+        assert m.missing_required("ONE-EP-02", one, preheader, text) == missing
+        assert m.price_rule_errors(one, preheader, "$199. " + text) == missing
 
 
 def test_launch_rows_are_read_however_the_csv_is_written():
