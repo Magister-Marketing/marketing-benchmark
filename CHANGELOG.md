@@ -15,6 +15,35 @@
   both turns' tokens). The share is shown as `decoy_cost_usd` and
   `decoy_latency_seconds`. A turn with no recorded cost or time makes the
   total unknown, never lower. Other tasks are unchanged.
+- Tasks: `launch-timeline` (development split, strategy area): schedule a
+  24-task product launch under written rules (working days, three holidays,
+  dependencies, owners who take their tasks one at a time in ID order, two
+  not-before dates), then give the launch date, the critical path, the slack
+  of three named tasks, whether the promised date holds and the smallest set
+  of optional tasks to cut to make it. The oracle schedules the plan as a
+  longest path and tries every set of optional tasks; the test schedules it
+  again day by day and measures slack by delaying each task. 13 of its 14
+  checks are a program's. The `launch` skill is vendored unchanged at
+  `2c38021`.
+- Tasks: `competitor-comparison` (development split, strategy area): a
+  comparison table of 12 attributes for Tallyhour and five fictional
+  competitors, read from six saved pricing pages under a brief's rules, and a
+  verdict on five draft claims. Every cell is checked: the oracle reads each
+  one out of its page through a declared source (a plan-table cell, a
+  sentence, an FAQ answer that overrides the table, or a term the page never
+  uses) and applies the monthly-basis and `not stated` rules. 13 of its 14
+  checks are a program's, one per trap group and one per claim. The
+  `competitor-profiling` skill is vendored unchanged at `2c38021`.
+- Tasks: `channel-budget-allocation` (development split, strategy area): split
+  a $128,000 quarter across six channels in whole $5,000 blocks from
+  diminishing-returns forecasts, under a lead cap the account executives set
+  on two channels, a monthly licence held all quarter, a 4-block minimum
+  order and a contracted commitment. Two CSV files and five labeled figures;
+  13 of its 14 checks are a program's, against the one best split the oracle
+  finds by trying every split (`eval_runner/task_facts_strategy.py`, hooked
+  into `measured_facts`). Its fixtures are written by
+  `scripts/gen_tasks_strategy.py`. The `ads` skill is vendored unchanged at
+  the same marketingskills pin (`2c38021`) for its "with skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

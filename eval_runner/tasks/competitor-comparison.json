@@ -1,0 +1,42 @@
+{
+  "id": "competitor-comparison",
+  "title": "Build a competitor comparison table and test draft claims against it",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/competitor-comparison/comparison_brief.md",
+    "eval_runner/fixtures/competitor-comparison/tallyhour.md",
+    "eval_runner/fixtures/competitor-comparison/brisktime.md",
+    "eval_runner/fixtures/competitor-comparison/quillhour.md",
+    "eval_runner/fixtures/competitor-comparison/ticklog.md",
+    "eval_runner/fixtures/competitor-comparison/fenwork.md",
+    "eval_runner/fixtures/competitor-comparison/larchpoint.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/competitor-profiling/SKILL.md"
+  ],
+  "prompt": "Priya Raman runs product marketing at Tallyhour, which sells time tracking and invoicing to agencies. Sales wants one comparison table of Tallyhour and its five closest competitors, and Priya wants to know which of five draft claims about Tallyhour the table can back. The supplied comparison brief defines the twelve attributes, the rules every cell follows and the claims, and the six pricing pages are supplied as they were saved today. Use only those files.\n\nDeliver two files. Put each under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### comparison.csv\ncompany,free_plan,trial_days,entry_plan,entry_price_usd,entry_min_users,sso_on_entry,sso_cheapest_plan,invoicing_on_entry,api_on_entry,top_plan_price_usd,uptime_sla_percent,eu_hosting\nOne row per company, Tallyhour first, named as its page names it. Each cell holds the value the brief defines, written as its rule 6 says, or exactly `not stated`.\n\n### claims.csv\nclaim,verdict\nOne row per draft claim, by its number (1 to 5), with the verdict `supportable` or `not supportable`.\n\nAfter the two files, for each claim you mark not supportable, name in one sentence the company and the attribute whose cell keeps it from being supported.\n\nThis is internal research. Change nothing and fetch nothing external: the pages are the record.",
+  "rubric": {
+    "completion": [
+      {"id": "both_files", "check": "Both files (comparison.csv and claims.csv) are in the reply, each under a line with its file name.", "programmatic": {"fact": "comparison_missing_file_count", "equals": 0}},
+      {"id": "six_companies_twelve_columns", "check": "comparison.csv has exactly one row for each of the six companies (Tallyhour, Brisktime, Quillhour, Ticklog, Fenwork, Larchpoint) and no other row, and a column for each of the twelve attributes.", "programmatic": {"fact": "comparison_structure_error_count", "equals": 0}},
+      {"id": "five_claims_once", "check": "claims.csv has exactly one row for each of the five claims, each with the verdict supportable or not supportable, and no other row.", "programmatic": {"fact": "comparison_claim_structure_error_count", "equals": 0}}
+    ],
+    "skill_adherence": [
+      {"id": "prices_on_a_monthly_basis", "check": "Every price cell a page states is right on the brief's monthly basis (rule 4): the price billed monthly wherever there is one (Quillhour Team 23.00, not its annual-billing 19; Larchpoint Core 29.00 and Scale 48.00, not a twelfth of their yearly prices), and a twelfth of the yearly price where a plan is sold only on annual billing (Brisktime Starter 23.00 and Business 35.00). All 11 such cells right; one wrong fails.", "programmatic": {"fact": "comparison_price_cell_error_count", "equals": 0}},
+      {"id": "features_read_per_plan", "check": "Every entry-plan feature cell (sso_on_entry, invoicing_on_entry, api_on_entry) and every sso_cheapest_plan cell is read from its plan's column of the table: no competitor's entry plan includes single sign-on, although Brisktime's introduction lists it (its table puts it on Business only), and Ticklog's Basic plan has no invoicing. All 22 such cells right; one wrong fails.", "programmatic": {"fact": "comparison_tier_cell_error_count", "equals": 0}},
+      {"id": "faq_beats_the_table", "check": "The three cells where a page's FAQ contradicts its plan table follow the FAQ (rule 5): Fenwork's trial_days is 30, Ticklog's api_on_entry is yes, and Quillhour's entry_min_users is 3. One wrong fails.", "programmatic": {"fact": "comparison_faq_cell_error_count", "equals": 0}},
+      {"id": "not_stated_kept", "check": "The six cells their pages do not state are exactly `not stated`: Brisktime's free_plan, Quillhour's top_plan_price_usd (Contact sales) and uptime_sla_percent (a status page is not an SLA), Ticklog's eu_hosting, Fenwork's entry_min_users and Larchpoint's api_on_entry. A no, a zero or any other value fails.", "programmatic": {"fact": "comparison_not_stated_cell_error_count", "equals": 0}},
+      {"id": "other_cells_right", "check": "Every other cell (30: the free plans, trial days, entry plan names, minimum users, uptime SLAs and EU hosting the pages state) is the value its page states, for example Ticklog's 0 trial days, Larchpoint's 14 (a money-back guarantee is not a trial) and its 99.9 SLA (the highest on any plan). One wrong fails.", "programmatic": {"fact": "comparison_other_cell_error_count", "equals": 0}}
+    ],
+    "best_practices": [
+      {"id": "claim_1_verdict", "check": "Claim 1 (Tallyhour's entry plan costs less than every competitor's) is marked supportable: its 21.00 is below every competitor's entry price on a monthly basis, the lowest of which is Fenwork's 22.00.", "programmatic": {"fact": "comparison_claim_1_wrong", "equals": 0}},
+      {"id": "claim_2_verdict", "check": "Claim 2 (Tallyhour is the only one with a free plan) is marked not supportable: Brisktime's free_plan is not stated.", "programmatic": {"fact": "comparison_claim_2_wrong", "equals": 0}},
+      {"id": "claim_3_verdict", "check": "Claim 3 (Tallyhour's 21-day trial is the longest) is marked not supportable: Fenwork's trial is 30 days by its FAQ.", "programmatic": {"fact": "comparison_claim_3_wrong", "equals": 0}},
+      {"id": "claim_4_verdict", "check": "Claim 4 (single sign-on on Tallyhour's entry plan and on no competitor's) is marked supportable: every competitor's sso_on_entry is no.", "programmatic": {"fact": "comparison_claim_4_wrong", "equals": 0}},
+      {"id": "claim_5_verdict", "check": "Claim 5 (Tallyhour's top plan costs less than every competitor's) is marked not supportable: Quillhour's top plan price is not stated.", "programmatic": {"fact": "comparison_claim_5_wrong", "equals": 0}},
+      {"id": "blocked_claims_explained", "check": "For every claim the reply marks not supportable, it names in a sentence the company and the attribute whose cell keeps the claim from being supported, and that cell in the reply's own table is what the sentence says it is. A not-supportable verdict with no reason, or with a reason its own table contradicts, fails."}
+    ]
+  }
+}

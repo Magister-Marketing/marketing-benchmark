@@ -1,0 +1,37 @@
+{
+  "id": "launch-timeline",
+  "title": "Schedule a launch plan and find the smallest cut that saves the date",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/launch-timeline/launch_brief.md",
+    "eval_runner/fixtures/launch-timeline/launch_plan.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/launch/SKILL.md"
+  ],
+  "prompt": "Mara Quill, Head of Marketing at Orlo, has told retail partners that the Orlo Fold lunch box launches on 2027-04-13. The supplied brief gives the calendar, the scheduling rules, the definitions she uses and the rule for cutting tasks, and `launch_plan.csv` lists the 24 tasks of the launch. Schedule the plan exactly as the rules say, tell Mara whether the date holds, and if it does not, what to cut.\n\nDeliver two files. Put each under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes. Write every date as YYYY-MM-DD.\n\n### schedule.csv\ntask_id,start,finish\nOne row for each of the 24 tasks of the plan as it stands, with nothing cut: the first and the last working day it runs.\n\n### answers.csv\nitem,answer\nOne row for each of these eight items:\n- `launch_date`: the launch date of the plan as it stands.\n- `critical_path`: the task IDs of the critical path, in the order they run, separated by spaces.\n- `slack_T06`, `slack_T11`, `slack_T16`: each task's slack, in working days.\n- `target_met`: `yes` if the plan as it stands launches on 2027-04-13 or earlier, otherwise `no`.\n- `cut`: the task IDs of the smallest set of optional tasks to cut, separated by spaces, or `none` if nothing needs cutting.\n- `launch_date_after_cut`: the launch date with that set cut.\n\nThen, in a few sentences for Mara, say what the cut drops and why no smaller set does it.\n\nThis is a plan for review. Change nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {"id": "both_files", "check": "Both files (schedule.csv and answers.csv) are in the reply, each under a line with its file name.", "programmatic": {"fact": "timeline_missing_file_count", "equals": 0}},
+      {"id": "every_task_once", "check": "schedule.csv has exactly one row for each of the 24 tasks and no other row.", "programmatic": {"fact": "timeline_task_row_error_count", "equals": 0}},
+      {"id": "every_item_answered", "check": "answers.csv has exactly one row for each of the eight items (launch_date, critical_path, slack_T06, slack_T11, slack_T16, target_met, cut, launch_date_after_cut) and no other row.", "programmatic": {"fact": "timeline_answer_item_error_count", "equals": 0}}
+    ],
+    "skill_adherence": [
+      {"id": "starts_follow_the_rules", "check": "Every task in schedule.csv starts on the day the brief's rules give it: after the tasks it depends on, after its owner's previous task in ID order, not before its not_before date, and on a working day. Full credit for none wrong; zero credit at 4 or more.", "programmatic": {"fact": "timeline_wrong_start_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 4}}},
+      {"id": "finishes_follow_the_calendar", "check": "Every finish in schedule.csv is its own start plus the task's duration in working days, skipping weekends and the three holidays (2027-03-12, 2027-03-26, 2027-03-29), whatever start the reply gives the task. One wrong fails.", "programmatic": {"fact": "timeline_calendar_error_count", "equals": 0}},
+      {"id": "launch_date_right", "check": "launch_date is 2027-04-16.", "programmatic": {"fact": "timeline_launch_date_wrong", "equals": 0}},
+      {"id": "critical_path_right", "check": "critical_path is T02 T04 T05 T07 T08 T17 T19 T22 T23 T24, in that order: the designer's queue (T02, T04, T05 and T07, which follow one another by her ID order, not by dependency), then the landing page build, paid social setup, the two QA tasks, the review and the launch.", "programmatic": {"fact": "timeline_critical_path_wrong", "equals": 0}},
+      {"id": "slack_t06_right", "check": "slack_T06 is 2: the 10-day print run, the longest task, is not on the critical path.", "programmatic": {"fact": "timeline_slack_t06_wrong", "equals": 0}},
+      {"id": "slack_t11_right", "check": "slack_T11 is 1.", "programmatic": {"fact": "timeline_slack_t11_wrong", "equals": 0}},
+      {"id": "slack_t16_right", "check": "slack_T16 is 18: the longest optional task has 18 working days of slack.", "programmatic": {"fact": "timeline_slack_t16_wrong", "equals": 0}}
+    ],
+    "best_practices": [
+      {"id": "target_missed_said", "check": "target_met is no: the plan as it stands launches on 2027-04-16, after 2027-04-13.", "programmatic": {"fact": "timeline_target_met_wrong", "equals": 0}},
+      {"id": "smallest_cut", "check": "cut is exactly T05 and T13: cutting T05 alone moves the launch only to 2027-04-14, and no single task or other pair brings it to 2027-04-13.", "programmatic": {"fact": "timeline_cut_wrong", "equals": 0}},
+      {"id": "launch_after_cut_right", "check": "launch_date_after_cut is 2027-04-13.", "programmatic": {"fact": "timeline_launch_after_cut_wrong", "equals": 0}},
+      {"id": "no_moves_outside_the_rules", "negative": true, "check": "The reply reaches its launch dates only as the brief allows: it does not move a not_before date or a holiday, shorten or split a task, give a task to another owner, have an owner work on two tasks at once or out of ID order, or cut a task that is not optional, and it does not present any such change as part of its answer. Suggesting one as a separate idea, clearly marked as outside the brief's rules, is fine."}
+    ]
+  }
+}

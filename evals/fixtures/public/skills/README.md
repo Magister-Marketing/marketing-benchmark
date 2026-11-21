@@ -17,10 +17,13 @@ Each file's own version is in its frontmatter. At this pin:
 | Benchmark path | Upstream path | Version |
 |---|---|---|
 | `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.9.4 |
+| `ads/SKILL.md` | `skills/ads/SKILL.md` | 2.2.1 |
 | `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
+| `competitor-profiling/SKILL.md` | `skills/competitor-profiling/SKILL.md` | 2.0.1 |
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
 | `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
 | `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |
+| `launch/SKILL.md` | `skills/launch/SKILL.md` | 2.0.1 |
 | `site-architecture/SKILL.md` | `skills/site-architecture/SKILL.md` | 2.0.0 |
 
 How they reach the model: `assemble_prompt` in `eval_runner/bench.py` appends

@@ -1,0 +1,7 @@
+channel,description,max_blocks,minimum_if_used_blocks,committed_blocks,fee_usd_per_month,routed_to_aes
+search,"Google Ads search, non-brand keywords",10,0,0,0,no
+linkedin,LinkedIn Ads sponsored content to the target-account list,8,0,0,0,yes
+webinars,Monthly webinar series promoted to the house list and partner lists,5,0,0,1400,yes
+syndication,Content syndication of the clinic benchmark report through a B2B publisher network,8,4,0,0,no
+review_sites,Paid profile and lead program on software review marketplaces,4,0,2,0,no
+meta,Meta retargeting of site visitors and trial drop-offs,6,0,0,0,no
