@@ -47,12 +47,15 @@ SEGMENTS = {
 NOISE_POINTS = 0.8
 BREAK_DAY = dt.date(2026, 3, 16)          # release 5.8.0
 BROKEN = (("mobile", "Safari"), 41.0)     # its order step from the release on
+SECOND_BREAK_DAY = dt.date(2026, 3, 18)   # the new shipping-rate table
+SECOND = (("tablet", "Chrome"), 52.0)     # its shipping step from that day on
 # Effects inside the normal range: segment(s), step index (0 shipping, 1 payment, 2 order), first day, last day, points.
 INSIDE = [
     ([("mobile", "Chrome")], 0, dt.date(2026, 3, 10), None, 2.0),                       # after 5.7.0
     ([("tablet", "Safari")], 2, BREAK_DAY, None, 2.8),                                  # after 5.8.0
     ([("mobile", "Chrome"), ("mobile", "Samsung Internet")], 2, BREAK_DAY, None, 1.2),  # after 5.8.0
-    ([("desktop", "Firefox"), ("mobile", "Firefox")], 0, dt.date(2026, 3, 18), None, 1.5),
+    ([("desktop", "Firefox")], 2, BREAK_DAY, None, 2.5),                                # after 5.8.0
+    ([("desktop", "Firefox"), ("mobile", "Firefox")], 0, SECOND_BREAK_DAY, None, 1.5),  # after the rate table
     (list(SEGMENTS), 0, dt.date(2026, 3, 21), dt.date(2026, 3, 24), 1.0),              # the sale email
 ]
 SALE_DAYS = (dt.date(2026, 3, 21), dt.date(2026, 3, 24))
@@ -61,11 +64,16 @@ SALE_CARTS = 1.2
 OUTAGES = [
     (("desktop", "Chrome"), 2, dt.date(2026, 3, 24), dt.date(2026, 3, 24), 31.0),
     (("desktop", "Edge"), 1, dt.date(2026, 3, 20), dt.date(2026, 3, 23), 66.0),
+    (("mobile", "Samsung Internet"), 0, dt.date(2026, 3, 11), dt.date(2026, 3, 12), 46.0),
 ]
-BOT_FIRST_DAY = dt.date(2026, 3, 19)
-BOT_CARTS = (240, 330)
+# The crawler fills carts and reads shipping costs: about 1 in 70 of its carts reaches shipping.
+BOT_FIRST_DAY = dt.date(2026, 3, 13)
+BOT_CARTS = (260, 340)
+BOT_SHIPPING_SHARE = (0.011, 0.017)
 _ORDER_DAYS = facts.FUNNEL_DOUBLE_FIRED[0][2]
-_PAYMENT_DAYS = facts.FUNNEL_DOUBLE_FIRED[1][2]
+_SHIPPING_DAYS = facts.FUNNEL_DOUBLE_FIRED[1][2]
+_PAYMENT_DAYS = facts.FUNNEL_DOUBLE_FIRED[2][2]
+_SHARE_LIMIT = int(facts.FUNNEL_AUTOMATED_SHIPPING_SHARE * 100)
 
 RELEASE_LOG_MD = f"""\
 # Bramblecote Home: release and change log, March 2026
@@ -74,27 +82,28 @@ RELEASE_LOG_MD = f"""\
 |---|---|
 | 2026-03-04 | 5.6.3: copy changes on the cart page. |
 | 2026-03-10 | 5.7.0: address autocomplete on the shipping step, on every device. |
-| 2026-03-10 | Tag manager version 41 published: a new order-confirmation tag. |
-| 2026-03-13 | 5.7.1: removes the duplicate order-confirmation tag published in version 41. From {_ORDER_DAYS[0]} to {_ORDER_DAYS[-1]} the order-confirmation tag fired twice for every order, on every browser. |
 | 2026-03-14 | Product images and scripts moved to a new CDN provider. |
+| {_ORDER_DAYS[0]} | Tag manager version 41 published: a new order-confirmation tag. |
 | 2026-03-16 | 5.8.0: new payment form with saved cards and express wallets, on every device. |
-| 2026-03-18 | New shipping-rate table: flat rates by region. |
-| 2026-03-20 | Edge 136 starts rolling out to desktop users. |
+| 2026-03-18 | Tag manager version 41.1 removes the duplicate order-confirmation tag. From {_ORDER_DAYS[0]} to {_ORDER_DAYS[-1]} the order-confirmation tag fired twice for every order, on every browser. |
+| {SECOND_BREAK_DAY.isoformat()} | New shipping-rate table: flat rates by region, shown in a new panel on the shipping step. |
+| {_SHIPPING_DAYS[0]} | Edge 136 starts rolling out to desktop users. Tag manager version 42 published. |
 | 2026-03-21 | Spring-sale email sent to the full list. |
+| 2026-03-23 | Tag manager version 42.1. From {_SHIPPING_DAYS[0]} to {_SHIPPING_DAYS[-1]} the shipping-step event fired twice for every session that reached shipping, on {facts.FUNNEL_DOUBLE_FIRED[1][1][0]} and {facts.FUNNEL_DOUBLE_FIRED[1][1][1]}. |
 | 2026-03-24 | 5.8.1: payment-form hotfix (clearer card error messages). |
-| 2026-03-25 | Security team identifies a price-monitoring crawler that runs as {facts.FUNNEL_BOT_BROWSER} and adds products to a cart. |
-| {_PAYMENT_DAYS[0]} | Analytics SDK 5.9.0: on {facts.FUNNEL_DOUBLE_FIRED[1][1]}, on every device, the payment-step event fires twice for every session that reaches payment. |
-| 2026-03-30 | Analytics SDK 5.9.1 fixes the double payment-step event. From {_PAYMENT_DAYS[0]} to {_PAYMENT_DAYS[-1]} the event fired twice on {facts.FUNNEL_DOUBLE_FIRED[1][1]}. |
+| 2026-03-25 | Security team flags a price-monitoring crawler that has been filling carts and reading shipping costs since mid-March. |
+| {_PAYMENT_DAYS[0]} | Analytics SDK 5.9.0: on {facts.FUNNEL_DOUBLE_FIRED[2][1][0]}, on every device, the payment-step event fires twice for every session that reaches payment. |
+| 2026-03-30 | Analytics SDK 5.9.1 fixes the double payment-step event. From {_PAYMENT_DAYS[0]} to {_PAYMENT_DAYS[-1]} the event fired twice on {facts.FUNNEL_DOUBLE_FIRED[2][1][0]}. |
 """
 
 RULES_MD = f"""\
 # Bramblecote Home: checkout funnel analysis rules
 
 ## The export
-- `funnel_daily.csv` has one row per day, device, browser and step. `count` is the number of sessions that reached the step that day: `cart` (viewed the cart), `shipping` (reached shipping details), `payment` (reached payment) and `order` (placed an order). A step with no sessions that day has no row.
+- `funnel_daily.csv` has one row per day, device, browser and step. `count` is the number of sessions that reached the step that day: `cart` (viewed the cart), `shipping` (reached shipping details), `payment` (reached payment) and `order` (placed an order). A step with no sessions that day has no row, and counts as 0.
 - A segment is one device and browser pair.
-- Double-fired events: the release log records each time an event fired twice for every session, with the step, the browsers it hit and the days. On those days that step's rows, for those browsers, count two events per session. Halve them.
-- Automated traffic: rows whose browser is `{facts.FUNNEL_BOT_BROWSER}` come from a price-monitoring crawler. Leave them out of every figure.
+- Double-fired events: the release log records each time an event fired twice for every session, with the step, the browsers it hit and the days. On those days that step's rows, for those browsers, count two events per session. Halve them first, before anything else.
+- Automated traffic: a segment-day (one segment on one day) is automated when fewer than {_SHARE_LIMIT} in 100 of its cart sessions reached shipping, counted after the halving. Leave automated segment-days out of every figure, and a segment all of whose days are automated out of the table.
 
 ## Rates
 - Conversion rate = orders ÷ cart sessions, over every segment, for the days in question.
@@ -104,11 +113,14 @@ RULES_MD = f"""\
 - The reference week is {facts.FUNNEL_REFERENCE_WEEK[0]} to {facts.FUNNEL_REFERENCE_WEEK[1]}.
 - A segment's normal range for a step is the step's rate over the reference week plus or minus {facts.FUNNEL_RANGE_POINTS} percentage points.
 - A segment's step has broken on day D when the step's daily rate is below its normal range on day D and on every later day in the export. The break begins on the first such day.
-- Before the break means the days before the day the break begins; after the break means that day and every later day.
+- The store's break date is the day the earliest break begins. Before the break means the days before the store's break date; after the break means that day and every later day.
 
 ## The size of the loss
-- Orders lost: for the broken segment, take its sessions at the step before the broken step, after the break. Multiply them by the segment's rate from that step to an order before the break (its orders ÷ its sessions at that step, both summed over the days before the break). Subtract the orders the segment recorded after the break, and round to the nearest whole order.
-- Revenue lost = orders lost × ${facts.FUNNEL_ORDER_VALUE}, the store's average order value.
+- Orders lost, for each broken segment: take its sessions at the step before its broken step, from the day its own break begins. Multiply them by the segment's rate from that step to an order over the days before its own break (its orders ÷ its sessions at that step, both summed over those days). Subtract the orders the segment recorded from the day its own break begins, and round to the nearest whole order. A segment that did not break lost no orders.
+- The store's orders lost = the sum over the broken segments. Revenue lost = orders lost × ${facts.FUNNEL_ORDER_VALUE}, the store's average order value.
+
+## Verdicts
+- A segment is `broken` when one of its steps broke. It is `recovered` when none broke but a step's daily rate was below its normal range on at least one day. Otherwise it is `normal`.
 
 ## Suspected causes
 - A suspected cause names a date, the segments it would hit and the step it would break. The data is consistent with it only when one of those segments has that step break, beginning on that date. Otherwise the data rules it out.
@@ -128,7 +140,10 @@ CAUSES_MD = """\
 | C7 | Edge 136 blocks the payment page's scripts | 2026-03-20 | desktop / Edge | payment |
 | C8 | Analytics SDK 5.9.0 broke Safari checkouts on desktop and iPad | 2026-03-27 | desktop / Safari, tablet / Safari | order |
 | C9 | Express wallets (5.8.0) fail on Android phones | 2026-03-16 | mobile / Chrome, mobile / Samsung Internet | order |
-| C10 | The new shipping-rate table puts Firefox shoppers off | 2026-03-18 | desktop / Firefox, mobile / Firefox | shipping |
+| C10 | The new shipping-rate panel does not fit on tablets | 2026-03-18 | tablet / Safari, tablet / Chrome | shipping |
+| C11 | The new shipping-rate table puts Firefox shoppers off | 2026-03-18 | desktop / Firefox, mobile / Firefox | shipping |
+| C12 | The new payment form (5.8.0) fails on desktop Firefox | 2026-03-16 | desktop / Firefox | order |
+| C13 | The new payment form (5.8.0) also slows the shipping step on Android tablets | 2026-03-16 | tablet / Chrome | shipping |
 """
 
 
@@ -151,10 +166,17 @@ def _rates(segment: tuple[str, str], day: dt.date, base: tuple[float, ...], rng:
             rates[step] -= points
     if segment == BROKEN[0] and day >= BREAK_DAY:
         rates[2] = BROKEN[1] + rng.uniform(-2 * NOISE_POINTS, 2 * NOISE_POINTS)
+    if segment == SECOND[0] and day >= SECOND_BREAK_DAY:
+        rates[0] = SECOND[1] + rng.uniform(-NOISE_POINTS, NOISE_POINTS)
     for where, step, first, last, rate in OUTAGES:
         if segment == where and _active(first, last, day):
             rates[step] = rate + rng.uniform(-NOISE_POINTS, NOISE_POINTS)
     return rates
+
+
+def _exported(day: dt.date, segment: tuple[str, str], step: str, count: int) -> list:
+    row = {"date": day.isoformat(), "device": segment[0], "browser": segment[1], "step": step}
+    return [*row.values(), count * 2 if facts.funnel_double_fired(row) else count]
 
 
 def build() -> dict[str, str]:
@@ -168,10 +190,12 @@ def build() -> dict[str, str]:
             for rate in _rates(segment, day, base, rng):
                 counts.append(round(counts[-1] * rate / 100))
             for step, count in zip(facts.FUNNEL_STEPS, counts):
-                row = {"date": day.isoformat(), "device": segment[0], "browser": segment[1], "step": step}
-                rows.append([*row.values(), count * 2 if facts.funnel_double_fired(row) else count])
+                rows.append(_exported(day, segment, step, count))
         if day >= BOT_FIRST_DAY:
-            rows.append([day.isoformat(), "desktop", facts.FUNNEL_BOT_BROWSER, "cart", rng.randint(*BOT_CARTS)])
+            crawler = ("desktop", facts.FUNNEL_BOT_BROWSER)
+            carts = rng.randint(*BOT_CARTS)
+            rows.append(_exported(day, crawler, "cart", carts))
+            rows.append(_exported(day, crawler, "shipping", round(carts * rng.uniform(*BOT_SHIPPING_SHARE))))
     files = {
         "analysis_rules.md": RULES_MD,
         "release_log.md": RELEASE_LOG_MD,
@@ -182,21 +206,28 @@ def build() -> dict[str, str]:
     return files
 
 
+def _days(first: dt.date, last: dt.date) -> list[str]:
+    return [(first + dt.timedelta(days=offset)).isoformat() for offset in range((last - first).days + 1)]
+
+
 def _check(files: dict[str, str]) -> None:
     """Refuse data in which a planted effect is missing or an unplanted one appeared."""
     rows = list(csv.DictReader(io.StringIO(files["funnel_daily.csv"])))
     counts = facts.funnel_counts(rows)
+    last = FIRST_DAY + dt.timedelta(days=DAYS - 1)
     assert facts.funnel_breaks(counts) == [
-        {"segment": BROKEN[0], "step": "order", "first_day": BREAK_DAY.isoformat()}], facts.funnel_breaks(counts)
+        {"segment": BROKEN[0], "step": "order", "first_day": BREAK_DAY.isoformat()},
+        {"segment": SECOND[0], "step": "shipping", "first_day": SECOND_BREAK_DAY.isoformat()}], facts.funnel_breaks(counts)
     steps = {name: index for index, name in enumerate(facts.FUNNEL_STEPS[1:])}
-    below = {(BROKEN[0], 2, (FIRST_DAY + dt.timedelta(days=offset)).isoformat())
-             for offset in range((BREAK_DAY - FIRST_DAY).days, DAYS)}
-    for where, step, first, last, _rate in OUTAGES:
-        below |= {(where, step, (first + dt.timedelta(days=offset)).isoformat()) for offset in range((last - first).days + 1)}
-    reference = [date for date in sorted(counts[BROKEN[0]])
-                 if facts.FUNNEL_REFERENCE_WEEK[0] <= date <= facts.FUNNEL_REFERENCE_WEEK[1]]
+    below = {(BROKEN[0], 2, date) for date in _days(BREAK_DAY, last)}
+    below |= {(SECOND[0], 0, date) for date in _days(SECOND_BREAK_DAY, last)}
+    for where, step, first, final, _rate in OUTAGES:
+        below |= {(where, step, date) for date in _days(first, final)}
     margin = Fraction(1, 200)   # every look-alike stays at least half a point clear of its line
+    assert set(counts) == set(SEGMENTS)
     for segment, days in counts.items():
+        assert len(days) == DAYS, segment            # no real segment-day is ever automated
+        reference = facts._reference_days(days)
         for step, index in steps.items():
             low = facts._step_rate(days, reference, step) - Fraction(facts.FUNNEL_RANGE_POINTS, 100)
             for date in sorted(days):
@@ -205,12 +236,19 @@ def _check(files: dict[str, str]) -> None:
                     assert rate < low - margin, (segment, step, date)
                 else:
                     assert rate >= low + margin, (segment, step, date, float(rate), float(low))
-    # Left doubled, the Safari payment rows put desktop and tablet Safari below their order range
-    # from the first doubled day to the end: two breaks that are not there.
-    careless = facts.funnel_breaks(facts.funnel_counts(rows, halve=False))
-    assert {(item["segment"], item["first_day"]) for item in careless if item["step"] == "order"} == {
-        (BROKEN[0], BREAK_DAY.isoformat()), (("desktop", "Safari"), _PAYMENT_DAYS[0]),
-        (("tablet", "Safari"), _PAYMENT_DAYS[0])}, careless
+    # The careless readings come out as designed.
+    def breaks(**careless):
+        return {(item["segment"], item["step"], item["first_day"])
+                for item in facts.funnel_breaks(facts.funnel_counts(rows, **careless))}
+    main, second = (BROKEN[0], "order"), (SECOND[0], "shipping")
+    assert breaks(halve=("shipping", "payment")) == {(*main, "2026-03-18"), (*second, SECOND_BREAK_DAY.isoformat())}
+    assert breaks(halve=("order", "payment")) == {(*main, BREAK_DAY.isoformat()), (*second, "2026-03-23")}
+    assert breaks(halve=("order", "shipping")) == {(*main, BREAK_DAY.isoformat()), (*second, SECOND_BREAK_DAY.isoformat()),
+                                                   (("desktop", "Safari"), "order", _PAYMENT_DAYS[0]),
+                                                   (("tablet", "Safari"), "order", _PAYMENT_DAYS[0])}
+    # Automated days judged before the halving keep the crawler's three double-fired days.
+    kept = facts.funnel_counts(rows, automated_after_halving=False)
+    assert sorted(kept[("desktop", facts.FUNNEL_BOT_BROWSER)]) == list(_SHIPPING_DAYS)
 
 
 def main(argv: list[str] | None = None) -> int:
