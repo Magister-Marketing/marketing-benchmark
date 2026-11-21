@@ -1,6 +1,6 @@
 {
   "id": "email-compliance-audit",
-  "title": "Audit a queue of email drafts against a sending policy",
+  "title": "Audit every live email against a sending policy",
   "split": "development",
   "prompt_version": 1,
   "rubric_version": 1,
@@ -8,7 +8,7 @@
     "eval_runner/fixtures/email-compliance-audit/sending_policy.md",
     "eval_runner/fixtures/email-compliance-audit/audiences.csv",
     "eval_runner/fixtures/email-compliance-audit/dns_records.md",
-    "eval_runner/fixtures/email-compliance-audit/drafts.md"
+    "eval_runner/fixtures/email-compliance-audit/emails.md"
   ],
   "skills": [
     "evals/fixtures/public/skills/emails/SKILL.md"
@@ -17,7 +17,7 @@
     "count": 3,
     "single_number": true
   },
-  "prompt": "Ostrel Botanicals sells skincare online in the US, the UK, the EU and Canada. Before next week's emails are scheduled, its email lead wants every draft in the review queue checked against the supplied sending policy, using the supplied audience table and the DNS records of the sending domains.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly the header shown: one row per draft, no totals row, and nothing inside the file but its rows.\n\n### findings.csv\ndraft_id,verdict\nEvery draft in the queue, once, by its id as the queue writes it (E01). `verdict` is `pass` when the draft breaks no rule of the policy; otherwise it is every code from the policy that the draft gets, separated by semicolons (for example `CODE_A;CODE_B`).\n\nAfter the file, give the fix for each violation on a line of its own: the draft id, the code, a colon and what to change.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of drafts that pass>\nA2: <number of violations: every code in findings.csv, counted once for each draft that gets it>\nA3: <number of drafts that get more than one code>\n\nThis is a review for the email lead. Send nothing, change nothing in the email platform or at the DNS host, and fetch nothing external.",
+  "prompt": "Ostrel Botanicals sells skincare online in the US, the UK, the EU and Canada. Before it moves to a new email platform, its email lead wants every live email (each step of every automated flow and every scheduled campaign) checked against the supplied sending policy, using the supplied audience table and the DNS records of the sending domains.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly the header shown: one row per email, no totals row, and nothing inside the file but its rows.\n\n### findings.csv\nemail_id,verdict\nEvery email in the export, once, by its id as the export writes it (E001). `verdict` is `pass` when the email breaks no rule of the policy; otherwise it is every code from the policy that the email gets, separated by semicolons (for example `CODE_A;CODE_B`).\n\nAfter the file, for each code you give to at least one email, one line with the code, a colon and what to change so that an email with that code passes.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of emails that pass>\nA2: <number of violations: every code in findings.csv, counted once for each email that gets it>\nA3: <number of emails that get more than one code>\n\nThis is a review for the email lead. Send nothing, change nothing in the email platform or at the DNS host, and fetch nothing external.",
   "rubric": {
     "completion": [
       {
@@ -29,15 +29,15 @@
         }
       },
       {
-        "id": "every_draft_once",
-        "check": "Every one of the queue's 18 drafts appears exactly once in findings.csv, no draft appears that is not in the queue, and every verdict is pass alone or one or more of the policy's codes. Full credit for no error; zero credit at 1.",
+        "id": "every_email_once",
+        "check": "Every one of the export's 150 emails appears exactly once in findings.csv, no email appears that is not in the export, and every verdict is pass alone or one or more of the policy's codes. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_row_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
@@ -51,10 +51,10 @@
       },
       {
         "id": "a1_passing",
-        "check": "A1 states how many drafts break no rule of the policy. Full credit for the exact figure; zero credit 1 or more off.",
+        "check": "A1 states how many emails break no rule of the policy. Full credit for the exact figure; zero credit 1 or more off.",
         "programmatic": {
           "fact": "answer_q1",
-          "near": 7,
+          "near": 63,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
@@ -64,10 +64,10 @@
       },
       {
         "id": "a2_violations",
-        "check": "A2 states how many violations the policy finds: every code, counted once for each draft that gets it. Full credit for the exact figure; zero credit 1 or more off.",
+        "check": "A2 states how many violations the policy finds: every code, counted once for each email that gets it. Full credit for the exact figure; zero credit 1 or more off.",
         "programmatic": {
           "fact": "answer_q2",
-          "near": 14,
+          "near": 116,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
@@ -77,10 +77,10 @@
       },
       {
         "id": "a3_multiple",
-        "check": "A3 states how many drafts get more than one code under the policy. Full credit for the exact figure; zero credit 1 or more off.",
+        "check": "A3 states how many emails get more than one code under the policy. Full credit for the exact figure; zero credit 1 or more off.",
         "programmatic": {
           "fact": "answer_q3",
-          "near": 3,
+          "near": 23,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
@@ -92,79 +92,79 @@
     "skill_adherence": [
       {
         "id": "domain_right",
-        "check": "The drafts given DOMAIN are exactly the ones sent from a domain that is not a sending domain or that fails section 1 of the policy: none missed, and none given it whose domain passes. Full credit for no error; zero credit at 1.",
+        "check": "The emails given DOMAIN are exactly the ones sent from a domain that is not a sending domain or that fails section 1 of the policy: none missed, and none given it whose domain passes. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_domain_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
       {
         "id": "address_right",
-        "check": "The drafts given ADDRESS are exactly the marketing drafts whose footer has neither registered postal address: none missed, and none given it that has one or is transactional. Full credit for no error; zero credit at 1.",
+        "check": "The emails given ADDRESS are exactly the marketing emails whose footer has neither registered postal address: none missed, and none given it that has one or is transactional. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_address_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
       {
         "id": "unsubscribe_right",
-        "check": "The drafts given UNSUBSCRIBE are exactly the marketing drafts whose footer has no working unsubscribe tag: none missed, and none given it that has one or is transactional. Full credit for no error; zero credit at 1.",
+        "check": "The emails given UNSUBSCRIBE are exactly the marketing emails whose footer has no working unsubscribe tag: none missed, and none given it that has one or is transactional. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_unsubscribe_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
       {
         "id": "subject_right",
-        "check": "The drafts given SUBJECT are exactly the ones whose subject or preheader states the offer otherwise than the body under section 4: none missed, and none given it whose subject and preheader match the body. Full credit for no error; zero credit at 1.",
+        "check": "The emails given SUBJECT are exactly the ones whose subject or preheader states the offer otherwise than the body under section 4: none missed, and none given it whose subject and preheader match the body. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_subject_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
       {
         "id": "transactional_promo_right",
-        "check": "The drafts given TRANSACTIONAL_PROMO are exactly the transactional drafts whose promotional blocks break section 5: none missed, and none given it that follows the section. Full credit for no error; zero credit at 1.",
+        "check": "The emails given TRANSACTIONAL_PROMO are exactly the transactional emails whose promotional blocks break section 5: none missed, and none given it that follows the section. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_transactional_promo_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       },
       {
         "id": "consent_right",
-        "check": "The drafts given CONSENT are exactly the marketing drafts with an audience the consent table does not allow: none missed, and none given it whose audiences are all allowed or that is transactional. Full credit for no error; zero credit at 1.",
+        "check": "The emails given CONSENT are exactly the marketing emails with an audience the consent table does not allow: none missed, and none given it whose audiences are all allowed or that is transactional. Full credit for no error; zero credit at 3 or more.",
         "programmatic": {
           "fact": "audit_consent_error_count",
           "near": 0,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 1
+            "zero": 3
           }
         }
       }
@@ -172,7 +172,7 @@
     "best_practices": [
       {
         "id": "fixes_given",
-        "check": "After findings.csv, every violation the reply reports has a fix line that would clear it under the policy: for DOMAIN, send from a sending domain that passes section 1, or bring the failing domain's records into line with it; for ADDRESS, put a registered postal address in the footer; for UNSUBSCRIBE, put a working unsubscribe tag in the footer; for SUBJECT, make the subject or preheader state the body's offer, or change the offer to match; for TRANSACTIONAL_PROMO, remove the promotion, or keep a single promotional block without a code after the order, shipping and account blocks; for CONSENT, take the audience without the required consent off the draft. A reported violation with no fix, or with a fix that only says to review or check it, fails."
+        "check": "After findings.csv, for every code the reply gives to at least one email, there is a line saying what to change so that an email with that code passes, and the change would clear it under the policy: for DOMAIN, send from a sending domain that passes section 1, or bring the failing domain's records into line with it; for ADDRESS, put a registered postal address in the footer; for UNSUBSCRIBE, put a working unsubscribe tag in the footer; for SUBJECT, make the subject or preheader state the body's offer, or change the offer to match; for TRANSACTIONAL_PROMO, remove the promotion, or keep a single promotional block without a code after the order, shipping and account blocks; for CONSENT, take the audience without the required consent off the email. A code given with no such line, or with a line that only says to review or check it, fails."
       }
     ]
   }

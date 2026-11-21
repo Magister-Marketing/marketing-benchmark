@@ -1,13 +1,18 @@
 audience_id,name,region,consent,double_opt_in,max_months_since_purchase
 A01,US newsletter sign-ups,US,express,no,
 A02,US customers,US,customer,,22
-A03,UK newsletter sign-ups,UK,express,no,
-A04,UK customers,UK,customer,,30
-A05,"EU newsletter, confirmed",EU,express,yes,
-A06,"EU newsletter, unconfirmed",EU,express,no,
-A07,EU customers,EU,customer,,14
-A08,Canada customers,CA,customer,,24
-A09,"Canada customers, lapsed",CA,customer,,38
-A10,Clean Beauty Expo badge scans,US,event,,
-A11,Partner giveaway entrants,US,imported,,
-A12,Order and account notifications,all,none,,
+A03,US loyalty members,US,express,yes,
+A04,UK newsletter sign-ups,UK,express,no,
+A05,UK customers,UK,customer,,30
+A06,"EU newsletter, confirmed",EU,express,yes,
+A07,"EU newsletter, unconfirmed",EU,express,no,
+A08,EU customers,EU,customer,,14
+A09,EU loyalty members,EU,express,yes,
+A10,Canada newsletter sign-ups,CA,express,no,
+A11,Canada customers,CA,customer,,24
+A12,"Canada customers, lapsed",CA,customer,,38
+A13,Canada recent customers,CA,customer,,11
+A14,Clean Beauty Expo badge scans,US,event,,
+A15,Partner giveaway entrants,US,imported,,
+A16,Spa partner list,UK,imported,,
+A17,Order and account notifications,all,none,,

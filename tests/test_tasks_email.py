@@ -45,6 +45,10 @@ def test_the_files_on_disk_are_what_the_module_generates():
     email.calendar_reference.cache_clear()
     assert email.fixtures() == {name: (REPO_ROOT / email.FIXTURE_DIR / name).read_text() for name in email.fixtures()}
     assert email.main(["--check"]) == 0
+    # Each task's folder holds exactly the files the module writes: nothing left from an older version.
+    on_disk = {path.relative_to(REPO_ROOT / email.FIXTURE_DIR).as_posix()
+               for task_id in email.TASK_IDS for path in (REPO_ROOT / email.FIXTURE_DIR / task_id).iterdir()}
+    assert on_disk == set(email.fixtures())
     # Every fixture a task names is a file this module writes.
     for task_id in email.TASK_IDS:
         for fixture in _task(task_id)["fixtures"]:
@@ -425,29 +429,10 @@ CODE_CHECKS = {
     "DOMAIN": "domain_right", "ADDRESS": "address_right", "UNSUBSCRIBE": "unsubscribe_right",
     "SUBJECT": "subject_right", "TRANSACTIONAL_PROMO": "transactional_promo_right", "CONSENT": "consent_right",
 }
-# What each draft breaks, written out by hand; the look-alikes are the drafts that pass.
-PLANTED = {
-    "E02": {"SUBJECT"},                   # the subject's end day is later than the body's
-    "E05": {"DOMAIN", "SUBJECT"},         # DMARC p=none (sp=quarantine is another tag); "everything" with exclusions
-    "E06": {"TRANSACTIONAL_PROMO"},       # the promotion comes before the shipping block, with a code
-    "E07": {"DOMAIN", "CONSENT"},         # the unconfirmed EU audience is the second one
-    "E08": {"ADDRESS"},                   # Suite 120, not the registered Suite 200
-    "E10": {"UNSUBSCRIBE", "CONSENT"},    # log in to unsubscribe; a Canada audience 38 months since purchase
-    "E11": {"TRANSACTIONAL_PROMO"},       # a password reset carries recommendations
-    "E12": {"CONSENT"},                   # trade-show badge scans
-    "E13": {"DOMAIN"},                    # not one of the three sending domains
-    "E14": {"ADDRESS"},                   # "Portland, Oregon" is not a registered address
-    "E17": {"UNSUBSCRIBE"},               # {{ unsubscribe_url }} is not a tag the platform renders
-}
-LOOK_ALIKES = {
-    "E01": "the Reply-To is on a domain that sends nothing",
-    "E03": "an order confirmation with one recommendation after the order and shipping blocks, and no footer address",
-    "E04": "the registered PO box, a tag without spaces, and 'up to 40%' over 20%, 30% and 40%",
-    "E09": "a Canada customer audience at exactly 24 months",
-    "E15": "a review request is not promotional",
-    "E16": "'everything' over an offer that excludes nothing",
-    "E18": "the preferences tag is a working unsubscribe link",
-}
+# Written out by hand: how many emails get each code, and the three figures.
+CODE_COUNTS = {"DOMAIN": 33, "UNSUBSCRIBE": 20, "CONSENT": 20, "ADDRESS": 16, "SUBJECT": 16, "TRANSACTIONAL_PROMO": 11}
+AUDIT_FIGURES = [63, 116, 23]
+DAYS = r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
 
 
 def _audit_files():
@@ -462,58 +447,69 @@ def _audit_files():
         elif domain and line.startswith("| ") and "| TXT |" in line:
             name, _kind, value = [cell.strip() for cell in line.strip("| ").split(" | ")]
             records[domain].append((name, value))
-    drafts = {}
-    text = (AUDIT_DIR / "drafts.md").read_text()
-    for match in re.finditer(r"^## (E\d\d)\n(.*?)(?=^## E\d\d\n|\Z)", text, re.M | re.S):
-        body = match.group(2)
-        fields = dict(re.findall(r"^- ([\w-]+): (.*)$", body, re.M))
-        footer = body.split("Footer:\n", 1)[1]
-        drafts[match.group(1)] = {
-            "fields": fields,
-            "blocks": re.findall(r"^\d+\. \[(\w+)\] (.*)$", body, re.M),
-            "footer": [line[4:] for line in footer.splitlines() if line.startswith("    ")],
+    emails = {}
+    text = (AUDIT_DIR / "emails.md").read_text()
+    for match in re.finditer(r"^## (E\d{3})\n(.*?)(?=^## E\d{3}\n|\Z)", text, re.M | re.S):
+        lines = match.group(2).splitlines()
+        stream, purpose, listed, sender = lines[0].split(" · ")
+        field = lambda name: next(re.match(rf"^{name}: ?(.*)$", line).group(1) for line in lines  # noqa: E731
+                                  if line.startswith(name + ":"))
+        emails[match.group(1)] = {
+            "stream": stream, "purpose": purpose, "audiences": [a.strip() for a in listed.split(",")],
+            "domain": sender.split("@")[1], "subject": field("Subject"), "preheader": field("Preheader"),
+            "blocks": [re.match(r"\[(\w+)\] (.*)", part).groups() for part in field("Body").split(" | ")],
+            "footer": field("Footer"),
         }
-    return policy, audiences, records, drafts
+    return policy, audiences, records, emails
 
 
-DAYS = r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
-
-
-def audit_queue(sp_counts=False, softfail_fails=False, any_empty_key_fails=False, po_box_invalid=False,
-                transactional_like_marketing=False, spaces_matter=False, url_tag_works=False, up_to_strict=False,
-                review_is_promo=False, first_audience_only=False, consent_on_transactional=False,
-                months_strict=False, double_opt_in_everywhere=False) -> dict[str, set[str]]:
-    """The policy applied to the drafts as the files state it, with a switch
-    for each tempting wrong reading."""
-    policy, audiences, records, drafts = _audit_files()
+def audit_queue(dmarc_sp_counts=False, softfail_fails=False, any_empty_key_fails=False, partial_pct_fails=False,
+                sp_none_fails=False, other_selector_counts=False, first_spf_only=False, root_domain_ours=False,
+                po_box_invalid=False, transactional_like_marketing=False, spaces_matter=False, capitals_ok=False,
+                url_tag_works=False, up_to_strict=False, everything_always=False, minimum_always=False,
+                review_is_promo=False, promo_must_be_last=False, first_audience_only=False,
+                consent_on_transactional=False, months_strict=False, double_opt_in_everywhere=False) -> dict[str, set[str]]:
+    """The policy applied to the emails as the files state it, with a switch
+    for each tempting misreading."""
+    policy, audiences, records, emails = _audit_files()
     sending = re.findall(r"`([a-z.]+\.example)`", policy.split("## 1.")[1].split("1. **SPF**")[0])
     addresses = re.findall(r"^- (Ostrel Botanicals Inc\..*)$", policy, re.M)
     if po_box_invalid:
         addresses = [a for a in addresses if "PO Box" not in a]
-    flat = lambda text: re.sub(r"\s+", " ", text.replace(",", " ")).strip()  # noqa: E731
+    flat = lambda text: re.sub(r"\s+", " ", text.replace(",", " ").replace("·", " ")).strip()  # noqa: E731
 
     def domain_passes(name):
+        if name == "ostrel.example" and root_domain_ours:
+            return True
         if name not in sending:
             return False
         txt = records[name]
         spf = [v for n, v in txt if n == name and v.startswith("v=spf1")]
+        if first_spf_only:
+            spf = spf[:1]
         ends = ("-all",) if softfail_fails else ("-all", "~all")
-        if len(spf) != 1 or "include:spf.sendloop.example" not in spf[0] or not spf[0].endswith(ends):
+        if len(spf) != 1 or "include:spf.sendloop.example" not in spf[0].split() or not spf[0].endswith(ends):
             return False
-        keys = [v for n, v in txt if n.endswith("._domainkey." + name)]
-        if any_empty_key_fails and any(re.search(r"p=\s*$", v) for v in keys):
+        keys = [(n, v) for n, v in txt if "._domainkey." in n]
+        if any_empty_key_fails and any(re.search(r"p=\s*$", v) for _n, v in keys):
             return False
-        if not any(n == f"sl1._domainkey.{name}" and re.search(r"p=[A-Za-z0-9+/]", v) for n, v in txt):
+        usable = [n for n, v in keys if re.search(r"p=[A-Za-z0-9+/]", v)]
+        if not (usable if other_selector_counts else f"sl1._domainkey.{name}" in usable):
             return False
         dmarc = [dict(p.strip().split("=", 1) for p in v.split(";")) for n, v in txt if n == f"_dmarc.{name}"]
-        tags = ("p", "sp") if sp_counts else ("p",)
-        return len(dmarc) == 1 and any(dmarc[0].get(tag) in ("quarantine", "reject") for tag in tags)
+        if len(dmarc) != 1:
+            return False
+        tags = dmarc[0]
+        if partial_pct_fails and tags.get("pct", "100") != "100":
+            return False
+        if sp_none_fails and tags.get("sp") == "none":
+            return False
+        return any(tags.get(tag) in ("quarantine", "reject") for tag in (("p", "sp") if dmarc_sp_counts else ("p",)))
 
     def allowed(audience_id):
         row = audiences[audience_id]
         if row["consent"] == "express":
-            needs = double_opt_in_everywhere or row["region"] == "EU"
-            return not needs or row["double_opt_in"] == "yes"
+            return not (double_opt_in_everywhere or row["region"] == "EU") or row["double_opt_in"] == "yes"
         if row["consent"] == "customer":
             if row["region"] == "CA":
                 months = int(row["max_months_since_purchase"])
@@ -521,70 +517,71 @@ def audit_queue(sp_counts=False, softfail_fails=False, any_empty_key_fails=False
             return row["region"] in ("US", "UK")
         return False
 
+    names = "unsubscribe_link|preferences_link" + ("|unsubscribe_url" if url_tag_works else "")
+    tag = re.compile(r"\{\{ (?:%s) \}\}" % names if spaces_matter else r"\{\{\s*(?:%s)\s*\}\}" % names,
+                     re.I if capitals_ok else 0)
     out = {}
-    for draft_id, draft in drafts.items():
-        fields, blocks, footer = draft["fields"], draft["blocks"], " ".join(draft["footer"])
-        marketing = fields["Stream"] == "marketing"
+    for email_id, mail in emails.items():
+        marketing = mail["stream"] == "marketing"
+        footer = mail["footer"]
         codes = set()
-        if not domain_passes(fields["From"].split("@")[1].rstrip(">")):
+        if not domain_passes(mail["domain"]):
             codes.add("DOMAIN")
-        if (marketing or transactional_like_marketing) and not any(flat(a) in flat(footer) for a in addresses):
+        footer_rules = marketing or transactional_like_marketing
+        if footer_rules and not any(flat(a) in flat(footer) for a in addresses):
             codes.add("ADDRESS")
-        tag = r"\{\{ (?:unsubscribe_link|preferences_link) \}\}" if spaces_matter else r"\{\{\s*(?:unsubscribe_link|preferences_link)\s*\}\}"
-        if url_tag_works:
-            tag = tag.replace("preferences_link", "preferences_link|unsubscribe_url")
-        if (marketing or transactional_like_marketing) and not re.search(tag, footer):
+        if footer_rules and not tag.search(footer):
             codes.add("UNSUBSCRIBE")
-        claim = fields["Subject"] + " / " + fields["Preheader"]
-        body = " ".join(text for _kind, text in blocks)
+        claim = mail["subject"] + " / " + mail["preheader"]
+        body = " ".join(text for _kind, text in mail["blocks"])
         broken = False
         percent = re.search(r"(up to )?(\d+)%", claim, re.I)
         offered = [int(n) for n in re.findall(r"(\d+)%", body)]
         if percent:
             up_to = bool(percent.group(1)) and not up_to_strict
             broken |= int(percent.group(2)) != max(offered) if up_to else offered != [int(percent.group(2))]
-        broken |= bool(re.search(r"\b(sitewide|everything|all products)\b", claim, re.I)
-                       and re.search(r"\b(Excludes|selected)\b", body))
-        claimed_end = re.search(r"\b(?:ends?|until|to) " + DAYS, claim, re.I)
-        body_end = re.findall(r"\b(?:until|to) " + DAYS, body)
-        broken |= bool(claimed_end and claimed_end.group(1).capitalize() != body_end[-1])
-        broken |= bool(re.search(r"free shipping", claim, re.I) and not re.search(r"over \$\d+", claim)
-                       and re.search(r"over \$\d+", body))
+        scoped = re.search(r"\b(sitewide|everything|all products)\b", claim, re.I)
+        broken |= bool(scoped and (everything_always or re.search(r"\b(Excludes|selected)\b", body)))
+        claimed_end = re.search(r"\b(?:ends?|until) " + DAYS, claim, re.I)
+        body_end = re.findall(r"\buntil " + DAYS, body)
+        broken |= bool(claimed_end and body_end and claimed_end.group(1).capitalize() != body_end[-1])
+        free = re.search(r"free shipping", claim, re.I)
+        broken |= bool(free and re.search(r"over \$\d+", body) and (minimum_always or not re.search(r"over \$\d+", claim)))
         if broken:
             codes.add("SUBJECT")
         if not marketing:
-            promo_kinds = ("promo", "recommendations", "review_request") if review_is_promo else ("promo", "recommendations")
-            promos = [i for i, (kind, _t) in enumerate(blocks) if kind in promo_kinds]
+            kinds = ("promo", "recommendations", "review_request") if review_is_promo else ("promo", "recommendations")
+            blocks = mail["blocks"]
+            promos = [i for i, (kind, _t) in enumerate(blocks) if kind in kinds]
             last = max([i for i, (kind, _t) in enumerate(blocks) if kind in ("order", "shipping", "account")], default=-1)
-            if promos and (fields["Purpose"] in ("password reset", "account security") or len(promos) > 1
-                           or promos[0] < last or re.search(r"code [A-Z0-9]{4,}", blocks[promos[0]][1])):
+            if promos and (mail["purpose"] in ("password reset", "account security") or len(promos) > 1
+                           or promos[0] < last or re.search(r"code [A-Z0-9]{4,}", blocks[promos[0]][1])
+                           or (promo_must_be_last and promos[-1] != len(blocks) - 1)):
                 codes.add("TRANSACTIONAL_PROMO")
         if marketing or consent_on_transactional:
-            listed = [a.strip() for a in fields["Audiences"].split(",")]
-            if first_audience_only:
-                listed = listed[:1]
+            listed = mail["audiences"][:1] if first_audience_only else mail["audiences"]
             if not all(allowed(a) for a in listed):
                 codes.add("CONSENT")
-        out[draft_id] = codes
+        out[email_id] = codes
     return out
 
 
 def audit_reply(verdicts: dict[str, set[str]]) -> str:
-    rows = [f"{draft_id},{';'.join(sorted(codes)) or 'pass'}" for draft_id, codes in sorted(verdicts.items())]
+    rows = [f"{email_id},{';'.join(sorted(codes)) or 'pass'}" for email_id, codes in sorted(verdicts.items())]
     figures = [sum(1 for c in verdicts.values() if not c), sum(len(c) for c in verdicts.values()),
                sum(1 for c in verdicts.values() if len(c) > 1)]
-    return ("The review.\n\n### findings.csv\n```csv\ndraft_id,verdict\n" + "\n".join(rows) + "\n```\n\n"
+    return ("The audit.\n\n### findings.csv\n```csv\nemail_id,verdict\n" + "\n".join(rows) + "\n```\n\n"
             + "\n".join(f"A{index}: {value}" for index, value in enumerate(figures, 1)) + "\n")
 
 
 def test_the_audit_task_pins_what_the_files_give():
     verdicts = audit_queue()
-    assert {draft_id: codes for draft_id, codes in verdicts.items() if codes} == PLANTED
-    assert {draft_id for draft_id, codes in verdicts.items() if not codes} == set(LOOK_ALIKES)
+    assert len(verdicts) == 150
     assert {draft_id: set(codes) for draft_id, codes in email.audit_reference().items()} == verdicts
-    figures = [len(LOOK_ALIKES), sum(len(c) for c in PLANTED.values()), sum(1 for c in PLANTED.values() if len(c) > 1)]
-    assert figures == [7, 14, 3]
-    assert email.audit_answers() == dict(enumerate(figures, 1))
+    assert {code: sum(code in codes for codes in verdicts.values()) for code in email.CODES} == CODE_COUNTS
+    figures = [sum(1 for c in verdicts.values() if not c), sum(len(c) for c in verdicts.values()),
+               sum(1 for c in verdicts.values() if len(c) > 1)]
+    assert figures == AUDIT_FIGURES == [email.audit_answers()[index] for index in (1, 2, 3)]
     criteria = _by_id(AUDIT)
     for index, criterion_id in enumerate(["a1_passing", "a2_violations", "a3_multiple"]):
         assert criteria[criterion_id]["programmatic"] == {
@@ -592,12 +589,10 @@ def test_the_audit_task_pins_what_the_files_give():
         assert criteria[criterion_id]["check"].endswith("zero credit 1 or more off.")
     for code, criterion_id in CODE_CHECKS.items():
         assert criteria[criterion_id]["programmatic"] == {
-            "fact": f"audit_{code.lower()}_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}
-        assert code in criteria[criterion_id]["check"] and criteria[criterion_id]["check"].endswith("zero credit at 1.")
-    assert f"queue's {len(verdicts)} drafts" in criteria["every_draft_once"]["check"]
-    # Every code is planted, the planted count is near the brief's, and each code has a look-alike that passes.
-    assert {code for codes in PLANTED.values() for code in codes} == set(email.CODES)
-    assert 11 <= sum(len(c) for c in PLANTED.values()) <= 14 and len(verdicts) == 18
+            "fact": f"audit_{code.lower()}_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}
+        assert code in criteria[criterion_id]["check"] and criteria[criterion_id]["check"].endswith("zero credit at 3 or more.")
+    assert criteria["every_email_once"]["programmatic"]["tolerance"] == {"kind": "absolute", "full": 0, "zero": 3}
+    assert f"export's {len(verdicts)} emails" in criteria["every_email_once"]["check"]
     assert AUDIT["answers"] == {"count": 3, "single_number": True}
     judged = [c for c in criteria.values() if "programmatic" not in c]
     assert [c["id"] for c in judged] == ["fixes_given"]
@@ -605,45 +600,52 @@ def test_the_audit_task_pins_what_the_files_give():
     named = {c["programmatic"]["fact"] for c in criteria.values() if "programmatic" in c}
     assert {fact for fact in named if fact.startswith("audit_")} == set(email.audit_facts(""))
     assert 10 <= len(criteria) <= 18 and (len(criteria) - len(judged)) / len(criteria) >= 0.7
-    assert sum(path.stat().st_size for path in AUDIT_DIR.iterdir()) < 60_000
+    assert 30_000 <= sum(path.stat().st_size for path in AUDIT_DIR.iterdir()) < 60_000
 
 
 def test_the_sending_policy_states_the_rules_the_checker_applies():
-    policy, audiences, records, drafts = _audit_files()
+    policy, audiences, records, emails = _audit_files()
     assert ", ".join(f"`{code}`" for code in email.CODES) in policy
     for address in email.REGISTERED_ADDRESSES:
         assert f"- {address}\n" in policy
     assert f"`{email.ESP_INCLUDE}`" in policy and "`-all` or `~all`" in policy
     assert "`sl1._domainkey.<domain>`" in policy and "`quarantine` or `reject`" in policy
-    assert "`{{ unsubscribe_link }}` or `{{ preferences_link }}`" in policy
+    assert "`{{ unsubscribe_link }}` or `{{ preferences_link }}`" in policy and "capital letters included" in policy
     assert "`promo` and `recommendations` are promotional" in policy
     assert f"is {email.CA_CUSTOMER_MONTHS} or less" in policy
     assert set(records) == set(email.SENDING_DOMAINS) == set(email.DNS)
-    assert len(audiences) == len(email.AUDIENCES) and set(drafts) == set(email.draft_ids())
-    # The mail domain carries a second TXT record and an empty key at another selector; neither is its SPF or DKIM.
-    mail = dict(records)["mail.ostrel.example"]
-    assert sum(1 for name, value in mail if name == "mail.ostrel.example") == 2
-    assert ("k1._domainkey.mail.ostrel.example", "v=DKIM1; p=") in mail
-    assert email.domain_failures() == {"mail.ostrel.example": [], "orders.ostrel.example": [], "eu.ostrel.example": ["dmarc"]}
+    assert len(audiences) == len(email.AUDIENCES) and set(emails) == set(email.draft_ids())
+    assert email.domain_failures() == {
+        "mail.ostrel.example": [], "orders.ostrel.example": [], "uk.ostrel.example": [], "ca.ostrel.example": [],
+        "eu.ostrel.example": ["dmarc"], "news.ostrel.example": ["dkim"], "promo.ostrel.example": ["spf"]}
+    # Two From domains are not sending domains at all; one of them is the brand's own.
+    assert {mail["domain"] for mail in emails.values()} - set(records) == {"ostrel.example", "ostrel-mail.example"}
 
 
 AUDIT_TRAPS = {
-    # name: (switch, the checks it must score zero on)
-    "DMARC sp= read as p=": ("sp_counts", {"domain_right", "a2_violations", "a3_multiple"}),
-    "SPF ~all read as a fail": ("softfail_fails", {"domain_right", "a1_passing", "a2_violations", "a3_multiple"}),
-    "an empty key at another selector": ("any_empty_key_fails", {"domain_right", "a1_passing", "a2_violations", "a3_multiple"}),
-    "a PO box is not an address": ("po_box_invalid", {"address_right", "a1_passing", "a2_violations"}),
-    "transactional drafts need a footer": ("transactional_like_marketing",
-                                           {"address_right", "unsubscribe_right", "a1_passing", "a2_violations", "a3_multiple"}),
-    "spaces in the tag matter": ("spaces_matter", {"unsubscribe_right", "a1_passing", "a2_violations"}),
-    "unsubscribe_url works": ("url_tag_works", {"unsubscribe_right", "a1_passing", "a2_violations"}),
-    "up to read as exactly": ("up_to_strict", {"subject_right", "a1_passing", "a2_violations"}),
-    "a review request is promotional": ("review_is_promo", {"transactional_promo_right", "a1_passing", "a2_violations"}),
-    "only the first audience checked": ("first_audience_only", {"consent_right", "a2_violations", "a3_multiple"}),
-    "consent asked of transactional drafts": ("consent_on_transactional",
-                                              {"consent_right", "a1_passing", "a2_violations", "a3_multiple"}),
-    "24 months read as under 24": ("months_strict", {"consent_right", "a1_passing", "a2_violations"}),
-    "double opt-in everywhere": ("double_opt_in_everywhere", {"consent_right", "a1_passing", "a2_violations", "a3_multiple"}),
+    # name: (switch, the code check it must zero)
+    "DMARC sp= read as p=": ("dmarc_sp_counts", "domain_right"),
+    "SPF ~all read as a fail": ("softfail_fails", "domain_right"),
+    "an empty key at another selector": ("any_empty_key_fails", "domain_right"),
+    "DMARC pct below 100 read as a fail": ("partial_pct_fails", "domain_right"),
+    "DMARC sp=none read as a fail": ("sp_none_fails", "domain_right"),
+    "a key at another selector counted": ("other_selector_counts", "domain_right"),
+    "only the first SPF record read": ("first_spf_only", "domain_right"),
+    "the brand's own domain taken as a sending domain": ("root_domain_ours", "domain_right"),
+    "a PO box is not an address": ("po_box_invalid", "address_right"),
+    "transactional emails held to the footer rules": ("transactional_like_marketing", "address_right"),
+    "spaces in the tag matter": ("spaces_matter", "unsubscribe_right"),
+    "capital letters in the tag are fine": ("capitals_ok", "unsubscribe_right"),
+    "unsubscribe_url works": ("url_tag_works", "unsubscribe_right"),
+    "up to read as exactly": ("up_to_strict", "subject_right"),
+    "everything is always a promise": ("everything_always", "subject_right"),
+    "free shipping with a minimum always flagged": ("minimum_always", "subject_right"),
+    "a review request is promotional": ("review_is_promo", "transactional_promo_right"),
+    "the promotion must be the last block": ("promo_must_be_last", "transactional_promo_right"),
+    "only the first audience checked": ("first_audience_only", "consent_right"),
+    "consent asked of transactional emails": ("consent_on_transactional", "consent_right"),
+    "24 months read as under 24": ("months_strict", "consent_right"),
+    "double opt-in everywhere": ("double_opt_in_everywhere", "consent_right"),
 }
 
 
@@ -655,39 +657,55 @@ def test_the_audit_reference_passes_every_program_check_and_a_blank_reply_none()
     assert all(item["pass"] for item in _results(AUDIT, audit_reply(audit_queue())).values())
     assert not any(item["pass"] for item in _results(AUDIT, "").values())
     assert bench.free_credit_scores(AUDIT) == {}
-    # Every draft passed: each code check and the counts fail.
-    everything_passes = audit_reply({draft_id: set() for draft_id in email.draft_ids()})
-    failed = {name for name, item in _results(AUDIT, everything_passes).items() if not item["pass"]}
-    assert failed == set(CODE_CHECKS.values()) | {"a1_passing", "a2_violations", "a3_multiple"}
+    # Every email passed: each code check and the counts score nothing.
+    everything_passes = audit_reply({email_id: set() for email_id in email.draft_ids()})
+    scores = {name: item["score"] for name, item in _results(AUDIT, everything_passes).items()}
+    assert {name for name, score in scores.items() if score == 0.0} == (
+        set(CODE_CHECKS.values()) | {"a1_passing", "a2_violations", "a3_multiple"})
 
 
 @pytest.mark.parametrize("trap", sorted(AUDIT_TRAPS))
 def test_each_tempting_misreading_of_the_policy_scores_zero_on_what_it_touches(trap):
-    switch, touched = AUDIT_TRAPS[trap]
-    scores = {name: item["score"] for name, item in _results(AUDIT, audit_reply(audit_queue(**{switch: True}))).items()}
-    assert {name for name, score in scores.items() if score == 0.0} == touched, scores
-    assert all(scores[name] == 1.0 for name in scores if name not in touched), scores
+    """A reply built from the misreading scores zero on its code's check, and
+    every check it touches is zero, never part credit."""
+    switch, target = AUDIT_TRAPS[trap]
+    verdicts = audit_queue(**{switch: True})
+    changed = sum(1 for email_id, codes in verdicts.items() if codes != email.audit_reference()[email_id])
+    assert changed >= 3, (trap, changed)
+    scores = {name: item["score"] for name, item in _results(AUDIT, audit_reply(verdicts)).items()}
+    assert scores[target] == 0.0, scores
+    assert all(score in (0.0, 1.0) for score in scores.values()), scores
+    assert scores["a2_violations"] == 0.0 and scores["every_email_once"] == 1.0
 
 
 def test_an_audit_slip_is_counted_where_it_went_wrong():
     def changed(text: str) -> dict:
         return {name: value for name, value in email.audit_facts(text).items() if value}
 
-    assert changed(_swap(AUDIT_REFERENCE, "E05,DOMAIN;SUBJECT", "E05,SUBJECT")) == {"audit_domain_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass", "E04,ADDRESS")) == {"audit_address_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E05,DOMAIN;SUBJECT", "E05,pass")) == {
+    ref = email.audit_reference()
+    two = next(email_id for email_id, codes in ref.items() if codes == {"DOMAIN", "SUBJECT"})
+    clean = next(email_id for email_id, codes in ref.items() if not codes)
+    consent = next(email_id for email_id, codes in ref.items() if codes == {"CONSENT"})
+    promo = next(email_id for email_id, codes in ref.items() if codes == {"TRANSACTIONAL_PROMO"})
+    assert changed(_swap(AUDIT_REFERENCE, f"{two},DOMAIN;SUBJECT", f"{two},SUBJECT")) == {"audit_domain_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass", f"{clean},ADDRESS")) == {"audit_address_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{two},DOMAIN;SUBJECT", f"{two},pass")) == {
         "audit_domain_error_count": 1, "audit_subject_error_count": 1}
+    # One slip costs a third of its code's check; three cost all of it.
+    one_slip = _results(AUDIT, _swap(AUDIT_REFERENCE, f"{clean},pass", f"{clean},ADDRESS"))
+    assert one_slip["address_right"]["score"] == pytest.approx(2 / 3, abs=1e-3)
     # Written loosely, still the same verdict.
-    assert changed(_swap(AUDIT_REFERENCE, "E05,DOMAIN;SUBJECT", 'E05,"subject, domain"')) == {}
-    assert changed(_swap(AUDIT_REFERENCE, "E06,TRANSACTIONAL_PROMO", "e06,Transactional promo")) == {}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass", "E04,PASS")) == {}
+    assert changed(_swap(AUDIT_REFERENCE, f"{two},DOMAIN;SUBJECT", f'{two},"subject, domain"')) == {}
+    assert changed(_swap(AUDIT_REFERENCE, f"{promo},TRANSACTIONAL_PROMO", f"{promo.lower()},Transactional promo")) == {}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass", f"{clean},PASS")) == {}
     # Not written as asked: a verdict that is both, a code the policy does not have, an empty one.
-    assert changed(_swap(AUDIT_REFERENCE, "E05,DOMAIN;SUBJECT", "E05,pass;DOMAIN;SUBJECT")) == {"audit_row_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass", "E04,SPAM_WORDS")) == {"audit_row_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass", "E04,")) == {"audit_row_error_count": 1}
-    # A draft missing, listed twice, or invented.
-    assert changed(_swap(AUDIT_REFERENCE, "E12,CONSENT\n", "")) == {"audit_row_error_count": 1, "audit_consent_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass\n", "E04,pass\nE04,pass\n")) == {"audit_row_error_count": 1}
-    assert changed(_swap(AUDIT_REFERENCE, "E04,pass\n", "E04,pass\nE19,pass\n")) == {"audit_row_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{two},DOMAIN;SUBJECT", f"{two},pass;DOMAIN;SUBJECT")) == {"audit_row_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass", f"{clean},SPAM_WORDS")) == {"audit_row_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass", f"{clean},")) == {"audit_row_error_count": 1}
+    # An email missing, listed twice, or invented.
+    assert changed(_swap(AUDIT_REFERENCE, f"{consent},CONSENT\n", "")) == {
+        "audit_row_error_count": 1, "audit_consent_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass\n", f"{clean},pass\n{clean},pass\n")) == {"audit_row_error_count": 1}
+    assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass\n", f"{clean},pass\nE151,pass\n")) == {"audit_row_error_count": 1}
     # The fix lines after the file are not rows of it.
-    assert "E05 DOMAIN:" in AUDIT_REFERENCE and email.audit_facts(AUDIT_REFERENCE)["audit_row_error_count"] == 0
+    assert "- DOMAIN:" in AUDIT_REFERENCE and email.audit_facts(AUDIT_REFERENCE)["audit_row_error_count"] == 0

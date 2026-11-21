@@ -2,19 +2,20 @@
 
 ## Unreleased
 
-- Tasks: `email-compliance-audit` (development split): 18 email drafts, a
-  sending policy with six violation codes, a consent table by audience and
-  the DNS records of three sending domains in; a verdict per draft, a fix
-  per violation and three labeled counts out. 14 violations are planted
-  across 11 drafts and the other 7 drafts are look-alikes that pass. 12 of
-  its 13 checks are a program's: one per code, each failed by a single
-  missed or false flag. It lives in `eval_runner/task_facts_email.py` beside
-  `email-send-calendar`; `tests/test_tasks_email.py` reads the four fixture
-  files with its own parser, recomputes every verdict and figure, and shows
-  that each of 13 tempting misreadings of the policy (DMARC `sp=` read as
-  `p=`, `~all` read as a fail, a PO box refused, transactional drafts held
-  to the marketing footer rules, only the first audience checked, and more)
-  scores zero on the checks it touches and full on the rest.
+- Tasks: `email-compliance-audit` (development split): the 150 live emails
+  of a skincare brand before a platform move (110 marketing, 40
+  transactional), a sending policy with six violation codes, a consent table
+  of 17 audiences and the DNS records of seven sending domains in; a verdict
+  per email, a fix per code and three labeled counts out. 116 violations sit
+  in 87 emails, and every rule has look-alikes that pass. 12 of its 13
+  checks are a program's: one per code over all 150 rows (zero credit at 3
+  wrong) and exact counts. It lives in `eval_runner/task_facts_email.py`
+  beside `email-send-calendar`, generated from counted features so that
+  every trap occurs at least three times; `tests/test_tasks_email.py` reads
+  the four fixture files with its own parser, recomputes every verdict and
+  figure, and shows that each of 22 tempting misreadings of the policy
+  changes at least three emails and scores zero on its code's check, with
+  no check left at part credit.
 - Tasks: `email-send-calendar` (development split): a 12-campaign plan, an
   800-subscriber export (six overlapping segments, join dates, pauses) and a
   calendar policy in; each campaign's send date, audience size and reason,
