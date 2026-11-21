@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Tasks: `brief-amendment` (development split, experimental area): the
+  signed-off launch brief and its product sheet arrive one turn earlier,
+  "for reference, the request follows", through the existing `decoy`
+  mechanism (the brief is the earlier message, the sheet its fixture); the
+  request is the client's amendment of six changes (launch date, a withdrawn
+  product, two price changes, a new market with its budget, a withdrawn
+  claim). The reply is a note and three files (plan, emails, ads) for three
+  markets. It isolates applying a change everywhere it reaches and nowhere
+  else: three knock-ons the amendment does not mention (the bundle the
+  withdrawn kettle belongs to, the item each launch email features, a teaser
+  moved off a UK holiday) and a look-alike (a price that starts after
+  launch). `decoy.answers` holds what the brief-alone plan scores on each of
+  the 12 banded checks; no change to the mechanism or its validation was
+  needed. 16 of its 17 checks are a program's. Lists `harnesses`
+  (`direct-api`, `magister-agent`).
 - Tasks: `launch-workflow-chain` (development split, experimental area): a
   paid social launch built as six dependent deliverables in one reply, from a
   build brief, a 22-segment audience table and a 20-product catalogue: the

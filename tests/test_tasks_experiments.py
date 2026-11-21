@@ -13,6 +13,7 @@ What is pinned here, for every task:
   and only there.
 """
 import csv
+import datetime as dt
 import importlib.util
 import io
 import json
@@ -27,7 +28,7 @@ import pytest
 from eval_runner import bench, task_facts_experiments
 
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
-TASKS = ("launch-workflow-chain",)
+TASKS = ("launch-workflow-chain", "brief-amendment")
 
 
 def _generator(folder: str):
@@ -350,3 +351,220 @@ def test_chain_ad_rules_catch_each_kind_of_wrong_ad():
         for row in files["ads.csv"][:3]:
             row[1] = row[1] + " for the long trail ahead"
     assert _zeroed(_results(CHAIN, _chain_reply(long_headlines))) == {"ads_within_limits"}
+
+
+# ═════════════════════════════════════════════════════════════════ brief-amendment
+
+AMEND = "brief-amendment"
+
+
+def _amendment_values() -> dict:
+    """What the amendment fixture says, read out of its text."""
+    text = (FIXTURES / AMEND / "amendment.md").read_text()
+    moved = re.search(r"the launch moves from \w+ (\d+ \w+ \d{4}) to \w+ (\d+ \w+ \d{4})", text)
+    withdrawn = re.search(r"\((P\d\d)\) has not cleared .* withdrawn", text)
+    rise = re.search(r"From (\d+ \w+ \d{4}) the US price of the .* \((P\d\d)\) is \$(\d+)", text)
+    later = re.search(r"From (\d+ \w+ \d{4}) the UK price of the .* \((P\d\d)\) goes up to £(\d+)", text)
+    ireland = re.search(r"market code (\w+)\).*Fund it with \$([\d,]+) moved from the (\w+) budget", text)
+    banned = re.search(r'stop using the claim "([^"]+)", in any wording', text)
+    day = lambda value: dt.datetime.strptime(value, "%d %B %Y").date()  # noqa: E731
+    return {
+        "launch_before": day(moved.group(1)), "launch": day(moved.group(2)), "withdrawn": withdrawn.group(1),
+        "prices": [(rise.group(2), "US", int(rise.group(3)), day(rise.group(1))),
+                   (later.group(2), "UK", int(later.group(3)), day(later.group(1)))],
+        "added": ireland.group(1), "added_budget": int(ireland.group(2).replace(",", "")), "from": ireland.group(3),
+        "banned": banned.group(1),
+    }
+
+
+def _brief_values() -> dict:
+    """What the signed-off brief (the earlier message) says, read out of its text."""
+    text = _task(AMEND)["decoy"]["message"]
+    holidays = {}
+    for market, days in re.findall(r"^- (US|UK|IE): (.+)\.$", text, re.MULTILINE):
+        holidays[market] = {dt.datetime.strptime(f"{d.strip()} 2027", "%d %B %Y").date() for d in days.split(",")}
+    budget = dict((m, int(v.replace(",", ""))) for v, m in re.findall(r"\$([\d,]+) for the (US|UK)", text))
+    launch = re.search(r"launches its Brightwell range of small kitchen appliances on \w+ (\d+ \w+ \d{4})", text)
+    return {"holidays": holidays, "budget": budget,
+            "launch": dt.datetime.strptime(launch.group(1), "%d %B %Y").date()}
+
+
+def _amend_plan(amended: bool) -> dict:
+    """The plan the brief gives, signed off or amended, worked out again."""
+    sheet = {row["item_id"]: row for row in _table(AMEND, "original/product_sheet.csv")}
+    brief, change = _brief_values(), _amendment_values()
+    launch = change["launch"] if amended else brief["launch"]
+    markets = ["US", "UK"] + ([change["added"]] if amended else [])
+    budget = dict(brief["budget"])
+    if amended:
+        budget[change["from"]] -= change["added_budget"]
+        budget[change["added"]] = change["added_budget"]
+    columns = {"US": ("$", "price_usd"), "UK": ("£", "price_gbp"), "IE": ("€", "price_eur")}
+    price = {}
+    for item, row in sheet.items():
+        for market, (_sign, column) in columns.items():
+            if row[column]:
+                price[(market, item)] = int(row[column])
+    if amended:
+        for item, market, amount, start in change["prices"]:
+            if start <= launch:
+                price[(market, item)] = amount
+    out = {item for item in sheet if amended and item == change["withdrawn"]}
+    for item, row in sheet.items():
+        if row["kind"] == "bundle" and any(part in out for part in row["bundle_items"].split(";")):
+            out.add(item)
+    ads = {}
+    for item, row in sheet.items():
+        if item in out:
+            continue
+        for market in markets:
+            if market in row["markets"].split(";"):
+                claim = row["claim_2"] if amended and change["banned"] in row["claim_1"].lower() else row["claim_1"]
+                ads[(market, item)] = (row["ad_name"], claim, f"{columns[market][0]}{price[(market, item)]}")
+    emails = {}
+    for market in markets:
+        here = [item for (m, item) in ads if m == market]
+        bundles = [item for item in here if sheet[item]["kind"] == "bundle"]
+        featured = bundles[0] if bundles else max(here, key=lambda item: (price[(market, item)], -int(item[1:])))
+        name = sheet[featured]["ad_name"]
+        for email, offset, subject in (("teaser", -4, f"Brightwell arrives {launch.day} {launch:%B}"),
+                                       ("launch", 0, f"Meet the {name}"),
+                                       ("reminder", 3, f"Still thinking about the {name}?")):
+            day = launch + dt.timedelta(days=offset)
+            while day.weekday() >= 5 or day in brief["holidays"][market]:
+                day -= dt.timedelta(days=1)
+            emails[(market, email)] = (day, subject)
+    plan = {m: (launch, launch, launch + dt.timedelta(days=27), budget[m]) for m in markets}
+    return {"plan": plan, "emails": emails, "ads": ads}
+
+
+def _amend_reply(plan: dict, note: str = "What changed: see the files.") -> str:
+    return note + "\n\n" + "".join([
+        _csv_file("launch_plan.csv", ["market", "launch_date", "ads_start", "ads_end", "budget_usd"],
+                  [[m, *(d.isoformat() for d in row[:3]), row[3]] for m, row in plan["plan"].items()]),
+        _csv_file("email_schedule.csv", ["market", "email", "send_date", "subject"],
+                  [[m, e, day.isoformat(), subject] for (m, e), (day, subject) in plan["emails"].items()]),
+        _csv_file("ads.csv", ["ad_id", "market", "item_id", "headline", "claim", "price"],
+                  [[f"{m}-{i}", m, i, *ad] for (m, i), ad in plan["ads"].items()]),
+    ])
+
+
+def _banded(task: dict) -> set[str]:
+    return {cid for cid, c in _by_id(task).items() if "near" in (c.get("programmatic") or {})}
+
+
+def test_amendment_task_is_two_messages_the_brief_first():
+    task = _task(AMEND)
+    generator = _generator(AMEND)
+    assert task["decoy"]["message"] == generator.original_brief()
+    assert task["harnesses"] == ["direct-api", "magister-agent"]
+    prior = bench.assemble_decoy_prompt(task)
+    assert prior.startswith(task["decoy"]["message"])
+    assert "\n## Supplied source: product_sheet.csv\n" in prior
+    assert "for reference only" in prior and "the request follows in my next message" in prior
+    prompt = bench.assemble_prompt(task, include_skills=False)
+    assert "\n## Supplied source: amendment.md\n" in prompt
+    # The brief and its sheet travel only in the earlier turn.
+    assert "item_id,item_name" not in prompt and "Holidays in 2027" not in prompt
+    assert not bench.task_supports_harness(task, "claude-code")
+    # The prompt asks for the work without pointing at what the amendment reaches.
+    for word in ("bundle", "holiday", "breakfast", "featured", "toaster", "may"):
+        assert word not in task["prompt"].lower().split(), word
+
+
+def test_amendment_oracle_matches_a_recomputation_from_the_texts():
+    reference = task_facts_experiments._amend_on_disk()
+    change = _amendment_values()
+    constants = task_facts_experiments.AMEND_CHANGES
+    assert change["launch"].isoformat() == constants["launch"] and change["withdrawn"] == constants["withdrawn"]
+    assert change["prices"] == [(i, m, p, dt.date.fromisoformat(d)) for i, m, p, d in constants["prices"]]
+    assert (change["added"], change["added_budget"], change["from"]) == ("IE", 6000, "UK")
+    assert change["launch_before"] == _brief_values()["launch"]
+    for amended, plan in ((True, reference["final"]), (False, reference["original"])):
+        mine = _amend_plan(amended)
+        assert mine["ads"] == {k: (v["headline"], v["claim"], v["price"]) for k, v in plan["ads"].items()}
+        assert mine["emails"] == {k: (v["send_date"], v["subject"]) for k, v in plan["emails"].items()}
+        assert mine["plan"] == {m: (r["launch_date"], r["ads_start"], r["ads_end"], r["budget_usd"]) for m, r in plan["markets"].items()}
+    final = _amend_plan(True)
+    assert final["emails"][("UK", "teaser")][0] == dt.date(2027, 3, 25)       # Good Friday is the UK's only
+    assert final["emails"][("IE", "teaser")][0] == final["emails"][("US", "teaser")][0] == dt.date(2027, 3, 26)
+    assert final["ads"][("UK", "P03")][2] == "£69"                            # the May price does not reach the plan
+    assert final["ads"][("US", "P06")][2] == "$259"
+    assert {k for k in final["ads"] if k[1] == "B01"} == set()
+    # The figures the checks name are the computed ones.
+    criteria = _by_id(_task(AMEND))
+    assert "2027-04-26" in criteria["launch_dates_moved"]["check"]
+    budget = final["plan"]
+    assert f"${budget['US'][3]:,} for the US, ${budget['UK'][3]:,} for the UK and ${budget['IE'][3]:,} for IE" in criteria["budget_moved"]["check"]
+    for market, name in (("US", "Coffee Machine"), ("UK", "Stand Mixer"), ("IE", "Coffee Grinder")):
+        assert final["emails"][(market, "launch")][1] == f"Meet the Brightwell {name}"
+        assert f"Brightwell {name}" in criteria["featured_item_right"]["check"]
+    euro = ", ".join(f"{i} {final['ads'][('IE', i)][2]}" for i in ("P03", "P04", "P07", "P08"))
+    assert f"({euro})" in criteria["ireland_ads_built_by_the_brief"]["check"]
+
+
+def test_amendment_reference_reply_passes_every_program_check_and_a_blank_reply_none():
+    results = _results(AMEND, _amend_reply(_amend_plan(True)))
+    assert _failed(results) == set(), {k: v["evidence"] for k, v in results.items() if not v["pass"]}
+    assert len(results) == 16
+    assert all(result["score"] == 0 for result in _results(AMEND, "").values())
+
+
+def test_the_signed_off_plan_alone_scores_zero_on_everything_the_amendment_changes():
+    """The reply built only from the original brief: what the decoy turn
+    yields. It scores zero on every banded check, and its facts are the task
+    file's decoy.answers, which validation proves score zero."""
+    task = _task(AMEND)
+    reply = _amend_reply(_amend_plan(False))
+    results = _results(AMEND, reply)
+    assert _zeroed(results) == _banded(task)
+    assert {cid for cid, r in results.items() if r["pass"]} == {
+        "three_files_present", "other_ads_kept", "later_price_not_applied", "untouched_ads_unchanged"}
+    facts = bench.measured_facts(task, reply)
+    assert task["decoy"]["answers"] == {cid: facts[_by_id(task)[cid]["programmatic"]["fact"]] for cid in _banded(task)}
+
+
+def test_the_amendment_applied_literally_misses_every_knock_on():
+    """Each listed change made where it is named, and the brief's rules not
+    followed through: the bundle kept, the teaser left on a UK holiday, the
+    set still featured, and the May price applied."""
+    plan = _amend_plan(True)
+    sheet = {row["item_id"]: row for row in _table(AMEND, "original/product_sheet.csv")}
+    for market in ("US", "UK"):
+        row = sheet["B01"]
+        plan["ads"][(market, "B01")] = (row["ad_name"], row["claim_1"], {"US": "$", "UK": "£"}[market] + row[f"price_{'usd' if market == 'US' else 'gbp'}"])
+        for email, subject in (("launch", "Meet the Brightwell Breakfast Set"),
+                               ("reminder", "Still thinking about the Brightwell Breakfast Set?")):
+            plan["emails"][(market, email)] = (plan["emails"][(market, email)][0], subject)
+    plan["emails"][("UK", "teaser")] = (dt.date(2027, 3, 26), plan["emails"][("UK", "teaser")][1])
+    plan["ads"][("UK", "P03")] = plan["ads"][("UK", "P03")][:2] + ("£74",)
+    results = _results(AMEND, _amend_reply(plan))
+    assert _failed(results) == _zeroed(results) == {
+        "bundle_withdrawn_with_its_item", "teaser_moved_off_holiday", "featured_item_right", "later_price_not_applied"}
+
+
+def test_a_plan_built_only_from_the_amendment_scores_zero_on_what_it_leaves_out():
+    """Only the rows the amendment names or adds: everything the brief alone
+    decides is missing, so the checks of what must stay as signed off fail."""
+    plan = _amend_plan(True)
+    named = {("US", "P06"), ("UK", "P03")} | {k for k in plan["ads"] if k[0] == "IE" or k[1] in ("P04", "P05")}
+    plan["ads"] = {k: v for k, v in plan["ads"].items() if k in named}
+    results = _results(AMEND, _amend_reply(plan))
+    assert {"other_ads_kept", "untouched_ads_unchanged"} <= _zeroed(results)
+    assert "later_price_not_applied" not in _failed(results)      # its row was named, and kept at £69
+
+
+def test_amendment_reader_takes_the_formats_replies_use():
+    plan = _amend_plan(True)
+    reply = _amend_reply(plan)
+    # Dates written out, prices with decimals, subjects without the question mark, a Markdown table.
+    reply = reply.replace("2027-03-25", "25 March 2027").replace("$259", "$259.00")
+    reply = reply.replace("Still thinking about the Brightwell Stand Mixer?", "Still thinking about the Brightwell Stand Mixer")
+    assert _failed(_results(AMEND, reply)) == set()
+    wrong_sign = _amend_reply(plan).replace("€75", "$75")
+    assert _failed(_results(AMEND, wrong_sign)) == {"ireland_ads_built_by_the_brief"}
+    paraphrased = _amend_reply(plan).replace("Browns evenly on both sides", "Even browning on both sides")
+    assert _failed(_results(AMEND, paraphrased)) == {"untouched_ads_unchanged", "ireland_ads_built_by_the_brief"}
+    still_claimed = _amend_reply(plan).replace("Forty grind settings", "Forty grind settings and a dishwasher safe hopper")
+    assert _failed(_results(AMEND, still_claimed)) == {
+        "claim_replaced_everywhere", "untouched_ads_unchanged", "ireland_ads_built_by_the_brief"}

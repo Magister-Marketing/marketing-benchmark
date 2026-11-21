@@ -1,0 +1,10 @@
+item_id,item_name,ad_name,kind,bundle_items,markets,price_usd,price_gbp,price_eur,claim_1,claim_2
+P01,Brightwell Kettle BK-17,Brightwell Kettle,product,,US;UK;IE,89,79,85,Boils a full jug in three minutes,Keeps water hot for half an hour
+P02,Brightwell Stand Mixer SM-500,Brightwell Stand Mixer,product,,US;UK,249,219,,Ten speeds and a pulse setting,Five-litre steel bowl
+P03,Brightwell Toaster BT-4,Brightwell Toaster,product,,US;UK;IE,79,69,75,Browns evenly on both sides,Extra-wide slots for bagels
+P04,Brightwell Hand Blender HB-2,Brightwell Hand Blender,product,,US;UK;IE,59,49,55,Dishwasher-safe blending shaft,Five speeds plus turbo
+P05,Brightwell Juicer CJ-1,Brightwell Juicer,product,,US;UK,129,109,,Dishwasher-safe parts,Cold-press keeps the pulp out
+P06,Brightwell Coffee Machine CM-15,Brightwell Coffee Machine,product,,US;UK,239,209,,Barista pressure at 15 bar,Steam wand for silky milk
+P07,Brightwell Coffee Grinder CG-40,Brightwell Coffee Grinder,product,,US;UK;IE,99,85,95,Forty grind settings,Dishwasher-safe hopper
+P08,Brightwell Milk Frother MF-3,Brightwell Milk Frother,product,,US;IE,49,,45,Hot or cold foam in 90 seconds,Non-stick jug
+B01,Brightwell Breakfast Set BS-3,Brightwell Breakfast Set,bundle,P01;P03;P07,US;UK,229,199,,Three matching appliances in one box,Brushed-steel finish throughout

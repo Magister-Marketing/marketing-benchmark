@@ -48,14 +48,14 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 44
-    assert sum(task["split"] == "development" for task in tasks.values()) == 40
+    assert len(tasks) == 45
+    assert sum(task["split"] == "development" for task in tasks.values()) == 41
     assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
     # Every task runs on the direct arms. The decoy task needs a harness that
     # can send a prior turn, which a Claude Code session cannot.
     assert all(bench.task_supports_harness(t, bench.HARNESS_ID) for t in tasks.values())
     assert [t for t in tasks if not bench.task_supports_harness(tasks[t], "claude-code")] == [
-        "ads-ledger-analysis-decoy"
+        "ads-ledger-analysis-decoy", "brief-amendment"
     ]
     for task in tasks.values():
         assert task["prompt_version"] >= 1
@@ -614,9 +614,9 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 40
+    assert len(bench._select_tasks(None, "development", tasks)) == 41
     assert len(bench._select_tasks(None, "holdout", tasks)) == 4
-    assert len(bench._select_tasks(None, "all", tasks)) == 44
+    assert len(bench._select_tasks(None, "all", tasks)) == 45
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
@@ -630,7 +630,7 @@ def test_the_decoy_task_runs_wherever_a_prior_turn_can_be_sent_and_nowhere_else(
     tasks = bench.load_tasks()
     for harness in bench.PRIOR_TURN_HARNESSES:
         development = bench._select_tasks(None, "development", tasks, harness=harness)
-        assert "ads-ledger-analysis-decoy" in development and len(development) == 40
+        assert "ads-ledger-analysis-decoy" in development and len(development) == 41
         assert bench._select_tasks(
             "ads-ledger-analysis-decoy", "all", tasks, harness=harness
         ) == ["ads-ledger-analysis-decoy"]
@@ -2758,7 +2758,7 @@ def test_a_derived_task_cannot_drift_from_its_parent():
 
 def test_validate_passes_on_the_shipped_tasks(capsys):
     assert bench.cmd_validate(argparse.Namespace()) == 0
-    assert "OK: 44 tasks" in capsys.readouterr().out
+    assert "OK: 45 tasks" in capsys.readouterr().out
 
 
 # --- the direct harness's decoy turn ----------------------------------------

@@ -25,6 +25,7 @@ All brands, people, URLs and figures here are invented.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 import re
 from decimal import Decimal, InvalidOperation
@@ -406,10 +407,358 @@ def chain_facts(response_text: str, task: dict | None = None) -> dict:
     return facts
 
 
+# ═════════════════════════════════════════════════════════════════ brief-amendment
+
+AMEND_FOLDER = "brief-amendment"
+AMEND_SHEET = "original/product_sheet.csv"     # sent with the original brief, one turn earlier
+AMEND_FIXTURE = "amendment.md"                   # the task's own source: the client's changes
+AMEND_FILES = ("launch_plan.csv", "email_schedule.csv", "ads.csv")
+AMEND_COLUMNS = {
+    "launch_plan.csv": ("market", "launch_date", "ads_start", "ads_end", "budget_usd"),
+    "email_schedule.csv": ("market", "email", "send_date", "subject"),
+    "ads.csv": ("ad_id", "market", "item_id", "headline", "claim", "price"),
+}
+AMEND_SIGNS = {"US": ("$", "price_usd"), "UK": ("£", "price_gbp"), "IE": ("€", "price_eur")}
+AMEND_EMAILS = (("teaser", -4), ("launch", 0), ("reminder", 3))
+AMEND_FLIGHT_DAYS = 28
+AMEND_HOLIDAYS = {
+    "US": ("2027-01-01", "2027-01-18", "2027-02-15", "2027-05-31"),
+    "UK": ("2027-01-01", "2027-03-26", "2027-03-29", "2027-05-03", "2027-05-31"),
+    "IE": ("2027-01-01", "2027-02-01", "2027-03-17", "2027-03-29", "2027-05-03"),
+}
+AMEND_SUBJECTS = {
+    "teaser": "Brightwell arrives {date}",
+    "launch": "Meet the {featured}",
+    "reminder": "Still thinking about the {featured}?",
+}
+# The brief as signed off.
+AMEND_BRIEF = {
+    "signed_off": "2027-02-08",
+    "launch": "2027-03-09",
+    "markets": ("US", "UK"),
+    "budget": {"US": 28_800, "UK": 19_200},
+}
+# The client's amendment, as the amendment fixture states it.
+AMEND_CHANGES = {
+    "sent": "2027-02-22",
+    "launch": "2027-03-30",
+    "withdrawn": "P01",
+    "prices": (
+        # item, market, new price, in effect from
+        ("P06", "US", 259, "2027-03-01"),
+        ("P03", "UK", 74, "2027-05-01"),
+    ),
+    "added_market": "IE",
+    "added_budget": 6_000,
+    "budget_from": "UK",
+    "banned_claim": "dishwasher-safe",
+}
+
+
+def _iso(text: str) -> dt.date:
+    return dt.date.fromisoformat(text)
+
+
+def amend_sheet(text: str) -> dict[str, dict]:
+    return {row["item_id"]: row for row in _rows(text)}
+
+
+def _working_day_on_or_before(day: dt.date, market: str) -> dt.date:
+    holidays = {_iso(value) for value in AMEND_HOLIDAYS[market]}
+    while day.weekday() >= 5 or day in holidays:
+        day -= dt.timedelta(days=1)
+    return day
+
+
+def _date_words(day: dt.date) -> str:
+    return f"{day.day} {day.strftime('%B')}"
+
+
+def amend_plan(sheet: dict[str, dict], changes: dict | None) -> dict:
+    """The plan the brief gives, as signed off (changes=None) or as amended.
+    Prices are those in effect on launch day; a bundle runs only while every
+    item in it is in the launch."""
+    launch = _iso((changes or AMEND_BRIEF)["launch"])
+    markets = list(AMEND_BRIEF["markets"]) + ([changes["added_market"]] if changes else [])
+    budget = dict(AMEND_BRIEF["budget"])
+    if changes:
+        budget[changes["budget_from"]] -= changes["added_budget"]
+        budget[changes["added_market"]] = changes["added_budget"]
+    withdrawn = {changes["withdrawn"]} if changes else set()
+    prices: dict[tuple[str, str], int] = {}
+    for item_id, row in sheet.items():
+        for market, (_sign, column) in AMEND_SIGNS.items():
+            if row[column]:
+                prices[(market, item_id)] = int(row[column])
+    for item_id, market, price, start in (changes or {}).get("prices", ()):
+        if _iso(start) <= launch:
+            prices[(market, item_id)] = price
+    live = {item_id for item_id in sheet if item_id not in withdrawn}
+    live = {
+        item_id for item_id in live
+        if sheet[item_id]["kind"] != "bundle" or set(sheet[item_id]["bundle_items"].split(";")) <= live
+    }
+    banned = (changes or {}).get("banned_claim")
+    ads = {}
+    for item_id in sorted(live):
+        row = sheet[item_id]
+        for market in markets:
+            if market not in row["markets"].split(";"):
+                continue
+            claim = row["claim_1"]
+            if banned and banned in claim.lower():
+                claim = row["claim_2"]
+            ads[(market, item_id)] = {
+                "headline": row["ad_name"],
+                "claim": claim,
+                "price": f"{AMEND_SIGNS[market][0]}{prices[(market, item_id)]}",
+                "amount": prices[(market, item_id)],
+            }
+    plan_rows = {
+        market: {
+            "launch_date": launch,
+            "ads_start": launch,
+            "ads_end": launch + dt.timedelta(days=AMEND_FLIGHT_DAYS - 1),
+            "budget_usd": budget[market],
+        }
+        for market in markets
+    }
+    emails = {}
+    for market in markets:
+        in_market = [item_id for (m, item_id) in ads if m == market]
+        bundles = [item_id for item_id in in_market if sheet[item_id]["kind"] == "bundle"]
+        if bundles:
+            featured = bundles[0]
+        else:
+            featured = sorted(in_market, key=lambda item: (-ads[(market, item)]["amount"], item))[0]
+        name = sheet[featured]["ad_name"]
+        for email, offset in AMEND_EMAILS:
+            day = _working_day_on_or_before(launch + dt.timedelta(days=offset), market)
+            subject = AMEND_SUBJECTS[email].format(date=_date_words(launch), featured=name)
+            emails[(market, email)] = {"send_date": day, "subject": subject, "featured": featured}
+    return {"markets": plan_rows, "emails": emails, "ads": ads}
+
+
+def amend_reference(sheet_text: str) -> dict:
+    """The final plan, the plan as signed off, and which ads and emails each
+    change of the amendment reaches, by kind."""
+    sheet = amend_sheet(sheet_text)
+    original = amend_plan(sheet, None)
+    final = amend_plan(sheet, AMEND_CHANGES)
+    added = AMEND_CHANGES["added_market"]
+    withdrawn = AMEND_CHANGES["withdrawn"]
+    banned = AMEND_CHANGES["banned_claim"]
+    bundles_lost = sorted(
+        item_id for item_id, row in sheet.items()
+        if row["kind"] == "bundle" and withdrawn in row["bundle_items"].split(";")
+    )
+    claim_ads = sorted(key for key in final["ads"] if banned in sheet[key[1]]["claim_1"].lower())
+    rises = sorted(
+        (market, item_id) for item_id, market, _price, start in AMEND_CHANGES["prices"]
+        if _iso(start) <= _iso(AMEND_CHANGES["launch"])
+    )
+    not_yet = sorted(
+        (market, item_id) for item_id, market, _price, start in AMEND_CHANGES["prices"]
+        if _iso(start) > _iso(AMEND_CHANGES["launch"])
+    )
+    moved_emails = sorted(
+        key for key, email in final["emails"].items()
+        if email["send_date"] != _iso(AMEND_CHANGES["launch"]) + dt.timedelta(days=dict(AMEND_EMAILS)[key[1]])
+    )
+    # In the markets the brief had, each ad keeps every field no change reaches:
+    # its headline always, its claim unless the claim was withdrawn, its price
+    # unless a price change names it (the one not yet in effect is checked on
+    # its own). Ireland's ads are new; their fields are checked together.
+    kept_fields = {}
+    for key in sorted(final["ads"]):
+        if key[0] == added:
+            continue
+        fields = ["headline"]
+        if key not in claim_ads:
+            fields.append("claim")
+        if key not in rises and key not in not_yet:
+            fields.append("price")
+        assert all(original["ads"][key][field] == final["ads"][key][field] for field in fields), key
+        kept_fields[key] = tuple(fields)
+    return {
+        "final": final,
+        "original": original,
+        "sheet": sheet,
+        "withdrawn_item": withdrawn,
+        "bundles_lost": bundles_lost,
+        "added_market": added,
+        "claim_ads": claim_ads,
+        "price_rises": rises,
+        "prices_not_yet": not_yet,
+        "holiday_moves": moved_emails,
+        "kept_fields": kept_fields,
+    }
+
+
+@lru_cache(maxsize=1)
+def _amend_on_disk() -> dict:
+    return amend_reference((FIXTURES / AMEND_FOLDER / AMEND_SHEET).read_text())
+
+
+def _date_cell(text: object) -> dt.date | None:
+    value = re.sub(r"\s+", " ", str(text or "")).strip().strip("*`\"'")
+    for fmt in ("%Y-%m-%d", "%d %B %Y", "%B %d, %Y", "%d %b %Y", "%b %d, %Y", "%A %d %B %Y", "%A, %d %B %Y"):
+        try:
+            return dt.datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _subject(text: object) -> str:
+    value = _fold(text).replace("’", "'").replace("“", "").replace("”", "").strip("\"'` ")
+    return value.rstrip(".?! ")
+
+
+def _claim(text: object) -> str:
+    return _fold(text).replace("’", "'").strip("\"'` ").rstrip(". ")
+
+
+def _market(text: object) -> str:
+    return _fold(text).upper()
+
+
+def _email_kind(text: object) -> str | None:
+    value = _fold(text)
+    found = [kind for kind, _offset in AMEND_EMAILS if kind in value]
+    return found[0] if len(found) == 1 else None
+
+
+def _price_right(cell: object, market: str, amount: int) -> bool:
+    value = str(cell or "").strip()
+    sign = AMEND_SIGNS[market][0]
+    others = [s for s, _c in AMEND_SIGNS.values() if s != sign]
+    return sign in value and not any(s in value for s in others) and common.money(value) == Decimal(amount)
+
+
+def _reply_ads(rows: list[dict] | None) -> dict[tuple[str, str], list[dict]]:
+    keyed: dict[tuple[str, str], list[dict]] = {}
+    for row in rows or []:
+        market = _market(row.get("market"))
+        item = _fold(row.get("item_id")).upper()
+        if not item:
+            match = re.fullmatch(r"([A-Za-z]{2})-([A-Za-z]\d{2})", (row.get("ad_id") or "").strip())
+            if match:
+                market, item = match.group(1).upper(), match.group(2).upper()
+        keyed.setdefault((market, item), []).append(row)
+    return keyed
+
+
+def amend_facts(response_text: str, task: dict | None = None) -> dict:
+    reference = _amend_on_disk()
+    final, sheet = reference["final"], reference["sheet"]
+    files = common.tables(response_text, list(AMEND_FILES))
+    facts = {"amend_missing_file_count": sum(files[name] is None for name in AMEND_FILES)}
+
+    # The launch plan: each market's dates, and its budget.
+    plan = {}
+    for row in files["launch_plan.csv"] or []:
+        plan.setdefault(_market(row.get("market")), []).append(row)
+    date_errors = sum(len(found) for market, found in plan.items() if market not in final["markets"])
+    budget_errors = 0
+    for market, expected in final["markets"].items():
+        found = plan.get(market, [])
+        if len(found) != 1 or any(
+            _date_cell(found[0].get(column)) != expected[column] for column in ("launch_date", "ads_start", "ads_end")
+        ):
+            date_errors += 1
+        if len(found) != 1 or common.money(found[0].get("budget_usd")) != Decimal(expected["budget_usd"]):
+            budget_errors += 1
+    facts["amend_plan_date_error_count"] = date_errors
+    facts["amend_budget_error_count"] = budget_errors
+
+    # The ads: which exist, and each one's headline, claim and price.
+    ads = _reply_ads(files["ads.csv"])
+    any_rows = bool(files["ads.csv"])
+    withdrawn = reference["withdrawn_item"]
+    lost = set(reference["bundles_lost"])
+    added = reference["added_market"]
+
+    def ad_right(key, *, claim=True, price=True, headline=True) -> bool:
+        found = ads.get(key, [])
+        if len(found) != 1:
+            return False
+        row, expected = found[0], final["ads"][key]
+        return (
+            (not headline or _fold(row.get("headline")) == _fold(expected["headline"]))
+            and (not claim or _claim(row.get("claim")) == _claim(expected["claim"]))
+            and (not price or _price_right(row.get("price"), key[0], expected["amount"]))
+        )
+
+    facts["amend_withdrawn_ad_count"] = (
+        sum(len(found) for (market, item), found in ads.items() if item == withdrawn) if any_rows else 2
+    )
+    facts["amend_bundle_ad_count"] = (
+        sum(len(found) for (market, item), found in ads.items() if item in lost) if any_rows else 2
+    )
+    gone = {withdrawn} | lost
+    ireland_expected = {key for key in final["ads"] if key[0] == added}
+    facts["amend_ireland_ad_error_count"] = sum(len(ads.get(key, [])) != 1 for key in ireland_expected) + sum(
+        len(found) for key, found in ads.items() if key[0] == added and key not in ireland_expected and key[1] not in gone
+    )
+    others_expected = {key for key in final["ads"] if key[0] != added}
+    facts["amend_other_ad_error_count"] = sum(len(ads.get(key, [])) != 1 for key in others_expected) + sum(
+        len(found) for key, found in ads.items()
+        if key[0] != added and key not in others_expected and key[1] not in gone
+    )
+    banned = AMEND_CHANGES["banned_claim"]
+    claim_errors = sum(not ad_right(key, price=False, headline=False) for key in reference["claim_ads"])
+    claim_errors += sum(
+        1 for key, found in ads.items() if key not in reference["claim_ads"]
+        for row in found if banned.replace("-", "") in _fold(" ".join([row.get("claim") or "", row.get("headline") or ""])).replace("-", "").replace(" ", "")
+    )
+    facts["amend_claim_error_count"] = claim_errors
+    facts["amend_price_rise_error_count"] = sum(
+        not ad_right(key, claim=False, headline=False) for key in reference["price_rises"]
+    )
+    facts["amend_later_price_error_count"] = sum(
+        not ad_right(key, claim=False, headline=False) for key in reference["prices_not_yet"]
+    )
+    facts["amend_ireland_ad_field_error_count"] = sum(
+        not ad_right(key, claim=key not in reference["claim_ads"]) for key in sorted(ireland_expected)
+    )
+    facts["amend_untouched_error_count"] = sum(
+        not ad_right(key, headline="headline" in fields, claim="claim" in fields, price="price" in fields)
+        for key, fields in reference["kept_fields"].items()
+    )
+
+    # The emails: each one's send date and subject.
+    emails: dict[tuple[str, str | None], list[dict]] = {}
+    for row in files["email_schedule.csv"] or []:
+        emails.setdefault((_market(row.get("market")), _email_kind(row.get("email"))), []).append(row)
+
+    def email_right(key, column: str) -> bool:
+        found = emails.get(key, [])
+        if len(found) != 1:
+            return False
+        if column == "send_date":
+            return _date_cell(found[0].get("send_date")) == final["emails"][key]["send_date"]
+        return _subject(found[0].get("subject")) == _subject(final["emails"][key]["subject"])
+
+    moved = reference["holiday_moves"]
+    facts["amend_holiday_move_error_count"] = sum(not email_right(key, "send_date") for key in moved)
+    facts["amend_email_date_error_count"] = sum(
+        not email_right(key, "send_date") for key in final["emails"] if key not in moved
+    ) + sum(len(found) for key, found in emails.items() if key not in final["emails"])
+    facts["amend_teaser_subject_error_count"] = sum(
+        not email_right(key, "subject") for key in final["emails"] if key[1] == "teaser"
+    )
+    facts["amend_featured_error_count"] = sum(
+        not email_right(key, "subject") for key in final["emails"] if key[1] != "teaser"
+    )
+    return facts
+
+
 # ══════════════════════════════════════════════════════════════════ entry point
 
 FACTS = {
     "launch-workflow-chain": chain_facts,
+    "brief-amendment": amend_facts,
 }
 
 
