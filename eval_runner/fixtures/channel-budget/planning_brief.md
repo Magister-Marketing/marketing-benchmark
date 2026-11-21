@@ -26,7 +26,7 @@ are `channel_terms.csv` (each channel's limits and fees) and
 - `minimum_if_used_blocks`: if the channel is used at all, it must buy at least this many blocks.
   0 means there is no minimum.
 - `committed_blocks`: blocks already contracted for this quarter. The plan must buy at least this
-  many.
+  many, and they are paid from this quarter's budget like any other block.
 - `routed_to_aes`: whether the channel's leads go to the account executives.
 
 ## Account executive capacity
