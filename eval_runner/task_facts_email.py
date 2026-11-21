@@ -1045,9 +1045,10 @@ applied to each email on its own `send_date`.
 The domain of the email's `from_address` must meet all three of these in
 `dns_records.csv`:
 
-1. **SPF**: the domain has exactly one TXT record named after the domain that
-   starts with `v=spf1`. That record contains `{ESP_INCLUDE}` and ends with
-   `-all` or `~all`.
+1. **SPF**: of the TXT records named after the domain itself, exactly one
+   starts with `v=spf1` (other TXT records there, such as a site
+   verification, do not count). That record contains `{ESP_INCLUDE}`
+   and ends with `-all` or `~all`.
 2. **DKIM**: the record named `{DKIM_SELECTOR}._domainkey.<domain>` contains `v=DKIM1` and a
    `p=` value that is not empty.
 3. **DMARC**: the record named `_dmarc.<domain>` has a `p=` tag of
