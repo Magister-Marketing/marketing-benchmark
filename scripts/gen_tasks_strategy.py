@@ -552,122 +552,274 @@ def comparison_fixtures() -> dict[str, str]:
 
 TIMELINE_DIR = "launch-timeline"
 TIMELINE_START = "2027-03-01"
-TIMELINE_TARGET = "2027-04-13"
-HOLIDAYS = [("2027-03-12", "company offsite"), ("2027-03-26", "Good Friday"), ("2027-03-29", "Easter Monday")]
-OWNERS = [
-    ("Ana", "brand lead"), ("Ben", "copywriter"), ("Cleo", "designer"), ("Dev", "web developer"),
-    ("Esme", "PR and partnerships"), ("Finn", "paid media"), ("Gia", "lifecycle and support"),
-    ("Printer", "the outside packaging printer"),
+TIMELINE_TARGET = "2027-05-26"
+OFFICES = {
+    "London": [("2027-03-26", "Good Friday"), ("2027-03-29", "Easter Monday"),
+               ("2027-05-03", "Early May bank holiday"), ("2027-05-31", "Spring bank holiday")],
+    "Boston": [("2027-04-19", "Patriots' Day"), ("2027-05-31", "Memorial Day")],
+}
+# (owner, role, office, days worked, away)
+PEOPLE = [
+    ("Ana", "brand lead", "London", "Monday to Friday", ""),
+    ("Ben", "copywriter", "London", "Monday to Friday", ""),
+    ("Cleo", "designer", "London", "Monday to Friday", "2027-04-19 to 2027-04-23"),
+    ("Esme", "PR and influencers", "London", "Monday to Friday", ""),
+    ("Gia", "lifecycle and customer service", "London", "Monday, Tuesday and Wednesday", ""),
+    ("Jules", "PR and influencer coordinator", "London", "Monday, Tuesday, Wednesday and Thursday", ""),
+    ("Dev", "web developer", "Boston", "Monday to Friday", ""),
+    ("Finn", "paid media", "Boston", "Monday to Friday", "2027-04-26 to 2027-04-28"),
+    ("Hana", "partner and retail marketing", "Boston", "Monday to Friday", ""),
+    ("Ivo", "sales enablement and operations", "Boston", "Monday to Friday", ""),
 ]
-# (id, task, owner, working days, depends on, optional, not before)
-LAUNCH_TASKS = [
-    ("T01", "Launch brief and positioning", "Ana", 3, [], "no", ""),
-    ("T02", "Product photography shoot", "Cleo", 2, ["T01"], "no", "2027-03-09"),
-    ("T03", "Messaging and copy deck", "Ben", 4, ["T01"], "no", ""),
-    ("T04", "Packaging artwork", "Cleo", 4, ["T01"], "no", ""),
-    ("T05", "Retail lookbook", "Cleo", 3, ["T02", "T03"], "yes", ""),
-    ("T06", "Packaging print run", "Printer", 10, ["T04"], "no", ""),
-    ("T07", "Landing page design", "Cleo", 3, ["T02", "T03"], "no", ""),
-    ("T08", "Landing page build", "Dev", 5, ["T07"], "no", ""),
-    ("T09", "Email sequence copy", "Ben", 3, ["T03"], "no", ""),
-    ("T10", "Email build and test sends", "Gia", 2, ["T02", "T09"], "no", ""),
-    ("T11", "Ad creative", "Cleo", 4, ["T02", "T03"], "no", ""),
-    ("T12", "Influencer shortlist and outreach", "Esme", 5, ["T01"], "no", ""),
-    ("T13", "Influencer seeding kits", "Esme", 3, ["T06", "T12"], "yes", ""),
-    ("T14", "Press kit", "Ben", 2, ["T02", "T03"], "no", ""),
-    ("T15", "Press outreach under embargo", "Esme", 3, ["T14"], "no", "2027-04-05"),
-    ("T16", "Retail partner deck", "Ana", 5, ["T03"], "yes", ""),
-    ("T17", "Paid social campaign setup", "Finn", 3, ["T08", "T11"], "no", ""),
-    ("T18", "Search campaign setup", "Finn", 2, ["T03", "T08"], "no", ""),
-    ("T19", "Tracking and analytics QA", "Dev", 2, ["T08", "T17"], "no", ""),
-    ("T20", "Customer service FAQ and macros", "Gia", 2, ["T03"], "no", ""),
-    ("T21", "Launch blog post", "Ben", 2, ["T14"], "yes", ""),
-    ("T22", "Site QA and checkout test", "Dev", 2, ["T10", "T19"], "no", ""),
-    ("T23", "Go/no-go review", "Ana", 1, ["T05", "T13", "T15", "T16", "T17", "T18", "T20", "T21", "T22"], "no", ""),
-    ("T24", "Launch day", "Ana", 1, ["T23"], "no", ""),
+SUPPLIERS = [
+    ("Printer", "packaging, sell sheets and booth graphics"),
+    ("Freight", "carrier from the printer to the warehouse"),
+    ("Lingua", "translation agency"),
 ]
-SLACK_ASKED = ["T06", "T11", "T16"]
+W, C = "working days", "calendar days"
+# (id, task, owner, duration, unit, depends on, optional, not before, deliverable)
+LAUNCH_TASKS_V2 = [
+    ("T01", "Launch brief and positioning", "Ana", 4, W, [], "no", "", "One-page brief: audience, promise, price band, launch goals"),
+    ("T02", "Pricing and margin sign-off", "Ana", 2, W, ["T01"], "no", "", "Retail and online prices signed off with finance"),
+    ("T03", "Messaging framework", "Ben", 4, W, ["T01"], "no", "", "Headline promise, three proof points, tone notes"),
+    ("T04", "Product photography shoot", "Cleo", 2, W, ["T01"], "no", "2027-03-10", "Studio shoot: hero, lifestyle and detail shots"),
+    ("T05", "Packaging artwork", "Cleo", 5, W, ["T03"], "no", "", "Front, back and side panels for the box"),
+    ("T06", "Packaging copy and legal lines", "Ben", 2, W, ["T03"], "no", "", "Panel copy, care instructions, compliance lines"),
+    ("T07", "Brand film script", "Ben", 3, W, ["T03"], "yes", "", "Script and shot list for a 60-second brand film"),
+    ("T08", "Landing page wireframes", "Dev", 3, W, ["T03"], "no", "", "Wireframes for the waitlist and product pages"),
+    ("T09", "Key visuals for ads", "Cleo", 4, W, ["T03", "T04"], "no", "", "Three key visuals that every ad and page builds on"),
+    ("T10", "Customer research readout", "Hana", 3, W, ["T01"], "no", "", "Findings from twelve customer interviews"),
+    ("T11", "Sales deck outline", "Ivo", 2, W, ["T03"], "no", "", "Storyline and slide list for the retail sales deck"),
+    ("T12", "Media list and outreach plan", "Esme", 3, W, ["T03"], "no", "", "Forty target titles and the outreach order"),
+    ("T13", "Waitlist page copy", "Ben", 2, W, ["T03"], "no", "", "Copy for the waitlist page and its form"),
+    ("T14", "Waitlist page build", "Dev", 3, W, ["T08", "T13"], "no", "", "Live waitlist page with the signup form"),
+    ("T15", "Waitlist email sequence", "Gia", 3, W, ["T13"], "no", "", "Three nurture emails for waitlist signups"),
+    ("T16", "Search keyword plan", "Finn", 3, W, ["T03"], "no", "", "Keyword list, match types and negatives"),
+    ("T17", "Audience build for paid social", "Finn", 2, W, ["T10"], "no", "", "Lookalike and interest audiences"),
+    ("T18", "Influencer shortlist", "Esme", 4, W, ["T10"], "no", "", "Twenty creators with reach and fit notes"),
+    ("T19", "Packaging dielines and print files", "Cleo", 3, W, ["T05", "T06"], "no", "", "Print-ready files on the printer's dielines"),
+    ("T20", "Creative review: packaging and key visuals", "Ana", 1, W, ["T09", "T19"], "no", "", "Sign-off that releases the print files"),
+    ("T21", "Packaging print run", "Printer", 12, C, ["T20"], "no", "", "Printed and folded boxes"),
+    ("T22", "Freight to the warehouse", "Freight", 9, C, ["T21"], "no", "", "Boxes delivered to the warehouse"),
+    ("T23", "Product page copy", "Ben", 3, W, ["T02", "T03"], "no", "", "Product page copy with prices"),
+    ("T24", "Product page design", "Cleo", 3, W, ["T09", "T23"], "no", "", "Desktop and mobile designs of the product page"),
+    ("T25", "Product page build", "Dev", 5, W, ["T14", "T24"], "no", "", "Built product page on staging"),
+    ("T26", "Checkout and pricing configuration", "Dev", 2, W, ["T02", "T25"], "no", "", "Prices, bundles and discount rules in checkout"),
+    ("T27", "Product page translation", "Lingua", 8, C, ["T23"], "no", "", "German and French product page copy"),
+    ("T28", "EU site localisation", "Dev", 3, W, ["T25", "T27"], "no", "", "Translated product pages live on the EU store"),
+    ("T29", "Press release", "Ben", 2, W, ["T23"], "no", "", "Release text with quotes and price"),
+    ("T30", "Retail sell sheet", "Cleo", 2, W, ["T23"], "no", "", "Two-page sell sheet for buyers"),
+    ("T31", "Sell sheet print", "Printer", 4, C, ["T30"], "no", "", "Printed sell sheets for the trade show"),
+    ("T32", "Press kit", "Esme", 3, W, ["T04", "T29"], "no", "", "Release, photos and fact sheet in one kit"),
+    ("T33", "Retail partner list and terms", "Hana", 4, W, ["T02"], "no", "", "Target retailers and trade terms"),
+    ("T34", "Partner co-marketing agreements", "Hana", 5, W, ["T33"], "no", "", "Signed co-marketing terms with three retailers"),
+    ("T35", "Partner training webinar", "Hana", 1, W, ["T30", "T34"], "no", "2027-05-12", "Live product training for retail staff"),
+    ("T36", "Ad creative: static set", "Cleo", 4, W, ["T09", "T23"], "no", "", "Twelve static ads in four sizes"),
+    ("T37", "Ad creative: video cutdowns", "Cleo", 6, W, ["T36"], "no", "", "Six, fifteen and thirty-second cutdowns"),
+    ("T38", "Launch lookbook", "Cleo", 4, W, ["T24"], "yes", "", "Twenty-page lookbook for press and partners"),
+    ("T39", "Email templates", "Cleo", 2, W, ["T36"], "no", "", "Launch email templates in the brand system"),
+    ("T40", "Launch email copy", "Ben", 3, W, ["T23"], "no", "", "Copy for the three launch emails"),
+    ("T41", "Launch email build", "Gia", 3, W, ["T39", "T40"], "no", "", "Launch emails built and tested in the email platform"),
+    ("T42", "SMS launch flow", "Gia", 2, W, ["T40"], "yes", "", "Two SMS messages for opted-in subscribers"),
+    ("T43", "Customer service FAQ", "Gia", 2, W, ["T23"], "no", "", "Answers to the twenty likeliest questions"),
+    ("T44", "Help centre articles", "Ben", 3, W, ["T23"], "no", "", "Set-up, care and returns articles"),
+    ("T45", "Trade show booth graphics", "Cleo", 3, W, ["T36"], "no", "", "Back wall, counter and banner artwork"),
+    ("T46", "Booth graphics print", "Printer", 5, C, ["T45"], "no", "", "Printed booth graphics"),
+    ("T47", "Trade show", "Hana", 2, W, ["T31", "T46+3"], "no", "2027-05-18", "Two days on the stand at the housewares show"),
+    ("T48", "Search campaigns build", "Finn", 3, W, ["T16", "T25"], "no", "", "Search campaigns built, paused"),
+    ("T49", "Paid social campaigns build", "Finn", 4, W, ["T17", "T25", "T36"], "no", "", "Paid social campaigns built, paused"),
+    ("T50", "Video campaigns build", "Finn", 2, W, ["T37"], "yes", "", "Video campaigns built, paused"),
+    ("T51", "Tracking plan and tags", "Dev", 3, W, ["T25"], "no", "", "Events, tags and conversion goals"),
+    ("T52", "Product quiz", "Dev", 4, W, ["T25"], "yes", "", "Five-question quiz that recommends a size"),
+    ("T53", "Influencer outreach", "Esme", 4, W, ["T18", "T32"], "no", "", "Offers sent and confirmed with creators"),
+    ("T54", "Influencer seeding kits", "Esme", 2, W, ["T22+3", "T53"], "no", "", "Kits packed and sent from warehouse stock"),
+    ("T55", "Analytics QA", "Dev", 2, W, ["T48", "T49", "T51"], "no", "", "Every conversion event checked end to end"),
+    ("T56", "Review program setup", "Esme", 2, W, ["T26"], "no", "", "Post-purchase review requests switched on"),
+    ("T57", "Launch blog post", "Ben", 2, W, ["T29"], "yes", "", "Founder's post on why the product exists"),
+    ("T58", "Sales battlecards", "Ivo", 3, W, ["T11", "T23"], "yes", "", "Battlecards against the three closest rivals"),
+    ("T59", "Sales deck", "Ivo", 4, W, ["T11", "T36"], "no", "", "Finished retail sales deck"),
+    ("T60", "Sales team training", "Ivo", 1, W, ["T26", "T59"], "no", "", "Training session for the sales team"),
+    ("T61", "Press outreach under embargo", "Esme", 4, W, ["T32"], "no", "2027-05-10", "Embargoed briefings with target titles"),
+    ("T62", "Retail partner deck", "Ana", 4, W, ["T30", "T33"], "yes", "", "Deck for retail partners' buying teams"),
+    ("T63", "Launch plan sign-off", "Ana", 1, W, ["T26", "T34"], "no", "", "Final launch plan agreed with retail partners"),
+    ("T64", "Marketplace listing", "Ivo", 3, W, ["T04", "T23"], "no", "", "Listing copy and images for the marketplace"),
+    ("T65", "Marketplace listing translation", "Lingua", 6, C, ["T64"], "no", "", "German and French marketplace listings"),
+    ("T66", "Partner newsletter feature", "Hana", 2, W, ["T35"], "no", "", "Feature in the retail partners' newsletter"),
+    ("T67", "Warehouse stock check", "Ivo", 1, W, ["T22+3"], "no", "", "Received boxes counted and released for sale"),
+    ("T68", "Social launch posts", "Cleo", 2, W, ["T36"], "no", "", "Launch-week posts for every channel"),
+    ("T69", "Social posts scheduling", "Finn", 1, W, ["T29", "T68"], "no", "", "Posts scheduled in the social tool"),
+    ("T70", "Site performance pass", "Dev", 3, W, ["T55"], "no", "", "Page speed fixes on the product pages"),
+    ("T71", "Site QA and checkout test", "Dev", 2, W, ["T26", "T28", "T70"], "no", "", "Full purchase tested on every store"),
+    ("T72", "Launch email QA", "Gia", 1, W, ["T41", "T71"], "no", "", "Launch emails checked against the live site"),
+    ("T73", "Paid media launch QA", "Finn", 1, W, ["T48", "T49", "T55"], "no", "", "Campaigns checked, budgets loaded"),
+    ("T74", "Unboxing video", "Cleo", 3, W, ["T67"], "yes", "", "Unboxing video shot with warehouse stock"),
+    ("T75", "Customer service training", "Gia", 1, W, ["T43", "T44"], "no", "", "Support team trained on the FAQ and articles"),
+    ("T76", "Press day coordination", "Esme", 1, W, ["T61"], "no", "", "Interview slots and samples for launch day"),
+    ("T77", "Final creative review", "Ana", 1, W, ["T37", "T45", "T68"], "no", "", "Last look at every launch asset"),
+    ("T78", "EU press release adaptation", "Ben", 2, W, ["T29"], "no", "", "Release adapted for EU titles: prices in euros, EU stockists"),
+    ("T79", "EU media list", "Jules", 2, W, ["T12"], "no", "", "Twenty EU titles and their embargo contacts"),
+    ("T80", "Influencer content approvals", "Jules", 2, W, ["T53"], "no", "", "Creator drafts checked against the brief"),
+    ("T81", "Retail staff incentive scheme", "Ivo", 2, W, ["T34"], "no", "", "Sales incentive for retail floor staff"),
+    ("T82", "Retail order forecast", "Ivo", 2, W, ["T34", "T67"], "no", "", "First-month order forecast by retailer"),
+    ("T83", "Retail replenishment plan", "Ivo", 2, W, ["T82"], "no", "", "Reorder points and weekly replenishment"),
+    ("T84", "Search ad copy variants", "Finn", 2, W, ["T23", "T48"], "no", "", "Four headline sets for each ad group"),
+    ("T85", "Remarketing audiences", "Dev", 1, W, ["T51"], "no", "", "Site-visitor audiences from the new tags"),
+    ("T86", "Launch budget pacing sheet", "Finn", 1, W, ["T84", "T85"], "no", "", "Daily budgets and pacing alerts"),
+    ("T87", "Customer review seeding", "Jules", 2, W, ["T54"], "yes", "", "Early reviews from seeded creators"),
+    ("T88", "Packaging insert card", "Ben", 1, W, ["T06"], "no", "", "Welcome card copy for inside the box"),
+    ("T89", "Partner FAQ for retail staff", "Ben", 2, W, ["T44"], "no", "", "Short FAQ for retail floor staff"),
+    ("T90", "Launch-day social monitoring", "Ben", 1, W, ["T69"], "no", "", "Listening streams and escalation rota"),
+    ("T91", "EU press briefings", "Jules", 3, W, ["T78", "T79"], "no", "2027-05-17", "Briefings with EU titles under the same embargo"),
+    ("T92", "Investor update", "Ana", 1, W, ["T63"], "yes", "", "Launch note for investors"),
+    ("T93", "Launch-day press call list", "Jules", 1, W, ["T61", "T91"], "no", "", "Who calls which title on launch morning"),
+    ("T94", "Go/no-go review", "Ana", 1, W, ["T07", "T38", "T42", "T47", "T50", "T52", "T54", "T56", "T57", "T58", "T60",
+                                               "T62", "T63", "T65", "T66", "T67", "T69", "T71", "T72", "T73", "T74", "T75",
+                                               "T76", "T77", "T80", "T81", "T83", "T86", "T87", "T88", "T89", "T90",
+                                               "T92", "T93"], "no", "", "Launch decision with every owner"),
+    ("T95", "Launch-day war room setup", "Dev", 1, W, ["T94"], "no", "", "Dashboards, alerts and rota for launch day"),
+    ("T96", "Launch day", "Ana", 1, W, ["T94", "T95"], "no", "", "The product goes on sale"),
+]
+# Older estimates kept in the plan's history: what the plan file now says replaces them.
+SUPERSEDED = [
+    ("2027-02-08", "T04", "The studio was first booked for 2027-03-08; the studio moved the booking to 2027-03-10."),
+    ("2027-02-09", "T05", "Packaging artwork was scoped at 4 working days before the side panels were added; it is 5."),
+    ("2027-02-10", "T09", "Key visuals were planned at 3 working days; Cleo now plans 4."),
+    ("2027-02-11", "T21", "Printer quoted 10 calendar days for the print run; the confirmed quote is 12."),
+    ("2027-02-11", "T22", "Freight was quoted at 7 calendar days by road; the confirmed sea and road route takes 9."),
+    ("2027-02-12", "T27", "The translation agency first quoted 6 calendar days; it now quotes 8 for two languages."),
+    ("2027-02-15", "T25", "Product page build estimated at 4 working days; Dev re-estimated it at 5 after the wireframes."),
+    ("2027-02-16", "T35", "The partner training webinar was pencilled in for 2027-05-05; partners asked for 2027-05-12."),
+    ("2027-02-17", "T41", "Launch email build was planned for Ben; it moved to Gia, who builds every email."),
+    ("2027-02-18", "T47", "The housewares show was first listed for 2027-05-11; the organisers moved it to 2027-05-18."),
+    ("2027-02-18", "T46", "Booth graphics print was quoted at 3 calendar days; the printer now quotes 5."),
+    ("2027-02-19", "T61", "Embargoed briefings were planned from 2027-05-03; the embargo now lifts for briefings on 2027-05-10."),
+    ("2027-02-19", "T91", "EU briefings were planned to start with the UK ones; EU titles asked for 2027-05-17."),
+    ("2027-02-22", "T37", "Video cutdowns were scoped at 3 working days; adding the thirty-second cut made them 6."),
+    ("2027-02-22", "T38", "The lookbook was scoped at 6 working days with a printed edition; the digital-only edition is 4."),
+    ("2027-02-23", "T54", "Seeding kits were to ship straight from the printer; they now ship from the warehouse, after T22+3."),
+    ("2027-02-24", "T65", "Marketplace translation was quoted at 4 calendar days for one language; two languages take 6."),
+    ("2027-02-25", "T59", "The sales deck was planned at 3 working days; adding the retailer case studies made it 4."),
+    ("2027-02-25", "T70", "The performance pass was scoped at 2 working days; Dev added image work and it is 3."),
+    ("2027-02-26", "Calendar", "Cleo's leave was first planned for 2027-04-12 to 2027-04-16; it is now 2027-04-19 to 2027-04-23."),
+]
 
 
-def launch_plan_csv() -> str:
+def launch_plan_v2_csv() -> str:
     return _csv_text(
-        ["task_id", "task", "owner", "duration_days", "depends_on", "optional", "not_before"],
-        [[task_id, name, owner, days, " ".join(deps), optional, not_before]
-         for task_id, name, owner, days, deps, optional, not_before in LAUNCH_TASKS],
+        ["task_id", "task", "owner", "duration", "duration_unit", "depends_on", "optional", "not_before", "deliverable"],
+        [[task_id, name, owner, duration, unit, " ".join(deps), optional, not_before, deliverable]
+         for task_id, name, owner, duration, unit, deps, optional, not_before, deliverable in LAUNCH_TASKS_V2],
     )
 
 
-def launch_brief_md() -> str:
-    holidays = "\n".join(f"- {day} ({why})" for day, why in HOLIDAYS)
-    owners = "\n".join(f"- {name}: {role}" for name, role in OWNERS)
-    slack = ", ".join(SLACK_ASKED)
-    return f"""# Orlo Fold launch: plan, calendar and scheduling rules
+def team_calendar_md() -> str:
+    offices = "\n".join(
+        f"| {office} | Monday to Friday | {', '.join(f'{day} ({why})' for day, why in days)} |"
+        for office, days in OFFICES.items())
+    people = "\n".join(f"| {name} | {role} | {office} | {days} | {away or 'none'} |"
+                       for name, role, office, days, away in PEOPLE)
+    suppliers = "\n".join(f"| {name} | {what} | every calendar day |" for name, what in SUPPLIERS)
+    history = "\n".join(f"- {day}, {task}: {text}" for day, task, text in SUPERSEDED)
+    return f"""# Orlo Fold launch: team calendar
 
-From Mara Quill, Head of Marketing. Orlo sells reusable food containers online, and the Orlo Fold
-collapsible lunch box launches this spring. `launch_plan.csv` lists every task of the launch. The
-work starts on Monday {TIMELINE_START}, and I have told retail partners the launch is on
-**{TIMELINE_TARGET}**. I need to know whether that holds.
+## Offices
+
+| office | working days | holidays |
+|---|---|---|
+{offices}
+
+## People
+
+Each person works on the days below in their office's calendar: not on its holidays, not on days
+they do not work, and not on days they are away.
+
+| owner | role | office | works | away |
+|---|---|---|---|---|
+{people}
+
+## Outside suppliers
+
+Suppliers work every calendar day, weekends and holidays included, and each takes one job at a time.
+
+| owner | what | works |
+|---|---|---|
+{suppliers}
+
+## Plan history
+
+Earlier estimates, kept for the record. The plan file is current; where it differs from these, the
+plan file is right.
+
+{history}
+"""
+
+
+def launch_brief_v2_md() -> str:
+    return f"""# Orlo Fold launch: plan and scheduling rules
+
+From Mara Quill, Head of Marketing. Orlo sells reusable food containers online and through
+retailers, and the Orlo Fold collapsible lunch box launches this spring. `launch_plan.csv` lists
+every task of the launch and `team_calendar.md` says who works when. The work starts on Monday
+{TIMELINE_START}, and I have told retail partners the launch is on **{TIMELINE_TARGET}**. I need to know
+whether that holds.
 
 ## The plan file
 
-- `duration_days`: working days the task takes.
-- `depends_on`: the tasks that must be finished before it can start (space-separated).
-- `owner`: the one person, or the printer, who does it.
+- `duration` and `duration_unit`: how long the task takes. A task measured in working days counts
+  only its owner's working days; one measured in calendar days counts every day.
+- `depends_on`: the tasks that must be finished before it can start, separated by spaces. A task
+  depends only on tasks with lower IDs. An entry
+  such as `T22+3` adds a lead time in calendar days: the task cannot start before the third
+  calendar day after T22's finish date (if T22 finishes on a Monday, on the Thursday at the
+  earliest). A plain entry such as `T22` means the day after its finish date at the earliest.
+- `owner`: the one person or supplier who does it.
 - `optional`: `yes` for a task we could cut.
-- `not_before`: the earliest date the task can start, set from outside (a booked studio, a press
-  embargo). Blank means none.
-
-## Owners
-
-{owners}
-
-## Calendar
-
-Working days are Monday to Friday, except these company holidays:
-
-{holidays}
+- `not_before`: the earliest date the task can start, set from outside. Blank means none.
+- `deliverable`: what the task produces. It does not change the schedule.
 
 ## Scheduling rules
 
-1. A task starts at the start of a working day and runs for its duration in working days: a
-   3-day task that starts on a Monday finishes at the end of Wednesday. Its finish date is its
-   last working day.
-2. A task can start on the first working day after every task it depends on has finished.
-3. An owner does one task at a time and takes their tasks in task ID order: a task cannot start
-   until the same owner's previous task (the one with the closest lower ID) has finished, even if
-   it could otherwise start sooner. Nobody starts a later task early.
-4. A task with a `not_before` date cannot start before that date, or before the first working
-   day after it when the date is not a working day.
-5. No task starts before {TIMELINE_START}. Every task starts on the earliest working day that
-   rules 2 to 5 allow.
-6. The launch date is the day T24 runs.
+1. A task starts at the start of one of its owner's working days and runs on its owner's working
+   days only, for its duration: a task of 3 working days that starts on a Monday, for someone who
+   works Monday to Friday, finishes at the end of Wednesday. Its finish date is the last day it
+   runs. Time off, holidays and days an owner does not work pause a task; they do not count.
+2. A task can start on its owner's first working day that every entry in `depends_on` allows.
+3. Every owner, person or supplier, does one task at a time and takes their tasks in task ID
+   order: a task cannot start before the day after the same owner's previous task (the one with
+   the closest lower ID) has finished, even if it could otherwise start sooner. Nobody starts a
+   later task early.
+4. A task with a `not_before` date cannot start before that date.
+5. No task starts before {TIMELINE_START}. Every task starts on the earliest day rules 1 to 5 allow.
+6. The launch date is the day T96 runs.
 
 ## Definitions
 
-- A task's **slack** is the number of working days its finish could move later without moving
-  the launch date, if every task that waits for it (because it depends on it, or because its
-  owner takes it next) moved later as needed and nothing else changed.
+- A task's **slack** is the number of its owner's working days (calendar days for a supplier) its
+  finish could move later without moving the launch date, if every task that waits for it
+  (because it depends on it, or because its owner takes it next) moved later as needed and nothing
+  else changed.
 - The **critical path** is the tasks whose slack is 0, in the order they run.
 
 ## Cutting tasks
 
 Only optional tasks can be cut. A cut task is removed from the plan: a task that depended on it
 depends instead on the tasks the cut task depended on, and its owner's next task follows the
-owner's task before it. Everything else, including every duration, owner and `not_before` date,
-stays as it is.
+owner's task before it. Everything else, including every duration, owner, lead time and
+`not_before` date, stays as it is.
 
 If the launch misses {TIMELINE_TARGET}, I need the smallest set of optional tasks to cut that
 brings it to {TIMELINE_TARGET} or earlier: the fewest tasks; if two sets of that size both do it,
 the one with the earlier launch date; if they are still tied, the one whose task IDs come first.
 
-For the review I also want the slack of {slack}.
+For the review I also want every task's slack.
 """
 
 
 def timeline_fixtures() -> dict[str, str]:
     return {
-        f"{TIMELINE_DIR}/launch_brief.md": launch_brief_md(),
-        f"{TIMELINE_DIR}/launch_plan.csv": launch_plan_csv(),
+        f"{TIMELINE_DIR}/launch_brief.md": launch_brief_v2_md(),
+        f"{TIMELINE_DIR}/team_calendar.md": team_calendar_md(),
+        f"{TIMELINE_DIR}/launch_plan.csv": launch_plan_v2_csv(),
     }
 
 

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Tasks: `launch-timeline` version 2 (prompt and rubric 2). Version 1 (24
+  tasks, one calendar) was passed outright by a strong model with no tools
+  or skills. Version 2 schedules 96 tasks: ten people in London and Boston
+  with different holidays, two part-timers, two absences, three suppliers
+  working in calendar days, lead times in calendar days on some dependencies
+  and five outside start dates, and a plan history of superseded estimates.
+  Every task's start, finish and slack is checked (288 values), with the
+  launch date, the critical path, whether the target holds and the smallest
+  cut; 11 of 12 checks are a program's. The oracle schedules by longest path
+  and a backward pass over each owner's calendar and tries every set of
+  optional tasks; the test schedules again day by day and finds every slack
+  by delaying each task.
 - Tasks: `channel-budget-allocation` version 2 (prompt and rubric 2). Version
   1 (six channels, 4.7 KB) was passed outright by a strong model with no tools
   or skills, so the task is now a quarter split across 12 channels, 3 regions

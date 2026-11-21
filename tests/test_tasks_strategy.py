@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import functools
 import importlib.util
 import io
 import itertools
@@ -30,7 +31,7 @@ from eval_runner import bench, task_facts_strategy
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
 STRATEGY_TASKS = ["channel-budget-allocation", "competitor-comparison", "launch-timeline"]
 # Version 1 of each was run once (2026-11-20) and found too small; version 2 is the larger task.
-VERSIONS = {"channel-budget-allocation": (2, 2), "competitor-comparison": (1, 1), "launch-timeline": (1, 1)}
+VERSIONS = {"channel-budget-allocation": (2, 2), "competitor-comparison": (1, 1), "launch-timeline": (2, 2)}
 
 
 @pytest.fixture(scope="module")
@@ -704,234 +705,287 @@ def test_comparison_a_missing_file_or_row_is_counted_not_excused():
 # ─────────────────────────────────────────────────────────────── launch-timeline
 
 TIMELINE = "launch-timeline"
+T_START, T_TARGET = dt.date(2027, 3, 1), dt.date(2027, 5, 26)
 
 
-def _launch_plan() -> tuple[dict, list, dt.date, dt.date]:
-    """The tasks, the working days and the dates, read again from the fixtures."""
-    brief = (FIXTURES / "launch-timeline/launch_brief.md").read_text()
-    holidays = {dt.date.fromisoformat(day) for day in re.findall(r"(?m)^- (\d{4}-\d{2}-\d{2}) \(", brief)}
-    assert holidays == {dt.date(2027, 3, 12), dt.date(2027, 3, 26), dt.date(2027, 3, 29)}
-    assert "work starts on Monday 2027-03-01" in brief.replace("\n", " ")
-    assert "the launch is on **2027-04-13**" in brief.replace("\n", " ")
-    tasks = {row["task_id"]: {"owner": row["owner"], "days": int(row["duration_days"]), "deps": row["depends_on"].split(),
-                              "optional": row["optional"] == "yes",
-                              "not_before": dt.date.fromisoformat(row["not_before"]) if row["not_before"] else None}
-             for row in _table("launch-timeline/launch_plan.csv")}
-    calendar, day = [], dt.date(2027, 3, 1)
-    while day < dt.date(2027, 12, 31):
-        if day.weekday() < 5 and day not in holidays:
-            calendar.append(day)
-        day += dt.timedelta(days=1)
-    return tasks, calendar, dt.date(2027, 3, 1), dt.date(2027, 4, 13)
+def _launch_world() -> dict:
+    """The plan and everyone's calendar, read again from the fixtures with code of this file's own."""
+    calendar = (FIXTURES / "launch-timeline/team_calendar.md").read_text()
+    brief = " ".join((FIXTURES / "launch-timeline/launch_brief.md").read_text().split())
+    assert "The work starts on Monday 2027-03-01" in brief and "the launch is on **2027-05-26**" in brief
+    assert "if T22 finishes on a Monday, on the Thursday at the earliest" in brief
+    offices = {}
+    for line in calendar.split("## Offices")[1].split("## People")[0].splitlines():
+        if line.startswith("| London") or line.startswith("| Boston"):
+            office = line.split("|")[1].strip()
+            offices[office] = {dt.date.fromisoformat(day) for day in re.findall(r"\d{4}-\d{2}-\d{2}", line)}
+    people = {}
+    for line in calendar.split("## People")[1].split("## Outside suppliers")[0].splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 5 and cells[2] in offices:
+            name, _role, office, works, away = cells
+            days = {"Monday to Friday": {0, 1, 2, 3, 4}, "Monday, Tuesday and Wednesday": {0, 1, 2},
+                    "Monday, Tuesday, Wednesday and Thursday": {0, 1, 2, 3}}[works]
+            off = set(offices[office])
+            if away != "none":
+                first, last = (dt.date.fromisoformat(day) for day in away.split(" to "))
+                off |= {first + dt.timedelta(days=n) for n in range((last - first).days + 1)}
+            people[name] = {"days": days, "off": off, "office": office}
+    for name in ("Printer", "Freight", "Lingua"):
+        assert f"| {name} |" in calendar
+        people[name] = {"days": set(range(7)), "off": set(), "office": None}
+    tasks = {}
+    for row in _table("launch-timeline/launch_plan.csv"):
+        deps = [(entry.split("+")[0], int(entry.split("+")[1]) if "+" in entry else 1) for entry in row["depends_on"].split()]
+        tasks[row["task_id"]] = {"owner": row["owner"], "days": int(row["duration"]), "deps": deps,
+                                 "calendar_days": row["duration_unit"] == "calendar days",
+                                 "optional": row["optional"] == "yes",
+                                 "not_before": dt.date.fromisoformat(row["not_before"]) if row["not_before"] else None}
+    return {"people": people, "tasks": tasks}
 
 
-def _simulate(tasks: dict, *, owners: bool = True, cut: frozenset = frozenset(), longer: dict | None = None) -> dict:
-    """Walk the calendar a working day at a time and start each task on the first
-    day the brief's rules let it: a different method from the oracle's."""
-    _tasks, calendar, _start, _target = _launch_plan()
+def _plan(world: dict, *, owners: bool = True, cut: frozenset = frozenset(), longer: dict | None = None,
+          calendar=None) -> dict:
+    """Walk the calendar one day at a time, starting each task on the first day the rules let it.
+    `calendar(owner, day)` replaces the rule for which days an owner works, to model a misreading."""
+    tasks, people = world["tasks"], world["people"]
     longer = longer or {}
 
-    def needs(task_id: str) -> set:
-        out = set()
-        for other in tasks[task_id]["deps"]:
-            out |= needs(other) if other in cut else {other}
+    def works(owner: str, day: dt.date) -> bool:
+        if calendar is not None:
+            return calendar(owner, day)
+        person = people[owner]
+        return day.weekday() in person["days"] and day not in person["off"]
+
+    def waits(task_id: str) -> dict:
+        out = {}
+        for other, lead in tasks[task_id]["deps"]:
+            for name, value in (waits(other).items() if other in cut else [(other, lead)]):
+                out[name] = max(out.get(name, 0), value)
         return out
 
     kept = [task_id for task_id in sorted(tasks) if task_id not in cut]
-    waits = {task_id: needs(task_id) for task_id in kept}
+    before = {task_id: waits(task_id) for task_id in kept}
     if owners:
         for task_id in kept:
             earlier = [other for other in kept if other < task_id and tasks[other]["owner"] == tasks[task_id]["owner"]]
             if earlier:
-                waits[task_id] = waits[task_id] | {max(earlier)}
-    start, finish = {}, {}
-    for number, day in enumerate(calendar):
+                before[task_id][max(earlier)] = max(before[task_id].get(max(earlier), 0), 1)
+    start, finish, day = {}, {}, T_START
+    while len(start) < len(kept):
         for task_id in kept:
-            if task_id in start:
+            task = tasks[task_id]
+            if task_id in start or not works(task["owner"], day):
                 continue
-            nb = tasks[task_id]["not_before"]
-            if nb and day < nb:
+            if task["not_before"] and day < task["not_before"]:
                 continue
-            if all(other in finish and finish[other] < number for other in waits[task_id]):
-                start[task_id] = number
-                finish[task_id] = number + tasks[task_id]["days"] + longer.get(task_id, 0) - 1
-        if len(start) == len(kept):
-            break
-    return {task_id: (calendar[start[task_id]], calendar[finish[task_id]]) for task_id in kept}
+            if all(other in finish and day >= finish[other] + dt.timedelta(days=lead)
+                   for other, lead in before[task_id].items()):
+                start[task_id], left, run = day, task["days"] + longer.get(task_id, 0), day
+                while True:
+                    if works(task["owner"], run):
+                        left -= 1
+                        if left == 0:
+                            break
+                    run += dt.timedelta(days=1)
+                finish[task_id] = run
+        day += dt.timedelta(days=1)
+    return {task_id: (start[task_id], finish[task_id]) for task_id in kept}
 
 
-def _slack(tasks: dict, task_id: str, *, owners: bool = True) -> int:
-    """How many working days later the task can finish before the launch moves.
-    The launch is measured by the day T24 ends, so T24 itself has none."""
-    launch = _simulate(tasks, owners=owners)["T24"][1]
+def _t_slack(world: dict, task_id: str, **options) -> int:
+    """How many of its owner's days later the task can finish before the launch moves (T80's end)."""
+    launch = _plan(world, **options)["T96"][1]
     days = 0
-    while _simulate(tasks, owners=owners, longer={task_id: days + 1})["T24"][1] == launch:
+    while _plan(world, longer={task_id: days + 1}, **options)["T96"][1] == launch:
         days += 1
     return days
 
 
+def _t_slacks(world: dict, **options) -> dict[str, int]:
+    """Every task's slack, each found by a binary search on how late it can finish."""
+    launch = _plan(world, **options)["T96"][1]
+    out = {}
+    for task_id in world["tasks"]:
+        if task_id in options.get("cut", ()):
+            continue
+        low, high = 0, 1
+        while high <= 256 and _plan(world, longer={task_id: high}, **options)["T96"][1] == launch:
+            low, high = high, high * 2
+        if high > 256:                          # nothing waits for it: report the days to the launch
+            out[task_id] = low
+            continue
+        while high - low > 1:
+            middle = (low + high) // 2
+            if _plan(world, longer={task_id: middle}, **options)["T96"][1] == launch:
+                low = middle
+            else:
+                high = middle
+        out[task_id] = low
+    return out
+
+
+def _misread(world: dict, reading: str):
+    """A calendar as a careless reading of team_calendar.md gives it."""
+    people = world["people"]
+    london = next(p["off"] for name, p in people.items() if name == "Ana")
+    boston = next(p["off"] for name, p in people.items() if name == "Dev")
+
+    def office_off(name: str) -> set:
+        return {"London": london, "Boston": boston}[people[name]["office"]]
+
+    def calendar(owner: str, day: dt.date) -> bool:
+        person = people[owner]
+        if person["office"] is None:
+            return day.weekday() < 5 if reading == "suppliers_on_weekdays" else True
+        days, off = person["days"], person["off"]
+        if reading == "one_calendar":                 # London's holidays for everyone, time off kept
+            off = (off - office_off(owner)) | london
+        elif reading == "no_part_time":
+            days = {0, 1, 2, 3, 4}
+        elif reading == "no_time_off":
+            off = office_off(owner)
+        return day.weekday() in days and day not in off
+
+    return calendar
+
+
+@functools.lru_cache(maxsize=1)
+def _timeline_truth() -> tuple[dict, dict, dict]:
+    """The plan as this file's simulation schedules it, and every task's slack."""
+    world = _launch_world()
+    return world, _plan(world), _t_slacks(world)
+
+
 def test_timeline_oracle_matches_a_day_by_day_simulation():
-    tasks, calendar, _start, target = _launch_plan()
-    schedule = _simulate(tasks)
+    world, schedule, slack = _timeline_truth()
     reference = task_facts_strategy.timeline_reference()
-    assert {task_id: (reference["starts"][task_id], reference["finishes"][task_id]) for task_id in tasks} == schedule
-    assert schedule["T24"][0] == reference["launch_date"] == dt.date(2027, 4, 16) > target
-    slack = {task_id: _slack(tasks, task_id) for task_id in tasks}
+    assert {task_id: (reference["starts"][task_id], reference["finishes"][task_id]) for task_id in schedule} == schedule
+    assert len(schedule) == 96 and schedule["T96"][0] == reference["launch_date"] == dt.date(2027, 6, 1) > T_TARGET
+    assert slack == reference["slack"]
     critical = sorted((task_id for task_id, value in slack.items() if value == 0), key=lambda t: schedule[t][0])
-    assert critical == reference["critical_path"] == ["T02", "T04", "T05", "T07", "T08", "T17", "T19", "T22", "T23", "T24"]
-    assert {task_id: slack[task_id] for task_id in ("T06", "T11", "T16")} == reference["slack"] == {
-        "T06": 2, "T11": 1, "T16": 18}
-    # The critical path is one chain: each task starts the working day after the one before it finishes.
+    assert critical == reference["critical_path"] == [
+        "T04", "T05", "T09", "T19", "T24", "T30", "T36", "T37", "T38", "T39", "T41", "T42", "T43", "T72", "T75",
+        "T94", "T95", "T96"]
+    # One chain: each task starts on its owner's first working day after the one before it finishes.
     for earlier, later in zip(critical, critical[1:]):
-        assert calendar.index(schedule[later][0]) == calendar.index(schedule[earlier][1]) + 1
-    # Three of its links are the designer's queue, not a dependency.
-    assert all(earlier not in tasks[later]["deps"] for earlier, later in (("T02", "T04"), ("T04", "T05"), ("T05", "T07")))
-    # Every set of optional tasks, cut: one smallest set brings the launch to the target.
-    optional = [task_id for task_id, task in tasks.items() if task["optional"]]
-    assert optional == ["T05", "T13", "T16", "T21"]
-    launches = {cut: _simulate(tasks, cut=frozenset(cut))["T24"][0]
-                for size in range(len(optional) + 1) for cut in itertools.combinations(optional, size)}
-    hits = sorted((len(cut), cut) for cut, launch in launches.items() if launch <= target)
-    assert hits[0] == (2, ("T05", "T13")) and hits[1][0] == 3                    # the only pair; no single task
-    assert launches[("T05",)] == dt.date(2027, 4, 14) and launches[("T16",)] == dt.date(2027, 4, 16)
-    assert launches[("T05", "T13")] == reference["launch_date_after_cut"] == dt.date(2027, 4, 13)
-    assert reference["cut"] == ["T05", "T13"] and reference["target_met"] == "no"
+        gap = [schedule[earlier][1] + dt.timedelta(days=n) for n in range(1, (schedule[later][0] - schedule[earlier][1]).days)]
+        owner = world["tasks"][later]["owner"]
+        assert not any(day.weekday() in world["people"][owner]["days"] and day not in world["people"][owner]["off"]
+                       for day in gap), (earlier, later)
+    queue_links = [(a, b) for a, b in zip(critical, critical[1:]) if a not in {d for d, _l in world["tasks"][b]["deps"]}]
+    assert len(queue_links) >= 8                                  # most links are an owner's ID order
+    # The smallest cut: no single task, and exactly one pair, reaches the target.
+    optional = [task_id for task_id, task in world["tasks"].items() if task["optional"]]
+    assert len(optional) == 11
+    singles = {task_id: _plan(world, cut=frozenset([task_id]))["T96"][0] for task_id in optional}
+    assert min(singles.values()) > T_TARGET and singles["T38"] == dt.date(2027, 5, 27) and singles["T42"] == dt.date(2027, 5, 28)
+    pairs = {pair: _plan(world, cut=frozenset(pair))["T96"][0] for pair in itertools.combinations(optional, 2)}
+    assert [pair for pair, day in pairs.items() if day <= T_TARGET] == [("T38", "T42")]
+    assert pairs[("T38", "T42")] == reference["launch_date_after_cut"] == T_TARGET
+    assert reference["cut"] == ["T38", "T42"] and reference["target_met"] == "no"
+    sizes = {path.name: path.stat().st_size for path in (FIXTURES / "launch-timeline").iterdir()}
+    assert sum(sizes.values()) < 60_000
 
 
-def test_timeline_the_traps_are_real():
-    tasks, calendar, _start, target = _launch_plan()
-    # Without the owners' one-task-at-a-time rule the plan looks as if it makes the date.
-    loose = _simulate(tasks, owners=False)
-    assert loose["T24"][0] == dt.date(2027, 4, 9) <= target
-    assert sum(loose[task_id][0] != start for task_id, (start, _finish) in _simulate(tasks).items()) >= 10
-    # The longest task and the longest optional task look critical and are not.
-    longest = max(tasks, key=lambda task_id: tasks[task_id]["days"])
-    assert longest == "T06" and _slack(tasks, "T06") == 2
-    assert max((task for task in tasks if tasks[task]["optional"]), key=lambda t: tasks[t]["days"]) == "T16"
-    # Both not_before dates bind, and every holiday falls inside a task that runs across it.
-    schedule = _simulate(tasks)
-    assert schedule["T02"][0] == dt.date(2027, 3, 9) > dt.date(2027, 3, 4)          # T01 ends on 03-03
-    assert schedule["T15"][0] == dt.date(2027, 4, 8) and tasks["T15"]["not_before"] == dt.date(2027, 4, 5)
-    for holiday in (dt.date(2027, 3, 12), dt.date(2027, 3, 26), dt.date(2027, 3, 29)):
-        assert any(start < holiday < finish for start, finish in schedule.values()), holiday
-    assert sum(path.stat().st_size for path in (FIXTURES / "launch-timeline").iterdir()) < 60_000
+def test_timeline_every_calendar_rule_moves_the_schedule():
+    world = _launch_world()
+    schedule = _plan(world)
+    loose = _plan(world, owners=False)
+    assert loose["T96"][0] <= T_TARGET                            # without the queues the date seems to hold
+    assert sum(loose[t][0] != schedule[t][0] for t in schedule) >= 40
+    for reading in ("one_calendar", "no_part_time", "no_time_off", "suppliers_on_weekdays"):
+        other = _plan(world, calendar=_misread(world, reading))
+        assert sum(other[t][0] != schedule[t][0] for t in schedule) >= 4, reading
+    no_leads = {"people": world["people"],
+                "tasks": {t: {**task, "deps": [(d, 1) for d, _lead in task["deps"]]} for t, task in world["tasks"].items()}}
+    assert sum(_plan(no_leads)[t][0] != schedule[t][0] for t in schedule) >= 4
+    # The plan history holds older figures for tasks whose current figures differ.
+    history = (FIXTURES / "launch-timeline/team_calendar.md").read_text().split("## Plan history")[1]
+    assert history.count("\n- ") >= 20 and "the plan file is right" in " ".join(history.split())
+    for task_id, old in (("T21", "10 calendar days"), ("T47", "2027-05-11"), ("T37", "3 working days")):
+        assert old in history and task_id in history
 
 
-TIMELINE_REFERENCE_REPLY = """\
-Mara, the plan as it stands launches on Friday 2027-04-16, three working days after the date you
-gave the retail partners. The designer's queue drives it: Cleo cannot start the landing page design
-until the photography, the packaging artwork and the retail lookbook are done, in that order.
-
-### schedule.csv
-```csv
-task_id,start,finish
-T01,2027-03-01,2027-03-03
-T02,2027-03-09,2027-03-10
-T03,2027-03-04,2027-03-09
-T04,2027-03-11,2027-03-17
-T05,2027-03-18,2027-03-22
-T06,2027-03-18,2027-04-02
-T07,2027-03-23,2027-03-25
-T08,2027-03-30,2027-04-05
-T09,2027-03-10,2027-03-15
-T10,2027-03-16,2027-03-17
-T11,2027-03-30,2027-04-02
-T12,2027-03-04,2027-03-10
-T13,2027-04-05,2027-04-07
-T14,2027-03-16,2027-03-17
-T15,2027-04-08,2027-04-12
-T16,2027-03-10,2027-03-17
-T17,2027-04-06,2027-04-08
-T18,2027-04-09,2027-04-12
-T19,2027-04-09,2027-04-12
-T20,2027-03-18,2027-03-19
-T21,2027-03-18,2027-03-19
-T22,2027-04-13,2027-04-14
-T23,2027-04-15,2027-04-15
-T24,2027-04-16,2027-04-16
-```
-
-### answers.csv
-```csv
-item,answer
-launch_date,2027-04-16
-critical_path,T02 T04 T05 T07 T08 T17 T19 T22 T23 T24
-slack_T06,2
-slack_T11,1
-slack_T16,18
-target_met,no
-cut,T05 T13
-launch_date_after_cut,2027-04-13
-```
-
-Cutting the retail lookbook (T05) frees Cleo three days earlier and brings the launch to 04-14; the
-seeding kits (T13) then hold Esme's press outreach back, so cutting them too brings it to 04-13. No
-single cut does it, and no other pair: the retail partner deck (T16) has 18 days of slack.
-"""
-
-
-def _timeline_reply(schedule: dict, answers: dict) -> str:
-    lines = ["Launch plan.", "", "### schedule.csv", "```csv", "task_id,start,finish"]
-    lines += [f"{task_id},{start},{finish}" for task_id, (start, finish) in sorted(schedule.items())]
+def _timeline_reply(schedule: dict, slack: dict, answers: dict) -> str:
+    lines = ["Launch plan for Mara.", "", "### schedule.csv", "```csv", "task_id,start,finish,slack"]
+    lines += [f"{task_id},{start},{finish},{slack[task_id]}" for task_id, (start, finish) in sorted(schedule.items())]
     lines += ["```", "", "### answers.csv", "```csv", "item,answer"]
     lines += [f"{item},{value}" for item, value in answers.items()]
-    return "\n".join(lines + ["```", ""]) + "\n"
+    return "\n".join(lines + ["```", "",
+                              "Cutting the lookbook frees the designer four days earlier; the SMS flow then holds the "
+                              "lifecycle owner's queue, so it goes too. No single cut reaches 2027-05-26."]) + "\n"
+
+
+def _timeline_reference_reply() -> str:
+    _world, schedule, slack = _timeline_truth()
+    critical = sorted((t for t, v in slack.items() if v == 0), key=lambda t: schedule[t][0])
+    return _timeline_reply(schedule, slack, {"launch_date": schedule["T96"][0], "critical_path": " ".join(critical),
+                                             "target_met": "no", "cut": "T38 T42", "launch_date_after_cut": "2027-05-26"})
 
 
 def test_timeline_reference_reply_passes_every_programmatic_check():
-    results = _results(TIMELINE, TIMELINE_REFERENCE_REPLY)
-    assert len(results) == 13 and not _failed(results)
-    for variant in (
-        TIMELINE_REFERENCE_REPLY.replace("T02 T04 T05 T07 T08 T17 T19 T22 T23 T24", '"T02, T04, T05, T07, T08, T17, T19, T22, T23, T24"'),
-        TIMELINE_REFERENCE_REPLY.replace("cut,T05 T13", "cut,T13 T05").replace("target_met,no", "target_met,No"),
-        TIMELINE_REFERENCE_REPLY.replace("```csv\n", "").replace("```\n", "\n"),
-        TIMELINE_REFERENCE_REPLY.replace("slack_T06,2", "slack_T06,2 days"),
-    ):
-        assert not _failed(_results(TIMELINE, variant)), variant[-600:]
-
-
-def test_timeline_scheduling_without_the_owner_rule_scores_zero_where_it_should():
-    """The tempting reading: a dependency-only critical path, as if every owner
-    could run tasks side by side. It says the date holds."""
-    tasks, _calendar, _start, _target = _launch_plan()
-    loose = _simulate(tasks, owners=False)
-    slack = {task_id: _slack(tasks, task_id, owners=False) for task_id in tasks}
-    critical = sorted((task_id for task_id, value in slack.items() if value == 0), key=lambda t: loose[t][0])
-    careless = _timeline_reply(loose, {
-        "launch_date": loose["T24"][0], "critical_path": " ".join(critical), "slack_T06": slack["T06"],
-        "slack_T11": slack["T11"], "slack_T16": slack["T16"], "target_met": "yes", "cut": "none",
-        "launch_date_after_cut": loose["T24"][0]})
-    results = _results(TIMELINE, careless)
-    # Its critical path is the press embargo alone, and every slack it gives is wrong.
-    assert critical == ["T15", "T23", "T24"] and {task_id: slack[task_id] for task_id in ("T06", "T11", "T16")} == {
-        "T06": 5, "T11": 6, "T16": 13}
-    assert _zeroed(results) == _failed(results) == {
-        "starts_follow_the_rules", "launch_date_right", "critical_path_right", "slack_t06_right", "slack_t11_right",
-        "slack_t16_right", "target_missed_said", "smallest_cut", "launch_after_cut_right"}
-    assert results["finishes_follow_the_calendar"]["pass"]       # its calendar arithmetic is sound
-
-
-def test_timeline_other_wrong_readings_fail_their_own_checks():
-    tasks, calendar, _start, _target = _launch_plan()
-    # Holidays forgotten: the finishes no longer follow the calendar, and the starts slide.
-    reply = TIMELINE_REFERENCE_REPLY.replace("T04,2027-03-11,2027-03-17", "T04,2027-03-11,2027-03-16")
-    assert _failed(_results(TIMELINE, reply)) == {"finishes_follow_the_calendar"}
-    # The obvious single cut, the longest optional task, or the first cut alone.
-    for cut, after in (("T16", "2027-04-16"), ("T05", "2027-04-14"), ("T05 T13 T16", "2027-04-13")):
-        reply = TIMELINE_REFERENCE_REPLY.replace("cut,T05 T13", f"cut,{cut}").replace(
-            "launch_date_after_cut,2027-04-13", f"launch_date_after_cut,{after}")
-        assert "smallest_cut" in _zeroed(_results(TIMELINE, reply)), cut
-    # The critical path with the queue's links left out, as a dependency-only reading writes it.
-    reply = TIMELINE_REFERENCE_REPLY.replace("T02 T04 T05 T07", "T02 T07")
-    assert _failed(_results(TIMELINE, reply)) == {"critical_path_right"}
-    # One start a day late costs the start check part of its credit, not all of it.
-    reply = TIMELINE_REFERENCE_REPLY.replace("T21,2027-03-18,2027-03-19", "T21,2027-03-19,2027-03-22")
+    reply = _timeline_reference_reply()
     results = _results(TIMELINE, reply)
-    assert _failed(results) == {"starts_follow_the_rules"} and 0 < results["starts_follow_the_rules"]["score"] < 1
-    # A missing row, a missing item, a missing file.
-    assert {"every_task_once", "starts_follow_the_rules", "finishes_follow_the_calendar"} == _failed(
-        _results(TIMELINE, TIMELINE_REFERENCE_REPLY.replace("T13,2027-04-05,2027-04-07\n", "")))
-    assert {"every_item_answered", "slack_t11_right"} == _failed(
-        _results(TIMELINE, TIMELINE_REFERENCE_REPLY.replace("slack_T11,1\n", "")))
-    assert {"both_files", "every_item_answered", "launch_date_right", "smallest_cut"} <= _failed(
-        _results(TIMELINE, TIMELINE_REFERENCE_REPLY.split("### answers.csv")[0]))
+    assert len(results) == 11 and not _failed(results)
+    for variant in (
+        reply.replace("cut,T38 T42", 'cut,"T42, T38"').replace("target_met,no", "target_met,No"),
+        reply.replace("```csv\n", "").replace("```\n", "\n"),
+        reply.replace("T04 T05 T09", "T04 → T05 → T09"),
+    ):
+        assert not _failed(_results(TIMELINE, variant)), variant[-400:]
+
+
+def test_timeline_scheduling_without_the_owner_queues_scores_zero_where_it_should():
+    """The tempting reading: a dependency-only critical path, as if every owner could run tasks
+    side by side. It says the date holds."""
+    world = _launch_world()
+    loose = _plan(world, owners=False)
+    slack = _t_slacks(world, owners=False)
+    critical = sorted((t for t, v in slack.items() if v == 0), key=lambda t: loose[t][0])
+    reply = _timeline_reply(loose, slack, {"launch_date": loose["T96"][0], "critical_path": " ".join(critical),
+                                           "target_met": "yes", "cut": "none",
+                                           "launch_date_after_cut": loose["T96"][0]})
+    results = _results(TIMELINE, reply)
+    assert _zeroed(results) == _failed(results) == {
+        "starts_follow_the_rules", "slacks_right", "launch_date_right", "critical_path_right", "target_missed_said",
+        "smallest_cut", "launch_after_cut_right"}
+    assert results["finishes_follow_the_calendars"]["pass"]       # its calendar arithmetic is sound
+
+
+@pytest.mark.parametrize("reading", ["one_calendar", "no_part_time", "no_time_off", "suppliers_on_weekdays"])
+def test_timeline_a_misread_calendar_scores_zero_where_it_should(reading):
+    world, _schedule, slack = _timeline_truth()
+    schedule = _plan(world, calendar=_misread(world, reading))
+    critical = task_facts_strategy.timeline_reference()["critical_path"]     # its slacks and path left as they should be
+    reply = _timeline_reply(schedule, slack, {"launch_date": schedule["T96"][0], "critical_path": " ".join(critical),
+                                              "target_met": "no" if schedule["T96"][0] > T_TARGET else "yes",
+                                              "cut": "T38 T42", "launch_date_after_cut": "2027-05-26"})
+    results = _results(TIMELINE, reply)
+    touched = {"starts_follow_the_rules", "finishes_follow_the_calendars"}
+    if schedule["T96"][0] != dt.date(2027, 6, 1):
+        touched.add("launch_date_right")
+    assert touched <= _zeroed(results), reading
+
+
+def test_timeline_other_wrong_answers_fail_their_own_checks():
+    reply = _timeline_reference_reply()
+    for cut, after in (("T38", "2027-05-27"), ("T42", "2027-05-28"), ("T38 T42 T87", "2027-05-26"), ("T16", "2027-06-01")):
+        changed = reply.replace("cut,T38 T42", f"cut,{cut}").replace("launch_date_after_cut,2027-05-26",
+                                                                       f"launch_date_after_cut,{after}")
+        assert "smallest_cut" in _zeroed(_results(TIMELINE, changed)), cut
+    # A dependency-only reading of the designer's queue drops its links from the path.
+    assert _failed(_results(TIMELINE, reply.replace("T04 T05 T09 T19", "T04 T09"))) == {"critical_path_right"}
+    # One start a day late costs the start check part of its credit; its finish is then its own error.
+    row = next(line for line in reply.splitlines() if line.startswith("T58,"))
+    task_id, start, finish, slack = row.split(",")
+    later = (dt.date.fromisoformat(start) + dt.timedelta(days=1)).isoformat()
+    results = _results(TIMELINE, reply.replace(row, f"{task_id},{later},{finish},{slack}"))
+    assert {"starts_follow_the_rules", "finishes_follow_the_calendars"} == _failed(results)
+    assert 0 < results["starts_follow_the_rules"]["score"] < 1
+    assert {"every_task_once", "starts_follow_the_rules", "finishes_follow_the_calendars", "slacks_right"} == _failed(
+        _results(TIMELINE, "\n".join(line for line in reply.splitlines() if not line.startswith("T13,")) + "\n"))
+    assert {"every_item_answered", "target_missed_said"} == _failed(
+        _results(TIMELINE, reply.replace("target_met,no\n", "")))
+    assert {"both_files", "every_item_answered", "launch_date_right", "critical_path_right", "target_missed_said",
+            "smallest_cut", "launch_after_cut_right"} == _failed(_results(TIMELINE, reply.split("### answers.csv")[0]))
