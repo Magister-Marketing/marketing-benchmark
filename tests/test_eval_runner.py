@@ -1447,6 +1447,21 @@ def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
         bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
+@pytest.mark.parametrize("harness", ["claude-code", "magister-agent"])
+def test_retry_refuses_a_run_another_harness_made(tmp_path, monkeypatch, harness):
+    """retry calls the model directly; an agent run's errored attempt filled
+    that way would be a direct answer inside an agent's results."""
+    run_dir = _retry_fixture(tmp_path)
+    meta = json.loads((run_dir / "run.json").read_text())
+    (run_dir / "run.json").write_text(json.dumps({**meta, "harness": harness}))
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match=f"made by the {harness} harness"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+
+
 def test_retry_checks_every_recorded_prompt_before_the_first_paid_call(tmp_path, monkeypatch):
     """A changed prompt on a later errored attempt must stop the retry before
     an earlier one is re-paid and then left unrecorded."""

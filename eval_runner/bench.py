@@ -801,6 +801,12 @@ def cmd_retry(args: argparse.Namespace) -> int:
     run_meta = json.loads((run_dir / "run.json").read_text())
     if run_meta.get("generation_policy", {}).get("strict_attempts"):
         raise SystemExit("strict runs cannot be retried in place; create a new run")
+    harness = run_meta.get("harness", HARNESS_ID)
+    if harness != HARNESS_ID:
+        raise SystemExit(
+            f"this run was made by the {harness} harness; retry calls the model "
+            f"directly ({HARNESS_ID}), so rerun its errored attempts with that harness"
+        )
     attempts = _read_jsonl(run_dir / "attempts.jsonl")
     errored = [record for record in attempts if "error" in record]
     if not errored:

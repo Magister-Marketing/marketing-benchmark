@@ -19,6 +19,9 @@
   both. Its prompt, rubric, fixtures and versions are unchanged. Providers
   accept a text conversation (Anthropic and OpenRouter `messages`, OpenAI
   Responses `input`); a single prompt goes on the wire as before.
+- Runner: `retry` refuses a run another harness made (`claude-code`,
+  `magister-agent`). It calls the model directly, so it filled an agent
+  run's errored attempts with direct-API answers.
 - Runner: `retry` sends each model the output ceiling its run recorded
   (`max_output_tokens_by_model`). A run whose models have different ceilings
   records no single `max_output_tokens`, and its retries sent Anthropic and
