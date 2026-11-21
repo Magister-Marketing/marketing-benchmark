@@ -279,6 +279,16 @@
   dates or pauses ignored, a pause read as the whole month, a moved
   campaign's audience taken on its requested date) scores zero on every
   check it touches and full on the rest.
+- Tasks: the copy tasks (`launch-copy-pack`, `catalog-descriptions`,
+  `claims-check`) read a CSV file whole when it groups its rows with blank
+  lines or splits them over fenced blocks with only blank lines between. A
+  trial reply to `launch-copy-pack` wrote copy_pack.csv without a fence and
+  with a blank line between products, every id as the placements file builds
+  it; the reader stopped at the first blank line, read 18 rows of 72, and 13
+  checks failed together. Read whole, that reply has no error on any program
+  check. A blank line still ends a file when the next line with text is not
+  one of its rows. The id scheme in the brief was already exact and is
+  unchanged. Each task's rubric_version moves to 2; prompts are unchanged.
 - Tasks: workflow task `claims-check` (development split): six product
   pages making 150 numbered claims, and the sources (lab results with a
   superseded June round, an owner survey by group and country, price history,

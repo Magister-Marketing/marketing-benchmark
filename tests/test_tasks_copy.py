@@ -103,7 +103,8 @@ def the_reference_passes_and_a_blank_reply_earns_nothing(task_id: str) -> None:
     assert len(judged) == 1 and (len(criteria) - len(judged)) / len(criteria) >= 0.7
     named = {c["programmatic"]["fact"] for c in criteria.values() if "programmatic" in c}
     assert named == set(m.facts("", task_id))
-    assert task["split"] == "development" and (task["prompt_version"], task["rubric_version"]) == (1, 1)
+    # Rubric 2: a file that groups its rows with blank lines is read whole (a run read it as 18 rows of 72).
+    assert task["split"] == "development" and (task["prompt_version"], task["rubric_version"]) == (1, 2)
     assert task["prompt"].endswith("This is copy for review. Publish nothing and fetch nothing external.")
     for skill in task["skills"]:
         assert (REPO_ROOT / skill).is_file()
@@ -476,6 +477,24 @@ def test_launch_the_offer_date_reads_the_same_in_both_rules():
         assert m.price_rule_errors(one, preheader, "$199. " + text) == missing
 
 
+def test_launch_a_file_grouped_by_product_is_read_whole():
+    """A run's reply wrote copy_pack.csv without a fence and with a blank line
+    between products, every id as the placements file builds it. It was read
+    as the first 18 rows of 72; it is now read as the reference is."""
+    body = LAUNCH_REF.split("```csv\n")[1].split("\n```")[0].splitlines()
+    groups = "\n".join(body[:1] + [line + ("\n" if line.startswith(f"{p.code}-PB-01") and p.code != "PET" else "")
+                                   for line in body[1:] for p in m.LAUNCH_PRODUCTS if line.startswith(p.code + "-")])
+    assert groups.count("\n\n") == 3
+    assert launch_changed(f"### copy_pack.csv\n{groups}\n") == {}
+    # The same rows as four fenced blocks, one per product, each with its header.
+    blocks = "\n\n".join("```csv\nasset_id,text\n" + "\n".join(line for line in body[1:] if line.startswith(p.code + "-"))
+                         + "\n```" for p in m.LAUNCH_PRODUCTS)
+    assert launch_changed(f"### copy_pack.csv\n{blocks}\n") == {}
+    # Prose after a blank line still ends the file, and rows after it are not read.
+    prose = f"### copy_pack.csv\n{body[0]}\n" + "\n".join(body[1:19]) + "\n\nNext, the Halo One:\n" + "\n".join(body[19:])
+    assert m.launch_facts(prose)["workflow_asset_coverage_error_count"] == 54
+
+
 def test_launch_rows_are_read_however_the_csv_is_written():
     quoted = launch_row("MINI-SD-02")
     assert quoted.startswith('MINI-SD-02,"')
@@ -817,6 +836,12 @@ def test_the_edges_of_facts_from_other_rows(sku, selling, foreign):
     assert m.foreign_facts(m.PRODUCT_BY_SKU[sku], selling + " " + spec(sku)) == foreign
 
 
+def test_catalog_a_file_grouped_by_family_is_read_whole():
+    body = CATALOG_REF.split("```csv\n")[1].split("\n```")[0].splitlines()
+    grouped = body[0] + "\n" + "\n".join(line + ("\n" if index % 5 == 4 else "") for index, line in enumerate(body[1:]))
+    assert catalog_changed(f"### descriptions.csv\n{grouped}\n\nLet me know if you want changes, or more.\n") == {}
+
+
 def test_catalog_each_kind_of_wrong_answer_fails_its_own_check():
     long = with_description("WF-1102", prose("WF-1102") + " " + "It is a desk. " * 8 + spec("WF-1102"))
     assert catalog_changed(long) == {"workflow_word_range_error_count": 1}
@@ -1125,6 +1150,13 @@ def test_claims_each_claim_is_read_where_it_stands():
     first = next(c for c in m.claims() if c.verdict == "contradicted")
     moved = REF_REWRITE.replace(f" [{first.number}].", f" {first.figure} [{first.number}].")
     assert claims_changed(claims_reply(REF_VERDICTS, moved))["workflow_wrong_figure_left_count"] == 1
+
+
+def test_claims_a_verdict_file_grouped_by_page_is_read_whole():
+    rows = "\n".join(f"{c.number},{c.verdict}" + ("\n" if c.number % 25 == 0 else "") for c in m.claims())
+    reply = f"### claims.csv\nclaim,verdict\n{rows}\n### rewrite.md\n```markdown\n{REF_REWRITE}\n```\n"
+    assert claims_changed(reply) == {}
+    assert m.claim_number("Claim 7") == 7 and m.claim_number("[7]") == 7 and m.claim_number("seven") is None
 
 
 def test_claims_each_kind_of_wrong_answer_fails_its_own_check():

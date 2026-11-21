@@ -140,13 +140,51 @@ def keyed_lines(document: str | None, header_first: str) -> list[tuple[str, str]
     return rows
 
 
-def csv_file(text: str, name: str) -> str | None:
+def first_cell(line: str) -> str:
+    """A row's first cell as keyed_lines reads it, or "" for a line that is
+    not a row."""
+    core = line[:_MAX_TEXT + 100].strip()
+    if core.startswith("|"):
+        cell = core.strip("|").split("|")[0]
+    elif "," in core:
+        cell = core.split(",", 1)[0]
+    else:
+        return ""
+    return cell.strip().strip("`*_ \"'")
+
+
+def _next_text(lines: list[str], index: int) -> int | None:
+    """The index of the first line with text at or after index, or None."""
+    while index < len(lines):
+        if lines[index].strip():
+            return index
+        index += 1
+    return None
+
+
+def csv_file(text: str, name: str, is_row=None, header: str = "") -> str | None:
     """A named CSV file's lines as written, or None when the reply does not
-    carry it. The file is found exactly as ``common.tables`` finds one (the
-    same naming lines, fences, list items and ends, and the last copy with
+    carry it. The file is found as ``common.tables`` finds one (the same
+    naming lines, fences, list items and ends, and the last copy with
     something in it wins); only its rows are left unparsed, so a text with an
-    unquoted comma is still read whole."""
+    unquoted comma is still read whole.
+
+    One difference, for a task that says what its rows look like (``is_row``,
+    a test of a line, and ``header``, the first header cell): a file that
+    groups its rows with blank lines, or splits them over fenced blocks with
+    only blank lines between, is read whole. A blank line ends the file only
+    when the next line with text is not one of its rows, so prose after the
+    file still ends it."""
     lines = (text if isinstance(text, str) else "").splitlines()
+
+    def continues(index: int | None) -> bool:
+        if is_row is None or index is None:
+            return False
+        line = lines[index]
+        if common._is_fence(line) or common.file_named(line) or common._is_heading(line):
+            return False
+        return is_row(line) or (bool(header) and common.norm(first_cell(line)).replace(" ", "_") == header)
+
     found: list[str] | None = None
     index = 0
     while index < len(lines):
@@ -161,6 +199,11 @@ def csv_file(text: str, name: str) -> str | None:
             if common._is_fence(line):
                 index += 1
                 if fenced or body:
+                    after = _next_text(lines, index)
+                    if after is not None and common._is_fence(lines[after]) and continues(
+                            _next_text(lines, after + 1)):
+                        index, fenced = after + 1, True
+                        continue
                     break
                 fenced = True
                 continue
@@ -170,6 +213,10 @@ def csv_file(text: str, name: str) -> str | None:
                 if not line.strip():
                     index += 1
                     if body:
+                        after = _next_text(lines, index)
+                        if continues(after):
+                            index = after
+                            continue
                         break
                     continue
             body.append(line)
@@ -1037,7 +1084,7 @@ def launch_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. An asset that is missing counts
     against every check it would be held to, so leaving copy out never
     earns credit for the rules it would have had to follow."""
-    document = csv_file(response_text, LAUNCH_FILE)
+    document = csv_file(response_text, LAUNCH_FILE, lambda line: _asset_key(first_cell(line)) is not None, "asset_id")
     expected = {asset_id: (product, placement) for asset_id, product, placement in launch_assets()}
     texts: dict[str, str] = {}
     repeated = unknown = 0
@@ -1769,7 +1816,7 @@ CATALOG_FACTS = (
 def catalog_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. A missing description counts against
     every check it would be held to."""
-    document = csv_file(response_text, CATALOG_FILE)
+    document = csv_file(response_text, CATALOG_FILE, lambda line: _sku(first_cell(line)) is not None, "sku")
     texts: dict[str, str] = {}
     seen: set[str] = set()
     repeated = unknown = 0
@@ -2476,6 +2523,15 @@ def claim_segments(text: str) -> dict[int, str]:
     return out
 
 
+_CLAIM_NUMBER = re.compile(r"(?:claim\s*)?\[?(\d{1,3})\]?", re.IGNORECASE)
+
+
+def claim_number(raw: str) -> int | None:
+    """A claims.csv row's claim number: "7", "[7]" or "Claim 7"."""
+    match = _CLAIM_NUMBER.fullmatch(raw.strip()[:20])
+    return int(match.group(1)) if match else None
+
+
 def _verdicts(document: str | None) -> tuple[dict[int, str | None], int]:
     """claim number -> the verdict given (None when it cannot be read), and
     how many rows repeat a claim or name one the draft does not have."""
@@ -2483,10 +2539,9 @@ def _verdicts(document: str | None) -> tuple[dict[int, str | None], int]:
     errors = 0
     numbers = {claim.number for claim in claims()}
     for raw, value in keyed_lines(document, "claim"):
-        match = re.search(r"\d{1,3}", raw[:20])
-        if not match:
+        number = claim_number(raw)
+        if number is None:
             continue
-        number = int(match.group(0))
         if number in given or number not in numbers:
             errors += 1
             continue
@@ -2522,7 +2577,7 @@ def claims_facts(response_text: str) -> dict[str, int]:
     counts all of its work as undone. Each kept or corrected claim is read
     where it stands, between the number before it and its own number."""
     text = response_text if isinstance(response_text, str) else ""
-    rows_file = csv_file(text, CLAIMS_FILES[0])
+    rows_file = csv_file(text, CLAIMS_FILES[0], lambda line: claim_number(first_cell(line)) is not None, "claim")
     raw = common.sections(text, [CLAIMS_FILES[1]])[CLAIMS_FILES[1]]
     out = dict.fromkeys(CLAIMS_FACTS, 0)
     out["workflow_missing_file_count"] = (rows_file is None) + (raw is None)

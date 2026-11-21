@@ -3,7 +3,7 @@
   "title": "Catalog descriptions",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "workflow": "catalog-descriptions",
   "fixtures": [
     "eval_runner/fixtures/catalog-descriptions/product_specs.csv",
