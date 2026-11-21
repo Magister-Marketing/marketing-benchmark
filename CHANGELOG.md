@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Tasks: `competitor-comparison` version 2 (prompt and rubric 2). Version 1 (6
+  companies, 12 attributes, 7.9 KB) was passed outright by a strong model
+  with no tools or skills. Version 2 reads ten pricing pages (30 KB), each
+  with a plan table, footnotes, a feature list, a security section, an FAQ
+  and a dated changelog, into a table of 20 attributes (200 cells, 63 with a
+  trap) and judges nine draft claims, each against several companies' cells
+  and each turning on one trap. A claim is supportable only if it holds
+  whatever a `not stated` cell really is. The oracle parses the pages and
+  applies the brief's precedence (changelog, then FAQ, then table, then the
+  rest); the test holds the table written out by hand, checks every trap is
+  on its page, and recomputes the verdicts with its own logic. 17 of 18
+  checks are a program's, one per trap group and one per claim.
 - Tasks: `launch-timeline` version 2 (prompt and rubric 2). Version 1 (24
   tasks, one calendar) was passed outright by a strong model with no tools
   or skills. Version 2 schedules 96 tasks: ten people in London and Boston

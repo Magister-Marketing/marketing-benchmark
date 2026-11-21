@@ -31,7 +31,7 @@ from eval_runner import bench, task_facts_strategy
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
 STRATEGY_TASKS = ["channel-budget-allocation", "competitor-comparison", "launch-timeline"]
 # Version 1 of each was run once (2026-11-20) and found too small; version 2 is the larger task.
-VERSIONS = {"channel-budget-allocation": (2, 2), "competitor-comparison": (1, 1), "launch-timeline": (2, 2)}
+VERSIONS = {"channel-budget-allocation": (2, 2), "competitor-comparison": (2, 2), "launch-timeline": (2, 2)}
 
 
 @pytest.fixture(scope="module")
@@ -513,59 +513,94 @@ def test_budget_missing_rows_and_files_are_counted_not_excused():
 # ───────────────────────────────────────────────────────── competitor-comparison
 
 COMPARISON = "competitor-comparison"
-COLUMNS = ["free_plan", "trial_days", "entry_plan", "entry_price_usd", "entry_min_users", "sso_on_entry",
-           "sso_cheapest_plan", "invoicing_on_entry", "api_on_entry", "top_plan_price_usd", "uptime_sla_percent",
-           "eu_hosting"]
-NS = "not stated"
-# The table the brief defines, written out by hand from the six pages.
+COLUMNS = ["free_plan", "trial_days", "entry_plan", "entry_price_usd", "entry_min_users", "entry_projects",
+           "top_plan_price_usd", "sso_on_entry", "sso_cheapest_plan", "audit_log_cheapest_plan", "invoicing_on_entry",
+           "api_on_entry", "approvals_on_entry", "budgets_on_entry", "phone_support_on_entry", "mobile_app",
+           "uptime_sla_percent", "eu_hosting", "soc2_type2", "dpa"]
+NS, UNL = "not stated", "unlimited"
+# The table the brief defines, written out by hand from the ten pages.
 COMPARISON_TABLE = {
-    "Tallyhour": ["yes", 21, "Studio", 21.00, 1, "yes", "Studio", "yes", "yes", 34.00, 99.9, "yes"],
-    "Brisktime": [NS, 7, "Starter", 23.00, 3, "no", "Business", "yes", "no", 35.00, 99.5, "no"],
-    "Quillhour": ["no", 14, "Team", 23.00, 3, "no", "Enterprise", "yes", "yes", NS, NS, "yes"],
-    "Ticklog": ["no", 0, "Basic", 24.00, 5, "no", "Enterprise", "no", "yes", 45.00, 99.95, NS],
-    "Fenwork": ["no", 30, "Essentials", 22.00, NS, "no", "Growth", "yes", "yes", 39.00, 99.9, "yes"],
-    "Larchpoint": ["no", 14, "Core", 29.00, 1, "no", "Scale", "yes", NS, 48.00, 99.9, "no"],
+    "Tallyhour": ["yes", 21, "Studio", 21.00, 1, UNL, 34.00, "yes", "Studio", "Agency", "yes", "yes", "yes", "yes", "yes",
+                  "yes", 99.9, "yes", "yes", "yes"],
+    "Brisktime": [NS, 7, "Starter", 23.00, 3, 20, 35.00, "no", "Business", "Business", "yes", "no", "yes", "no", "no",
+                  NS, 99.5, "no", "no", NS],
+    "Quillhour": ["no", 14, "Team", 23.00, 3, UNL, NS, "no", "Enterprise", "Pro", "yes", "yes", "yes", "no", "no",
+                  "yes", NS, "yes", "yes", "yes"],
+    "Ticklog": ["no", 0, "Basic", 24.00, 5, 10, 45.00, "no", "Enterprise", "Enterprise", "no", "yes", "yes", "no", "no",
+                "no", 99.95, "no", "yes", "yes"],
+    "Fenwork": ["no", 30, "Essentials", 24.00, 2, NS, 39.00, "no", "Growth", "Growth", "yes", "yes", "yes", "no", "no",
+                "yes", 99.9, "yes", "no", NS],
+    "Larchpoint": ["no", 14, "Core", 29.00, 2, NS, 48.00, "no", "Scale", "Scale", "yes", NS, "yes", "no", "no",
+                   "yes", 99.9, "no", NS, "yes"],
+    "Clockwell": ["yes", 14, "Team", 22.00, 2, UNL, 36.00, "no", "Company", "Company", "yes", "yes", "yes", "no", "no",
+                  "yes", 99.95, "yes", "yes", "yes"],
+    "Pacemark": ["no", 14, "Plus", 26.00, 3, UNL, NS, "yes", "Plus", "Pro", "yes", "no", "yes", "no", "no",
+                 NS, 99.99, "no", "yes", NS],
+    "Hourglen": ["no", 14, "Standard", 25.00, 2, NS, 35.00, "no", "Premium", "none", "yes", "yes", "yes", "no", "no",
+                 "yes", NS, "yes", "no", "yes"],
+    "Ledgerline": ["no", 0, "Starter", 22.00, 2, 5, 36.00, "no", "Team", "Team", "yes", "no", "yes", "yes", "no",
+                   "no", NS, "no", "yes", NS],
 }
+COMPARISON_VERDICTS = {1: "supportable", 2: "not supportable", 3: "not supportable", 4: "not supportable",
+                       5: "not supportable", 6: "supportable", 7: "not supportable", 8: "supportable", 9: "supportable"}
 
 
 def _page_text(company: str) -> str:
     return (FIXTURES / f"competitor-comparison/{company.lower()}.md").read_text()
 
 
+def _number(value) -> float:
+    """A cell as a number for a comparison; words a careless reader writes ("contact sales") read as dear."""
+    return value if isinstance(value, (int, float)) else float("inf")
+
+
 def _claims(table: dict) -> dict[int, str]:
-    """The five draft claims, judged from a table by the brief's verdict rules."""
+    """The nine draft claims, judged from a table by the brief's rule: true whatever a not-stated cell holds."""
     rows = {company: dict(zip(COLUMNS, values)) for company, values in table.items()}
-    ours, theirs = rows["Tallyhour"], [row for company, row in rows.items() if company != "Tallyhour"]
+    rivals = [company for company in rows if company != "Tallyhour"]
+    ours = rows["Tallyhour"]
 
-    def below(column: str) -> bool:
-        # A price written as words ("contact sales") reads, to a careless reader, as dearer than any number.
-        def amount(value):
-            return float("inf") if isinstance(value, str) else value
-        return all(row[column] != NS for row in theirs) and all(ours[column] < amount(row[column]) for row in theirs)
+    def every(column: str, test) -> bool:      # a not-stated cell fails a test that needs its value
+        return all(rows[c][column] != NS and test(rows[c][column]) for c in rivals)
 
+    def none_of(column: str, value: str) -> bool:
+        return all(rows[c][column] not in (value, NS) for c in rivals)
+
+    both = lambda c, a, b, x="yes": rows[c][a] == x and rows[c][b] == x                    # noqa: E731
+    might = lambda c, a, b: rows[c][a] in ("yes", NS) and rows[c][b] in ("yes", NS)     # noqa: E731
     held = {
-        1: below("entry_price_usd"),
-        2: ours["free_plan"] == "yes" and all(row["free_plan"] == "no" for row in theirs),
-        3: all(row["trial_days"] != NS for row in theirs) and all(ours["trial_days"] > row["trial_days"] for row in theirs),
-        4: ours["sso_on_entry"] == "yes" and all(row["sso_on_entry"] == "no" for row in theirs),
-        5: below("top_plan_price_usd"),
+        1: every("entry_price_usd", lambda v: ours["entry_price_usd"] < _number(v)),
+        2: ours["free_plan"] == "yes" and sum(rows[c]["free_plan"] == "yes" for c in rows) == 2
+           and all(rows[c]["free_plan"] != NS for c in rows),
+        3: ours["sso_on_entry"] == "yes" and none_of("sso_on_entry", "yes"),
+        4: every("trial_days", lambda v: _number(v) <= 0 or ours["trial_days"] > _number(v)),
+        5: both("Tallyhour", "approvals_on_entry", "budgets_on_entry")
+           and not any(might(c, "approvals_on_entry", "budgets_on_entry") for c in rivals),
+        6: both("Tallyhour", "soc2_type2", "eu_hosting")
+           and sum(both(c, "soc2_type2", "eu_hosting") for c in rows) == 3
+           and not any(might(c, "soc2_type2", "eu_hosting") and not both(c, "soc2_type2", "eu_hosting") for c in rows),
+        7: all(rows[c]["eu_hosting"] == "no"
+               or (rows[c]["top_plan_price_usd"] != NS and ours["top_plan_price_usd"] < _number(rows[c]["top_plan_price_usd"]))
+               for c in rivals),
+        8: ours["entry_min_users"] == 1 and every("entry_min_users", lambda v: _number(v) >= 2),
+        9: ours["phone_support_on_entry"] == "yes" and none_of("phone_support_on_entry", "yes"),
     }
     return {number: "supportable" if holds else "not supportable" for number, holds in held.items()}
 
 
-def _comparison_reply(table: dict, verdicts: dict | None = None, *, reasons: bool = True) -> str:
+def _comparison_reply(table: dict, verdicts: dict | None = None) -> str:
     verdicts = verdicts or _claims(table)
-    lines = ["Comparison of Tallyhour and five competitors, from the saved pages.", "", "### comparison.csv", "```csv",
+    lines = ["Comparison of Tallyhour and nine competitors, from the saved pages.", "", "### comparison.csv", "```csv",
              "company," + ",".join(COLUMNS)]
     for company, values in table.items():
-        cells = [f"{value:.2f}" if isinstance(value, float) and value < 90 else str(value) for value in values]
+        cells = [f"{value:.2f}" if isinstance(value, float) and value < 90 else
+                 (f"{value:g}" if isinstance(value, float) else str(value)) for value in values]
         lines.append(",".join([company] + cells))
     lines += ["```", "", "### claims.csv", "```csv", "claim,verdict"]
     lines += [f"{number},{verdict}" for number, verdict in verdicts.items()]
-    lines += ["```", ""]
-    if reasons:
-        lines += ["Claim 2: Brisktime's free_plan is not stated.", "Claim 3: Fenwork's trial_days is 30.",
-                  "Claim 5: Quillhour's top_plan_price_usd is not stated."]
+    lines += ["```", "", "Claim 2: Brisktime's free_plan is not stated. Claim 3: Pacemark's sso_on_entry is yes.",
+              "Claim 4: Fenwork's trial_days is 30. Claim 5: Ledgerline's budgets_on_entry is yes.",
+              "Claim 7: Quillhour's top_plan_price_usd is not stated."]
     return "\n".join(lines) + "\n"
 
 
@@ -577,66 +612,77 @@ def _with(table: dict, company: str, column: str, value) -> dict:
 
 def test_comparison_oracle_reads_the_table_the_pages_state():
     reference = task_facts_strategy.comparison_reference()
-    names = {"tallyhour": "Tallyhour", "brisktime": "Brisktime", "quillhour": "Quillhour", "ticklog": "Ticklog",
-             "fenwork": "Fenwork", "larchpoint": "Larchpoint"}
+    names = {company: company.capitalize() for company in reference["table"]}
     assert {names[company]: [row[column] for column in COLUMNS] for company, row in reference["table"].items()} \
         == COMPARISON_TABLE
-    assert reference["claims"] == _claims(COMPARISON_TABLE) == {
-        1: "supportable", 2: "not supportable", 3: "not supportable", 4: "supportable", 5: "not supportable"}
+    assert reference["claims"] == _claims(COMPARISON_TABLE) == COMPARISON_VERDICTS
     assert {group: len(cells) for group, cells in reference["groups"].items()} == {
-        "faq": 3, "not_stated": 6, "prices": 11, "tiers": 22, "other": 30}
+        "overrides": 10, "not_stated": 17, "prices": 17, "look_alikes": 19, "other": 137}
     assert sorted(reference["groups"]["not_stated"]) == sorted(
         (company.lower(), column) for company, values in COMPARISON_TABLE.items()
         for column, value in zip(COLUMNS, values) if value == NS)
-
-
-def test_comparison_every_trap_is_in_the_pages_as_described():
-    """Each look-alike the checks name is there, so a careful reader can see it
-    and a careless one is led past it."""
-    pages = {company: _page_text(company) for company in COMPARISON_TABLE}
-    brief = (FIXTURES / "competitor-comparison/comparison_brief.md").read_text()
-    # Monthly basis: a monthly price beside a lower annual one, and annual-only plans.
-    assert "| Billed annually, per user per month | $19 |" in pages["Quillhour"]
-    assert "| Billed monthly, per user per month | $23 |" in pages["Quillhour"]
-    assert "| Price per user per year | $276 | $420 |" in pages["Brisktime"] and "| Billing | Annual only | Annual only |" in pages["Brisktime"]
-    assert (276 / 12, 420 / 12) == (23.0, 35.0)
-    assert "| Per user per year, billed yearly | $290 | $480 |" in pages["Larchpoint"] and round(290 / 12, 2) == 24.17
-    # A feature in a page's introduction that its table puts on a higher plan only.
-    assert "single sign-on, SCIM provisioning and audit logs" in pages["Brisktime"]
-    assert "| Single sign-on (SAML) and SCIM | — | ✓ |" in pages["Brisktime"]
-    assert "| Invoicing from timesheets | — | ✓ | ✓ |" in pages["Ticklog"]
-    # FAQ against table, three times.
-    assert "| Free trial | 14 days | 14 days | 14 days |" in pages["Fenwork"] and "30-day free trial" in pages["Fenwork"]
-    assert "| REST API | — | ✓ | ✓ |" in pages["Ticklog"] and "every Ticklog plan includes the REST API" in pages["Ticklog"]
-    assert "| Minimum users | 2 | 2 | 25 |" in pages["Quillhour"] and "now start at 3 users" in pages["Quillhour"]
-    assert "the FAQ is right" in brief
-    # Not stated: never said, a price withheld, a status page that is not an SLA.
-    assert not re.search(r"free plan|free forever|free tier|\$0", pages["Brisktime"], re.I)
-    assert "Try either plan free for 7 days" in pages["Brisktime"]                 # a trial, not a free plan
-    assert "| Contact sales |" in pages["Quillhour"] and "Contact sales" in brief
-    assert "status page" in pages["Quillhour"] and not re.search(r"\bSLA\b", pages["Quillhour"])
-    assert not re.search(r"\bEU\b|hosting|hosted|region|residency", pages["Ticklog"])
-    assert not re.search(r"minimum|seats|at least|\d+ users|from \d", pages["Fenwork"], re.I)
-    assert not re.search(r"\bAPI\b", pages["Larchpoint"])
-    # Look-alike numbers next to the real ones.
-    assert "30-day money-back guarantee" in pages["Larchpoint"] and "14-day free trial" in pages["Larchpoint"]
-    assert "30-minute demo" in pages["Ticklog"] and "no free plan and no free trial" in pages["Ticklog"]
-    assert "| Uptime SLA | 99.5% | 99.9% |" in pages["Larchpoint"]
-    # The claims the brief lists are the ones the checks speak of.
-    assert brief.count("Tallyhour") >= 6 and "a `not stated` cell cannot support it" in brief
+    trapped = sum(len(reference["groups"][group]) for group in ("overrides", "not_stated", "prices", "look_alikes"))
+    assert trapped == 63 and len(COMPARISON_TABLE) * len(COLUMNS) == 200
     sizes = sum(path.stat().st_size for path in (FIXTURES / "competitor-comparison").iterdir())
-    assert sizes < 60_000
+    assert 29_000 < sizes < 60_000
+
+
+def test_comparison_every_trap_is_on_its_page():
+    """Each look-alike the checks name is there, so a careful reader can see it and a careless one
+    is led past it."""
+    page = {company: _page_text(company) for company in COMPARISON_TABLE}
+    brief = " ".join((FIXTURES / "competitor-comparison/comparison_brief.md").read_text().split())
+    # Changelog and FAQ entries that override the table, beside the table rows they override.
+    for company, row, newer in (
+        ("Quillhour", "| Minimum users | 2 | 2 | 25 |", "Team and Pro now start at 3 users"),
+        ("Ticklog", "| REST API | — | ✓ | ✓ |", "every Ticklog plan includes the REST API"),
+        ("Ticklog", "| Timesheet approvals | — | ✓ | ✓ |", "2027-01-18: Timesheet approvals are now included on Basic."),
+        ("Fenwork", "| Free trial | 14 days | 14 days | 14 days |", "every plan comes with a 30-day free trial"),
+        ("Fenwork", "| Price per user per month, billed monthly | $22 |", "Essentials is now $24 per user per month"),
+        ("Pacemark", "| Single sign-on | — | ✓ | ✓ |", "2027-02-15: Single sign-on is now included on Plus."),
+        ("Hourglen", "| Free trial | 10 days | 10 days |", "trials last 14 days"),
+        ("Ledgerline", "| Minimum users | 1 | 3 | 10 |", "2027-02-12: Starter now starts at 2 users."),
+        ("Ledgerline", "| Single sign-on | — | — | ✓ |", "2027-02-20: Single sign-on moved to Team and above."),
+    ):
+        assert row in page[company] and newer in page[company], (company, newer)
+    assert "the FAQ was updated after the plan table and overrides it" in brief and "overrides everything else" in brief
+    # Not stated: never said, a price withheld, a status page, an aim.
+    assert not re.search(r"free plan|free forever|mobile|data processing", page["Brisktime"], re.I)
+    assert "Contact sales" in page["Quillhour"] and "Contact sales" in page["Pacemark"]
+    assert "status page" in page["Quillhour"] and "We aim for 99.9% uptime." in page["Hourglen"]
+    assert not re.search(r"\bAPI\b|SOC 2", page["Larchpoint"]) and not re.search(r"projects", page["Fenwork"], re.I)
+    # Prices: a lower annual price beside the monthly one, yearly prices, annual-only plans.
+    for company, annual in (("Tallyhour", "$17.50"), ("Quillhour", "$19"), ("Clockwell", "$18"), ("Pacemark", "$22")):
+        assert f"| Price per user per month, billed annually | {annual}" in page[company] or \
+            f"| Price per user per month, billed annually | $0 | {annual}" in page[company], company
+    assert "| Price per user per year | $276 | $420 |" in page["Brisktime"] and "Annual only" in page["Brisktime"]
+    assert "| Price per user per year | $264 | $300 | $384 |" in page["Ledgerline"]
+    assert "| Billing | Annual only | Monthly or annual | Monthly or annual |" in page["Ledgerline"]
+    assert "| Price per user per year, billed yearly | $290 | $480 |" in page["Larchpoint"]
+    # Look-alikes: summaries the table overrides, footnotes, betas, reports not held, guarantees, plan SLAs.
+    assert "single sign-on, SCIM provisioning and audit logs" in page["Brisktime"]
+    assert "- Approvals and budgets on every paid plan" in page["Clockwell"] and "| Project budgets | — | — | ✓ |" in page["Clockwell"]
+    assert "- Phone and chat support for every customer" in page["Clockwell"] and "| Phone support | — | — | ✓ |" in page["Clockwell"]
+    assert "¹ Budgets on Core are a paid add-on" in page["Larchpoint"] and "² API access on Plus is a paid add-on." in page["Pacemark"]
+    assert "³ Budgets on Starter cover up to five projects." in page["Ledgerline"]
+    assert "mobile app is in beta" in page["Ticklog"] and "Mobile app coming later this year." in page["Ledgerline"]
+    assert "EU hosting is coming in the second half of the year." in page["Pacemark"]
+    assert "SOC 2 Type II audit is in progress" in page["Brisktime"] and "SOC 2 Type I report" in page["Fenwork"]
+    assert "SOC 2 Type I audit" in page["Hourglen"]
+    assert "30-day money-back guarantee" in page["Larchpoint"] and "30-day money-back guarantee" in page["Ledgerline"]
+    assert "30-minute demo" in page["Ticklog"] and "no free trial" in page["Ticklog"]
+    assert "| Uptime SLA | 99.5% | 99.9% |" in page["Larchpoint"] and "| Uptime SLA | — | — | 99.95% |" in page["Ticklog"]
+    assert "it must hold whatever value any `not stated` cell might really have" in brief
 
 
 def test_comparison_reference_reply_passes_every_programmatic_check():
     reply = _comparison_reply(COMPARISON_TABLE)
     results = _results(COMPARISON, reply)
-    assert len(results) == 13 and not _failed(results)
-    # Written other ways a model writes them, it reads the same.
+    assert len(results) == 17 and not _failed(results)
     variants = [
-        reply.replace("Larchpoint,", "Larchpoint Time,").replace(",Business,", ",Brisktime Business,"),
-        reply.replace("not stated", "Not stated").replace(",Growth,", ",Growth plan,"),
-        reply.replace(",21.00,", ",$21.00,").replace(",99.95,", ",99.95%,").replace(",yes,", ",Yes,"),
+        reply.replace("Larchpoint,", "Larchpoint Time,").replace(",Business,Business,", ",Brisktime Business,Business,"),
+        reply.replace("not stated", "Not stated").replace(",Growth,Growth,", ",Growth plan,Growth,"),
+        reply.replace(",21.00,", ",$21.00,").replace(",99.95,", ",99.95%,").replace(",unlimited,", ",Unlimited,"),
         reply.replace("not supportable", "Not supportable"),
     ]
     table = re.sub(r"```csv\n(.*?)\n```", lambda m: "\n".join(
@@ -646,60 +692,82 @@ def test_comparison_reference_reply_passes_every_programmatic_check():
         assert not _failed(_results(COMPARISON, variant)), variant[:200]
 
 
+# A hurried reader's value for every trapped cell: the table over the FAQ and the changelog, a gap
+# as a no, "Contact sales" as written, the price in large type, and every summary, footnote, beta
+# and guarantee taken at face value.
+CARELESS = [
+    ("Quillhour", "entry_min_users", 2), ("Ticklog", "api_on_entry", "no"), ("Ticklog", "approvals_on_entry", "no"),
+    ("Fenwork", "trial_days", 14), ("Fenwork", "entry_price_usd", 22.00), ("Pacemark", "sso_on_entry", "no"),
+    ("Pacemark", "sso_cheapest_plan", "Pro"), ("Hourglen", "trial_days", 10), ("Ledgerline", "entry_min_users", 1),
+    ("Ledgerline", "sso_cheapest_plan", "Business"),
+    ("Brisktime", "free_plan", "no"), ("Brisktime", "mobile_app", "no"), ("Brisktime", "dpa", "no"),
+    ("Quillhour", "top_plan_price_usd", "Contact sales"), ("Quillhour", "uptime_sla_percent", 99.9),
+    ("Fenwork", "entry_projects", UNL), ("Fenwork", "dpa", "no"), ("Larchpoint", "entry_projects", UNL),
+    ("Larchpoint", "api_on_entry", "no"), ("Larchpoint", "soc2_type2", "no"),
+    ("Pacemark", "top_plan_price_usd", "Contact sales"), ("Pacemark", "mobile_app", "no"), ("Pacemark", "dpa", "no"),
+    ("Hourglen", "entry_projects", UNL), ("Hourglen", "uptime_sla_percent", 99.9), ("Ledgerline", "uptime_sla_percent", "no"),
+    ("Ledgerline", "dpa", "no"),
+    ("Tallyhour", "entry_price_usd", 17.50), ("Tallyhour", "top_plan_price_usd", 28.00), ("Quillhour", "entry_price_usd", 19.00),
+    ("Clockwell", "entry_price_usd", 18.00), ("Clockwell", "top_plan_price_usd", 30.00), ("Pacemark", "entry_price_usd", 22.00),
+    ("Larchpoint", "entry_price_usd", 24.17), ("Larchpoint", "top_plan_price_usd", 40.00),
+    ("Ledgerline", "top_plan_price_usd", 32.00),
+    ("Brisktime", "sso_on_entry", "yes"), ("Brisktime", "soc2_type2", "yes"), ("Ticklog", "mobile_app", "yes"),
+    ("Ticklog", "uptime_sla_percent", NS), ("Fenwork", "soc2_type2", "yes"), ("Larchpoint", "trial_days", 30),
+    ("Larchpoint", "budgets_on_entry", "yes"), ("Larchpoint", "uptime_sla_percent", 99.5),
+    ("Clockwell", "budgets_on_entry", "yes"), ("Clockwell", "phone_support_on_entry", "yes"),
+    ("Clockwell", "uptime_sla_percent", 99.9), ("Pacemark", "api_on_entry", "yes"), ("Pacemark", "eu_hosting", "yes"),
+    ("Pacemark", "uptime_sla_percent", 99.9), ("Hourglen", "soc2_type2", "yes"), ("Ledgerline", "trial_days", 30),
+    ("Ledgerline", "budgets_on_entry", "no"), ("Ledgerline", "mobile_app", "yes"),
+]
+
+
 def test_comparison_the_careless_reading_scores_zero_on_every_check_it_touches():
-    """Read the way a hurried researcher reads: the price in large type
-    (annual billing), a feature in the introduction taken for every plan, the
-    table over the FAQ, a gap in a page read as a no, and "Contact sales" left
-    as written. Every trap group and every claim scores zero; the cells with
-    no trap in them still pass."""
     careless = COMPARISON_TABLE
-    for company, column, value in (
-        ("Quillhour", "entry_price_usd", 19.00),
-        ("Brisktime", "sso_on_entry", "yes"), ("Brisktime", "sso_cheapest_plan", "Starter"),
-        ("Fenwork", "trial_days", 14), ("Ticklog", "api_on_entry", "no"), ("Quillhour", "entry_min_users", 2),
-        ("Brisktime", "free_plan", "no"), ("Quillhour", "top_plan_price_usd", "Contact sales"),
-        ("Quillhour", "uptime_sla_percent", "no"), ("Ticklog", "eu_hosting", "no"),
-        ("Fenwork", "entry_min_users", 1), ("Larchpoint", "api_on_entry", "no"),
-    ):
+    for company, column, value in CARELESS:
         careless = _with(careless, company, column, value)
-    verdicts = {1: "not supportable", 2: "supportable", 3: "supportable", 4: "not supportable", 5: "supportable"}
-    results = _results(COMPARISON, _comparison_reply(careless, verdicts))
+    flipped = {number: "not supportable" if verdict == "supportable" else "supportable"
+               for number, verdict in COMPARISON_VERDICTS.items()}
+    results = _results(COMPARISON, _comparison_reply(careless, flipped))
     assert _zeroed(results) == _failed(results) == {
-        "prices_on_a_monthly_basis", "features_read_per_plan", "faq_beats_the_table", "not_stated_kept",
-        "claim_1_verdict", "claim_2_verdict", "claim_3_verdict", "claim_4_verdict", "claim_5_verdict"}
+        "overrides_followed", "not_stated_kept", "prices_on_a_monthly_basis", "look_alikes_read_right",
+        *(f"claim_{number}_verdict" for number in range(1, 10))}
+    assert results["other_cells_right"]["pass"]                  # the cells without a trap are still read right
 
 
 @pytest.mark.parametrize("company,column,value,group,claim", [
-    ("Quillhour", "entry_price_usd", 19.00, "prices_on_a_monthly_basis", 1),     # the annual-billing price
-    ("Larchpoint", "entry_price_usd", 24.17, "prices_on_a_monthly_basis", None),  # a twelfth of the yearly price
-    ("Brisktime", "top_plan_price_usd", 420.00, "prices_on_a_monthly_basis", None),
-    ("Brisktime", "free_plan", "no", "not_stated_kept", 2),                      # a gap read as a no
-    ("Fenwork", "trial_days", 14, "faq_beats_the_table", 3),                      # the table over the FAQ
-    ("Brisktime", "sso_on_entry", "yes", "features_read_per_plan", 4),            # the introduction's list
-    ("Quillhour", "top_plan_price_usd", "contact sales", "not_stated_kept", 5),
-    ("Larchpoint", "trial_days", 30, "other_cells_right", None),                 # the money-back guarantee
-    ("Larchpoint", "uptime_sla_percent", 99.5, "other_cells_right", None),       # the entry plan's SLA, not the highest
+    ("Quillhour", "entry_price_usd", 19.00, "prices_on_a_monthly_basis", 1),      # the annual-billing price
+    ("Larchpoint", "top_plan_price_usd", 40.00, "prices_on_a_monthly_basis", None),
+    ("Brisktime", "free_plan", "no", "not_stated_kept", 2),                       # a gap read as a no
+    ("Pacemark", "sso_on_entry", "no", "overrides_followed", 3),                  # the table over the changelog
+    ("Fenwork", "trial_days", 14, "overrides_followed", 4),                       # the table over the FAQ
+    ("Ledgerline", "budgets_on_entry", "no", "look_alikes_read_right", 5),        # a cap read as an add-on
+    ("Fenwork", "soc2_type2", "yes", "look_alikes_read_right", 6),                # a Type I report
+    ("Pacemark", "eu_hosting", "yes", "look_alikes_read_right", 6),               # hosting still to come
+    ("Quillhour", "top_plan_price_usd", "Contact sales", "not_stated_kept", 7),
+    ("Ledgerline", "entry_min_users", 1, "overrides_followed", 8),                # the table over the changelog
+    ("Clockwell", "phone_support_on_entry", "yes", "look_alikes_read_right", 9),  # the feature list over the table
+    ("Larchpoint", "trial_days", 30, "look_alikes_read_right", None),             # the money-back guarantee
+    ("Hourglen", "uptime_sla_percent", 99.9, "not_stated_kept", None),            # an aim is not an SLA
+    ("Ticklog", "phone_support_on_entry", "yes", "other_cells_right", 9),         # a plain misreading
 ])
-def test_comparison_each_trap_costs_its_own_check_and_its_own_claim(company, column, value, group, claim):
+def test_comparison_each_trap_costs_its_own_check_and_the_claim_it_decides(company, column, value, group, claim):
     table = _with(COMPARISON_TABLE, company, column, value)
     verdicts = _claims(table)
-    expected = {group} | ({f"claim_{claim}_verdict"} if claim else set())
-    assert {number for number, verdict in verdicts.items() if verdict != _claims(COMPARISON_TABLE)[number]} == (
+    assert {number for number, verdict in verdicts.items() if verdict != COMPARISON_VERDICTS[number]} == (
         {claim} if claim else set())
     results = _results(COMPARISON, _comparison_reply(table, verdicts))
-    assert _failed(results) == _zeroed(results) == expected
+    assert _failed(results) == _zeroed(results) == {group} | ({f"claim_{claim}_verdict"} if claim else set())
 
 
 def test_comparison_a_missing_file_or_row_is_counted_not_excused():
     reply = _comparison_reply(COMPARISON_TABLE)
     no_fenwork = "\n".join(line for line in reply.splitlines() if not line.startswith("Fenwork,")) + "\n"
-    failed = _failed(_results(COMPARISON, no_fenwork))
-    assert {"six_companies_twelve_columns", "faq_beats_the_table", "not_stated_kept", "prices_on_a_monthly_basis",
-            "features_read_per_plan", "other_cells_right"} == failed
+    assert {"ten_companies_twenty_columns", "overrides_followed", "not_stated_kept", "prices_on_a_monthly_basis",
+            "look_alikes_read_right", "other_cells_right"} == _failed(_results(COMPARISON, no_fenwork))
     no_claims = reply.split("### claims.csv")[0]
-    assert {"both_files", "five_claims_once", "claim_1_verdict", "claim_5_verdict"} <= _failed(_results(COMPARISON, no_claims))
-    dropped_column = reply.replace(",eu_hosting\n", "\n")
-    assert "six_companies_twelve_columns" in _failed(_results(COMPARISON, dropped_column))
+    assert {"both_files", "nine_claims_once"} | {f"claim_{n}_verdict" for n in range(1, 10)} == _failed(
+        _results(COMPARISON, no_claims))
+    assert "ten_companies_twenty_columns" in _failed(_results(COMPARISON, reply.replace(",dpa\n", "\n")))
 
 
 # ─────────────────────────────────────────────────────────────── launch-timeline

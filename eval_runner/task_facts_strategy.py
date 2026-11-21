@@ -346,211 +346,277 @@ def budget_facts(response_text: str) -> dict:
 COMPARISON_TASK_ID = "competitor-comparison"
 COMPARISON_DIR = FIXTURES / "competitor-comparison"
 COMPARISON_FILES = ["comparison.csv", "claims.csv"]
-COMPANIES = ["tallyhour", "brisktime", "quillhour", "ticklog", "fenwork", "larchpoint"]
+COMPANIES = ["tallyhour", "brisktime", "quillhour", "ticklog", "fenwork", "larchpoint", "clockwell", "pacemark",
+             "hourglen", "ledgerline"]
 US = "tallyhour"
 NOT_STATED = "not stated"
-# Each attribute and the kind of value its cells hold.
 ATTRIBUTES = {
     "free_plan": "yes_no", "trial_days": "number", "entry_plan": "plan", "entry_price_usd": "number",
-    "entry_min_users": "number", "sso_on_entry": "yes_no", "sso_cheapest_plan": "plan",
-    "invoicing_on_entry": "yes_no", "api_on_entry": "yes_no", "top_plan_price_usd": "number",
-    "uptime_sla_percent": "number", "eu_hosting": "yes_no",
+    "entry_min_users": "number", "entry_projects": "projects", "top_plan_price_usd": "number",
+    "sso_on_entry": "yes_no", "sso_cheapest_plan": "plan", "audit_log_cheapest_plan": "plan",
+    "invoicing_on_entry": "yes_no", "api_on_entry": "yes_no", "approvals_on_entry": "yes_no",
+    "budgets_on_entry": "yes_no", "phone_support_on_entry": "yes_no", "mobile_app": "yes_no",
+    "uptime_sla_percent": "number", "eu_hosting": "yes_no", "soc2_type2": "yes_no", "dpa": "yes_no",
 }
 PRICE_ATTRIBUTES = ("entry_price_usd", "top_plan_price_usd")
-TIER_ATTRIBUTES = ("sso_on_entry", "sso_cheapest_plan", "invoicing_on_entry", "api_on_entry")
-
-# Where each cell's value is stated on its company's page: a plan-table row, a
-# sentence, an FAQ answer, or nothing at all. The value itself is read from
-# the page through this, so a page that changes changes the answer, and one
-# that stops saying what its source says stops the oracle.
-_ENTRY, _TOP = "entry", "top"
-PRICE_ROWS = {  # the row each company's prices are read from, and what one price there covers
-    "tallyhour": ("Billed monthly", "month"),
-    "brisktime": ("Price per user per year", "year"),
-    "quillhour": ("Billed monthly, per user per month", "month"),
-    "ticklog": ("Price", "month"),
-    "fenwork": ("Price", "month"),
-    "larchpoint": ("Per user per month, billed monthly", "month"),
+# A plan table row, by what its label says. The plan-level features of the table.
+FEATURE_ROWS = {"approvals": r"approval", "budgets": r"budget", "invoicing": r"invoic", "api": r"\bAPI\b",
+                "sso": r"single sign-on|\bSSO\b", "audit": r"\baudit\b", "phone": r"phone support"}
+# Cells whose value is decided against a statement nearby that reads otherwise: a feature list
+# or an introduction the plan table overrides, a footnote, a beta, a plan, a Type I report, a
+# money-back guarantee, an entry plan's SLA below the highest.
+LOOK_ALIKES = {
+    ("brisktime", "sso_on_entry"), ("brisktime", "soc2_type2"), ("ticklog", "mobile_app"), ("ticklog", "trial_days"),
+    ("ticklog", "uptime_sla_percent"), ("fenwork", "soc2_type2"), ("larchpoint", "budgets_on_entry"),
+    ("larchpoint", "trial_days"), ("larchpoint", "uptime_sla_percent"), ("clockwell", "budgets_on_entry"),
+    ("clockwell", "phone_support_on_entry"), ("clockwell", "uptime_sla_percent"), ("pacemark", "api_on_entry"),
+    ("pacemark", "eu_hosting"), ("pacemark", "uptime_sla_percent"), ("hourglen", "soc2_type2"),
+    ("ledgerline", "budgets_on_entry"), ("ledgerline", "mobile_app"), ("ledgerline", "trial_days"),
 }
-_SLA_NOT_STATED = [r"\bSLA\b", r"service[- ]level", r"\bcommit"]
-SOURCES: dict[str, dict[str, tuple]] = {
-    "tallyhour": {
-        "free_plan": ("quote", "The Free plan is free for as long as you use it", "yes"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("table_number", "Users"),
-        "sso_on_entry": ("table_flag", "Single sign-on (SAML)"),
-        "invoicing_on_entry": ("table_flag", "Invoices from tracked time"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("text", r"(\d+(?:\.\d+)?)% uptime SLA"),
-        "eu_hosting": ("any_plan_flag", "EU data hosting"),
-    },
-    "brisktime": {
-        "free_plan": ("absent", [r"free plan", r"free forever", r"free tier", r"\$0\b"]),
-        "trial_days": ("faq", "Is there a free trial?", r"free for (\d+) days"),
-        "entry_min_users": ("table_number", "Minimum seats"),
-        "sso_on_entry": ("table_flag", "Single sign-on (SAML) and SCIM"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("quote", "EU hosting is not available", "no"),
-    },
-    "quillhour": {
-        "free_plan": ("quote", "Quillhour has no free plan", "no"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("faq", "What is the smallest team I can sign up?", r"start at (\d+) users"),
-        "sso_on_entry": ("table_flag", "SAML single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("absent", _SLA_NOT_STATED),
-        "eu_hosting": ("any_plan_flag", "EU data residency"),
-    },
-    "ticklog": {
-        "free_plan": ("quote", "Ticklog has no free plan", "no"),
-        "trial_days": ("quote", "no free trial", 0),
-        "entry_min_users": ("table_number", "Minimum users"),
-        "sso_on_entry": ("table_flag", "SAML single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing from timesheets"),
-        "api_on_entry": ("faq", "Is the REST API included on Basic?", r"^Yes\b", "yes"),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("absent", [r"\bEU\b", r"europe", r"hosting", r"hosted", r"residency", r"data cent", r"region"]),
-    },
-    "fenwork": {
-        "free_plan": ("faq", "Is there a free plan?", r"^No\b", "no"),
-        "trial_days": ("faq", "How long is the free trial?", r"(\d+)-day free trial"),
-        "entry_min_users": ("absent", [r"minimum", r"\bfrom \d", r"at least", r"\bseats?\b", r"\d+ users"]),
-        "sso_on_entry": ("table_flag", "Single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("text", r"(\d+(?:\.\d+)?)% uptime SLA"),
-        "eu_hosting": ("quote", "Every plan lets you choose EU or US hosting", "yes"),
-    },
-    "larchpoint": {
-        "free_plan": ("quote", "Larchpoint has no free plan", "no"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("table_number", "Users"),
-        "sso_on_entry": ("table_flag", "Single sign-on through your identity provider"),
-        "invoicing_on_entry": ("table_flag", "Client invoicing"),
-        "api_on_entry": ("absent", [r"\bAPI\b", r"integrat", r"developer"]),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("quote", "We do not offer EU hosting", "no"),
-    },
+# Company-wide statements, wherever the page makes them outside its table, FAQ and changelog.
+PROSE = {
+    "free_plan": [(r"free for as long as you use it|free forever", "yes"), (r"\bno free plan\b", "no")],
+    "trial_days": [(r"\bno free trial\b", 0), (r"(\d+)-day free trial", None)],
+    "mobile_app": [(r"mobile app is in beta|mobile app coming", "no"),
+                   (r"apps for iOS and Android are included on every plan|mobile apps on every plan", "yes")],
+    "eu_hosting": [(r"EU hosting is not available|do not offer EU hosting|hosted in the US only|EU hosting is coming", "no"),
+                   (r"can be hosted in the EU|choose EU or US hosting|EU data residency is available|hosted in the EU \(", "yes")],
+    "soc2_type2": [(r"SOC 2 Type II audit is in progress|SOC 2 Type I (?:report|audit)", "no"),
+                   (r"hold a SOC 2 Type II report|holds a SOC 2 Type II report|SOC 2 Type II report is available", "yes")],
+    "dpa": [(r"sign a data processing agreement with every customer", "yes")],
 }
-# The cells where a page's FAQ overrides what its plan table says.
-FAQ_OVERRIDES = {("fenwork", "trial_days"), ("ticklog", "api_on_entry"), ("quillhour", "entry_min_users")}
 
 
-def _page(company: str) -> dict:
-    """A saved pricing page: its text, its plan table and its FAQ."""
+def _comparison_page(company: str) -> dict:
+    """A saved pricing page, read into its parts."""
     text = (COMPARISON_DIR / f"{company}.md").read_text()
-    lines = text.splitlines()
-    rows = [line for line in lines if line.startswith("|")]
-    header = [cell.strip() for cell in rows[0].strip("|").split("|")]
+    head, _, rest = text.partition("\n## ")
+    rest = "## " + rest
+    rows = [line for line in head.splitlines() if line.startswith("|")]
+    plans = [cell.strip() for cell in rows[0].strip("|").split("|")][1:]
     table = {}
     for line in rows[2:]:
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        table[cells[0]] = dict(zip(header[1:], cells[1:]))
-    faq = dict(re.findall(r"(?m)^\*\*(.+?)\*\*\n(.+)$", text.split("## FAQ", 1)[1])) if "## FAQ" in text else {}
-    return {"text": text, "plans": header[1:], "table": table, "faq": faq}
+        table[cells[0]] = dict(zip(plans, cells[1:]))
+    footnotes = dict(re.findall(r"(?m)^([¹²³⁴])\s+(.+)$", head))
+    prose = [line for line in head.splitlines()[1:] if line and not line.startswith("|") and line[0] not in "¹²³⁴#"]
+    sections = dict((name, body) for name, body in re.findall(r"(?ms)^## (.+?)\n(.*?)(?=^## |\Z)", rest))
+    faq = re.findall(r"(?m)^\*\*(.+?)\*\*\n(.+)$", sections.get("FAQ", ""))
+    changelog = re.findall(r"(?m)^- (\d{4}-\d{2}-\d{2}): (.+)$", sections.get("Changelog", ""))
+    other = prose + [line for name in ("Features", "Security and compliance") for line in sections.get(name, "").splitlines()]
+    return {"plans": plans, "table": table, "footnotes": footnotes, "prose": " ".join(other), "faq": faq,
+            "changelog": sorted(changelog)}
 
 
-def _price(cell: str, per: str) -> float | str:
-    if "contact sales" in cell.lower():
+def _row(page: dict, pattern: str) -> dict | None:
+    found = [cells for label, cells in page["table"].items() if re.search(pattern, label, re.IGNORECASE)]
+    return found[0] if found else None
+
+
+def _flag(page: dict, cell: str) -> str:
+    """A plan-table cell as included or not, its footnote read by rule 4."""
+    mark = cell[1:] if cell[:1] == "✓" else ""
+    if cell[:1] == "✓":
+        return "no" if mark and "paid add-on" in page["footnotes"][mark] else "yes"
+    assert cell == "—", cell
+    return "no"
+
+
+def _plan_after(plans: list[str], plan: str) -> list[str]:
+    return plans[plans.index(plan):]
+
+
+def _company_cells(company: str) -> tuple[dict, dict]:
+    """The twenty cells of one company, and the value each had before an FAQ or a changelog entry overrode it."""
+    page = _comparison_page(company)
+    plans, table = page["plans"], page["table"]
+
+    # Prices on a monthly basis, plan by plan (rule 7), then the changelog's price changes.
+    prices: dict[str, object] = {}
+    monthly = _row(page, r"billed monthly")
+    yearly = _row(page, r"per year")
+    billing = table.get("Billing", {})
+    for plan in plans:
+        cell = (monthly or {}).get(plan, "—")
+        if cell == "Contact sales":
+            prices[plan] = NOT_STATED
+        elif cell.startswith("$"):
+            prices[plan] = float(cell[1:])
+        elif yearly and billing.get(plan) == "Annual only":
+            prices[plan] = float((Decimal(yearly[plan][1:]) / 12).quantize(Decimal("0.01"), ROUND_HALF_UP))
+        else:
+            raise ValueError((company, plan))
+    base_prices = dict(prices)
+    for _day, entry in page["changelog"]:
+        match = re.fullmatch(r"(\w+) is now \$([\d.]+) per user per month, billed monthly\.", entry)
+        if match:
+            prices[match.group(1)] = float(match.group(2))
+
+    # Plan-level features: the table, then the FAQ, then the changelog (rule 3).
+    features = {name: ({plan: _flag(page, cell) for plan, cell in row.items()} if (row := _row(page, pattern)) else None)
+                for name, pattern in FEATURE_ROWS.items()}
+    base_features = {name: dict(value) if value else None for name, value in features.items()}
+
+    def feature_of(phrase: str) -> str:
+        return next(name for name, pattern in FEATURE_ROWS.items() if re.search(pattern, phrase, re.IGNORECASE))
+
+    for question, answer in page["faq"]:
+        if re.search(r"every \w+ ?plan includes the (?:REST )?API", answer):
+            features["api"] = {plan: "yes" for plan in plans}
+    for _day, entry in page["changelog"]:
+        if match := re.fullmatch(r"(.+?) (?:is|are) now included on (\w+)\.", entry):
+            features[feature_of(match.group(1))][match.group(2)] = "yes"
+        elif match := re.fullmatch(r"(.+?) is now included from (\w+)\.", entry):
+            for plan in _plan_after(plans, match.group(2)):
+                features[feature_of(match.group(1))][plan] = "yes"
+        elif match := re.fullmatch(r"(.+?) moved to (\w+) and above\.", entry):
+            name = feature_of(match.group(1))
+            features[name] = {plan: "yes" if plan in _plan_after(plans, match.group(2)) else "no" for plan in plans}
+
+    # Minimum users: the table, then the FAQ and the changelog.
+    users_row = _row(page, r"^(?:users|minimum users|minimum seats)$")
+    users = {plan: float(re.search(r"\d+", cell).group(0)) for plan, cell in users_row.items()} if users_row else None
+    base_users = dict(users) if users else None
+    for _question, answer in page["faq"]:
+        if match := re.search(r"((?:\w+ and )?\w+) now start at (\d+) users", answer):
+            for plan in match.group(1).split(" and "):
+                users[plan] = float(match.group(2))
+    for _day, entry in page["changelog"]:
+        if match := re.fullmatch(r"(\w+) now starts at (\d+) users\.", entry):
+            users[match.group(1)] = float(match.group(2))
+
+    paid = [plan for plan in plans if prices[plan] != NOT_STATED and prices[plan] > 0]
+    entry = min(paid, key=lambda plan: (prices[plan], plans.index(plan)))
+    base_entry = min((p for p in plans if base_prices[p] != NOT_STATED and base_prices[p] > 0),
+                     key=lambda plan: (base_prices[plan], plans.index(plan)))
+
+    def cheapest(values: dict | None) -> str:
+        if values is None:
+            return NOT_STATED
+        return next((plan for plan in plans if values[plan] == "yes"), "none")
+
+    def on_entry(values: dict | None, plan: str) -> str:
+        return NOT_STATED if values is None else values[plan]
+
+    projects_row = _row(page, r"^active projects$")
+    sla_row = _row(page, r"uptime sla")
+    trial_row = _row(page, r"free trial")
+    prose = page["prose"]
+
+    def company_wide(attribute: str) -> object:
+        for pattern, value in PROSE.get(attribute, []):
+            if match := re.search(pattern, prose, re.IGNORECASE):
+                return float(match.group(1)) if value is None else value
         return NOT_STATED
-    value = Decimal(re.fullmatch(r"\$(\d+(?:\.\d+)?)", cell).group(1))
-    if per == "year":
-        value = (value / 12).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    return float(value)
+
+    trial = float(re.search(r"\d+", next(iter(trial_row.values()))).group(0)) if trial_row else company_wide("trial_days")
+    base_trial = trial
+    for question, answer in page["faq"]:
+        if "free trial" in question.lower():
+            if match := re.search(r"(\d+)-day free trial|trials last (\d+) days|free for (\d+) days", answer):
+                trial = float(next(group for group in match.groups() if group))
+    sla = [float(cell.rstrip("%")) for cell in (sla_row or {}).values() if cell != "—"]
+    mobile_row = _row(page, r"mobile app")
+    free_plan = company_wide("free_plan")
+    for question, answer in page["faq"]:
+        if "free plan" in question.lower() and re.match(r"(Yes|No)\b", answer):
+            free_plan = answer[:2].strip(".").lower() if answer.startswith("No") else "yes"
+    cells = {
+        "free_plan": free_plan,
+        "trial_days": trial,
+        "entry_plan": entry,
+        "entry_price_usd": prices[entry],
+        "entry_min_users": users[entry] if users else NOT_STATED,
+        "entry_projects": NOT_STATED if not projects_row else (
+            "unlimited" if projects_row[entry] == "Unlimited" else float(projects_row[entry])),
+        "top_plan_price_usd": prices[plans[-1]],
+        "sso_on_entry": on_entry(features["sso"], entry),
+        "sso_cheapest_plan": cheapest(features["sso"]),
+        "audit_log_cheapest_plan": cheapest(features["audit"]),
+        "invoicing_on_entry": on_entry(features["invoicing"], entry),
+        "api_on_entry": on_entry(features["api"], entry),
+        "approvals_on_entry": on_entry(features["approvals"], entry),
+        "budgets_on_entry": on_entry(features["budgets"], entry),
+        "phone_support_on_entry": on_entry(features["phone"], entry),
+        "mobile_app": ("yes" if "yes" in {_flag(page, c) for c in mobile_row.values()} else "no") if mobile_row
+        else company_wide("mobile_app"),
+        "uptime_sla_percent": max(sla) if sla else NOT_STATED,
+        "eu_hosting": company_wide("eu_hosting"),
+        "soc2_type2": company_wide("soc2_type2"),
+        "dpa": company_wide("dpa"),
+    }
+    before = dict(cells)
+    before.update({
+        "trial_days": base_trial, "entry_price_usd": base_prices[base_entry],
+        "entry_min_users": base_users[base_entry] if base_users else NOT_STATED,
+        "sso_on_entry": on_entry(base_features["sso"], base_entry),
+        "sso_cheapest_plan": cheapest(base_features["sso"]),
+        "audit_log_cheapest_plan": cheapest(base_features["audit"]),
+        "api_on_entry": on_entry(base_features["api"], base_entry),
+        "approvals_on_entry": on_entry(base_features["approvals"], base_entry),
+    })
+    return cells, before
 
 
-def _flag(cell: str) -> str:
-    return {"✓": "yes", "—": "no"}[cell]
+def _claim_holds(table: dict, number: int) -> bool:
+    """Whether a draft claim holds for every value its `not stated` cells might really have."""
+    others = [company for company in COMPANIES if company != US]
+    ours = table[US]
+
+    def worlds(attributes: list[str]):
+        """Every way the not-stated cells of these attributes could really be."""
+        open_cells = [(company, attribute) for company in COMPANIES for attribute in attributes
+                      if table[company][attribute] == NOT_STATED]
+        choices = {"yes_no": ["yes", "no"], "number": [-1e9, 1e9], "plan": ["?"], "projects": [0.0]}
+        for picked in itertools.product(*(choices[ATTRIBUTES[attribute]] for _company, attribute in open_cells)):
+            world = {company: dict(row) for company, row in table.items()}
+            for (company, attribute), value in zip(open_cells, picked):
+                world[company][attribute] = value
+            yield world
+
+    tests = {
+        1: (["entry_price_usd"], lambda w: all(w[US]["entry_price_usd"] < w[c]["entry_price_usd"] for c in others)),
+        2: (["free_plan"], lambda w: w[US]["free_plan"] == "yes" and sum(w[c]["free_plan"] == "yes" for c in COMPANIES) == 2),
+        3: (["sso_on_entry"], lambda w: w[US]["sso_on_entry"] == "yes" and all(w[c]["sso_on_entry"] == "no" for c in others)),
+        4: (["trial_days"], lambda w: all(w[c]["trial_days"] <= 0 or w[US]["trial_days"] > w[c]["trial_days"] for c in others)),
+        5: (["approvals_on_entry", "budgets_on_entry"], lambda w: all(
+            (w[c]["approvals_on_entry"], w[c]["budgets_on_entry"]) == ("yes", "yes") for c in [US])
+            and not any((w[c]["approvals_on_entry"], w[c]["budgets_on_entry"]) == ("yes", "yes") for c in others)),
+        6: (["soc2_type2", "eu_hosting"], lambda w: (w[US]["soc2_type2"], w[US]["eu_hosting"]) == ("yes", "yes") and sum(
+            (w[c]["soc2_type2"], w[c]["eu_hosting"]) == ("yes", "yes") for c in COMPANIES) == 3),
+        7: (["eu_hosting", "top_plan_price_usd"], lambda w: all(
+            w[c]["eu_hosting"] == "no" or w[US]["top_plan_price_usd"] < w[c]["top_plan_price_usd"] for c in others)),
+        8: (["entry_min_users"], lambda w: w[US]["entry_min_users"] == 1 and all(w[c]["entry_min_users"] >= 2 for c in others)),
+        9: (["phone_support_on_entry"], lambda w: w[US]["phone_support_on_entry"] == "yes"
+            and all(w[c]["phone_support_on_entry"] == "no" for c in others)),
+    }
+    attributes, test = tests[number]
+    assert all(ours[attribute] != NOT_STATED for attribute in attributes)
+    return all(test(world) for world in worlds(attributes))
 
 
 @lru_cache(maxsize=1)
 def comparison_reference() -> dict:
-    """The table the brief defines, read from the six pages, and the verdict
-    on each draft claim."""
-    table: dict[str, dict[str, object]] = {}
+    """The table the brief defines, read from the ten pages, and the verdict on each draft claim."""
+    table, before = {}, {}
     for company in COMPANIES:
-        page = _page(company)
-        label, per = PRICE_ROWS[company]
-        prices = page["table"][label]
-        if per == "year":  # sold only on annual billing
-            assert set(page["table"]["Billing"].values()) == {"Annual only"}
-        entry = next(plan for plan in page["plans"] if prices[plan] == "Contact sales" or _price(prices[plan], per) > 0)
-        top = page["plans"][-1]
-        cells: dict[str, object] = {
-            "entry_plan": entry,
-            "entry_price_usd": _price(prices[entry], per),
-            "top_plan_price_usd": _price(prices[top], per),
-        }
-        for attribute, source in SOURCES[company].items():
-            kind = source[0]
-            if kind == "quote":
-                assert source[1] in page["text"], (company, attribute)
-                value = source[2]
-            elif kind == "text":
-                value = float(re.search(source[1], page["text"]).group(1))
-            elif kind == "faq":
-                answer = page["faq"][source[1]]
-                match = re.search(source[2], answer)
-                assert match, (company, attribute)
-                value = source[3] if len(source) > 3 else float(match.group(1))
-            elif kind == "absent":
-                assert not any(re.search(term, page["text"], re.IGNORECASE) for term in source[1]), (company, attribute)
-                value = NOT_STATED
-            elif kind == "table_flag":
-                value = _flag(page["table"][source[1]][entry])
-            elif kind == "table_number":
-                value = float(re.search(r"\d+", page["table"][source[1]][entry]).group(0))
-            elif kind == "any_plan_flag":
-                value = "yes" if "yes" in {_flag(cell) for cell in page["table"][source[1]].values()} else "no"
-            elif kind == "max_percent":
-                value = max(float(cell.rstrip("%")) for cell in page["table"][source[1]].values() if cell != "—")
-            else:
-                raise ValueError(kind)
-            cells[attribute] = value
-        sso_row = SOURCES[company]["sso_on_entry"][1]
-        cells["sso_cheapest_plan"] = next(
-            (plan for plan in page["plans"] if page["table"][sso_row][plan] == "✓"), NOT_STATED)
-        table[company] = {attribute: cells[attribute] for attribute in ATTRIBUTES}
-
-    def numbers(attribute: str) -> list:
-        return [table[company][attribute] for company in COMPANIES if company != US]
-
-    def beats(attribute: str) -> bool:  # strictly below every competitor, every cell stated
-        ours, theirs = table[US][attribute], numbers(attribute)
-        return NOT_STATED not in theirs and ours != NOT_STATED and all(ours < value for value in theirs)
-
-    def none_have(attribute: str) -> bool:
-        return table[US][attribute] == "yes" and all(value == "no" for value in numbers(attribute))
-
-    claims = {
-        1: beats("entry_price_usd"),
-        2: none_have("free_plan"),
-        3: NOT_STATED not in numbers("trial_days") and all(table[US]["trial_days"] > v for v in numbers("trial_days")),
-        4: none_have("sso_on_entry"),
-        5: beats("top_plan_price_usd"),
-    }
-    groups: dict[str, list[tuple[str, str]]] = {"faq": [], "not_stated": [], "prices": [], "tiers": [], "other": []}
+        table[company], before[company] = _company_cells(company)
+    groups: dict[str, list[tuple[str, str]]] = {"overrides": [], "not_stated": [], "prices": [], "look_alikes": [], "other": []}
     for company in COMPANIES:
         for attribute in ATTRIBUTES:
-            cell = (company, attribute)
-            if cell in FAQ_OVERRIDES:
-                groups["faq"].append(cell)
-            elif table[company][attribute] == NOT_STATED:
+            cell, value, earlier = (company, attribute), table[company][attribute], before[company][attribute]
+            if earlier != value and earlier != NOT_STATED:
+                groups["overrides"].append(cell)
+            elif value == NOT_STATED:
                 groups["not_stated"].append(cell)
             elif attribute in PRICE_ATTRIBUTES:
                 groups["prices"].append(cell)
-            elif attribute in TIER_ATTRIBUTES:
-                groups["tiers"].append(cell)
+            elif cell in LOOK_ALIKES:
+                groups["look_alikes"].append(cell)
             else:
                 groups["other"].append(cell)
-    return {
-        "table": table,
-        "claims": {number: "supportable" if holds else "not supportable" for number, holds in claims.items()},
-        "groups": groups,
-    }
+    claims = {number: "supportable" if _claim_holds(table, number) else "not supportable" for number in range(1, 10)}
+    return {"table": table, "claims": claims, "groups": groups}
 
 
 def _company_of(text: object) -> str | None:
@@ -560,11 +626,11 @@ def _company_of(text: object) -> str | None:
 
 def _cell_matches(kind: str, expected: object, given: object, company: str) -> bool:
     value = common.norm(given).strip("*_`. ")
-    if expected == NOT_STATED or value == NOT_STATED:
+    if expected in (NOT_STATED, "none", "unlimited") or value in (NOT_STATED, "none", "unlimited"):
         return value == expected
     if kind == "yes_no":
         return value == expected
-    if kind == "number":
+    if kind in ("number", "projects"):
         found = re.findall(r"\d[\d,]*(?:\.\d+)?", value)
         return len(found) == 1 and abs(float(found[0].replace(",", "")) - float(expected)) <= 0.005
     words = value.replace("-", " ").split()
@@ -618,10 +684,10 @@ def comparison_facts(response_text: str) -> dict:
     facts = {
         "comparison_missing_file_count": sum(1 for name in COMPARISON_FILES if found[name] is None),
         "comparison_structure_error_count": structure,
-        "comparison_price_cell_error_count": errors("prices"),
-        "comparison_tier_cell_error_count": errors("tiers"),
-        "comparison_faq_cell_error_count": errors("faq"),
+        "comparison_override_cell_error_count": errors("overrides"),
         "comparison_not_stated_cell_error_count": errors("not_stated"),
+        "comparison_price_cell_error_count": errors("prices"),
+        "comparison_look_alike_cell_error_count": errors("look_alikes"),
         "comparison_other_cell_error_count": errors("other"),
         "comparison_claim_structure_error_count": claim_structure,
     }

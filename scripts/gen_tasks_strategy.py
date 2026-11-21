@@ -311,234 +311,320 @@ def budget_fixtures() -> dict[str, str]:
 
 COMPARISON_DIR = "competitor-comparison"
 
-# The pages, as a product marketer saved them from each site on the same day.
-# Ours is first. Each is written out in full: what a page states, and what it
-# leaves out, is the task.
+
+# Questions and release notes every page also carries, about nothing the table records.
+EVERYDAY_FAQ = [
+    ("Which payment methods do you accept?", "Cards and bank transfer."),
+    ("Can I import time entries from a spreadsheet?", "Yes, from a CSV file in the workspace settings."),
+    ("Do you offer onboarding sessions?", "Yes, a one-hour onboarding call for new workspaces."),
+    ("Can I rename my workspace?", "Yes, owners can rename it at any time."),
+    ("Is there a desktop timer?", "Yes, for Windows and macOS."),
+    ("How do I close my account?", "Owners can close it from the account page; data is deleted after 30 days."),
+    ("Can clients see their own reports?", "Yes, through a read-only link."),
+    ("Do you have a referral scheme?", "Yes, a month's credit for every referral."),
+    ("Can I set different hourly rates?", "Yes, by person, client or task."),
+    ("Which languages is the app in?", "English, German, French and Spanish."),
+    ("Do you offer a discount for non-profits?", "Yes, 25% off."),
+    ("Can I keep my data when I change plans?", "Yes; nothing is deleted when you move between plans."),
+]
+EVERYDAY_CHANGES = ["Dark mode.", "Keyboard shortcuts for timers.", "Weekly summary emails.", "Faster search.",
+                    "CSV export of every report.", "A new onboarding checklist.", "Bulk edit for time entries.",
+                    "Calendar view of time entries.", "Custom fields on clients.", "Smarter rounding rules for timesheets."]
+QUOTES = [
+    ("We closed our month-end in half the time.", "Head of operations, design studio"),
+    ("The team actually fills in timesheets now.", "Managing partner, consultancy"),
+    ("Our clients love the read-only reports.", "Account director, creative agency"),
+    ("Setup took one afternoon.", "Founder, architecture practice"),
+    ("Rates by client saved us hours every week.", "Finance lead, PR firm"),
+    ("We finally know which clients are profitable.", "Chief executive, digital agency"),
+    ("Support answered within the hour, every time.", "Office manager, engineering consultancy"),
+]
+ADD_ONS = {
+    "Brisktime": ["Extra file storage: $2 per user per month", "Payroll export pack: $49 a month"],
+    "Quillhour": ["Premium onboarding: $500 one-off", "Dedicated success manager on Pro: $300 a month"],
+    "Ticklog": ["Sandbox workspace: $99 a month", "Custom report design: $750 one-off"],
+    "Pacemark": ["Forecasting on Plus: $6 per user per month", "Extra file storage: $3 per user per month"],
+    "Ledgerline": ["Accounting connector pack: $29 a month"],
+}
+_PAGES_MADE: list[str] = []
+
+
+def _page(name: str, intro: str, plans: list[str], rows: list[tuple], footnotes: list[str], after_table: list[str],
+          features: list[str], security: list[str], faq: list[tuple[str, str]], changelog: list[tuple[str, str]]) -> str:
+    """A saved pricing page: introduction, plan table, footnotes, then its sections, each page with
+    four everyday questions and four release notes of its own as well."""
+    turn = len(_PAGES_MADE)
+    _PAGES_MADE.append(name)
+    faq = faq + [EVERYDAY_FAQ[(5 * turn + k) % len(EVERYDAY_FAQ)] for k in range(8)]
+    changelog = sorted(changelog + [(f"2027-01-{1 + 3 * k + turn % 3:02d}", EVERYDAY_CHANGES[(turn + 3 * k) % len(EVERYDAY_CHANGES)])
+                                    for k in range(8)])
+    quotes = [QUOTES[(2 * turn + k) % len(QUOTES)] for k in range(2)]
+    lines = [f"# {name} pricing", "", intro, "", "| | " + " | ".join(plans) + " |",
+             "|---|" + "---|" * len(plans)]
+    lines += ["| " + label + " | " + " | ".join(cells) + " |" for label, *cells in rows]
+    if footnotes:
+        lines += [""] + footnotes
+    if after_table:
+        lines += [""] + after_table
+    lines += ["", "## Features", ""] + [f"- {item}" for item in features]
+    if security:
+        lines += ["", "## Security and compliance", ""] + security
+    if faq:
+        lines += ["", "## FAQ"]
+        for question, answer in faq:
+            lines += ["", f"**{question}**", answer]
+    if name in ADD_ONS:
+        lines += ["", "## Add-ons", ""] + [f"- {item}" for item in ADD_ONS[name]]
+    lines += ["", "## What customers say", ""] + [f"> “{quote}” {who}" for quote, who in quotes]
+    if changelog:
+        lines += ["", "## Changelog", ""] + [f"- {day}: {entry}" for day, entry in changelog]
+    return "\n".join(lines) + "\n"
+
+
+Y, N = "✓", "—"
+MONTHLY, ANNUAL, YEARLY = ("Price per user per month, billed monthly", "Price per user per month, billed annually",
+                           "Price per user per year")
 COMPANY_PAGES = {
-    "tallyhour": """\
-# Tallyhour pricing
-
-Time tracking and invoicing for agencies and studios. Prices are per user per month.
-
-| | Free | Studio | Agency |
-|---|---|---|---|
-| Billed monthly | $0 | $21 | $34 |
-| Billed annually | $0 | $17.50 | $28 |
-| Users | 1 | From 1 | From 5 |
-| Time tracking and timesheets | ✓ | ✓ | ✓ |
-| Invoices from tracked time | — | ✓ | ✓ |
-| API access | — | ✓ | ✓ |
-| Single sign-on (SAML) | — | ✓ | ✓ |
-| EU data hosting | — | ✓ | ✓ |
-
-The Free plan is free for as long as you use it: one person, unlimited projects.
-
-Every paid plan starts with a 21-day free trial. No card needed.
-
-## Reliability
-
-Studio and Agency come with a 99.9% uptime SLA.
-
-## FAQ
-
-**Can I switch between monthly and annual billing?**
-Yes, at any time from the billing page.
-""",
-    "brisktime": """\
-# Brisktime plans and pricing
-
-Brisktime keeps timesheets, approvals and invoices in one place, and it is built for teams that
-take security seriously: single sign-on, SCIM provisioning and audit logs.
-
-| | Starter | Business |
-|---|---|---|
-| Price per user per year | $276 | $420 |
-| Billing | Annual only | Annual only |
-| Minimum seats | 3 | 10 |
-| Timesheets and approvals | ✓ | ✓ |
-| Invoicing | ✓ | ✓ |
-| Expense tracking | — | ✓ |
-| API access | — | ✓ |
-| Single sign-on (SAML) and SCIM | — | ✓ |
-| Audit logs | — | ✓ |
-| Uptime SLA | 99.5% | 99.5% |
-
-## Where your data lives
-
-All Brisktime data is hosted in our US data centres. EU hosting is not available.
-
-## FAQ
-
-**Is there a free trial?**
-Yes. Try either plan free for 7 days.
-
-**Can I pay monthly?**
-No. Brisktime plans are billed once a year.
-""",
-    "quillhour": """\
-# Quillhour pricing
-
-Plan, track and bill client work. Save 17% with annual billing.
-
-| | Team | Pro | Enterprise |
-|---|---|---|---|
-| Billed annually, per user per month | $19 | $27 | Contact sales |
-| Billed monthly, per user per month | $23 | $32 | Contact sales |
-| Minimum users | 2 | 2 | 25 |
-| Time tracking | ✓ | ✓ | ✓ |
-| Invoicing | ✓ | ✓ | ✓ |
-| API access | ✓ | ✓ | ✓ |
-| SAML single sign-on | — | — | ✓ |
-| EU data residency | ✓ | ✓ | ✓ |
-
-Quillhour has no free plan. Team and Pro come with a 14-day free trial.
-
-## FAQ
-
-**What is the smallest team I can sign up?**
-Team and Pro now start at 3 users. We raised the minimum in September.
-
-**Do you publish uptime?**
-Our status page shows the last 90 days of uptime for every service.
-""",
-    "ticklog": """\
-# Ticklog pricing
-
-Timesheets for professional-services firms. All prices are per user per month, billed monthly.
-
-| Plan | Basic | Pro | Enterprise |
-|---|---|---|---|
-| Price | $24 | $33 | $45 |
-| Minimum users | 5 | 5 | 20 |
-| Time tracking | ✓ | ✓ | ✓ |
-| Invoicing from timesheets | — | ✓ | ✓ |
-| REST API | — | ✓ | ✓ |
-| SAML single sign-on | — | — | ✓ |
-| Uptime SLA | — | — | 99.95% |
-
-Ticklog has no free plan and no free trial. Book a 30-minute demo and we will set up a sandbox
-with your own projects.
-
-## FAQ
-
-**Is the REST API included on Basic?**
-Yes. Since October every Ticklog plan includes the REST API.
-
-**Can I get a discount for paying yearly?**
-Yes, ask your account manager.
-""",
-    "fenwork": """\
-# Fenwork pricing
-
-Time tracking, budgets and invoicing for agencies. Prices are per user per month, billed monthly.
-Pay yearly and get two months free.
-
-| | Essentials | Growth | Scale |
-|---|---|---|---|
-| Price | $22 | $30 | $39 |
-| Free trial | 14 days | 14 days | 14 days |
-| Time tracking | ✓ | ✓ | ✓ |
-| Invoicing | ✓ | ✓ | ✓ |
-| API access | ✓ | ✓ | ✓ |
-| Single sign-on | — | ✓ | ✓ |
-| 99.9% uptime SLA | — | ✓ | ✓ |
-
-Every plan lets you choose EU or US hosting for your workspace.
-
-## FAQ
-
-**How long is the free trial?**
-Since March every plan comes with a 30-day free trial.
-
-**Is there a free plan?**
-No. The trial gives you every feature of Scale instead.
-""",
-    "larchpoint": """\
-# Larchpoint Time pricing
-
-Timesheets, approvals and client invoicing.
-
-| | Core | Scale |
-|---|---|---|
-| Per user per month, billed monthly | $29 | $48 |
-| Per user per year, billed yearly | $290 | $480 |
-| Users | From 1 | From 10 |
-| Timesheets and approvals | ✓ | ✓ |
-| Client invoicing | ✓ | ✓ |
-| Single sign-on through your identity provider | — | ✓ |
-| Uptime SLA | 99.5% | 99.9% |
-
-Larchpoint has no free plan. Start with a 14-day free trial; every paid subscription also carries
-a 30-day money-back guarantee.
-
-All Larchpoint data is stored in our US region. We do not offer EU hosting.
-""",
+    "tallyhour": _page(
+        "Tallyhour", "Time tracking, approvals and invoicing for agencies and studios. Every price is per user.",
+        ["Free", "Studio", "Agency"],
+        [(MONTHLY, "$0", "$21", "$34"), (ANNUAL, "$0", "$17.50", "$28"), ("Users", "1", "From 1", "From 5"),
+         ("Active projects", "3", "Unlimited", "Unlimited"), ("Time tracking and timesheets", Y, Y, Y),
+         ("Timesheet approvals", N, Y, Y), ("Project budgets", N, Y, Y), ("Invoices from tracked time", N, Y, Y),
+         ("API access", N, Y, Y), ("Single sign-on (SAML)", N, Y, Y), ("Audit log", N, N, Y),
+         ("Phone support", N, Y, Y), ("Mobile app", Y, Y, Y), ("Uptime SLA", N, "99.9%", "99.9%")],
+        [], ["The Free plan is free for as long as you use it: one person, three projects.",
+             "Every paid plan starts with a 21-day free trial. No card needed."],
+        ["Timers, timesheets and approvals in one place", "Budgets that warn you before a project runs over",
+         "Invoices drafted from approved time"],
+        ["Customer data can be hosted in the EU on Studio and Agency.", "We hold a SOC 2 Type II report.",
+         "We sign a data processing agreement with every customer."],
+        [("Can I switch between monthly and annual billing?", "Yes, at any time from the billing page."),
+         ("Do you offer discounts for charities?", "Yes, 30% off any paid plan.")],
+        [("2027-01-14", "Budgets now warn at 80% as well as 100%."), ("2027-02-02", "New invoice templates.")]),
+    "brisktime": _page(
+        "Brisktime", "Brisktime keeps timesheets, approvals and invoices in one place, and it is built for teams that "
+        "take security seriously: single sign-on, SCIM provisioning and audit logs.",
+        ["Starter", "Business"],
+        [(YEARLY, "$276", "$420"), ("Billing", "Annual only", "Annual only"), ("Minimum seats", "3", "10"),
+         ("Active projects", "20", "Unlimited"), ("Timesheets", Y, Y), ("Timesheet approvals", Y, Y),
+         ("Project budgets", N, Y), ("Invoicing", Y, Y), ("Expense tracking", N, Y), ("API access", N, Y),
+         ("Single sign-on (SAML) and SCIM", N, Y), ("Audit log", N, Y), ("Phone support", N, Y),
+         ("Uptime SLA", "99.5%", "99.5%")],
+        [], [],
+        ["Approvals that route to the right manager", "Expense tracking on Business", "Exports to every major payroll tool"],
+        ["All Brisktime data is hosted in our US data centres. EU hosting is not available.",
+         "Our SOC 2 Type II audit is in progress; we expect the report this summer."],
+        [("Is there a free trial?", "Yes. Try either plan free for 7 days."),
+         ("Can I pay monthly?", "No. Brisktime plans are billed once a year."),
+         ("Can I export my data?", "Yes, as CSV or through the API on Business.")],
+        [("2027-01-09", "Approval reminders by email."), ("2027-02-11", "Faster timesheet loading on large teams.")]),
+    "quillhour": _page(
+        "Quillhour", "Plan, track and bill client work. Save 17% with annual billing.",
+        ["Team", "Pro", "Enterprise"],
+        [(ANNUAL, "$19", "$27", "Contact sales"), (MONTHLY, "$23", "$32", "Contact sales"),
+         ("Minimum users", "2", "2", "25"), ("Active projects", "Unlimited", "Unlimited", "Unlimited"),
+         ("Time tracking", Y, Y, Y), ("Timesheet approvals", Y, Y, Y), ("Project budgets", N, Y, Y),
+         ("Invoicing", Y, Y, Y), ("API access", Y, Y, Y), ("SAML single sign-on", N, N, Y), ("Audit log", N, Y, Y),
+         ("Phone support", N, N, Y), ("Mobile app", Y, Y, Y)],
+        [], ["Quillhour has no free plan. Team and Pro come with a 14-day free trial."],
+        ["Resource planning across every project", "Budgets and forecasts on Pro", "Client portal for approvals"],
+        ["EU data residency is available on every plan.", "We hold a SOC 2 Type II report.",
+         "We sign a data processing agreement with every customer."],
+        [("What is the smallest team I can sign up?", "Team and Pro now start at 3 users. We raised the minimum in September."),
+         ("Do you publish uptime?", "Our status page shows the last 90 days of uptime for every service."),
+         ("Can I cancel at any time?", "Yes. Monthly plans end at the close of the month.")],
+        [("2027-01-21", "Capacity view for resource planning."), ("2027-02-16", "Client portal in four more languages.")]),
+    "ticklog": _page(
+        "Ticklog", "Timesheets for professional-services firms.",
+        ["Basic", "Pro", "Enterprise"],
+        [(MONTHLY, "$24", "$33", "$45"), ("Minimum users", "5", "5", "20"), ("Active projects", "10", "Unlimited", "Unlimited"),
+         ("Time tracking", Y, Y, Y), ("Timesheet approvals", N, Y, Y), ("Project budgets", N, Y, Y),
+         ("Invoicing from timesheets", N, Y, Y), ("REST API", N, Y, Y), ("SAML single sign-on", N, N, Y),
+         ("Audit trail", N, N, Y), ("Phone support", N, Y, Y), ("Uptime SLA", N, N, "99.95%")],
+        [], ["Ticklog has no free plan and no free trial. Book a 30-minute demo and we will set up a sandbox with "
+             "your own projects."],
+        ["Utilisation reports by person and client", "Approvals and budgets on Pro and Enterprise",
+         "Our mobile app is in beta for Pro customers."],
+        ["Data is hosted in the US only.", "Ticklog holds a SOC 2 Type II report, available under NDA.",
+         "We sign a data processing agreement with every customer."],
+        [("Is the REST API included on Basic?", "Yes. Since October every Ticklog plan includes the REST API."),
+         ("Can I get a discount for paying yearly?", "Yes, ask your account manager.")],
+        [("2027-01-18", "Timesheet approvals are now included on Basic."), ("2027-02-04", "New utilisation dashboard.")]),
+    "fenwork": _page(
+        "Fenwork", "Time tracking, budgets and invoicing for agencies. Pay yearly and get two months free.",
+        ["Essentials", "Growth", "Scale"],
+        [(MONTHLY, "$22", "$30", "$39"), ("Minimum users", "2", "2", "5"), ("Free trial", "14 days", "14 days", "14 days"),
+         ("Time tracking", Y, Y, Y), ("Timesheet approvals", Y, Y, Y), ("Project budgets", N, Y, Y),
+         ("Invoicing", Y, Y, Y), ("API access", Y, Y, Y), ("Single sign-on", N, Y, Y), ("Audit log", N, Y, Y),
+         ("Phone support", N, N, Y), ("Mobile app", Y, Y, Y), ("Uptime SLA", N, "99.9%", "99.9%")],
+        [], [],
+        ["Budgets with burn-down charts", "Invoices in 30 currencies", "Mobile timers that work offline"],
+        ["Every plan lets you choose EU or US hosting for your workspace.",
+         "We hold a SOC 2 Type I report; Type II is planned for next year."],
+        [("How long is the free trial?", "Since March every plan comes with a 30-day free trial."),
+         ("Is there a free plan?", "No. The trial gives you every feature of Scale instead."),
+         ("Which currencies can I invoice in?", "Thirty, including euro, pound and yen.")],
+        [("2027-02-08", "Essentials is now $24 per user per month, billed monthly."),
+         ("2027-02-19", "Burn-down charts on every budget.")]),
+    "larchpoint": _page(
+        "Larchpoint Time", "Timesheets, approvals and client invoicing.",
+        ["Core", "Scale"],
+        [(MONTHLY, "$29", "$48"), ("Price per user per year, billed yearly", "$290", "$480"), ("Users", "From 2", "From 10"),
+         ("Timesheets and approvals", Y, Y), ("Project budgets", "✓¹", Y), ("Client invoicing", Y, Y),
+         ("Single sign-on through your identity provider", N, Y), ("Audit log", N, Y), ("Phone support", N, Y),
+         ("Uptime SLA", "99.5%", "99.9%")],
+        ["¹ Budgets on Core are a paid add-on at $3 per user per month."],
+        ["Larchpoint has no free plan. Start with a 14-day free trial; every paid subscription also carries a "
+         "30-day money-back guarantee."],
+        ["Approvals in two clicks", "Apps for iOS and Android are included on every plan.", "Invoices synced to your accounting tool"],
+        ["All Larchpoint data is stored in our US region. We do not offer EU hosting.",
+         "We sign a data processing agreement with every customer."],
+        [("Can I move from Core to Scale mid-month?", "Yes; we prorate the difference.")],
+        [("2027-01-27", "Accounting sync for two more tools.")]),
+    "clockwell": _page(
+        "Clockwell", "Simple time tracking for growing teams.",
+        ["Free", "Team", "Company"],
+        [(MONTHLY, "$0", "$22", "$36"), (ANNUAL, "$0", "$18", "$30"), ("Users", "1", "From 2", "From 10"),
+         ("Active projects", "2", "Unlimited", "Unlimited"), ("Time tracking", Y, Y, Y), ("Timesheet approvals", N, Y, Y),
+         ("Project budgets", N, N, Y), ("Invoicing", N, Y, Y), ("API access", N, Y, Y), ("Single sign-on", N, N, Y),
+         ("Audit log", N, N, Y), ("Phone support", N, N, Y), ("Uptime SLA", N, "99.9%", "99.95%")],
+        [], ["The Free plan is free forever for one person.", "Paid plans come with a 14-day free trial."],
+        ["Approvals and budgets on every paid plan", "Phone and chat support for every customer",
+         "Mobile apps on every plan."],
+        ["Customer data can be hosted in the EU on Team and Company.", "We hold a SOC 2 Type II report.",
+         "We sign a data processing agreement with every customer."],
+        [("Can I add guests for free?", "Yes, guests who only view reports are free on every plan.")],
+        [("2027-01-30", "Reports load twice as fast.")]),
+    "pacemark": _page(
+        "Pacemark", "Project time and profitability for agencies.",
+        ["Plus", "Pro", "Enterprise"],
+        [(MONTHLY, "$26", "$38", "Contact sales"), (ANNUAL, "$22", "$32", "Contact sales"),
+         ("Minimum users", "3", "3", "50"), ("Active projects", "Unlimited", "Unlimited", "Unlimited"),
+         ("Time tracking", Y, Y, Y), ("Timesheet approvals", Y, Y, Y), ("Project budgets", N, Y, Y),
+         ("Invoicing", Y, Y, Y), ("API access", "✓²", Y, Y), ("Single sign-on", N, Y, Y), ("Audit log", N, Y, Y),
+         ("Phone support", N, N, Y), ("Uptime SLA", "99.9%", "99.9%", "99.99%")],
+        ["² API access on Plus is a paid add-on."],
+        ["There is no free plan. Plus and Pro come with a 14-day free trial."],
+        ["Profitability by client and project", "Approvals on every plan", "Forecasts on Pro and Enterprise"],
+        ["EU hosting is coming in the second half of the year.", "We hold a SOC 2 Type II report."],
+        [("Do you offer phone support on Plus?", "Plus customers get email and chat support; phone support starts on Enterprise."),
+         ("Can I pay by invoice?", "Yes, on annual plans.")],
+        [("2027-02-15", "Single sign-on is now included on Plus."), ("2027-02-22", "Profitability alerts.")]),
+    "hourglen": _page(
+        "Hourglen", "Time tracking and approvals for consultancies.",
+        ["Standard", "Premium"],
+        [(MONTHLY, "$25", "$35"), ("Free trial", "10 days", "10 days"), ("Minimum users", "2", "5"),
+         ("Time tracking", Y, Y), ("Timesheet approvals", Y, Y), ("Project budgets", N, Y), ("Invoicing", Y, Y),
+         ("API access", Y, Y), ("Single sign-on", N, Y), ("Audit log", N, N), ("Phone support", N, Y),
+         ("Mobile app", Y, Y)],
+        [], ["There is no free plan."],
+        ["Approvals by client, project or person", "Budgets on Premium", "We aim for 99.9% uptime."],
+        ["Customer data is hosted in the EU (Frankfurt) or the US (Virginia), as you choose.",
+         "We completed our SOC 2 Type I audit in 2026.", "We sign a data processing agreement with every customer."],
+        [("How long is the free trial?", "Since February, trials last 14 days on both plans."),
+         ("Do you support single sign-on?", "Yes, on Premium.")],
+        [("2027-01-11", "Approvals by client.")]),
+    "ledgerline": _page(
+        "Ledgerline", "Timesheets that flow straight into billing.",
+        ["Starter", "Team", "Business"],
+        [(MONTHLY, N, "$28", "$36"), (YEARLY, "$264", "$300", "$384"),
+         ("Billing", "Annual only", "Monthly or annual", "Monthly or annual"), ("Minimum users", "1", "3", "10"),
+         ("Active projects", "5", "Unlimited", "Unlimited"), ("Time tracking", Y, Y, Y), ("Timesheet approvals", Y, Y, Y),
+         ("Project budgets", "✓³", Y, Y), ("Invoicing", Y, Y, Y), ("API access", N, Y, Y),
+         ("Single sign-on", N, N, Y), ("Audit log", N, Y, Y), ("Phone support", N, N, N)],
+        ["³ Budgets on Starter cover up to five projects."],
+        ["Ledgerline has no free plan and no free trial; every plan carries a 30-day money-back guarantee."],
+        ["Billing rates by person and client", "Mobile app coming later this year.", "Budgets on every plan"],
+        ["EU hosting is not available.", "A SOC 2 Type II report is available to customers."],
+        [("Can I change plans?", "Yes, upgrades take effect at once.")],
+        [("2027-01-25", "Audit log is now included from Team."), ("2027-02-12", "Starter now starts at 2 users."),
+         ("2027-02-20", "Single sign-on moved to Team and above.")]),
 }
 
+COMPARISON_ATTRIBUTES = [
+    ("free_plan", "whether the company offers a plan that is free with no time limit. A free trial is not a free plan."),
+    ("trial_days", "the length of the free trial in days, and 0 when the page says there is none."),
+    ("entry_plan", "the entry plan's name: the cheapest plan with a price above $0, on a monthly basis."),
+    ("entry_price_usd", "the entry plan's price per user per month, on a monthly basis."),
+    ("entry_min_users", "the fewest users the entry plan can be bought for."),
+    ("entry_projects", "the active projects the entry plan allows, or `unlimited`."),
+    ("top_plan_price_usd", "the price per user per month, on a monthly basis, of the top plan: the plan listed "
+                           "last in the plan table."),
+    ("sso_on_entry", "whether the entry plan includes single sign-on."),
+    ("sso_cheapest_plan", "the cheapest plan that includes single sign-on, or `none` when no plan does."),
+    ("audit_log_cheapest_plan", "the cheapest plan that includes an audit log, or `none` when no plan does."),
+    ("invoicing_on_entry", "whether the entry plan includes invoicing."),
+    ("api_on_entry", "whether the entry plan includes API access."),
+    ("approvals_on_entry", "whether the entry plan includes timesheet approvals."),
+    ("budgets_on_entry", "whether the entry plan includes project budgets."),
+    ("phone_support_on_entry", "whether the entry plan includes phone support."),
+    ("mobile_app", "whether the company offers a mobile app, on any plan."),
+    ("uptime_sla_percent", "the highest uptime the company commits to in a service-level agreement, on any plan."),
+    ("eu_hosting", "whether customer data can be hosted in the EU, on any plan."),
+    ("soc2_type2", "whether the company holds a SOC 2 Type II report."),
+    ("dpa", "whether the company signs a data processing agreement with customers."),
+]
 COMPARISON_CLAIMS = [
-    "Tallyhour's entry plan costs less per user per month than any competitor's entry plan.",
-    "Tallyhour is the only one of the six with a free plan.",
-    "Tallyhour's 21-day free trial is the longest of the six.",
-    "Tallyhour includes single sign-on on its entry plan, and no competitor includes it on theirs.",
-    "Tallyhour's top plan costs less per user per month than any competitor's top plan.",
+    "Tallyhour's entry plan costs less per user per month than every competitor's entry plan.",
+    "Tallyhour is one of only two of the ten with a free plan.",
+    "No competitor includes single sign-on on its entry plan; Tallyhour does.",
+    "Tallyhour's free trial is longer than the free trial of every competitor that offers one.",
+    "Tallyhour is the only one of the ten whose entry plan includes both timesheet approvals and project budgets.",
+    "Tallyhour is one of only three of the ten with both a SOC 2 Type II report and EU hosting.",
+    "Tallyhour's top plan costs less per user per month than the top plan of every competitor that offers EU hosting.",
+    "Every competitor's entry plan needs at least two users; Tallyhour's can be bought for one.",
+    "Tallyhour is the only one of the ten with phone support on its entry plan.",
 ]
 
 
 def comparison_brief_md() -> str:
     pages = ", ".join(f"`{name}.md`" for name in COMPANY_PAGES)
+    attributes = "\n".join(f"- `{name}`: {text}" for name, text in COMPARISON_ATTRIBUTES)
     claims = "\n".join(f"{number}. {claim}" for number, claim in enumerate(COMPARISON_CLAIMS, 1))
     return f"""# Tallyhour: competitor comparison, brief
 
 From Priya Raman, product marketing. Tallyhour sells time tracking and invoicing to agencies. Sales
-wants one comparison table of us and our five closest competitors, and I want to know which of our
-draft claims the table can back. The six pricing pages were saved from the sites today: {pages}.
+wants one comparison table of us and our nine closest competitors, and I want to know which of our
+draft claims the table can back. The ten pricing pages were saved from the sites today: {pages}.
 
 ## The attributes
 
 One row per company, one column per attribute:
 
-- `free_plan`: whether the company offers a plan that is free with no time limit. A free trial is
-  not a free plan.
-- `trial_days`: the length of the free trial in days, and 0 when the page says there is no free
-  trial. A money-back guarantee is not a free trial.
-- `entry_plan`: the name of the entry plan, the cheapest plan with a price above $0, as the page
-  names it.
-- `entry_price_usd`: the entry plan's price per user per month, on a monthly basis (below).
-- `entry_min_users`: the fewest users the entry plan can be bought for.
-- `sso_on_entry`: whether the entry plan includes single sign-on.
-- `sso_cheapest_plan`: the name of the cheapest plan that includes single sign-on.
-- `invoicing_on_entry`: whether the entry plan includes invoicing.
-- `api_on_entry`: whether the entry plan includes API access.
-- `top_plan_price_usd`: the price per user per month, on a monthly basis, of the top plan: the
-  plan listed last in the company's plan table.
-- `uptime_sla_percent`: the highest uptime the company commits to in a service-level agreement,
-  on any plan, as a percentage.
-- `eu_hosting`: whether customer data can be hosted in the EU, on any plan.
+{attributes}
 
 ## Rules for every cell
 
 1. A cell holds the value the company's own page states, or exactly `not stated` when the page
-   does not state it. Do not infer a value from what a page leaves out: a feature or a plan the
-   page does not mention is `not stated`, not `no`.
+   does not state it. Do not infer a value from what a page leaves out: a feature, a plan or a
+   report the page does not mention is `not stated`, not `no`.
 2. In a plan table a check mark (✓) means the plan includes it and a dash (—) means it does not.
-3. A price the page replaces with "Contact sales", "custom" or a quote is `not stated`.
-4. Monthly basis: when a plan has a price billed monthly, that is its price, even if the page
+3. Where parts of one page disagree, the newest wins. Each changelog entry is dated and overrides
+   everything else on the page; the FAQ was updated after the plan table and overrides it; the plan
+   table and its footnotes override the introduction, the feature list and the other sections.
+4. A footnote that makes a feature a paid add-on means the plan does not include it. A footnote
+   that only limits a feature (a cap or a quota) leaves it included.
+5. A feature, hosting option or report the page calls in beta, coming, planned or in progress is
+   not included or held: `no`. Only a SOC 2 Type II report counts for `soc2_type2`: a Type I
+   report is `no`.
+6. An uptime figure the page gives as a target, an aim or a status-page history is not a
+   service-level agreement. A money-back guarantee is not a free trial.
+7. Monthly basis: when a plan has a price billed monthly, that is its price, even if the page
    also gives a lower price for annual billing. When a plan is sold only on annual billing, its
-   price is its price per user per year divided by 12, rounded to the cent.
-5. Each page's FAQ was updated after its plan table. Where a page's FAQ and its plan table
-   disagree, the FAQ is right.
-6. Write yes or no as `yes` or `no`, a price in US dollars with two decimals and no currency sign,
-   a percentage without the % sign, a number of days or users as a whole number, and a plan by
-   its name alone.
+   price is its price per user per year divided by 12, rounded to the cent. A price the page
+   replaces with "Contact sales" is `not stated`.
+8. Write yes or no as `yes` or `no`, a price in US dollars with two decimals and no currency sign,
+   a percentage without the % sign, days, users and projects as whole numbers, unlimited projects
+   as `unlimited`, a plan by its name alone, and `none` when no plan includes the feature.
 
 ## The draft claims
 
 {claims}
 
-A claim is `supportable` when the table's cells prove it and `not supportable` otherwise. A claim
-that something holds for every competitor, or that no competitor has something, needs every
-competitor's cell: a `not stated` cell cannot support it. "Less" and "longest" are strict: a tie
-does not support them.
+A claim is `supportable` when the table proves it: it must hold whatever value any `not stated`
+cell might really have. Otherwise it is `not supportable`. "Less", "longer" and "only" are strict:
+a tie does not support them.
 """
 
 
