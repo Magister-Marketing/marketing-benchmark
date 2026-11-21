@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Tasks: `email-compliance-crosscheck` (development split) replaces
+  `email-compliance-audit`, which a strong model passed 13 of 13 in its first
+  trial: each of its violations could be seen by reading one email against
+  one rule. The new task has 150 scheduled emails of two brands in four
+  regions, a sending policy with seven codes, and six more exports
+  (audiences with consent and last-activity dates, a sender map, registered
+  addresses, a promotions calendar, a date-effective price sheet, DNS
+  records). Most verdicts need sources joined on the email's own send date,
+  and one rule makes emails depend on each other (an email of a series
+  fails because of two earlier ones to the same audience). Each failing
+  verdict names the code and the id of the row that proves it, and the
+  program checks both. 13 of its 14 checks are a program's. The fixtures
+  change, so by the versioning rule it is a new id; the old task file and
+  fixtures are removed (run folders keep their own snapshots).
 - Tasks: `email-send-calendar` rubric version 2 (prompt unchanged). Its
   frequency.csv is read line by line: a line counts when it holds a
   subscriber id and a count and nothing else, however it is separated

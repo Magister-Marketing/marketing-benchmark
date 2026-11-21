@@ -1,0 +1,31 @@
+record_id,domain,name,type,value
+D01,mail.ostrel.example,mail.ostrel.example,TXT,v=spf1 include:spf.sendloop.example -all
+D02,mail.ostrel.example,mail.ostrel.example,TXT,ostrel-site-verification=7Hc2kQ9pX4
+D03,mail.ostrel.example,sl1._domainkey.mail.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQbQtPmh26Rm12Xhryd6x92uGk7ZA87fp8IDAQAB
+D04,mail.ostrel.example,k1._domainkey.mail.ostrel.example,TXT,v=DKIM1; p=
+D05,mail.ostrel.example,_dmarc.mail.ostrel.example,TXT,v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example
+D06,orders.ostrel.example,orders.ostrel.example,TXT,v=spf1 include:spf.sendloop.example include:_spf.helpdeskly.example ~all
+D07,orders.ostrel.example,sl1._domainkey.orders.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQXHgbKdEKQnNSvhv7moYZe75mO25nfGm0IDAQAB
+D08,orders.ostrel.example,_dmarc.orders.ostrel.example,TXT,v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@ostrel.example
+D09,uk.ostrel.example,uk.ostrel.example,TXT,v=spf1 include:spf.sendloop.example -all
+D10,uk.ostrel.example,sl1._domainkey.uk.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQpl14cUiHslWGDgIabkYj8SqoT64Hbo/7IDAQAB
+D11,uk.ostrel.example,_dmarc.uk.ostrel.example,TXT,v=DMARC1; p=quarantine; pct=25; rua=mailto:dmarc@ostrel.example
+D12,ca.ostrel.example,ca.ostrel.example,TXT,v=spf1 include:spf.sendloop.example -all
+D13,ca.ostrel.example,sl1._domainkey.ca.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQfsrRJRAQDna5W1ty/Su5w3o7lvrFSxbbIDAQAB
+D14,ca.ostrel.example,_dmarc.ca.ostrel.example,TXT,v=DMARC1; p=reject; sp=none; rua=mailto:dmarc@ostrel.example
+D15,eu.ostrel.example,eu.ostrel.example,TXT,v=spf1 include:spf.sendloop.example -all
+D16,eu.ostrel.example,sl1._domainkey.eu.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQnieqQfFVtqc7zbMcgu9DW4lzjisvnXcpIDAQAB
+D17,eu.ostrel.example,_dmarc.eu.ostrel.example,TXT,v=DMARC1; p=none; sp=quarantine; rua=mailto:dmarc@ostrel.example
+D18,news.ostrel.example,news.ostrel.example,TXT,v=spf1 include:spf.sendloop.example -all
+D19,news.ostrel.example,sl1._domainkey.news.ostrel.example,TXT,v=DKIM1; p=
+D20,news.ostrel.example,sl2._domainkey.news.ostrel.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQRe2/7ORUI6Iht9fcdovHB8X6yh0ga7j3IDAQAB
+D21,news.ostrel.example,_dmarc.news.ostrel.example,TXT,v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example
+D22,mail.tamsin.example,mail.tamsin.example,TXT,v=spf1 include:spf.sendloop.example -all
+D23,mail.tamsin.example,sl1._domainkey.mail.tamsin.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQq5rYuwimOjVWh68d4UP4Q4q1kPG6T1+rIDAQAB
+D24,mail.tamsin.example,_dmarc.mail.tamsin.example,TXT,v=DMARC1; p=reject; rua=mailto:dmarc@tamsin.example
+D25,shop.tamsin.example,shop.tamsin.example,TXT,v=spf1 include:spf.sendloop.example ~all
+D26,shop.tamsin.example,sl1._domainkey.shop.tamsin.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ/ScPw+ulZvbm4qnFsUp9cErckpWvF981IDAQAB
+D27,shop.tamsin.example,_dmarc.shop.tamsin.example,TXT,v=DMARC1; p=quarantine; rua=mailto:dmarc@tamsin.example
+D28,promo.tamsin.example,promo.tamsin.example,TXT,v=spf1 include:mx.oldesp.example ~all
+D29,promo.tamsin.example,sl1._domainkey.promo.tamsin.example,TXT,v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ92sGLIIXS9A+tlZt+D4ztKaTKyqBOg+DIDAQAB
+D30,promo.tamsin.example,_dmarc.promo.tamsin.example,TXT,v=DMARC1; p=quarantine; rua=mailto:dmarc@tamsin.example
