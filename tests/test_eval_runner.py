@@ -729,6 +729,52 @@ def test_build_request_openai_responses_api():
     assert "max_output_tokens" not in body
 
 
+CONVERSATION = [
+    {"role": "user", "content": "Here is last week's export, for reference."},
+    {"role": "assistant", "content": "Noted; I will keep it for reference."},
+    {"role": "user", "content": "Now the review, from this export."},
+]
+
+
+def test_a_conversation_goes_on_the_wire_as_plain_text_turns_for_every_provider():
+    """A prior turn is the earlier user message and the model's own reply as
+    a plain assistant text message, in each provider's message list; a
+    string prompt is sent exactly as before."""
+    for spec, key in (("anthropic/claude-sonnet-5", "messages"),
+                      ("openrouter/google/gemini-3.8-flash", "messages"),
+                      ("openai/gpt-5.6-sol", "input")):
+        _, _, body = providers.build_request(spec, CONVERSATION, 100, False, "k")
+        assert body[key] == CONVERSATION, spec
+        assert body[key] is not CONVERSATION
+    # Settings apply to a conversation exactly as to one prompt.
+    _, _, single = providers.build_request(
+        "anthropic/claude-opus-5-5", "hi", 100, True, "k",
+        settings={"reasoning_effort": "high", "max_output_tokens": 64000})
+    _, _, multi = providers.build_request(
+        "anthropic/claude-opus-5-5", CONVERSATION, 100, True, "k",
+        settings={"reasoning_effort": "high", "max_output_tokens": 64000})
+    assert {k: v for k, v in multi.items() if k != "messages"} == {
+        k: v for k, v in single.items() if k != "messages"}
+    _, _, body = providers.build_request("openai/gpt-5.6-sol", "hi", 100, False, "k")
+    assert body["input"] == "hi"
+    _, _, body = providers.build_request("anthropic/claude-sonnet-5", "hi", 100, False, "k")
+    assert body["messages"] == [{"role": "user", "content": "hi"}]
+
+
+@pytest.mark.parametrize("conversation", [
+    [],
+    CONVERSATION[:2],  # ends on the model's turn
+    CONVERSATION[1:],  # starts on the model's turn
+    [CONVERSATION[0], CONVERSATION[0]],  # two user turns in a row
+    [CONVERSATION[0], {"role": "assistant", "content": "  "}, CONVERSATION[2]],
+    [CONVERSATION[0], {"role": "system", "content": "x"}, CONVERSATION[2]],
+    [{"role": "user", "content": ["a block"]}],
+])
+def test_a_malformed_conversation_is_refused_before_any_request(conversation):
+    with pytest.raises(providers.ProviderError, match="conversation"):
+        providers.build_request("anthropic/claude-sonnet-5", conversation, 100, False, "k")
+
+
 def test_split_model_spec_preserves_openrouter_upstream_slug():
     assert providers.split_model_spec(
         "openrouter/google/gemini-3.8-flash"

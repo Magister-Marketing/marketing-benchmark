@@ -162,15 +162,51 @@ def anthropic_web_search_tool(model: str) -> dict:
     return {"type": tool_type, "name": "web_search", "max_uses": WEB_SEARCH_MAX_USES}
 
 
+def _conversation_messages(conversation: list) -> list[dict]:
+    """Copy a text conversation for the wire after checking its shape: user
+    and assistant turns alternate, it starts and ends with the user, and every
+    turn is non-empty text.
+
+    An earlier assistant turn goes back as its text only, which each
+    provider's documentation accepts (checked 2026-11-20): Anthropic allows
+    omitting prior turns' thinking outside tool use; the OpenAI Responses API
+    takes `{"role": "assistant", "content": "<text>"}` in `input`; OpenRouter
+    treats passing reasoning back as optional, needed mainly for tool calls.
+    """
+    if not isinstance(conversation, list) or not conversation:
+        raise ProviderError("a conversation must be a non-empty list of turns")
+    messages = []
+    for index, turn in enumerate(conversation):
+        role = "user" if index % 2 == 0 else "assistant"
+        if (
+            not isinstance(turn, dict)
+            or turn.get("role") != role
+            or not isinstance(turn.get("content"), str)
+            or not turn["content"].strip()
+        ):
+            raise ProviderError(
+                f"conversation turn {index + 1} must be non-empty {role} text: "
+                "turns alternate user/assistant, starting and ending with user"
+            )
+        messages.append({"role": role, "content": turn["content"]})
+    if messages[-1]["role"] != "user":
+        raise ProviderError("a conversation must end with a user turn")
+    return messages
+
+
 def build_request(
     model_spec: str,
-    prompt: str,
+    prompt: str | list[dict],
     max_output_tokens: int,
     web_search: bool,
     api_key: str,
     settings: dict | None = None,
 ) -> tuple[str, dict, dict]:
     """Return (url, headers, body) for one generation request.
+
+    `prompt` is one user message, or a text conversation (a list of
+    `{"role", "content"}` turns, see `_conversation_messages`) whose last
+    turn is the one the model answers.
 
     `settings` are optional per-candidate knobs from models.json
     (reasoning_effort, text_verbosity, max_output_tokens,
@@ -181,6 +217,10 @@ def build_request(
     maximum, is never sent: `generate` uses it to bound the ceiling retry.
     """
     provider, model = split_model_spec(model_spec)
+    messages = (
+        [{"role": "user", "content": prompt}] if isinstance(prompt, str)
+        else _conversation_messages(prompt)
+    )
     settings = settings or {}
     unknown = set(settings) - set(ALLOWED_SETTINGS)
     if unknown:
@@ -226,7 +266,7 @@ def build_request(
         body: dict = {
             "model": model,
             "max_tokens": cap_override or max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         if effort is not None:
             # Current shape for Claude 5: adaptive thinking plus the effort
@@ -251,7 +291,7 @@ def build_request(
         body = {
             "model": model,
             "max_tokens": cap_override or max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "provider": {
                 "zdr": True,
                 "data_collection": "deny",
@@ -289,7 +329,8 @@ def build_request(
     # model's own maximum.
     body = {
         "model": model,
-        "input": prompt,
+        # One prompt stays a plain string, as it always was on the wire.
+        "input": prompt if isinstance(prompt, str) else messages,
     }
     if cap_override is not None:
         body["max_output_tokens"] = cap_override
@@ -449,7 +490,7 @@ def _merge_ceiling_retry_receipts(first: dict, last: dict) -> dict:
 
 def generate(
     model_spec: str,
-    prompt: str,
+    prompt: str | list[dict],
     max_output_tokens: int,
     web_search: bool = False,
     settings: dict | None = None,
@@ -458,7 +499,8 @@ def generate(
     retry_transport: bool = True,
     request_timeout_seconds: float | None = None,
 ) -> dict:
-    """One prompt in, one text completion out.
+    """One prompt (or a text conversation, see `build_request`) in, one text
+    completion out.
 
     Returns {text, input_tokens, output_tokens, web_search_calls,
     finish_reason, latency_seconds, provider, model}. Raises
