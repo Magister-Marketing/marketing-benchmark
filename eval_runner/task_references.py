@@ -23,9 +23,9 @@ import io
 import math
 import re
 import warnings
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
-VERSION = 3
+VERSION = 4
 
 _SOURCE_HEADING = re.compile(r"(?m)^---\n\n## (?:Supplied source: (?P<name>[^\n]+)|[^\n]*)\n\n")
 
@@ -55,14 +55,41 @@ def _money(value: Decimal) -> float:
 
 # ------------------------------------------------------------------ seo-content-brief
 
-def seo_ranks_top_ten(row: dict) -> bool:
-    """Whether the site already ranks 10 or better for the keyword."""
-    return row["current_rank"] != "" and int(row["current_rank"]) <= 10
+# The prompt's expected click-through rate by rank: (first rank, last rank, rate). A
+# keyword with no rank, or one worse than 20, has none. A new article aims for third.
+SEO_CTR = (
+    (1, 1, Decimal("0.30")), (2, 2, Decimal("0.16")), (3, 3, Decimal("0.11")), (4, 4, Decimal("0.08")),
+    (5, 5, Decimal("0.06")), (6, 10, Decimal("0.03")), (11, 20, Decimal("0.01")),
+)
+SEO_TARGET_CTR = Decimal("0.11")
+SEO_WON_RANK = 3
+SEO_SECONDARY_COUNT = 4
 
 
-def seo_qualifies(row: dict) -> bool:
-    """Informational, difficulty at or under 45, and not already in the top 10."""
-    return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and not seo_ranks_top_ten(row)
+def seo_ctr(rank: str) -> Decimal:
+    """The expected click-through rate at a `current_rank` cell."""
+    if rank == "":
+        return Decimal(0)
+    return next((rate for low, high, rate in SEO_CTR if low <= int(rank) <= high), Decimal(0))
+
+
+def seo_already_won(row: dict) -> bool:
+    """Whether the site already ranks third or better for the keyword."""
+    return row["current_rank"] != "" and int(row["current_rank"]) <= SEO_WON_RANK
+
+
+def seo_eligible(row: dict) -> bool:
+    """Informational, difficulty at or under 45, and not already won."""
+    return row["intent"] == "informational" and int(row["difficulty"]) <= 45 and not seo_already_won(row)
+
+
+def seo_winnable(row: dict) -> Decimal:
+    """The clicks a new article could add by ranking third: searches x (11% - the rate at its rank)."""
+    return int(row["monthly_searches"]) * (SEO_TARGET_CTR - seo_ctr(row["current_rank"]))
+
+
+def _whole(value: Decimal) -> int:
+    return int(value.quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 _SEO_FILLER_WORDS = frozenset("how to can you vs does is what a the of for do with and".split())
@@ -78,53 +105,60 @@ def seo_topic_outlines(outlines: str, topic: str) -> str:
 
 
 def seo_uncovered(keyword: str, topic: str, outlines: str) -> bool:
-    """Whether no heading of the topic's competing outlines touches the keyword.
+    """Whether no word of the topic's competing outlines touches the keyword.
 
-    A keyword is touched when a word of it, other than the topic's own words
-    and filler, appears in an outline: "ratio", "long", "iced".
+    A keyword is touched when one of its own words (not the topic's words, not
+    filler) is a word of an outline, plain or with -s, -es or -ing: "brew" is in
+    "brewing", "da" is not in "today".
     """
     own = [word for word in re.findall(r"[a-z]+", keyword.lower())
            if word not in _SEO_FILLER_WORDS and word not in topic.lower().split()]
-    return bool(own) and not any(word.rstrip("s") in outlines for word in own)
+    return bool(own) and not any(re.search(r"\b" + re.escape(word) + r"(?:s|es|ing)?\b", outlines) for word in own)
 
 
 def seo_brief_reference(sources: dict[str, str]) -> dict:
     rows = _rows(sources["keyword_export.csv"])
-    ranking = sorted((row for row in rows if seo_ranks_top_ten(row)), key=lambda row: int(row["current_rank"]))
-    totals: dict[str, int] = collections.defaultdict(int)
+    won = sorted((row for row in rows if seo_already_won(row)), key=lambda row: (int(row["current_rank"]), row["keyword"]))
+    totals: dict[str, Decimal] = collections.defaultdict(Decimal)
     for row in rows:
-        if seo_qualifies(row):
-            totals[row["topic"]] += int(row["monthly_searches"])
-    by_volume = sorted(totals.items(), key=lambda item: -item[1])
-    target = by_volume[0][0]
-    qualifying = sorted(
-        (row for row in rows if row["topic"] == target and seo_qualifies(row)),
-        key=lambda row: -int(row["monthly_searches"]),
-    )
+        if seo_eligible(row):
+            totals[row["topic"]] += seo_winnable(row)
+    by_winnable = sorted(totals.items(), key=lambda item: (-item[1], item[0]))
+    target, runner_up = by_winnable[0][0], by_winnable[1][0]
+    eligible = sorted((row for row in rows if row["topic"] == target and seo_eligible(row)),
+                      key=lambda row: (-seo_winnable(row), -int(row["monthly_searches"]), row["keyword"]))
     outlines = seo_topic_outlines(sources.get("competitor_outlines.md", ""), target)
     return {
         "answers": {
-            "q1_already_ranking": len(ranking),
-            "q2_qualifying_count": len(qualifying),
-            "q3_topic_volume": totals[target],
-            "q4_primary_volume": int(qualifying[0]["monthly_searches"]),
-            "q5_ranking_volume": sum(int(row["monthly_searches"]) for row in ranking),
+            "q1_already_won": len(won),
+            "q2_eligible_count": len(eligible),
+            "q3_topic_winnable": _whole(totals[target]),
+            "q4_runner_up_winnable": _whole(totals[runner_up]),
+            "q5_primary_winnable": _whole(seo_winnable(eligible[0])),
+            "q6_won_volume": sum(int(row["monthly_searches"]) for row in won),
         },
         "target_topic": target,
-        "primary_keyword": qualifying[0]["keyword"],
-        "qualifying_keywords_in_target_topic": [
+        "runner_up_topic": runner_up,
+        "primary_keyword": eligible[0]["keyword"],
+        "secondary_keywords": [row["keyword"] for row in eligible[1:1 + SEO_SECONDARY_COUNT]],
+        "eligible_keywords_in_target_topic": [
             {"keyword": row["keyword"], "monthly_searches": int(row["monthly_searches"]),
-             "difficulty": int(row["difficulty"])} for row in qualifying
+             "difficulty": int(row["difficulty"]), "current_rank": int(row["current_rank"]) if row["current_rank"] else None,
+             "winnable_clicks": float(seo_winnable(row))} for row in eligible
         ],
-        "qualifying_keywords_neither_competing_outline_covers": [
-            row["keyword"] for row in qualifying if outlines and seo_uncovered(row["keyword"], target, outlines)
+        "eligible_keywords_neither_competing_outline_covers": [
+            row["keyword"] for row in eligible if outlines and seo_uncovered(row["keyword"], target, outlines)
         ],
-        "qualifying_volume_by_topic": dict(by_volume),
-        "keywords_already_ranking_top_10": [
-            {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]}
-            for row in ranking
+        "winnable_clicks_by_topic": {topic: float(value) for topic, value in by_winnable},
+        "keywords_already_won": [
+            {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]} for row in won
         ],
         "existing_page_urls": sorted(set(re.findall(r"(?m)^\| (/[^ |]+) \|", sources.get("existing_pages.md", "")))),
+        "interpretation": (
+            "Winnable clicks are computed per keyword exactly as the prompt defines them and summed per topic; "
+            "the answers A3 to A5 round those sums to whole clicks. Keywords ranking 4 to 20 are eligible, with "
+            "the clicks they already get taken off."
+        ),
     }
 
 

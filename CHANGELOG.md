@@ -44,6 +44,65 @@
   into `measured_facts`). Its fixtures are written by
   `scripts/gen_tasks_strategy.py`. The `ads` skill is vendored unchanged at
   the same marketingskills pin (`2c38021`) for its "with skills" arm.
+- Tasks: `seo-content-brief` hardened (prompt 4, rubric 5; same id). Every
+  setup passed all 15 checks of rubric 4. The choice of topic is now a
+  computation across a 455-keyword export: winnable clicks are a keyword's
+  searches times the click-through rate of third place less the rate at its
+  current rank (a table in the prompt), keywords already ranking third or
+  better and keywords of the wrong intent or above the difficulty limit are
+  removed, and the topic with the most winnable clicks wins. The topic with
+  the most searches, the most eligible searches, and the most clicks when the
+  clicks a ranking keyword already gets are left in is matcha every time; the
+  target is oolong tea, whose biggest keyword ranks fifth and so is not the
+  primary. Six labeled figures (A1-A6) and six labeled lines (topic, primary
+  and four secondary keywords, working title, meta description, internal
+  links) are checked by program: 12 of the 16 checks. Skills are now
+  `content-strategy` (vendored unchanged from `2c38021`) and
+  `site-architecture`. `task_references.VERSION` is 4, since the judge's
+  reference for this task changed; its data tests moved from
+  `tests/test_more_tasks.py` to `tests/test_tasks_seo.py`.
+- Tasks: `blog-post` hardened (prompt 3, rubric 4; same id). Every direct
+  setup passed all nine checks of rubric 3. The facts now come from a dated
+  `sources.md` in which later sources replace four figures of earlier ones,
+  each earlier source listed after the one that replaces it: the service
+  menu's price ($89 to $95, and the prompt no longer states it), the 2024 tip
+  sheet's filter interval, and the interim call summary's count and shares.
+  The post must use at least three figures from the sources and state no
+  price, percentage, number of calls or span of time or distance that is not
+  a current one, link exactly the eight pages a written rule picks from a
+  139-page `site_map.csv` (live, tagged furnace, most sessions, a tie at
+  eighth place broken by URL; redirects, noindex pages, a dead page, a page
+  tagged furnace-parts and furnace URLs tagged otherwise all have more
+  sessions), with each page's keyword as the link text, and link its call to
+  action to the booking page with the current price in the link text. 11 of
+  the 14 checks are a program's (`eval_runner/task_facts_seo.py`). The Brightline brand fixtures
+  stay for the tasks that still use them; the archived version 1 prompt is
+  dropped, since rubric 4 cannot grade it.
+- Tasks: `seo-titles-meta` (development split): a title and a meta
+  description for each of the 99 indexed pages of a 113-page inventory, under
+  written rules, as `titles_meta.csv`, with three labeled counts. All 16
+  checks are a program's: limits, suffixes, keywords, prices, attributes,
+  counts and duplicates, page by page. The trap is the keyword rule: when
+  pages share a primary keyword the one with the most clicks keeps it (ties
+  by page type, then id) and the others target their secondary keyword
+  without the one they gave up: 14 pages concede, among size variants, a
+  three-way tie and a guide that out-clicks its category; four noindex pages
+  with more clicks take no part, and "dog bed" is not "dog beds".
+  Out-of-stock products carry a price in the inventory that may not be shown.
+- Tasks: `seo-redirect-map` (development split): a shop moving platform on the
+  same domain. A 327-URL crawl of the old site, the new site's URL list and
+  ten migration rules in order in; a `redirects.csv` of 301s and 410s and four
+  labeled counts out. All 15 checks are a program's, counted row by row
+  against an oracle that reads only the fixtures
+  (`eval_runner/task_facts_seo.py`, hooked into `bench.measured_facts`; the
+  fixtures come from `scripts/gen_tasks_seo.py`). The traps: retired products
+  whose slug a successor with another SKU took, colour and size pages the
+  new site folds into one product page, old redirects and the new site's own
+  redirects to follow to a live page, parameter URLs with
+  backlinks, 404s with inlinks but no backlinks, slugs with a number in front
+  that is not a `YYYY-MM-` date, and retired products with no signal at all.
+  Vendors `seo-audit` unchanged from marketingskills `2c38021` for its "with
+  skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

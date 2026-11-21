@@ -48,7 +48,7 @@ VERSIONS = {
     "seo-technical-triage": (3, 3),
     "search-terms-negatives": (3, 4),
     "ab-test-readout": (3, 4),
-    "seo-content-brief": (3, 4),
+    "seo-content-brief": (4, 5),
     "lifecycle-reengagement": (2, 2),
     "monthly-report-reconcile": (2, 3),
 }
@@ -56,9 +56,9 @@ VERSIONS = {
 # band or an oracle list has to be made there and here.
 BANDS = {
     "seo-content-brief": {
-        "q1_already_ranking": ("absolute", 0, 3), "q2_qualifying_count": ("absolute", 0, 3),
-        "q3_topic_volume": ("relative", 0.005, 0.25), "q4_primary_volume": ("relative", 0.005, 0.25),
-        "q5_ranking_volume": ("relative", 0.005, 0.25),
+        "q1_already_won": ("absolute", 0, 3), "q2_eligible_count": ("absolute", 0, 3),
+        "q3_topic_winnable": ("relative", 0.005, 0.25), "q4_runner_up_winnable": ("relative", 0.005, 0.25),
+        "q5_primary_winnable": ("relative", 0.005, 0.25), "q6_won_volume": ("relative", 0.005, 0.25),
     },
     "seo-technical-triage": {
         "q1_broken_linked": ("absolute", 0, 3), "q2_redirect_chains": ("absolute", 0, 3),
@@ -87,7 +87,7 @@ BANDS = {
     },
 }
 ORACLE = {
-    "seo-content-brief": ["q5_ranking_volume"],
+    "seo-content-brief": ["q6_won_volume"],
     "seo-technical-triage": ["q6_sessions_at_risk"],
     "search-terms-negatives": ["q1_zero_conversion_spend"],
     "lifecycle-reengagement": ["q1_mailable"],
@@ -235,7 +235,7 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
     for task_id, old, new, restorable in (
         ("monthly-report-reconcile", '"zero": 0.03', '"zero": 0.06', True),                    # a tolerance
         ("ab-test-readout", '"near": 0.209', '"near": 0.219', True),                           # a target
-        ("seo-content-brief", '"fails_if_zero": ["q5_ranking_volume"]', '"fails_if_zero": ["q3_topic_volume"]', True),
+        ("seo-content-brief", '"fails_if_zero": ["q6_won_volume"]', '"fails_if_zero": ["q3_topic_winnable"]', True),
         ("lifecycle-reengagement", '"single_number": true', '"single_number": false', True),
         ("ab-test-readout", "variant B has 5,400 visitors against control's 6,900", "variant B has 5,400 visitors against control's 6,800", True),
         ("search-terms-negatives", "('sablewood', 'sablewood blinds' and 'sablewood blinds reviews')", "('sablewood' and 'sablewood blinds')", True),
@@ -482,7 +482,7 @@ def test_the_judge_gets_reference_totals_computed_from_the_recorded_prompt():
         task = tasks[task_id]
         for include_skills in (True, False):
             reference = bench.judge_source_reference(task, bench.assemble_prompt(task, include_skills))
-            assert reference["version"] == task_references.VERSION == 3
+            assert reference["version"] == task_references.VERSION == 4
             assert reference["answers"] == _targets(task), task_id
         prompt = bench.assemble_prompt(task, True)
         assert set(task_references.supplied_sources(prompt)) == {path.rsplit("/", 1)[1] for path in task["fixtures"]}
@@ -527,7 +527,7 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
     args = argparse.Namespace(run=str(run_dir), judge="claude-sonnet-5", current_rubric=True, label=None, tasks=None)
     assert bench.cmd_grade(args) == 0
     grading = json.loads((run_dir / "grading.json").read_text())
-    assert grading["task_reference_version"] == task_references.VERSION == 3
+    assert grading["task_reference_version"] == task_references.VERSION == 4
     assert grading["source_reference_version"] == reference_facts.VERSION
     # The judge was shown the reference: both redirecting URLs of each chain, 38 inlinks.
     (judge_prompt,) = judge_prompts
@@ -538,105 +538,8 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
 
 # ------------------------------------------------------------------ seo-content-brief
 
-def _seo():
-    rows = _table("seo-brief/keyword_export.csv")
-    ranking = sorted((row for row in rows if row["current_rank"] and int(row["current_rank"]) <= 10),
-                     key=lambda row: int(row["current_rank"]))
-    ranked = {row["keyword"] for row in ranking}
-    by_topic = collections.defaultdict(list)
-    for row in rows:
-        if row["intent"] == "informational" and int(row["difficulty"]) <= 45 and row["keyword"] not in ranked:
-            by_topic[row["topic"]].append(row)
-    volumes = {topic: sum(int(row["monthly_searches"]) for row in group) for topic, group in by_topic.items()}
-    target = max(volumes, key=volumes.get)
-    qualifying = sorted(by_topic[target], key=lambda row: -int(row["monthly_searches"]))
-    return rows, ranking, volumes, target, qualifying
-
-
-def test_seo_content_brief_oracle_and_trap():
-    task = bench.load_tasks()["seo-content-brief"]
-    rows, ranking, volumes, target, qualifying = _seo()
-    answers = [len(ranking), len(qualifying), volumes[target], int(qualifying[0]["monthly_searches"]),
-               sum(int(row["monthly_searches"]) for row in ranking)]
-    assert target == "cold brew tea"
-    assert list(_targets(task).values()) == answers == [6, 7, 10290, 3600, 28080]
-    raw = collections.Counter()
-    for row in rows:
-        raw[row["topic"]] += int(row["monthly_searches"])
-    # The trap: the topic with the most raw search volume is not the target,
-    # and its head term is a buying-intent keyword an existing page ranks for.
-    assert raw.most_common(1)[0][0] == "green tea"
-    head = max(rows, key=lambda row: int(row["monthly_searches"]))
-    assert (head["keyword"], head["intent"], head["current_rank"]) == ("best green tea", "commercial", "4")
-    assert sorted(volumes.values())[-2] < 0.75 * volumes[target]  # no near-tie for the target
-    assert not _failed(_results("seo-content-brief", _answer_block(answers)))
-    green = [row for row in rows if row["topic"] == "green tea"]
-    careless = _answer_block([6, len(green), raw["green tea"], int(head["monthly_searches"]), answers[4]])
-    assert {"q3_topic_volume", "q4_primary_volume"} <= _zeroed(_results("seo-content-brief", careless))
-    assert not _critical_tripped("seo-content-brief", careless)  # the trap is not invention
-    # A row sits exactly on each threshold the definitions use, and one just past it,
-    # placed where reading the threshold wrongly changes an answer.
-    by_keyword = {row["keyword"]: row for row in rows}
-    assert by_keyword["cold brew tea vs iced tea"]["difficulty"] == "45" and by_keyword["cold brew tea vs iced tea"] in qualifying
-    assert (by_keyword["what is oolong tea"]["difficulty"], by_keyword["what is oolong tea"]["intent"]) == ("46", "informational")
-    assert by_keyword["does cold brew tea go bad"]["current_rank"] == "10" and by_keyword["does cold brew tea go bad"] in ranking
-    assert by_keyword["loose leaf green tea"]["current_rank"] == "11"
-    strict = _answer_block([5, 7, 9890, 3600, 27600])  # "better than 10" and "lower than 45" read strictly
-    assert {"q1_already_ranking", "q3_topic_volume", "q5_ranking_volume"} <= _failed(_results("seo-content-brief", strict))
-
-
-def test_seo_reference_and_the_wording_that_quotes_it():
-    task = bench.load_tasks()["seo-content-brief"]
-    rows, ranking, volumes, target, qualifying = _seo()
-    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
-    section = outlines.split("## Topic: cold brew tea")[1].split("## Topic:")[0].lower()
-    # A qualifying keyword neither outline touches: none of its own words is in them.
-    own_words = {"cold brew tea ratio": ["ratio"], "how long to cold brew tea": ["long"], "cold brew green tea": ["green"],
-                 "cold brew tea vs iced tea": ["iced"], "cold brew tea caffeine": ["caffeine"],
-                 "can you cold brew tea bags": ["bag"], "how to cold brew tea": []}
-    assert set(own_words) == {row["keyword"] for row in qualifying}
-    gaps = [row["keyword"] for row in qualifying
-            if own_words[row["keyword"]] and not any(word in section for word in own_words[row["keyword"]])]
-    reference = _reference("seo-content-brief")
-    assert {key: reference[key] for key in reference if key not in ("version", "answers")} == {
-        "target_topic": "cold brew tea",
-        "primary_keyword": "how to cold brew tea",
-        "qualifying_keywords_in_target_topic": [
-            {"keyword": row["keyword"], "monthly_searches": int(row["monthly_searches"]),
-             "difficulty": int(row["difficulty"])} for row in qualifying],
-        "qualifying_keywords_neither_competing_outline_covers": gaps,
-        "qualifying_volume_by_topic": dict(sorted(volumes.items(), key=lambda item: -item[1])),
-        "keywords_already_ranking_top_10": [
-            {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]} for row in ranking],
-        "existing_page_urls": sorted(re.findall(r"(?m)^\| (/\S+) \|", (FIXTURES / "seo-brief/existing_pages.md").read_text())),
-    }
-    assert gaps == ["cold brew tea caffeine", "can you cold brew tea bags"]
-    assert all(row["ranking_url"] in reference["existing_page_urls"] for row in rows if row["ranking_url"])
-    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
-    assert "targets the cold brew tea topic" in wording["target_topic_named"]
-    assert "'how to cold brew tea'" in wording["primary_keyword_named"]
-    assert ("(how to store loose leaf tea, best green tea, matcha caffeine, green tea caffeine, does tea expire, "
-            "does cold brew tea go bad)") in wording["existing_rankings_respected"]
-    assert "'cold brew tea ratio' and 'how long to cold brew tea'" in wording["outline_covers_demand"]
-    assert "('cold brew tea caffeine' or 'can you cold brew tea bags')" in wording["competitor_gap_grounded"]
-    # A slug proposed for the article being briefed is not an existing page, so it is not held to the page list.
-    assert wording["internal_links_real"].endswith(
-        "any URL that is not in the list, fails; a URL or slug the brief proposes for the new article itself is exempt.")
-
-
-def test_nothing_supplied_names_the_topic_to_pick():
-    """The fixtures used to: an outlines file titled for the target topic, and
-    a note saying the blog had no article on it yet."""
-    task = bench.load_tasks()["seo-content-brief"]
-    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
-    pages = (FIXTURES / "seo-brief/existing_pages.md").read_text()
-    assert re.findall(r"(?m)^## Topic: (.+)$", outlines) == ["green tea", "cold brew tea", "matcha"]
-    assert "cold" not in outlines.split("## Topic:")[0].lower()        # the title and the introduction
-    notes = pages.split("Notes from the content lead:")[1].lower()
-    assert "cold" not in notes and "no article" not in notes
-    assert "cold brew" not in task["prompt"].lower()
-    assert "outlines of competing articles for three topics the team is considering" in task["prompt"]
-    assert "neither competing outline for its topic does" in task["prompt"]
+# Its oracle, traps and the wording that quotes its data are tested in tests/test_tasks_seo.py,
+# with the other SEO tasks of the 35-task board.
 
 
 # --------------------------------------------------------------- seo-technical-triage

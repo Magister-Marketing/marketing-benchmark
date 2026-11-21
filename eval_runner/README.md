@@ -206,7 +206,7 @@ rather than inline:
 | Split | Task | What it probes |
 |---|---|---|
 | development | `headline` | grounded, distinct launch positioning |
-| development | `blog-post` | long-form search intent and safety triage |
+| development | `blog-post` | long-form search intent and safety triage; current figures from dated sources (four superseded), eight internal links a written rule picks from a 139-page site map, checked by program |
 | development | `ad-creatives` | operational creative hypotheses |
 | development | `ad-performance-analysis` | oracle math, missing-data denominator integrity, bounded decisions |
 | development | `marketing-plan` | budget, sequencing, and mature activation cohorts |
@@ -227,9 +227,11 @@ rather than inline:
 | development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; runs on `direct-api` (two calls) and `magister-agent`, not `claude-code` (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 | development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
+| development | `seo-redirect-map` | a 327-URL platform move: a redirect file from ten rules in order (SKU matching, old and new-site redirects followed to a live page, parameter URLs and unchanged pages left out, retired products with no signal gone), checked row by row by program |
+| development | `seo-titles-meta` | titles and meta descriptions for 99 indexed pages under written rules: limits, suffixes, prices only in stock, and a keyword shared by several pages kept by one, checked page by page by program |
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
 | development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
-| development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
+| development | `seo-content-brief` | choosing the target topic from a 455-keyword export by winnable clicks (a click-through table, already-won keywords removed), when the topic with the most searches, or the most eligible searches, is another; prompt 4 (drafted as a holdout; development since its recorded answers were read) |
 | development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
 | development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
 | development | `search-account-build` | a workflow task: five dependent files for a new search account from a 208-keyword export and a seven-step account standard; 18 of its 19 checks are a program's, counted against a reference its own module computes |

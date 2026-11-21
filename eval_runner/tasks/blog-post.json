@@ -2,36 +2,34 @@
   "id": "blog-post",
   "title": "SEO blog post for a local service business",
   "split": "development",
-  "prompt_version": 2,
-  "rubric_version": 3,
-  "rubric_compatible_prompts": [
-    {
-      "version": 1,
-      "reason": "Historical prompt additionally capped SEO fields and the article at 1,600 words; the current rubric keeps only the shared minimum and content contract.",
-      "prompt": "Write an educational blog post for Brightline Heating titled around the question 'Why is my furnace making noise?' aimed at North Valley homeowners searching that phrase. Requirements: an SEO title of 60 characters or fewer and a meta description of 155 characters or fewer, both labeled; body of 1,200 to 1,600 words; at least four descriptive H2 sections including one on when to call a professional; distinguish noises a homeowner can safely observe from situations needing a licensed professional or emergency response; close with a call to action for the $95 furnace diagnostic visit. Safety rules: never instruct the reader to open, bypass, or repair gas or electrical components, and do not promise any response time."
-    }
-  ],
+  "prompt_version": 3,
+  "rubric_version": 4,
   "fixtures": [
-    "evals/fixtures/public/brands/brightline-heating/product-marketing.md",
-    "evals/fixtures/public/brands/brightline-heating/sources/facts.md"
+    "eval_runner/fixtures/blog-post/sources.md",
+    "eval_runner/fixtures/blog-post/site_map.csv"
   ],
   "skills": ["evals/fixtures/public/skills/copywriting/SKILL.md"],
-  "prompt": "Write an educational blog post for Brightline Heating titled around the question 'Why is my furnace making noise?' aimed at North Valley homeowners searching that phrase. Requirements: a labeled SEO title and a labeled meta description; body of at least 1,200 words; at least four descriptive H2 sections including one on when to call a professional; distinguish noises a homeowner can safely observe from situations needing a licensed professional or emergency response; close with a call to action for the $95 furnace diagnostic visit. Safety rules: never instruct the reader to open, bypass, or repair gas or electrical components, and do not promise any response time.",
+  "prompt": "Write an educational blog post for Brightline Heating, a heating service for homeowners in North Valley, that answers the question 'Why is my furnace making noise?' for people searching that phrase. You are supplied the company's sources and its site map.\n\nRequirements:\n- A labeled SEO title of at most 60 characters that contains the words 'furnace making noise', and a labeled meta description of at most 155 characters, each on its own line as `SEO title: ...` and `Meta description: ...`.\n- A body of at least 1,200 words with at least four descriptive H2 sections, one of them headed 'When to call a professional'.\n- Distinguish noises a homeowner can safely observe from situations that need a licensed professional or an emergency response.\n- Close with a call to action for the furnace diagnostic visit: a link to /book/furnace-diagnostic whose link text states the price of the visit.\n- Figures: use at least three figures from sources.md, one of them the price of the visit. Every price, percentage, number of calls and span of time or distance in the post must be a current figure from sources.md. Where two sources give different figures for the same thing, the one published later is current.\n- Internal links: link to exactly eight related pages from site_map.csv, chosen this way: the pages tagged `furnace` that are live (`status` 200 and `noindex` no), the eight with the most `sessions_28d`, and on a tie the URL that comes first in alphabetical order. Link each of them once, with its `primary_keyword` as the link text, word for word (capital letters may differ). Apart from those eight and the booking page, link to no page and no other website. Write every link in Markdown, as [link text](/path).\n\nSafety rules: never instruct the reader to open, bypass, or repair gas or electrical components, and do not promise any response time.",
   "rubric": {
     "completion": [
-      {"id": "seo_fields", "check": "A labeled SEO title and a labeled meta description are both present."},
+      {"id": "seo_fields", "check": "A labeled SEO title of at most 60 characters that contains 'furnace making noise' and a labeled meta description of at most 155 characters are both present.", "programmatic": {"fact": "seo_blog_seo_fields_error_count", "equals": 0}},
       {"id": "h2_count", "check": "The body has at least four H2 sections.", "programmatic": {"fact": "h2_count", "gte": 4}},
-      {"id": "professional_section", "check": "One descriptive H2 section is specifically about when to call a professional."},
-      {"id": "cta", "check": "The post closes with a call to action for the $95 furnace diagnostic visit."},
-      {"id": "length", "check": "The body is substantive: at least roughly 1,200 words (allow 1,150+). There is no upper limit.", "programmatic": {"fact": "word_count", "gte": 1150}}
+      {"id": "professional_heading", "check": "One H2 is headed with the words 'When to call a professional'.", "programmatic": {"fact": "seo_blog_professional_heading_count", "gte": 1}},
+      {"id": "length", "check": "The body is substantive: at least roughly 1,200 words (allow 1,150+). There is no upper limit.", "programmatic": {"fact": "word_count", "gte": 1150}},
+      {"id": "booking_cta", "check": "The call to action links to /book/furnace-diagnostic, and its link text states the current price of the visit, $95.", "programmatic": {"fact": "seo_blog_booking_link_error_count", "equals": 0}}
     ],
     "skill_adherence": [
+      {"id": "price_current", "check": "The post states the current price of the diagnostic visit, $95, and the superseded $89 from the older service menu appears nowhere.", "programmatic": {"fact": "seo_blog_price_error_count", "equals": 0}},
+      {"id": "no_superseded_figures", "check": "The post states none of the other figures a later source replaced: the 2024 tip sheet's filter interval (60 days) and the January-to-September summary's count (1,180 calls) and shares (27%, 24%, 19%, 13%, 10%, 7%). Full credit for none; zero credit at 2 or more, and for a reply with no post.", "programmatic": {"fact": "seo_blog_superseded_figure_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 2}}},
+      {"id": "figures_from_sources", "check": "Every price, percentage, number of calls and span of time or distance the post states is a figure from sources.md (the superseded ones are the two checks above's). Full credit for none other; zero credit at 2 or more, and for a reply with no post.", "programmatic": {"fact": "seo_blog_unsourced_figure_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 2}}},
+      {"id": "figures_used", "check": "The post states at least three of the current figures in sources.md.", "programmatic": {"fact": "seo_blog_sourced_figure_count", "gte": 3}},
       {"id": "safety_preserved", "check": "Nothing instructs the reader to open, bypass, or repair gas or electrical components; dangerous signs (e.g. gas smell) route to shutting off at accessible user controls, leaving, or calling emergency/professional help."},
-      {"id": "no_invented_facts", "negative": true, "check": "No response-time promises, invented statistics, certifications, review counts, or customer stories; the only price used is the $95 diagnostic."}
+      {"id": "no_invented_facts", "negative": true, "check": "The post makes no response-time promise and states no certification, award, review, rating, customer story, guarantee or service that sources.md does not give, and promises no diagnosis or repair price before an inspection. Figures are checked by the program and are not part of this check."}
     ],
     "best_practices": [
-      {"id": "noise_specificity", "check": "The post names multiple distinguishable furnace noises and ties each to a safe observation or a clear professional/emergency escalation path rather than generic filler. It is not required to invent a mechanical diagnosis absent from the sources."},
-      {"id": "actionable_triage", "check": "A reader can tell which situations are safe to observe versus which require a professional or emergency response."}
+      {"id": "links_chosen", "check": "The post links exactly the eight pages the rule picks (/blog/furnace-filter-guide, /blog/why-is-my-furnace-blowing-cold-air, /services/furnace-repair, /blog/thermostat-troubleshooting, /blog/furnace-pilot-light, /blog/furnace-smells, /blog/winter-furnace-checklist, /blog/furnace-keeps-turning-off), each once, and no other page or site besides the booking page. Full credit for none missing, repeated or extra; zero credit at 2 or more.", "programmatic": {"fact": "seo_blog_link_selection_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 2}}},
+      {"id": "anchors_exact", "check": "Each of the eight pages is linked with its primary_keyword as the link text, word for word. Full credit for none wrong or missing; zero credit at 3 or more.", "programmatic": {"fact": "seo_blog_anchor_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 3}}},
+      {"id": "actionable_triage", "check": "The post names several distinguishable furnace noises and, for each, tells the reader whether it is safe to observe or needs a licensed professional or an emergency response, following the sources rather than generic filler. It is not required to give a mechanical diagnosis the sources do not."}
     ]
   }
 }

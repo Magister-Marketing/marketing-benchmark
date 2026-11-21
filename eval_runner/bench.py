@@ -1753,6 +1753,9 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # against the task's reference (eval_runner/workflows).
     facts.update(workflows.facts_for(task, response_text))
     facts.update(task_facts_strategy.facts_for(task, response_text))
+    # The SEO tasks of the 35-task board check their files and links by program.
+    from eval_runner import task_facts_seo
+    facts.update(task_facts_seo.facts_for(task, response_text))
     return facts
 
 
