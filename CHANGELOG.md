@@ -225,6 +225,29 @@
   consults for the judge's reference, and `tests/test_tasks_conversion.py`
   recomputes every target. Vendors `ab-testing/SKILL.md` unchanged from
   marketingskills `2c38021` (2.0.2) for the "with skills" arm.
+- Tasks: `email-compliance-crosscheck` (development split) replaces
+  `email-compliance-audit`, which a strong model passed 13 of 13 in its first
+  trial: each of its violations could be seen by reading one email against
+  one rule. The new task has 150 scheduled emails of two brands in four
+  regions, a sending policy with seven codes, and six more exports
+  (audiences with consent and last-activity dates, a sender map, registered
+  addresses, a promotions calendar, a date-effective price sheet, DNS
+  records). Most verdicts need sources joined on the email's own send date,
+  and one rule makes emails depend on each other (an email of a series
+  fails because of two earlier ones to the same audience). Each failing
+  verdict names the code and the id of the row that proves it, and the
+  program checks both. 13 of its 14 checks are a program's. The fixtures
+  change, so by the versioning rule it is a new id; the old task file and
+  fixtures are removed (run folders keep their own snapshots).
+- Tasks: `email-send-calendar` rubric version 2 (prompt unchanged). Its
+  frequency.csv is read line by line: a line counts when it holds a
+  subscriber id and a count and nothing else, however it is separated
+  (comma, colon, space, tab, a Markdown table, bullets, quotes), with or
+  without the header and whatever the header calls its columns. The first
+  trial failed the three counting checks; the policy's wording for who
+  receives a campaign (joined and paused dates both "that day or earlier")
+  and for what A3 adds up was reread and has one reading, so it is
+  unchanged.
 - Tasks: `email-compliance-audit` (development split): the 150 live emails
   of a skincare brand before a platform move (110 marketing, 40
   transactional), a sending policy with six violation codes, a consent table

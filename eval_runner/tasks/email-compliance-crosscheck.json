@@ -1,0 +1,196 @@
+{
+  "id": "email-compliance-crosscheck",
+  "title": "Crosscheck scheduled emails against a policy and six exports",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/email-compliance-crosscheck/sending_policy.md",
+    "eval_runner/fixtures/email-compliance-crosscheck/emails.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/audiences.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/senders.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/addresses.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/promotions.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/prices.csv",
+    "eval_runner/fixtures/email-compliance-crosscheck/dns_records.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Larkfield Goods sends email for two brands, Ostrel and Tamsin, in the US, the UK, the EU and Canada. Before it moves to a new email platform, its email lead wants every scheduled email in the supplied export checked against the supplied sending policy, using the other supplied files: the audiences and their consent, the sender map, the registered addresses, the promotions calendar, the price sheet and the DNS records of the sending domains.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly the header shown: one row per email, no totals row, and nothing inside the file but its rows.\n\n### findings.csv\nemail_id,verdict\nEvery email in the export, once, by its id as the export writes it (E001). `verdict` is `pass` when the email breaks no rule of the policy; otherwise it is every code the email gets, each with the id of the row the policy says proves it, written `CODE:ROW_ID` and separated by semicolons (for example `CODE_A:X01;CODE_B:Y02`).\n\nAfter the file, for each code you give to at least one email, one line with the code, a colon and what to change so that an email with that code passes.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of emails that pass>\nA2: <number of violations: every code in findings.csv, counted once for each email that gets it>\nA3: <number of emails that get more than one code>\n\nThis is a review for the email lead. Send nothing, change nothing in the email platform or at the DNS host, and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "findings_file",
+        "check": "findings.csv is in the reply, under a line with its file name.",
+        "programmatic": {
+          "fact": "audit_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_email_once",
+        "check": "Every one of the export's 150 emails appears exactly once in findings.csv, no email appears that is not in the export, and every verdict is pass alone or one or more CODE:ROW_ID parts with the policy's codes, each code once. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_passing",
+        "check": "A1 states how many emails break no rule of the policy. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 69,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "a2_violations",
+        "check": "A2 states how many violations the policy finds: every code, counted once for each email that gets it. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 121,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "a3_multiple",
+        "check": "A3 states how many emails get more than one code under the policy. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 34,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "domain_right",
+        "check": "The emails given DOMAIN are exactly the ones whose From domain fails rule 1, each with the id of the record that fails: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_domain_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "sender_right",
+        "check": "The emails given SENDER are exactly the ones whose From address is not in the sender map's row for their brand, region and stream, each with that row's id: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_sender_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "address_right",
+        "check": "The emails given ADDRESS are exactly the marketing emails whose footer is not the registered address for their brand and region, each with that address row's id: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_address_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "consent_right",
+        "check": "The emails given CONSENT are exactly the marketing emails whose audience's consent does not allow them on their send date under rule 4, each with the audience's id: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_consent_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "promo_right",
+        "check": "The emails given PROMO are exactly the emails whose promotion is not running on their send date in their region, or whose discount or end date is not that promotion's, each with the promotion row's id: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_promo_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "price_right",
+        "check": "The emails given PRICE are exactly the emails whose price is not the one in effect for their product and region on their send date, each with the id of the row in effect: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_price_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "frequency_right",
+        "check": "The emails given FREQUENCY are exactly the emails with two or more emails of their series to their audience in the six days before, each with the id of the earliest of those: none missed, none given it that should not be, and none with the wrong row. Full credit for no error; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "audit_frequency_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "fixes_given",
+        "check": "After findings.csv, for every code the reply gives to at least one email, there is a line saying what to change so that an email with that code passes, and the change would clear the code under the policy. Any change that clears it counts; for example: for DOMAIN, send from a domain that passes rule 1 or correct the failing record; for SENDER, send from an address the sender map allows; for ADDRESS, put the registered address for the brand and region in the footer; for CONSENT, send to an audience whose consent allows the email, or on a date when it does; for PROMO, show the promotion's discount and end date for the region and send while it runs; for PRICE, show the price in effect on the send date; for FREQUENCY, move or drop the email so the audience gets fewer emails of the series in the window. A code given with no such line, or with a line that only says to review or check it, fails."
+      }
+    ]
+  }
+}

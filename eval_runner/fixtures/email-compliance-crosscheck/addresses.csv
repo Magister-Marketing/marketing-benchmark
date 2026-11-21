@@ -1,0 +1,9 @@
+address_id,brand,region,registered_address
+L01,Ostrel,US,"Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA"
+L02,Ostrel,UK,"Ostrel Botanicals Ltd, 9 Quillan Row, London E2 7QA, UK"
+L03,Ostrel,EU,"Ostrel Botanicals BV, Veldhuisstraat 212, 1016 DZ Amsterdam, Netherlands"
+L04,Ostrel,CA,"Ostrel Botanicals Canada Inc., 77 Harrow Lane, Toronto, ON M5J 2S1, Canada"
+L05,Tamsin,US,"Tamsin Home Inc., 240 Millbrook Road, Burlington, VT 05401, USA"
+L06,Tamsin,UK,"Tamsin Home Ltd, 31 Ferrand Street, Manchester M1 3HE, UK"
+L07,Tamsin,EU,"Tamsin Home BV, Lindengracht 18, 1015 KH Amsterdam, Netherlands"
+L08,Tamsin,CA,"Tamsin Home Canada Inc., 9 Ashby Court, Toronto, ON M5E 1B2, Canada"

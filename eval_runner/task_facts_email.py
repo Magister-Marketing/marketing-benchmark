@@ -6,10 +6,12 @@ written procedure. The work is applying a per-subscriber frequency cap over
 days by campaign type, a teaser that must lead its launch, deadlines and a
 priority order, without one slip.
 
-``email-compliance-audit``: 18 drafts in a review queue checked against a
-written sending policy, a consent table by audience and the DNS records of
-the sending domains. The work is finding every planted violation, from a
-fixed list of codes, without flagging the drafts that only look wrong.
+``email-compliance-crosscheck``: 150 scheduled emails of two brands checked
+against a sending policy and six exports. Most verdicts need sources joined:
+an audience's consent windows on the email's own send date, the promotion
+and the price in effect then for its region, the sender map, the DNS
+records, and the other emails of its series. Each failing verdict names the
+row that proves it.
 
 Each task's reply carries files the way a workflow task's does (a CSV under a
 line that names it), and they are read with the same reader
@@ -39,7 +41,7 @@ from pathlib import Path
 from eval_runner.workflows import common
 
 CALENDAR = "email-send-calendar"
-AUDIT = "email-compliance-audit"
+AUDIT = "email-compliance-crosscheck"
 TASK_IDS = (CALENDAR, AUDIT)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = Path("eval_runner") / "fixtures"
@@ -391,6 +393,26 @@ def _whole(text: object) -> int | None:
     return int(value) if re.fullmatch(r"\d+", value) else None
 
 
+# One subscriber's line of frequency.csv, however it is written: "S0001,4",
+# "S0001, 4", "S0001: 4", "S0001 4", a tab, a bullet, a Markdown table row,
+# quoted cells, with or without the header. A line is read only when it holds
+# an id and a count and nothing else, so a header, a note or an answer line
+# below an unfenced file is not a subscriber.
+_FREQUENCY_LINE = re.compile(
+    r"[\s|>*`'\"+-]*(S\d{1,4})[`'\"*]*[\s|,;:=`'\"*]+(\d{1,3})[\s|`'\"*.]*", re.IGNORECASE)
+
+
+def _frequency_lines(response_text: str) -> list[tuple[str, int]]:
+    """Every (subscriber, count) line of the reply's frequency.csv, in order."""
+    text = common.sections(response_text, ["frequency.csv"])["frequency.csv"] or ""
+    out = []
+    for line in text.splitlines()[:5000]:
+        match = _FREQUENCY_LINE.fullmatch(line[:200])
+        if match:
+            out.append((f"S{int(match.group(1)[1:]):04d}", int(match.group(2))))
+    return out
+
+
 def calendar_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. Every count is over the plan's
     campaigns or the export's subscribers, so a missing file is that many
@@ -432,11 +454,9 @@ def calendar_facts(response_text: str) -> dict[str, int]:
 
     counts: dict[str, int | None] = {}
     seen: list[str] = []
-    for row in found["frequency.csv"] or []:
-        sid = _row_id(common.cell(row, "subscriber_id", "subscriber", "id"), "S", 4)
-        if sid:
-            seen.append(sid)
-            counts[sid] = _whole(common.cell(row, "emails", "email_count", "count"))
+    for sid, count in _frequency_lines(response_text):
+        seen.append(sid)
+        counts[sid] = count
     frequency_errors = (sum(1 for sid, count in own_counts.items() if counts.get(sid) != count)
                         + (len(seen) - len(set(seen))) + len(set(seen) - set(own_counts)))
     return {
@@ -449,667 +469,695 @@ def calendar_facts(response_text: str) -> dict[str, int]:
     }
 
 
-# ── email-compliance-audit ───────────────────────────────────────────────────
+# ── email-compliance-crosscheck ──────────────────────────────────────────────
+#
+# 150 scheduled emails of two brands in four regions, checked against a
+# sending policy and six exports. Most verdicts need two or three of them
+# joined: an audience's consent on the email's own send date, the promotion
+# and the price in effect on that date for that region, the sender map for
+# the brand, region and stream, the From domain's DNS records, and the other
+# emails of the same series to the same audience. Each failing verdict names
+# the row that proves it.
 
-AUDIT_BRAND = "Ostrel Botanicals"
+AUDIT_BRAND = "Larkfield Goods"
 AUDIT_FILES = ["findings.csv"]
-# The policy's codes, in the order its sections give them.
-CODES = ["DOMAIN", "ADDRESS", "UNSUBSCRIBE", "SUBJECT", "TRANSACTIONAL_PROMO", "CONSENT"]
+CODES = ["DOMAIN", "SENDER", "ADDRESS", "CONSENT", "PROMO", "PRICE", "FREQUENCY"]
+# The file whose rows are a code's evidence, and how its ids are written.
+EVIDENCE = {"DOMAIN": ("dns_records.csv", "D", 2), "SENDER": ("senders.csv", "M", 2),
+            "ADDRESS": ("addresses.csv", "L", 2), "CONSENT": ("audiences.csv", "A", 2),
+            "PROMO": ("promotions.csv", "P", 2), "PRICE": ("prices.csv", "R", 2),
+            "FREQUENCY": ("emails.csv", "E", 3)}
 ESP_INCLUDE = "include:spf.sendloop.example"
 DKIM_SELECTOR = "sl1"
 DMARC_POLICIES = ("quarantine", "reject")
-SENDING_DOMAINS = ["mail.ostrel.example", "orders.ostrel.example", "uk.ostrel.example", "ca.ostrel.example",
-                   "eu.ostrel.example", "news.ostrel.example", "promo.ostrel.example"]
-REGISTERED_ADDRESSES = [
-    "Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA",
-    "Ostrel Botanicals Inc., PO Box 7721, Portland, OR 97207, USA",
-]
-UNSUBSCRIBE_TAGS = ("unsubscribe_link", "preferences_link")
-PROMOTIONAL_BLOCKS = ("promo", "recommendations")
-PLACED_AFTER = ("order", "shipping", "account")
-NO_PROMOTION_PURPOSES = ("password reset", "account security")
-SCOPE_WORDS = ("sitewide", "everything", "all products")
-CA_CUSTOMER_MONTHS = 24
-AUDIT_SEED = 20270213
-
-# (id, name, region, consent, double_opt_in, max_months_since_purchase)
-AUDIENCES: list[tuple[str, str, str, str, str, str]] = [
-    ("A01", "US newsletter sign-ups", "US", "express", "no", ""),
-    ("A02", "US customers", "US", "customer", "", "22"),
-    ("A03", "US loyalty members", "US", "express", "yes", ""),
-    ("A04", "UK newsletter sign-ups", "UK", "express", "no", ""),
-    ("A05", "UK customers", "UK", "customer", "", "30"),
-    ("A06", "EU newsletter, confirmed", "EU", "express", "yes", ""),
-    ("A07", "EU newsletter, unconfirmed", "EU", "express", "no", ""),
-    ("A08", "EU customers", "EU", "customer", "", "14"),
-    ("A09", "EU loyalty members", "EU", "express", "yes", ""),
-    ("A10", "Canada newsletter sign-ups", "CA", "express", "no", ""),
-    ("A11", "Canada customers", "CA", "customer", "", "24"),
-    ("A12", "Canada customers, lapsed", "CA", "customer", "", "38"),
-    ("A13", "Canada recent customers", "CA", "customer", "", "11"),
-    ("A14", "Clean Beauty Expo badge scans", "US", "event", "", ""),
-    ("A15", "Partner giveaway entrants", "US", "imported", "", ""),
-    ("A16", "Spa partner list", "UK", "imported", "", ""),
-    ("A17", "Order and account notifications", "all", "none", "", ""),
-]
-TRANSACTIONAL_AUDIENCE = "A17"
-# Marketing audiences by region: the ones the consent table allows, and the ones it does not.
-REGION_AUDIENCES = {
-    "US": (["A01", "A02", "A03"], ["A14", "A15"]),
-    "UK": (["A04", "A05"], ["A16"]),
-    "EU": (["A06", "A09"], ["A07", "A08"]),
-    "CA": (["A10", "A11", "A13"], ["A12"]),
+AUDIT_SEED = 20270301
+BRANDS = ["Ostrel", "Tamsin"]
+REGIONS = ["US", "UK", "EU", "CA"]
+STREAMS = ["marketing", "transactional"]
+CURRENCY = {"US": "$", "UK": "£", "EU": "€", "CA": "$"}
+PROMOTIONAL_PURPOSES = ("promotion", "launch", "win-back", "welcome offer")
+NEWSLETTER_PURPOSES = ("newsletter", "survey", "event invitation")
+TRANSACTIONAL_PURPOSES = ("order confirmation", "shipping notice", "receipt", "password reset")
+# (region, consent) -> days after last activity a (promotional, newsletter) email may still go; None: never.
+CONSENT_WINDOWS = {
+    ("US", "express"): (730, 1095), ("US", "customer"): (365, 730),
+    ("UK", "express"): (540, 730), ("UK", "customer"): (180, 365),
+    ("EU", "express"): (365, 540), ("EU", "customer"): (None, None),
+    ("CA", "express"): (730, 730), ("CA", "customer"): (730, 730),
 }
+FREQUENCY_LIMIT = 2      # earlier emails of the series to the audience allowed within the window
+FREQUENCY_DAYS = 7       # the send date and the six days before
 
-# Each sending domain's TXT records: (name, value). {key} is a DKIM key drawn from AUDIT_SEED.
-DNS: dict[str, list[tuple[str, str]]] = {
+# The sending domains' TXT records, in export order; {key} is a DKIM key drawn from AUDIT_SEED.
+DNS_SPEC: dict[str, list[tuple[str, str]]] = {
     "mail.ostrel.example": [
         ("mail.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
         ("mail.ostrel.example", "ostrel-site-verification=7Hc2kQ9pX4"),
         ("sl1._domainkey.mail.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
         ("k1._domainkey.mail.ostrel.example", "v=DKIM1; p="),
-        ("_dmarc.mail.ostrel.example", "v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.mail.ostrel.example", "v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example")],
     "orders.ostrel.example": [
         ("orders.ostrel.example", f"v=spf1 {ESP_INCLUDE} include:_spf.helpdeskly.example ~all"),
         ("sl1._domainkey.orders.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.orders.ostrel.example", "v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.orders.ostrel.example", "v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@ostrel.example")],
     "uk.ostrel.example": [
         ("uk.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
         ("sl1._domainkey.uk.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.uk.ostrel.example", "v=DMARC1; p=quarantine; pct=25; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.uk.ostrel.example", "v=DMARC1; p=quarantine; pct=25; rua=mailto:dmarc@ostrel.example")],
     "ca.ostrel.example": [
         ("ca.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
         ("sl1._domainkey.ca.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.ca.ostrel.example", "v=DMARC1; p=reject; sp=none; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.ca.ostrel.example", "v=DMARC1; p=reject; sp=none; rua=mailto:dmarc@ostrel.example")],
     "eu.ostrel.example": [
         ("eu.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
         ("sl1._domainkey.eu.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.eu.ostrel.example", "v=DMARC1; p=none; sp=quarantine; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.eu.ostrel.example", "v=DMARC1; p=none; sp=quarantine; rua=mailto:dmarc@ostrel.example")],
     "news.ostrel.example": [
         ("news.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
         ("sl1._domainkey.news.ostrel.example", "v=DKIM1; p="),
         ("sl2._domainkey.news.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.news.ostrel.example", "v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example"),
-    ],
-    "promo.ostrel.example": [
-        ("promo.ostrel.example", f"v=spf1 {ESP_INCLUDE} -all"),
-        ("promo.ostrel.example", "v=spf1 include:mx.oldesp.example ~all"),
-        ("sl1._domainkey.promo.ostrel.example", "v=DKIM1; k=rsa; p={key}"),
-        ("_dmarc.promo.ostrel.example", "v=DMARC1; p=quarantine; rua=mailto:dmarc@ostrel.example"),
-    ],
+        ("_dmarc.news.ostrel.example", "v=DMARC1; p=reject; rua=mailto:dmarc@ostrel.example")],
+    "mail.tamsin.example": [
+        ("mail.tamsin.example", f"v=spf1 {ESP_INCLUDE} -all"),
+        ("sl1._domainkey.mail.tamsin.example", "v=DKIM1; k=rsa; p={key}"),
+        ("_dmarc.mail.tamsin.example", "v=DMARC1; p=reject; rua=mailto:dmarc@tamsin.example")],
+    "shop.tamsin.example": [
+        ("shop.tamsin.example", f"v=spf1 {ESP_INCLUDE} ~all"),
+        ("sl1._domainkey.shop.tamsin.example", "v=DKIM1; k=rsa; p={key}"),
+        ("_dmarc.shop.tamsin.example", "v=DMARC1; p=quarantine; rua=mailto:dmarc@tamsin.example")],
+    "promo.tamsin.example": [
+        ("promo.tamsin.example", "v=spf1 include:mx.oldesp.example ~all"),
+        ("sl1._domainkey.promo.tamsin.example", "v=DKIM1; k=rsa; p={key}"),
+        ("_dmarc.promo.tamsin.example", "v=DMARC1; p=quarantine; rua=mailto:dmarc@tamsin.example")],
 }
 
-_STREET = "Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA"
-# Footer address -> how many marketing emails carry it. The first three are registered.
-MARKETING_ADDRESSES = [
-    (_STREET, 52),
-    ("Ostrel Botanicals Inc. · 418 Larch Street, Suite 200 · Portland, OR 97209 · USA", 24),
-    ("Ostrel Botanicals Inc., PO Box 7721, Portland, OR 97207, USA", 18),
-    ("Ostrel Botanicals Inc., 418 Larch Street, Suite 120, Portland, OR 97209, USA", 4),
-    ("Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97210, USA", 4),
-    ("Ostrel Botanicals Inc., 22 Alder Street, Portland, OR 97205, USA", 3),
-    ("Ostrel Botanicals Inc., Portland, Oregon", 3),
-    ("", 2),
-]
-MARKETING_UNSUBSCRIBES = [
-    ("Unsubscribe: {{ unsubscribe_link }}", 60),
-    ("Unsubscribe: {{unsubscribe_link}}", 15),
-    ("Choose your emails or unsubscribe: {{ preferences_link }}", 15),
-    ("Unsubscribe: {{ unsubscribe_url }}", 5),
-    ("Unsubscribe: {{ Unsubscribe_Link }}", 4),
-    ("To unsubscribe, log in to your account at ostrel.example.", 4),
-    ("To unsubscribe, reply STOP to this email.", 3),
-    ("", 4),
-]
-# From domain -> how many emails of each stream are sent from it.
-MARKETING_DOMAINS = [("mail.ostrel.example", 52), ("uk.ostrel.example", 14), ("ca.ostrel.example", 14),
-                     ("eu.ostrel.example", 10), ("news.ostrel.example", 8), ("promo.ostrel.example", 4),
-                     ("ostrel.example", 4), ("ostrel-mail.example", 4)]
-TRANSACTIONAL_DOMAINS = [("orders.ostrel.example", 34), ("mail.ostrel.example", 3), ("ostrel.example", 3)]
-DOMAIN_REGION = {"uk.ostrel.example": "UK", "ca.ostrel.example": "CA", "eu.ostrel.example": "EU"}
-REGION_COUNTS = {"US": 50, "UK": 18, "EU": 22, "CA": 20}
-# How many of each region's marketing emails include one audience the consent table does not allow.
-REGION_BAD = {"US": 6, "UK": 3, "EU": 6, "CA": 5}
-NON_OFFER_PURPOSES = [("newsletter", 22), ("survey", 8), ("event invitation", 6), ("preferences", 4), ("launch", 10)]
-OFFER_PURPOSES = ["welcome offer", "abandoned cart", "win-back", "birthday", "seasonal sale"]
-SHIPPING_PURPOSES = ["free shipping", "abandoned cart", "welcome offer"]
-# Offer pattern -> how many promotional emails get it. The ones marked x break section 4.
-OFFER_PATTERNS = [("match", 17), ("match_everything", 4), ("pct_higher", 3), ("everything_excluded", 3),
-                  ("end_later", 3), ("up_to_max", 7), ("up_to_more", 3), ("shipping_minimum_stated", 8),
-                  ("shipping_minimum_hidden", 4), ("shipping_free", 8)]
-TRANSACTIONAL_PURPOSES = [("order confirmation", 10), ("shipping notice", 8), ("delivery confirmation", 6),
-                          ("receipt", 4), ("refund confirmation", 3), ("password reset", 5), ("account security", 4)]
-# Promotional-block pattern -> count, for transactional emails that are not security emails.
-TRANSACTIONAL_PATTERNS = [("none", 9), ("recommendation_after", 8), ("review_then_recommendation", 4),
-                          ("promo_then_support", 3), ("promo_before", 3), ("two_promotional", 2), ("promo_with_code", 2)]
-SECURITY_PATTERNS = [("none", 5), ("recommendation_after", 4)]
-TRANSACTIONAL_FOOTERS = [("Ostrel Botanicals Inc. · ostrel.example", 28), (_STREET, 8),
-                         ("Manage your emails: {{ preferences_link }}", 4)]
-
-_PRODUCTS = ["Oat Milk Cleanser", "Green Clay Cleanser", "Rose Cleansing Balm", "Cloudberry Barrier Cream",
-             "Rosehip Night Oil", "Vitamin C Brightening Serum", "Niacinamide Pore Serum", "Peptide Firming Serum",
-             "Calendula Hand Cream", "Sea Buckthorn Lip Balm", "Bamboo Exfoliating Mitt", "Mineral Day Fluid"]
-_CATEGORIES = ["cleansers", "serums", "moisturisers", "body care", "gift sets", "travel sizes"]
-_NEWSLETTER = [("What's new at Ostrel this month", "Two new products and a routine for travel"),
-               ("Your winter skin reset starts here", "Three routines for cold, dry days"),
-               ("Inside our formulation lab", "How a cream goes from idea to shelf"),
-               ("Five minutes to a better routine", "Small changes our customers swear by"),
-               ("The ingredient guide you asked for", "Ceramides, niacinamide and oats, explained")]
-_LAUNCH = ["Our newest product, in two sizes", "Made for dry, cold days", "Now in our shop"]
-_OTHER_SUBJECTS = {
-    "survey": [("Two minutes to tell us about your routine?", "Five questions, no sign-in")],
-    "event invitation": [("You're invited to our skincare evening", "Meet our formulators in Portland")],
-    "preferences": [("Choose what you hear from us", "Pick topics, or take a break")],
-}
-_PREHEADERS = ["Stock up for spring", "Your favourites are waiting", "A little thank-you", "Made in small batches",
-               "Picked by our team", "For dry, cold days"]
-
-
-def _expand(counted: list[tuple[object, int]], rng: random.Random) -> list:
-    items = [item for item, count in counted for _ in range(count)]
-    rng.shuffle(items)
-    return items
-
-
-def _weekday(day_of_february: int) -> str:
-    return WEEKDAYS[day(day_of_february).weekday()]
-
-
-def _offer_email(pattern: str, rng: random.Random) -> dict:
-    """The subject, preheader and offer block of a promotional email, and the
-    facts the SUBJECT rule reads, for one offer pattern."""
-    end = rng.randint(14, 27)
-    until = f"until {_weekday(end)} {end} February"
-    category = rng.choice(_CATEGORIES)
-    pct = rng.choice([10, 15, 20, 25, 30])
-    claims: dict = {}
-    offer: dict = {"end": _weekday(end)}
-    with_end = rng.random() < 0.5
-    if pattern in ("match", "pct_higher", "end_later"):
-        body = f"{pct}% off all {category} {until}."
-        offer.update(pcts=[pct], limited=False)
-        said = pct + 5 if pattern == "pct_higher" else pct
-        claim = f"{said}% off {category}"
-        claims["pct"] = said
-        if pattern == "end_later":
-            claim += f", ends {_weekday(end + 1)}"
-            claims["end"] = _weekday(end + 1)
-        elif with_end:
-            claim += f" until {_weekday(end)}"
-            claims["end"] = _weekday(end)
-    elif pattern in ("match_everything", "everything_excluded"):
-        word = rng.choice(["everything", "sitewide"])
-        body = f"{pct}% off everything in the shop {until}."
-        excluded = pattern == "everything_excluded"
-        if excluded:
-            body += " Excludes gift sets and gift cards."
-        offer.update(pcts=[pct], limited=excluded)
-        claim = f"{pct}% off {word}"
-        claims.update(pct=pct, scope=True)
-    elif pattern in ("up_to_max", "up_to_more"):
-        low = rng.choice([10, 15, 20])
-        pcts = [low, low + 10, low + 20]
-        body = f"Save {pcts[0]}%, {pcts[1]}% or {pcts[2]}% on selected {category} {until}."
-        offer.update(pcts=pcts, limited=True)
-        said = pcts[2] + (10 if pattern == "up_to_more" else 0)
-        claim = f"Up to {said}% off {category}"
-        claims.update(pct=said, up_to=True)
-    else:
-        minimum = None if pattern == "shipping_free" else rng.choice([35, 40, 50, 60])
-        offer["shipping_minimum"] = minimum
-        if minimum:
-            body = f"Free shipping on orders over ${minimum} {until}."
-            claim = f"Free shipping over ${minimum}" if pattern == "shipping_minimum_stated" else "Free shipping on every order"
+# (brand, region, stream) -> the From addresses allowed. Ids M01.. in this order.
+_SENDERS: dict[tuple[str, str, str], tuple[str, ...]] = {}
+for _brand in BRANDS:
+    for _region in REGIONS:
+        if _brand == "Ostrel":
+            _marketing = {"US": ("hello@mail.ostrel.example", "offers@mail.ostrel.example"),
+                          "UK": ("hello@uk.ostrel.example",), "EU": ("hallo@eu.ostrel.example",),
+                          "CA": ("hello@ca.ostrel.example", "news@news.ostrel.example")}[_region]
+            _orders = ("orders@orders.ostrel.example",)
         else:
-            body = f"Free shipping on every order {until}."
-            claim = "Free shipping on every order"
-        claims["free_shipping_no_minimum"] = pattern == "shipping_minimum_hidden"
-    in_preheader = rng.random() < 0.3
-    neutral = rng.choice(_PREHEADERS)
-    subject, preheader = (rng.choice(["A note from Ostrel", "Something for you", "This week at Ostrel"]), claim) \
-        if in_preheader else (claim, neutral)
-    return {"subject": subject, "preheader": preheader, "claims": claims, "offer": offer, "blocks": [("offer", body)]}
+            _marketing = (("hello@mail.tamsin.example", "deals@promo.tamsin.example") if _region in ("US", "CA")
+                          else ("hello@mail.tamsin.example",))
+            _orders = ("orders@shop.tamsin.example",)
+        _SENDERS[(_brand, _region, "marketing")] = _marketing
+        _SENDERS[(_brand, _region, "transactional")] = _orders
+SENDERS = [(f"M{number:02d}", *key, addresses) for number, (key, addresses) in enumerate(_SENDERS.items(), 1)]
+
+ADDRESS_BOOK = [
+    ("L01", "Ostrel", "US", "Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA"),
+    ("L02", "Ostrel", "UK", "Ostrel Botanicals Ltd, 9 Quillan Row, London E2 7QA, UK"),
+    ("L03", "Ostrel", "EU", "Ostrel Botanicals BV, Veldhuisstraat 212, 1016 DZ Amsterdam, Netherlands"),
+    ("L04", "Ostrel", "CA", "Ostrel Botanicals Canada Inc., 77 Harrow Lane, Toronto, ON M5J 2S1, Canada"),
+    ("L05", "Tamsin", "US", "Tamsin Home Inc., 240 Millbrook Road, Burlington, VT 05401, USA"),
+    ("L06", "Tamsin", "UK", "Tamsin Home Ltd, 31 Ferrand Street, Manchester M1 3HE, UK"),
+    ("L07", "Tamsin", "EU", "Tamsin Home BV, Lindengracht 18, 1015 KH Amsterdam, Netherlands"),
+    ("L08", "Tamsin", "CA", "Tamsin Home Canada Inc., 9 Ashby Court, Toronto, ON M5E 1B2, Canada"),
+]
+OLD_ADDRESSES = {"Ostrel": "Ostrel Botanicals Inc., 22 Alder Street, Portland, OR 97205, USA",
+                 "Tamsin": "Tamsin Home Inc., 12 Elm Court, Burlington, VT 05401, USA"}
+
+SKUS = {"OS-101": ("Ostrel", "Oat Milk Cleanser"), "OS-114": ("Ostrel", "Cloudberry Barrier Cream"),
+        "OS-120": ("Ostrel", "Rosehip Night Oil"), "TM-201": ("Tamsin", "Cedar and Fig Candle"),
+        "TM-210": ("Tamsin", "Linen Room Spray")}
+# sku -> region -> price before any change in February or March.
+BASE_PRICES = {
+    "OS-101": {"US": 24, "UK": 20, "EU": 22, "CA": 31}, "OS-114": {"US": 46, "UK": 38, "EU": 42, "CA": 58},
+    "OS-120": {"US": 38, "UK": 32, "EU": 35, "CA": 48}, "TM-201": {"US": 34, "UK": 28, "EU": 31, "CA": 44},
+    "TM-210": {"US": 22, "UK": 18, "EU": 20, "CA": 28},
+}
+# (sku, region) whose price rises during the period, by how much; the day is set from a series that shows it.
+PRICE_RISES = {("OS-114", "US"): 4, ("OS-114", "CA"): 5, ("TM-201", "US"): 3, ("TM-210", "US"): 2,
+               ("OS-120", "EU"): 3}
+# code -> region -> discount, for each brand's promotions.
+PROMO_DISCOUNTS = {
+    ("Ostrel", "GLOW"): {"US": 15, "UK": 15, "EU": 10, "CA": 20},
+    ("Ostrel", "BACK"): {"US": 25, "CA": 20},
+    ("Ostrel", "WELCOME"): {"UK": 10},
+    ("Tamsin", "HEARTH"): {"US": 20, "UK": 15, "EU": 15, "CA": 20},
+    ("Tamsin", "WARM"): {"US": 15, "CA": 10},
+}
+
+# Audiences: (key, brand, region, name, consent, how its dates are set against the emails it gets).
+AUDIENCE_PLAN = [
+    ("O-US-signup", "Ostrel", "US", "US newsletter sign-ups", "express", ("inside", "promotional")),
+    ("O-US-customers", "Ostrel", "US", "US customers", "customer", ("fresh",)),
+    ("O-US-loyalty", "Ostrel", "US", "US loyalty members", "express", ("outside", "promotional")),
+    ("O-UK-signup", "Ostrel", "UK", "UK newsletter sign-ups", "express", ("late",)),
+    ("O-UK-customers", "Ostrel", "UK", "UK customers", "customer", ("outside", "promotional")),
+    ("O-UK-fair", "Ostrel", "UK", "Spring fair leads", "express", ("inside", "promotional")),
+    ("O-EU-signup", "Ostrel", "EU", "EU newsletter sign-ups", "express", ("fresh",)),
+    ("O-EU-customers", "Ostrel", "EU", "EU customers", "customer", ("fresh",)),
+    ("O-EU-loyalty", "Ostrel", "EU", "EU loyalty members", "express", ("outside", "promotional")),
+    ("O-CA-signup", "Ostrel", "CA", "Canada newsletter sign-ups", "express", ("fresh",)),
+    ("O-CA-customers", "Ostrel", "CA", "Canada customers", "customer", ("late",)),
+    ("O-CA-lapsed", "Ostrel", "CA", "Canada lapsed customers", "customer", ("outside", "promotional")),
+    ("T-US-signup", "Tamsin", "US", "US newsletter sign-ups", "express", ("inside", "promotional")),
+    ("T-US-customers", "Tamsin", "US", "US customers", "customer", ("fresh",)),
+    ("T-US-popup", "Tamsin", "US", "Holiday pop-up sign-ups", "express", ("late",)),
+    ("T-UK-signup", "Tamsin", "UK", "UK newsletter sign-ups", "express", ("outside", "promotional")),
+    ("T-UK-customers", "Tamsin", "UK", "UK customers", "customer", ("fresh",)),
+    ("T-EU-signup", "Tamsin", "EU", "EU newsletter sign-ups", "express", ("inside", "promotional")),
+    ("T-EU-customers", "Tamsin", "EU", "EU customers", "customer", ("fresh",)),
+    ("T-CA-signup", "Tamsin", "CA", "Canada newsletter sign-ups", "express", ("fresh",)),
+    ("T-CA-customers", "Tamsin", "CA", "Canada customers", "customer", ("inside", "promotional")),
+]
+
+# Step patterns: (day offset, audience slot). "tight" ones put a third email
+# of the series to one audience inside seven days; "edge" ones put it on the
+# seventh day after the first, one day outside.
+PATTERNS = {
+    "spread": [(0, 0), (4, 0), (9, 0), (14, 0)],
+    "spread2": [(0, 0), (0, 1), (5, 0), (5, 1), (11, 0), (11, 1)],
+    "tight3": [(0, 0), (2, 0), (5, 0), (10, 0)],
+    "tight4": [(0, 0), (2, 0), (4, 0), (6, 0), (13, 0)],
+    "edge7": [(0, 0), (3, 0), (7, 0), (12, 0)],
+    "edge7two": [(0, 0), (0, 1), (3, 0), (3, 1), (7, 0), (7, 1)],
+    "alternate": [(0, 0), (1, 1), (2, 0), (3, 1), (5, 0), (6, 1)],
+}
+# (brand, region, purpose, promo code, sku, first day as days after 1 February, pattern, audience keys, promo dates)
+# promo dates: "" (the promotion runs from the first step to the last), "late" (it ends the day before
+# the last step), "early" (it starts the day after the first step).
+SERIES_PLAN = [
+    ("Ostrel", "US", "promotion", "GLOW", "OS-114", 9, "tight3", ["O-US-signup"], ""),
+    ("Ostrel", "US", "newsletter", "", "", 10, "spread2", ["O-US-signup", "O-US-customers"], ""),
+    ("Ostrel", "US", "win-back", "BACK", "OS-120", 16, "spread", ["O-US-customers"], ""),
+    ("Ostrel", "US", "launch", "", "OS-101", 22, "edge7", ["O-US-loyalty"], ""),
+    ("Ostrel", "US", "survey", "", "", 12, "spread", ["O-US-loyalty"], ""),
+    ("Ostrel", "UK", "promotion", "GLOW", "OS-114", 11, "spread2", ["O-UK-signup", "O-UK-customers"], "late"),
+    ("Ostrel", "UK", "newsletter", "", "", 15, "edge7two", ["O-UK-signup", "O-UK-fair"], ""),
+    ("Ostrel", "UK", "welcome offer", "WELCOME", "OS-101", 20, "tight4", ["O-UK-fair"], ""),
+    ("Ostrel", "EU", "promotion", "GLOW", "OS-120", 13, "spread2", ["O-EU-signup", "O-EU-loyalty"], ""),
+    ("Ostrel", "EU", "newsletter", "", "", 18, "alternate", ["O-EU-signup", "O-EU-customers"], ""),
+    ("Ostrel", "CA", "promotion", "GLOW", "OS-114", 14, "spread", ["O-CA-signup"], "early"),
+    ("Ostrel", "CA", "win-back", "BACK", "OS-120", 24, "tight3", ["O-CA-lapsed"], ""),
+    ("Ostrel", "CA", "newsletter", "", "", 9, "spread2", ["O-CA-signup", "O-CA-customers"], ""),
+    ("Ostrel", "CA", "event invitation", "", "", 26, "edge7", ["O-CA-customers"], ""),
+    ("Tamsin", "US", "promotion", "HEARTH", "TM-201", 10, "alternate", ["T-US-signup", "T-US-customers"], ""),
+    ("Tamsin", "US", "newsletter", "", "", 19, "spread", ["T-US-popup"], ""),
+    ("Tamsin", "US", "launch", "", "TM-210", 12, "spread2", ["T-US-signup", "T-US-popup"], ""),
+    ("Tamsin", "US", "welcome offer", "WARM", "TM-210", 27, "tight4", ["T-US-customers"], ""),
+    ("Tamsin", "UK", "promotion", "HEARTH", "TM-201", 12, "spread2", ["T-UK-signup", "T-UK-customers"], "late"),
+    ("Tamsin", "UK", "newsletter", "", "", 21, "edge7", ["T-UK-signup"], ""),
+    ("Tamsin", "EU", "promotion", "HEARTH", "TM-210", 15, "spread2", ["T-EU-signup", "T-EU-customers"], "early"),
+    ("Tamsin", "EU", "survey", "", "", 23, "spread", ["T-EU-signup"], ""),
+    ("Tamsin", "CA", "promotion", "HEARTH", "TM-201", 16, "tight3", ["T-CA-customers"], ""),
+    ("Tamsin", "CA", "newsletter", "", "", 11, "spread2", ["T-CA-signup", "T-CA-customers"], ""),
+    ("Tamsin", "CA", "welcome offer", "WARM", "TM-210", 18, "edge7", ["T-CA-signup"], "late"),
+]
+TRANSACTIONAL_COUNT = 26
+# Planted slips, each a count of marketing emails (or transactional ones where named).
+SLIPS = {
+    "sender_local_part": 4, "sender_transactional_address": 3, "sender_other_brand": 3, "sender_other_region": 3,
+    "transactional_sender_marketing_address": 3,
+    "address_other_region": 4, "address_other_brand": 3, "address_old": 3, "address_blank": 2,
+    "discount_other_region": 4, "end_other_region": 3,
+    "price_old_after_rise": 4, "price_new_before_rise": 3, "price_other_region": 3,
+}
 
 
-def _non_offer_email(purpose: str, rng: random.Random) -> dict:
-    if purpose == "newsletter":
-        subject, preheader = rng.choice(_NEWSLETTER)
-        blocks = [("message", f"A routine for cold days, featuring {rng.choice(_PRODUCTS)}.")]
-    elif purpose == "launch":
-        product = rng.choice(_PRODUCTS)
-        subject, preheader = f"New: {product}", rng.choice(_LAUNCH)
-        blocks = [("product", f"Meet {product}, made for dry skin.")]
-    elif purpose == "event invitation":
-        subject, preheader = rng.choice(_OTHER_SUBJECTS[purpose])
-        blocks = [("message", f"Join us at our Portland studio on {_weekday(25)} 25 February at 6 pm.")]
-    else:
-        subject, preheader = rng.choice(_OTHER_SUBJECTS[purpose])
-        text = ("Five questions on how you use our products." if purpose == "survey"
-                else "Choose which emails you get: products, routines or offers.")
-        blocks = [("message", text)]
-    return {"subject": subject, "preheader": preheader, "claims": {}, "offer": {}, "blocks": blocks}
+def _audit_day(offset: int) -> date:
+    return date(2027, 2, 1) + timedelta(days=offset)
 
 
-def _transactional_blocks(purpose: str, pattern: str, rng: random.Random) -> list[tuple[str, str]]:
-    order = rng.randint(48100, 48999)
-    product, paired = rng.sample(_PRODUCTS, 2)
-    base = {
-        "order confirmation": [("order", f"Order {order}: {product}, ${rng.randint(18, 64)}.00."),
-                               ("shipping", f"Expected {rng.randint(16, 20)} to {rng.randint(21, 24)} February.")],
-        "shipping notice": [("shipping", f"Order {order} is on its way. Follow it with your tracking link."),
-                            ("order", f"In the parcel: {product}.")],
-        "delivery confirmation": [("shipping", f"Order {order} was delivered on {rng.randint(10, 20)} February.")],
-        "receipt": [("order", f"Receipt for order {order}: ${rng.randint(18, 64)}.00 paid by card.")],
-        "refund confirmation": [("order", f"We refunded ${rng.randint(18, 64)}.00 for order {order}.")],
-        "password reset": [("account", "Use the link within 30 minutes to reset your password.")],
-        "account security": [("account", f"A new device signed in to your account on {rng.randint(10, 20)} February.")],
-    }[purpose]
-    recommendation = ("recommendations", f"Pairs well: {paired}.")
-    promo = ("promo", f"Take {rng.choice([10, 15, 20])}% off your next order.")
-    support = ("support", "Questions? Reply here.")
-    if pattern == "none":
-        return base + [support]
-    if pattern == "recommendation_after":
-        return base + [recommendation]
-    if pattern == "review_then_recommendation":
-        return base + [("review_request", "How did we do? Rate your order in one click."), recommendation]
-    if pattern == "promo_then_support":
-        return base + [promo, support]
-    if pattern == "promo_before":
-        return [promo] + base
-    if pattern == "two_promotional":
-        return base + [recommendation, promo]
-    code = f"{rng.choice(['SPRING', 'THANKS', 'NEXT'])}{rng.choice([10, 15, 20])}"
-    return base + [("promo", f"Take 15% off your next order with code {code}.")]
+def _money(region: str, amount: float) -> str:
+    return f"{CURRENCY[region]}{amount:.2f}"
 
 
-def _sender(domain: str, local: str) -> str:
-    return f"Ostrel Botanicals <{local}@{domain}>"
+def message_type(purpose: str) -> str:
+    return "promotional" if purpose in PROMOTIONAL_PURPOSES else "newsletter"
 
 
 @lru_cache(maxsize=1)
-def drafts() -> dict[str, dict]:
-    """Every live email, by id: 110 marketing emails and 40 transactional ones,
-    each built from counted features so that every trap appears several times."""
+def audit_data() -> dict:
+    """Every export of the crosscheck task, built once from the plans above."""
     rng = random.Random(AUDIT_SEED)
-    emails: list[dict] = []
-    # Marketing: a domain, then the region it implies, then audiences.
-    domains = _expand(MARKETING_DOMAINS, rng)
-    left = dict(REGION_COUNTS)
-    for domain in DOMAIN_REGION:
-        left[DOMAIN_REGION[domain]] -= sum(1 for d in domains if d == domain)
-    others = _expand([(region, count) for region, count in left.items()], rng)
-    regions = [DOMAIN_REGION.get(domain) or others.pop() for domain in domains]
-    bad_slots: dict[str, list[bool]] = {}
-    for region, count in REGION_COUNTS.items():
-        slots = [True] * REGION_BAD[region] + [False] * (count - REGION_BAD[region])
-        rng.shuffle(slots)
-        bad_slots[region] = slots
-    purposes = _expand(NON_OFFER_PURPOSES, rng) + [None] * sum(count for _p, count in OFFER_PATTERNS)
-    rng.shuffle(purposes)
-    offers = _expand(OFFER_PATTERNS, rng)
-    addresses = _expand(MARKETING_ADDRESSES, rng)
-    unsubscribes = _expand(MARKETING_UNSUBSCRIBES, rng)
-    bad_first = True
-    for domain, region, purpose, address, unsubscribe in zip(domains, regions, purposes, addresses, unsubscribes):
-        good, bad = REGION_AUDIENCES[region]
-        audiences = sorted(rng.sample(good, rng.randint(1, len(good))))
-        if bad_slots[region].pop():
-            # The audience the table does not allow comes first in half of these, last in the rest.
-            audiences = [rng.choice(bad)] + audiences if bad_first else audiences + [rng.choice(bad)]
-            bad_first = not bad_first
-        if purpose is None:
-            pattern = offers.pop()
-            content = _offer_email(pattern, rng)
-            purpose = rng.choice(SHIPPING_PURPOSES if pattern.startswith("shipping") else OFFER_PURPOSES)
-        else:
-            content = _non_offer_email(purpose, rng)
-        local = {"newsletter": "news", "launch": "hello"}.get(purpose, "offers" if content["offer"] else "hello")
-        emails.append({"stream": "marketing", "purpose": purpose, "audiences": audiences,
-                       "from": _sender(domain, local), "footer": " · ".join(part for part in (address, unsubscribe) if part),
-                       **content})
-    # Transactional: a purpose, its promotional pattern, a domain and a footer.
-    t_domains = _expand(TRANSACTIONAL_DOMAINS, rng)
-    t_footers = _expand(TRANSACTIONAL_FOOTERS, rng)
-    t_purposes = [p for p, count in TRANSACTIONAL_PURPOSES for _ in range(count)]
-    security = [p for p in t_purposes if p in NO_PROMOTION_PURPOSES]
-    deliveries = [p for p in t_purposes if p == "delivery confirmation"]
-    rest = [p for p in t_purposes if p not in NO_PROMOTION_PURPOSES and p != "delivery confirmation"]
-    patterns = _expand([(p, c) for p, c in TRANSACTIONAL_PATTERNS if p != "review_then_recommendation"], rng)
-    review_count = dict(TRANSACTIONAL_PATTERNS)["review_then_recommendation"]
-    paired = [(p, "review_then_recommendation" if index < review_count else patterns.pop())
-              for index, p in enumerate(deliveries)]
-    paired += [(p, patterns.pop()) for p in rest]
-    paired += list(zip(security, _expand(SECURITY_PATTERNS, rng)))
-    rng.shuffle(paired)
-    for (purpose, pattern), domain, footer in zip(paired, t_domains, t_footers):
-        subject = {"order confirmation": "Your order is confirmed", "shipping notice": "Your order is on its way",
-                   "delivery confirmation": "Your order was delivered", "receipt": "Your receipt from Ostrel",
-                   "refund confirmation": "Your refund is on its way", "password reset": "Reset your Ostrel password",
-                   "account security": "A new sign-in to your Ostrel account"}[purpose]
-        emails.append({"stream": "transactional", "purpose": purpose, "audiences": [TRANSACTIONAL_AUDIENCE],
-                       "from": _sender(domain, "orders"), "subject": subject, "preheader": "Details inside",
-                       "claims": {}, "offer": {}, "blocks": _transactional_blocks(purpose, pattern, rng),
-                       "footer": footer})
-    rng.shuffle(emails)
-    return {f"E{number:03d}": email for number, email in enumerate(emails, 1)}
+    # ── DNS records
+    records = []
+    for domain, entries in DNS_SPEC.items():
+        for name, value in entries:
+            key = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ" + "".join(
+                rng.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/") for _ in range(32))
+            records.append({"record_id": f"D{len(records) + 1:02d}", "domain": domain, "name": name,
+                            "type": "TXT", "value": value.replace("{key}", key + "IDAQAB")})
+    # ── marketing emails, series by series
+    keys = {plan[0]: f"A{number:02d}" for number, plan in enumerate(AUDIENCE_PLAN, 1)}
+    marketing = []
+    for number, (brand, region, purpose, code, sku, first, pattern, audiences, promo_dates) in enumerate(SERIES_PLAN, 1):
+        series = f"S{number:02d}"
+        for step, (offset, slot) in enumerate(PATTERNS[pattern]):
+            marketing.append({
+                "series": series, "step": step, "send_date": _audit_day(first + offset), "brand": brand, "region": region,
+                "stream": "marketing", "purpose": purpose, "audience_id": keys[audiences[slot]],
+                "promo_code": code, "sku": sku, "promo_dates": promo_dates,
+            })
+    # ── promotions: one row per code, brand and region; it runs over its series unless planted otherwise
+    promotions = []
+    for (brand, code), by_region in PROMO_DISCOUNTS.items():
+        for region, discount in by_region.items():
+            mine = [e for e in marketing if (e["brand"], e["region"], e["promo_code"]) == (brand, region, code)]
+            start, end = min(e["send_date"] for e in mine), max(e["send_date"] for e in mine)
+            if mine[0]["promo_dates"] == "late":
+                end -= timedelta(days=1)
+            elif mine[0]["promo_dates"] == "early":
+                start += timedelta(days=1)
+            promotions.append({"promo_id": f"P{len(promotions) + 1:02d}", "code": code, "brand": brand,
+                               "region": region, "start": start, "end": end, "discount": discount})
+    promo_of = {(p["brand"], p["region"], p["code"]): p for p in promotions}
+    # ── prices: one row per sku and region, or two where the price rises on the date of a series' step
+    prices = []
+    for sku, by_region in BASE_PRICES.items():
+        for region, base in by_region.items():
+            rise = PRICE_RISES.get((sku, region))
+            shown = sorted({e["send_date"] for e in marketing if (e["sku"], e["region"]) == (sku, region)})
+            if rise and shown:
+                change = shown[len(shown) // 2]
+                prices.append({"price_id": "", "sku": sku, "region": region, "price": base,
+                               "effective_from": date(2027, 1, 1), "effective_to": change - timedelta(days=1)})
+                prices.append({"price_id": "", "sku": sku, "region": region, "price": base + rise,
+                               "effective_from": change, "effective_to": date(2027, 12, 31)})
+            else:
+                prices.append({"price_id": "", "sku": sku, "region": region, "price": base,
+                               "effective_from": date(2027, 1, 1), "effective_to": date(2027, 12, 31)})
+    for number, row in enumerate(prices, 1):
+        row["price_id"] = f"R{number:02d}"
+
+    def price_on(sku: str, region: str, when: date) -> dict:
+        return next(p for p in prices if p["sku"] == sku and p["region"] == region
+                    and p["effective_from"] <= when <= p["effective_to"])
+
+    # ── what each marketing email shows when nothing is planted
+    address_of = {(brand, region): address for _id, brand, region, address in ADDRESS_BOOK}
+    for e in marketing:
+        allowed = _SENDERS[(e["brand"], e["region"], "marketing")]
+        e["from_address"] = allowed[1] if len(allowed) > 1 and e["step"] % 3 == 1 else allowed[0]
+        e["footer_address"] = address_of[(e["brand"], e["region"])]
+        promo = promo_of.get((e["brand"], e["region"], e["promo_code"]))
+        e["discount_shown"] = f"{promo['discount']}%" if promo else ""
+        e["offer_ends_shown"] = promo["end"].isoformat() if promo else ""
+        e["price_shown"] = _money(e["region"], price_on(e["sku"], e["region"], e["send_date"])["price"]) if e["sku"] else ""
+
+    # ── planted slips, each on emails drawn from the ones it can apply to
+    def draw(name: str, eligible: list[dict]) -> list[dict]:
+        picked = rng.sample(sorted(eligible, key=lambda e: (e["series"], e["step"])), SLIPS[name])
+        for e in picked:
+            e.setdefault("slips", []).append(name)
+        return picked
+
+    untouched = lambda e, prefix: not any(s.startswith(prefix) for s in e.get("slips", []))  # noqa: E731
+    for e in draw("sender_local_part", [e for e in marketing if e["brand"] == "Ostrel" and e["region"] in ("US", "UK")]):
+        domain = e["from_address"].split("@")[1]
+        e["from_address"] = f"news@{domain}"
+    for e in draw("sender_transactional_address", [e for e in marketing if untouched(e, "sender")]):
+        e["from_address"] = _SENDERS[(e["brand"], e["region"], "transactional")][0]
+    for e in draw("sender_other_brand", [e for e in marketing if untouched(e, "sender")]):
+        other = "Tamsin" if e["brand"] == "Ostrel" else "Ostrel"
+        e["from_address"] = _SENDERS[(other, e["region"], "marketing")][0]
+    for e in draw("sender_other_region", [e for e in marketing if e["brand"] == "Ostrel" and untouched(e, "sender")]):
+        other = {"US": "UK", "UK": "US", "EU": "UK", "CA": "US"}[e["region"]]
+        e["from_address"] = _SENDERS[("Ostrel", other, "marketing")][0]
+    for e in draw("address_other_region", marketing):
+        other = {"US": "CA", "CA": "US", "UK": "EU", "EU": "UK"}[e["region"]]
+        e["footer_address"] = address_of[(e["brand"], other)]
+    for e in draw("address_other_brand", [e for e in marketing if untouched(e, "address")]):
+        other = "Tamsin" if e["brand"] == "Ostrel" else "Ostrel"
+        e["footer_address"] = address_of[(other, e["region"])]
+    for e in draw("address_old", [e for e in marketing if e["region"] == "US" and untouched(e, "address")]):
+        e["footer_address"] = OLD_ADDRESSES[e["brand"]]
+    for e in draw("address_blank", [e for e in marketing if untouched(e, "address")]):
+        e["footer_address"] = ""
+
+    def other_discount(e: dict) -> int | None:
+        by_region = PROMO_DISCOUNTS[(e["brand"], e["promo_code"])]
+        mine = by_region[e["region"]]
+        return next((d for r, d in sorted(by_region.items()) if d != mine), None)
+
+    for e in draw("discount_other_region", [e for e in marketing if e["promo_code"] and other_discount(e)]):
+        e["discount_shown"] = f"{other_discount(e)}%"
+
+    def other_end(e: dict) -> date | None:
+        mine = promo_of[(e["brand"], e["region"], e["promo_code"])]["end"]
+        return next((p["end"] for p in promotions if p["code"] == e["promo_code"] and p["brand"] == e["brand"]
+                     and p["end"] != mine), None)
+
+    for e in draw("end_other_region", [e for e in marketing if e["promo_code"] and other_end(e) and untouched(e, "discount")]):
+        e["offer_ends_shown"] = other_end(e).isoformat()
+    risen = {(p["sku"], p["region"]) for p in prices if p["effective_from"] > date(2027, 1, 1)}
+    after = [e for e in marketing if (e["sku"], e["region"]) in risen and price_on(e["sku"], e["region"], e["send_date"])["effective_from"] > date(2027, 1, 1)]
+    before = [e for e in marketing if (e["sku"], e["region"]) in risen and e not in after]
+    for e in draw("price_old_after_rise", after):
+        e["price_shown"] = _money(e["region"], BASE_PRICES[e["sku"]][e["region"]])
+    for e in draw("price_new_before_rise", [e for e in before]):
+        e["price_shown"] = _money(e["region"], BASE_PRICES[e["sku"]][e["region"]] + PRICE_RISES[(e["sku"], e["region"])])
+    for e in draw("price_other_region", [e for e in marketing if e["sku"] and e["region"] == "CA" and untouched(e, "price")]):
+        e["price_shown"] = _money("CA", price_on(e["sku"], "US", e["send_date"])["price"])
+    # ── transactional emails: no series, audience, promotion or price; footers are not checked
+    transactional = []
+    for number in range(TRANSACTIONAL_COUNT):
+        brand, region = BRANDS[number % 2], REGIONS[(number // 2) % 4]
+        transactional.append({
+            "series": "", "step": 0, "send_date": _audit_day(rng.randint(8, 47)), "brand": brand, "region": region,
+            "stream": "transactional", "purpose": TRANSACTIONAL_PURPOSES[number % 4], "audience_id": "",
+            "promo_code": "", "sku": "", "promo_dates": "", "discount_shown": "", "offer_ends_shown": "",
+            "price_shown": "", "from_address": _SENDERS[(brand, region, "transactional")][0],
+            "footer_address": rng.choice(["", "", address_of[(brand, rng.choice(REGIONS))]]),
+        })
+    for e in draw("transactional_sender_marketing_address", transactional):
+        e["from_address"] = _SENDERS[(e["brand"], e["region"], "marketing")][0]
+    # ── audiences: consent and activity dates set against the emails each one gets
+    audiences = []
+    for key, brand, region, name, consent, plan in AUDIENCE_PLAN:
+        aid = keys[key]
+        mine = sorted((e for e in marketing if e["audience_id"] == aid), key=lambda e: e["send_date"])
+        first = mine[0]["send_date"]
+        consent_date, last_activity = first - timedelta(days=rng.randint(400, 900)), first - timedelta(days=rng.randint(15, 60))
+        if plan[0] in ("inside", "outside"):
+            typed = [e for e in mine if message_type(e["purpose"]) == plan[1]]
+            pivot = typed[len(typed) // 2]
+            window = CONSENT_WINDOWS[(region, consent)][0 if plan[1] == "promotional" else 1]
+            last_activity = pivot["send_date"] - timedelta(days=window + (plan[0] == "outside"))
+            consent_date = min(consent_date, last_activity - timedelta(days=rng.randint(30, 300)))
+        elif plan[0] == "late":
+            consent_date = mine[len(mine) // 2]["send_date"]
+        audiences.append({"audience_id": aid, "brand": brand, "region": region, "name": name, "consent_type": consent,
+                          "consent_date": consent_date, "last_activity_date": last_activity})
+    # ── ids in send-date order
+    emails = sorted(marketing + transactional, key=lambda e: (e["send_date"], e["stream"], e["series"], e["step"],
+                                                              e["brand"], e["region"]))
+    for number, e in enumerate(emails, 1):
+        e["email_id"] = f"E{number:03d}"
+    return {"records": records, "senders": SENDERS, "addresses": ADDRESS_BOOK, "promotions": promotions,
+            "prices": prices, "audiences": audiences, "emails": emails}
 
 
-def draft_ids() -> list[str]:
-    return list(drafts())
+# ── The policy applied ───────────────────────────────────────────────────────
+
+def _dns_failure(domain: str, records: list[dict]) -> str | None:
+    """The id of the record by which a domain fails section 1, or None."""
+    mine = [r for r in records if r["domain"] == domain]
+    spf = [r for r in mine if r["name"] == domain and r["value"].startswith("v=spf1")]
+    if len(spf) != 1 or ESP_INCLUDE not in spf[0]["value"].split() or spf[0]["value"].split()[-1] not in ("-all", "~all"):
+        return spf[-1]["record_id"]
+    dkim = [r for r in mine if r["name"] == f"{DKIM_SELECTOR}._domainkey.{domain}"]
+    if not dkim or not re.search(r"\bp=[^;\s]", dkim[0]["value"]):
+        return dkim[0]["record_id"]
+    dmarc = [r for r in mine if r["name"] == f"_dmarc.{domain}"]
+    tags = dict(part.strip().split("=", 1) for part in dmarc[0]["value"].split(";") if "=" in part)
+    return None if tags.get("p") in DMARC_POLICIES else dmarc[0]["record_id"]
 
 
-def _address(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace(",", " ").replace("·", " ")).strip()
+def _normal_address(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text).replace(",", " ")).strip().lower()
 
 
-def _domain_of(sender: str) -> str:
-    return sender.rsplit("@", 1)[-1].strip(" >").lower()
-
-
-def domain_failures() -> dict[str, list[str]]:
-    """Each sending domain's failed requirements under section 1 of the policy."""
-    failures = {}
-    for domain, records in DNS.items():
-        at = lambda name: [value for record_name, value in records if record_name == name]  # noqa: E731
-        failed = []
-        spf = [value for value in at(domain) if value.startswith("v=spf1")]
-        if len(spf) != 1 or ESP_INCLUDE not in spf[0].split() or spf[0].split()[-1] not in ("-all", "~all"):
-            failed.append("spf")
-        dkim = at(f"{DKIM_SELECTOR}._domainkey.{domain}")
-        if not any("v=DKIM1" in value and re.search(r"\bp=[^;\s]", value) for value in dkim):
-            failed.append("dkim")
-        dmarc = at(f"_dmarc.{domain}")
-        tags = [dict(part.strip().split("=", 1) for part in value.split(";") if "=" in part) for value in dmarc]
-        if len(tags) != 1 or tags[0].get("p") not in DMARC_POLICIES:
-            failed.append("dmarc")
-        failures[domain] = failed
-    return failures
-
-
-def _subject_broken(claims: dict, offer: dict) -> bool:
-    if "pct" in claims:
-        pcts = offer.get("pcts", [])
-        if claims.get("up_to") and claims["pct"] != max(pcts, default=None):
-            return True
-        if not claims.get("up_to") and pcts != [claims["pct"]]:
-            return True
-    if claims.get("scope") and offer.get("limited"):
-        return True
-    if "end" in claims and claims["end"] != offer.get("end"):
-        return True
-    return bool(claims.get("free_shipping_no_minimum") and offer.get("shipping_minimum"))
-
-
-def _transactional_promo_broken(draft: dict) -> bool:
-    kinds = [kind for kind, _text in draft["blocks"]]
-    promotional = [index for index, kind in enumerate(kinds) if kind in PROMOTIONAL_BLOCKS]
-    if not promotional:
-        return False
-    if draft["purpose"] in NO_PROMOTION_PURPOSES or len(promotional) > 1:
-        return True
-    last_required = max((index for index, kind in enumerate(kinds) if kind in PLACED_AFTER), default=-1)
-    coded = re.search(r"\bcode [A-Z0-9]{4,}\b", draft["blocks"][promotional[0]][1])
-    return promotional[0] < last_required or bool(coded)
-
-
-def _consent_allows(audience_id: str) -> bool:
-    _id, _name, region, consent, double_opt_in, months = next(a for a in AUDIENCES if a[0] == audience_id)
-    if consent == "express":
-        return region != "EU" or double_opt_in == "yes"
-    if consent == "customer":
-        if region == "EU":
-            return False
-        return region != "CA" or int(months) <= CA_CUSTOMER_MONTHS
-    return False
-
-
-def draft_codes(draft: dict) -> set[str]:
-    """The codes the policy gives one email."""
-    codes = set()
-    domain = _domain_of(draft["from"])
-    if domain not in SENDING_DOMAINS or domain_failures()[domain]:
-        codes.add("DOMAIN")
-    marketing = draft["stream"] == "marketing"
-    if marketing and not any(_address(address) in _address(draft["footer"]) for address in REGISTERED_ADDRESSES):
-        codes.add("ADDRESS")
-    tags = re.findall(r"\{\{\s*([A-Za-z_]+)\s*\}\}", draft["footer"])
-    if marketing and not set(tags) & set(UNSUBSCRIBE_TAGS):
-        codes.add("UNSUBSCRIBE")
-    if _subject_broken(draft["claims"], draft["offer"]):
-        codes.add("SUBJECT")
-    if not marketing and _transactional_promo_broken(draft):
-        codes.add("TRANSACTIONAL_PROMO")
-    if marketing and not all(_consent_allows(audience) for audience in draft["audiences"]):
-        codes.add("CONSENT")
+def crosscheck_codes(email_row: dict, data: dict) -> dict[str, str]:
+    """The codes the policy gives one email, each with the id of its evidence row."""
+    codes: dict[str, str] = {}
+    e = email_row
+    domain = e["from_address"].split("@")[1]
+    failing = _dns_failure(domain, data["records"])
+    if failing:
+        codes["DOMAIN"] = failing
+    sender = next(s for s in data["senders"] if s[1:4] == (e["brand"], e["region"], e["stream"]))
+    if e["from_address"] not in sender[4]:
+        codes["SENDER"] = sender[0]
+    if e["stream"] != "marketing":
+        return codes
+    address = next(a for a in data["addresses"] if a[1:3] == (e["brand"], e["region"]))
+    if _normal_address(e["footer_address"]) != _normal_address(address[3]):
+        codes["ADDRESS"] = address[0]
+    audience = next(a for a in data["audiences"] if a["audience_id"] == e["audience_id"])
+    window = CONSENT_WINDOWS[(audience["region"], audience["consent_type"])][
+        0 if message_type(e["purpose"]) == "promotional" else 1]
+    if (window is None or audience["consent_date"] > e["send_date"]
+            or (e["send_date"] - audience["last_activity_date"]).days > window):
+        codes["CONSENT"] = audience["audience_id"]
+    if e["promo_code"]:
+        promo = next(p for p in data["promotions"] if (p["code"], p["brand"], p["region"]) == (e["promo_code"], e["brand"], e["region"]))
+        if not (promo["start"] <= e["send_date"] <= promo["end"]) or e["discount_shown"] != f"{promo['discount']}%" \
+                or e["offer_ends_shown"] != promo["end"].isoformat():
+            codes["PROMO"] = promo["promo_id"]
+    if e["sku"]:
+        price = next(p for p in data["prices"] if p["sku"] == e["sku"] and p["region"] == e["region"]
+                     and p["effective_from"] <= e["send_date"] <= p["effective_to"])
+        if e["price_shown"] != _money(e["region"], price["price"]):
+            codes["PRICE"] = price["price_id"]
+    earlier = sorted((x for x in data["emails"] if x["series"] == e["series"] and x["audience_id"] == e["audience_id"]
+                      and e["send_date"] - timedelta(days=FREQUENCY_DAYS - 1) <= x["send_date"] < e["send_date"]),
+                     key=lambda x: x["send_date"])
+    if len(earlier) >= FREQUENCY_LIMIT:
+        codes["FREQUENCY"] = earlier[0]["email_id"]
     return codes
 
 
 @lru_cache(maxsize=1)
-def audit_reference() -> dict[str, frozenset[str]]:
-    return {draft_id: frozenset(draft_codes(draft)) for draft_id, draft in drafts().items()}
+def audit_reference() -> dict[str, dict[str, str]]:
+    data = audit_data()
+    return {e["email_id"]: crosscheck_codes(e, data) for e in data["emails"]}
 
 
 def audit_answers() -> dict[int, float]:
     """A1 emails that pass, A2 violations, A3 emails with more than one."""
     ref = audit_reference()
-    return {
-        1: sum(1 for codes in ref.values() if not codes),
-        2: sum(len(codes) for codes in ref.values()),
-        3: sum(1 for codes in ref.values() if len(codes) > 1),
-    }
+    return {1: sum(1 for codes in ref.values() if not codes), 2: sum(len(codes) for codes in ref.values()),
+            3: sum(1 for codes in ref.values() if len(codes) > 1)}
+
+
+def draft_ids() -> list[str]:
+    return list(audit_reference())
+
+
+def _verdict_text(codes: dict[str, str]) -> str:
+    return ";".join(f"{code}:{codes[code]}" for code in CODES if code in codes) or "pass"
 
 
 _FIXES = {
-    "DOMAIN": "send from a sending domain that passes section 1, or correct the failing domain's DNS records",
-    "ADDRESS": "put a registered postal address from section 2 in the footer",
-    "UNSUBSCRIBE": "put {{ unsubscribe_link }} in the footer",
-    "SUBJECT": "make the subject and preheader state the body's offer as the body states it",
-    "TRANSACTIONAL_PROMO": "remove the promotion, or keep one block without a code after the order, shipping and account blocks",
-    "CONSENT": "take the audience whose consent does not allow marketing off the email",
+    "DOMAIN": "send from a domain that passes section 1, or correct the failing record",
+    "SENDER": "send from an address the sender map allows for the brand, region and stream",
+    "ADDRESS": "put the brand's registered address for the region in the footer",
+    "CONSENT": "send only to an audience whose consent allows the email on its send date, or move the send",
+    "PROMO": "show the promotion's discount and end date for the region and send while it runs",
+    "PRICE": "show the price in effect for the region on the send date",
+    "FREQUENCY": "move or drop the email so the audience gets at most two of the series in seven days",
 }
 
 
 def audit_reference_answer() -> str:
     """A reply that follows the policy to the letter: what a checker must pass."""
     ref = audit_reference()
-    out = [f"Audit of the {len(ref)} live emails against the sending policy.", "",
+    out = [f"Crosscheck of the {len(ref)} scheduled emails against the sending policy.", "",
            "### findings.csv", "```csv", "email_id,verdict"]
-    out += [f"{email_id},{';'.join(sorted(codes)) if codes else 'pass'}" for email_id, codes in ref.items()]
-    out += ["```", "", "Fixes:", ""]
-    out += [f"- {code}: {_FIXES[code]}." for code in CODES]
+    out += [f"{email_id},{_verdict_text(codes)}" for email_id, codes in ref.items()]
+    out += ["```", "", "Fixes:", ""] + [f"- {code}: {_FIXES[code]}." for code in CODES]
     figures = audit_answers()
     out += ["", *[f"A{index}: {int(figures[index])}" for index in range(1, 4)], ""]
     return "\n".join(out)
 
 
-def _dkim_key(rng: random.Random) -> str:
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    return "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ" + "".join(rng.choice(alphabet) for _ in range(40)) + "IDAQAB"
+# ── The files the candidate reads ────────────────────────────────────────────
 
-
-def dns_records_md() -> str:
-    rng = random.Random(AUDIT_SEED)
-    parts = [f"# {AUDIT_BRAND}: DNS records of the sending domains", "",
-             "Exported from the DNS host on 12 February 2027. Every TXT record at or under each sending domain is "
-             "listed.", ""]
-    for domain, records in DNS.items():
-        parts += [f"## {domain}", "", "| Name | Type | Value |", "|---|---|---|"]
-        parts += [f"| {name} | TXT | {value.replace('{key}', _dkim_key(rng))} |" for name, value in records]
-        parts.append("")
-    return "\n".join(parts)
-
-
-def audiences_csv() -> str:
+def _csv(header: list[str], rows: list[list]) -> str:
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["audience_id", "name", "region", "consent", "double_opt_in", "max_months_since_purchase"])
-    writer.writerows(AUDIENCES)
+    writer.writerow(header)
+    writer.writerows(rows)
     return out.getvalue()
 
 
-def drafts_md() -> str:
-    parts = [f"# {AUDIT_BRAND}: every live email", "",
-             "Exported from the email platform before the move: every step of every automated flow and every "
-             "scheduled campaign. The first line of each email gives its stream, its purpose, its audiences and its "
-             "From address, in that order. Body blocks are listed in order, each with its block type in brackets and separated by "
-             "` | `. The footer is shown on one line, its parts separated by ` · `.", ""]
-    for email_id, draft in drafts().items():
-        parts += [
-            f"## {email_id}",
-            f"{draft['stream']} · {draft['purpose']} · {', '.join(draft['audiences'])} · {_domain_address(draft['from'])}",
-            f"Subject: {draft['subject']}",
-            f"Preheader: {draft['preheader']}",
-            "Body: " + " | ".join(f"[{kind}] {text}" for kind, text in draft["blocks"]),
-            f"Footer: {draft['footer']}", "",
-        ]
-    return "\n".join(parts)
+def _iso(value) -> str:
+    return value.isoformat() if isinstance(value, date) else str(value)
 
 
-def _domain_address(sender: str) -> str:
-    return sender.rsplit("<", 1)[-1].rstrip(">")
-
-
-def sending_policy_md() -> str:
-    domains = ", ".join(f"`{domain}`" for domain in SENDING_DOMAINS)
-    addresses = "\n".join(f"- {address}" for address in REGISTERED_ADDRESSES)
-    tags = " or ".join(f"`{{{{ {tag} }}}}`" for tag in UNSUBSCRIBE_TAGS)
-    promotional = " and ".join(f"`{kind}`" for kind in PROMOTIONAL_BLOCKS)
-    after = ", ".join(f"`{kind}`" for kind in PLACED_AFTER[:-1]) + f" and `{PLACED_AFTER[-1]}`"
-    no_promo = " or ".join(f"`{purpose}`" for purpose in NO_PROMOTION_PURPOSES)
-    scope = ", ".join(f"\"{word}\"" for word in SCOPE_WORDS[:-1]) + f" or \"{SCOPE_WORDS[-1]}\""
-    codes = ", ".join(f"`{code}`" for code in CODES)
-    return f"""# {AUDIT_BRAND}: email sending policy
-
-Before we move to the new email platform, every live email is checked
-against this policy. An email that breaks a rule gets that rule's code; an
-email can get several codes. The codes are {codes}.
-
-Each email's stream is `marketing` or `transactional`, as set in the email
-platform. Each rule below says which stream it applies to; a rule that names
-no stream applies to both.
-
-## 1. Sending domain (`DOMAIN`)
-
-An email is sent from the domain of its From address. That domain must be
-one of our sending domains, {domains}, and it must meet all three of these in
-its published DNS records:
-
-1. **SPF**: the domain has exactly one TXT record that starts with `v=spf1`.
-   That record contains `{ESP_INCLUDE}` and ends with `-all` or `~all`.
-2. **DKIM**: there is a TXT record at `{DKIM_SELECTOR}._domainkey.<domain>` that contains
-   `v=DKIM1` and a `p=` value that is not empty.
-3. **DMARC**: there is one TXT record at `_dmarc.<domain>`, and its `p=` tag is
-   `quarantine` or `reject`.
-
-An email from any other domain, or from a domain that does not meet all
-three, gets `DOMAIN`.
-
-## 2. Postal address (`ADDRESS`)
-
-The footer of every marketing email contains one of our two registered postal
-addresses, exactly as written here; only line breaks, commas and the `·`
-separator may differ:
-
-{addresses}
-
-A marketing email without one gets `ADDRESS`. Transactional emails need no
-address.
-
-## 3. Unsubscribe (`UNSUBSCRIBE`)
-
-The footer of every marketing email contains a working unsubscribe link: the
-merge tag {tags} (the preferences page has a one-click
-unsubscribe). The email platform ignores spaces inside the braces. Any other
-difference, capital letters included, is a tag that does not render and is
-not a working link. A marketing email without a working link gets
-`UNSUBSCRIBE`. Transactional emails need no link.
-
-## 4. Subject line and preheader (`SUBJECT`)
-
-The subject line and the preheader state the body's offer as the body
-states it. An email gets `SUBJECT` when its subject or its preheader:
-
-1. states a percentage off that is not the body's percentage; after "up to",
-   the percentage must be the highest one the body offers;
-2. says {scope} while the body limits the offer to some
-   products or excludes any;
-3. names a day or date the offer ends that is not the day the body's offer
-   ends;
-4. says free shipping is on every order, or has no minimum, when the body
-   sets a minimum order.
-
-A subject or preheader may leave out any part of the offer.
-
-## 5. Promotion in transactional emails (`TRANSACTIONAL_PROMO`)
-
-Body blocks of type {promotional} are promotional; no other
-block type is.
-
-- A transactional email whose purpose is {no_promo} has
-  no promotional block.
-- Any other transactional email has at most one promotional block. It comes
-  after every {after} block, and it contains no discount code.
-
-A transactional email that breaks either rule gets `TRANSACTIONAL_PROMO`.
-
-## 6. Consent (`CONSENT`)
-
-A marketing email goes only to audiences whose consent allows marketing in
-their region (`audiences.csv`):
-
-| consent | US | UK | EU | CA |
-|---|---|---|---|---|
-| `express` | yes | yes | only if `double_opt_in` is `yes` | yes |
-| `customer` | yes | yes | no | only if `max_months_since_purchase` is {CA_CUSTOMER_MONTHS} or less |
-| `event` | no | no | no | no |
-| `imported` | no | no | no | no |
-
-A marketing email with any audience the table does not allow gets `CONSENT`.
-Transactional emails go only to the person whose own action triggered them
-and need no marketing consent.
-"""
-
-
-def audit_fixtures() -> dict[str, str]:
+def crosscheck_fixtures() -> dict[str, str]:
+    data = audit_data()
+    emails = _csv(["email_id", "send_date", "brand", "region", "stream", "purpose", "series", "audience_id",
+                   "from_address", "promo_code", "discount_shown", "offer_ends_shown", "sku", "price_shown",
+                   "footer_address"],
+                  [[e["email_id"], _iso(e["send_date"]), e["brand"], e["region"], e["stream"], e["purpose"], e["series"],
+                    e["audience_id"], e["from_address"], e["promo_code"], e["discount_shown"], e["offer_ends_shown"],
+                    e["sku"], e["price_shown"], e["footer_address"]] for e in data["emails"]])
+    audiences = _csv(["audience_id", "brand", "region", "name", "consent_type", "consent_date", "last_activity_date"],
+                     [[a["audience_id"], a["brand"], a["region"], a["name"], a["consent_type"], _iso(a["consent_date"]),
+                       _iso(a["last_activity_date"])] for a in data["audiences"]])
+    senders = _csv(["sender_id", "brand", "region", "stream", "allowed_from_addresses"],
+                   [[sid, brand, region, stream, ";".join(addresses)] for sid, brand, region, stream, addresses in data["senders"]])
+    addresses = _csv(["address_id", "brand", "region", "registered_address"], [list(row) for row in data["addresses"]])
+    promotions = _csv(["promo_id", "code", "brand", "region", "start_date", "end_date", "discount"],
+                      [[p["promo_id"], p["code"], p["brand"], p["region"], _iso(p["start"]), _iso(p["end"]),
+                        f"{p['discount']}%"] for p in data["promotions"]])
+    prices = _csv(["price_id", "sku", "product", "region", "price", "effective_from", "effective_to"],
+                  [[p["price_id"], p["sku"], SKUS[p["sku"]][1], p["region"], _money(p["region"], p["price"]),
+                    _iso(p["effective_from"]), _iso(p["effective_to"])] for p in data["prices"]])
+    dns = _csv(["record_id", "domain", "name", "type", "value"],
+               [[r["record_id"], r["domain"], r["name"], r["type"], r["value"]] for r in data["records"]])
     return {
-        f"{AUDIT}/sending_policy.md": sending_policy_md(),
-        f"{AUDIT}/audiences.csv": audiences_csv(),
-        f"{AUDIT}/dns_records.md": dns_records_md(),
-        f"{AUDIT}/emails.md": drafts_md(),
+        f"{AUDIT}/sending_policy.md": crosscheck_policy_md(),
+        f"{AUDIT}/emails.csv": emails,
+        f"{AUDIT}/audiences.csv": audiences,
+        f"{AUDIT}/senders.csv": senders,
+        f"{AUDIT}/addresses.csv": addresses,
+        f"{AUDIT}/promotions.csv": promotions,
+        f"{AUDIT}/prices.csv": prices,
+        f"{AUDIT}/dns_records.csv": dns,
     }
 
 
-def _verdict(text: object) -> tuple[set[str], bool]:
-    """The codes a verdict cell gives, and whether it is written as asked:
-    `pass` alone, or one or more of the policy's codes."""
-    value = re.sub(r"TRANSACTIONAL[\s-]+PROMO", "TRANSACTIONAL_PROMO", str(text or "").strip().strip("`\"'").upper())
-    tokens = [token for token in re.split(r"[\s;,/|+&]+", value) if token]
-    codes = {token for token in tokens if token in CODES}
-    if tokens == ["PASS"]:
-        return set(), True
-    return codes, bool(tokens) and all(token in CODES for token in tokens)
+def crosscheck_policy_md() -> str:
+    rows = "\n".join(
+        f"| {region} | `{consent}` | {'never' if windows[0] is None else windows[0]} | "
+        f"{'never' if windows[1] is None else windows[1]} |" for (region, consent), windows in CONSENT_WINDOWS.items())
+    codes = ", ".join(f"`{code}`" for code in CODES)
+    promotional = ", ".join(f"`{p}`" for p in PROMOTIONAL_PURPOSES)
+    newsletter = ", ".join(f"`{p}`" for p in NEWSLETTER_PURPOSES)
+    return f"""# {AUDIT_BRAND}: email sending policy
+
+{AUDIT_BRAND} sends email for two brands, Ostrel and Tamsin, in four regions
+(US, UK, EU, CA). Before the move to the new email platform, every scheduled
+email in `emails.csv` is checked against this policy, using the other files
+exported with it.
+
+## Verdicts
+
+An email that breaks no rule passes. An email that breaks a rule gets that
+rule's code together with the id of the row that proves it, written
+`CODE:ROW_ID` (for example `PRICE:R99`). An email can break several rules;
+it gets each code once. The codes, and the file whose row each one names:
+
+| code | rule | the row it names |
+|---|---|---|
+| `DOMAIN` | 1 | the failing record in `dns_records.csv` |
+| `SENDER` | 2 | the row of `senders.csv` for the email's brand, region and stream |
+| `ADDRESS` | 3 | the row of `addresses.csv` for the email's brand and region |
+| `CONSENT` | 4 | the email's audience in `audiences.csv` |
+| `PROMO` | 5 | the row of `promotions.csv` for the email's code, brand and region |
+| `PRICE` | 6 | the row of `prices.csv` in effect for the email's product and region on its send date |
+| `FREQUENCY` | 7 | an earlier email in `emails.csv`, as rule 7 says |
+
+Dates are calendar days. "Between" two dates includes both. Every rule is
+applied to each email on its own `send_date`.
+
+## 1. Sending domain (`DOMAIN`)
+
+The domain of the email's `from_address` must meet all three of these in
+`dns_records.csv`:
+
+1. **SPF**: of the TXT records named after the domain itself, exactly one
+   starts with `v=spf1` (other TXT records there, such as a site
+   verification, do not count). That record contains `{ESP_INCLUDE}`
+   and ends with `-all` or `~all`.
+2. **DKIM**: the record named `{DKIM_SELECTOR}._domainkey.<domain>` contains `v=DKIM1` and a
+   `p=` value that is not empty.
+3. **DMARC**: the record named `_dmarc.<domain>` has a `p=` tag of
+   `quarantine` or `reject`.
+
+An email from a domain that fails gets `DOMAIN` with the id of the record
+that fails: the SPF record, the `{DKIM_SELECTOR}._domainkey` record, or the DMARC record. No
+domain in this export fails more than one of the three.
+
+## 2. Sender (`SENDER`)
+
+`senders.csv` has one row for each brand, region and stream. An email's
+`from_address` must be one of the addresses in the row for its own brand,
+region and stream. Otherwise it gets `SENDER` with that row's id.
+
+## 3. Postal address (`ADDRESS`)
+
+A marketing email's `footer_address` is the registered address in
+`addresses.csv` for its brand and region, as written there (only commas,
+spaces and capital letters may differ). Otherwise it gets `ADDRESS` with
+that row's id. Transactional emails are not checked under this rule.
+
+## 4. Consent (`CONSENT`)
+
+A marketing email may go to its audience only when, on its send date, both
+hold:
+
+- the audience's `consent_date` is the send date or earlier;
+- the send date is no more than the window below after the audience's
+  `last_activity_date`: a window of 365 days allows a send 365 days after it
+  and not 366.
+
+The window depends on the audience's region and consent type and on the
+email's message type. Purposes {promotional} are
+`promotional`; purposes {newsletter} are `newsletter`.
+
+| region | consent | promotional (days) | newsletter (days) |
+|---|---|---|---|
+{rows}
+
+`never` means no marketing email may go to such an audience. An email that
+may not go gets `CONSENT` with its audience's id. Transactional emails need
+no consent.
+
+## 5. Promotions (`PROMO`)
+
+A marketing email with a `promo_code` is checked against the row of
+`promotions.csv` for that code, its brand and its region. The email must be
+sent between the row's `start_date` and `end_date`, its `discount_shown`
+must be the row's `discount`, and its `offer_ends_shown` must be the row's
+`end_date`. Otherwise it gets `PROMO` with that row's id. A code runs on
+different dates and discounts in different regions.
+
+## 6. Prices (`PRICE`)
+
+A marketing email that shows a product (`sku`) shows, as `price_shown`, the
+price of that product for its region in effect on its send date: the row of
+`prices.csv` for that sku and region whose dates, `effective_from` to
+`effective_to`, include the send date. Otherwise it gets `PRICE` with the
+id of that row.
+
+## 7. Frequency within a series (`FREQUENCY`)
+
+Emails with the same `series` and `audience_id` are one series to one
+audience; no two of them share a send date. An email gets `FREQUENCY` when
+{FREQUENCY_LIMIT} or more emails of its series to its audience were sent in the {FREQUENCY_DAYS - 1} days before
+its send date, and it names the earliest of those emails. An email sent {FREQUENCY_DAYS}
+days after another is outside them. Every email in `emails.csv` counts,
+whatever its own verdict. Transactional emails have no series.
+"""
+
+
+_VERDICT_PART = re.compile(r"([A-Za-z_]+)\s*(?::|=|\(|\s)\s*([A-Za-z])0*(\d{1,3})\s*\)?")
+
+
+def _crosscheck_verdict(text: object) -> tuple[dict[str, str], bool]:
+    """The codes and evidence ids a verdict cell gives, and whether it is
+    written as asked: `pass` alone, or `CODE:ROW_ID` parts, each code once."""
+    value = str(text or "").strip().strip("`\"'").strip()
+    if value.lower() == "pass":
+        return {}, True
+    given: dict[str, str] = {}
+    written_as_asked = bool(value)
+    for code, letter, digits in _VERDICT_PART.findall(value):
+        code = code.upper()
+        if code not in CODES or code in given:
+            written_as_asked = False
+            continue
+        given[code] = f"{letter.upper()}{int(digits):0{EVIDENCE[code][2]}d}"
+    if _VERDICT_PART.sub("", value).strip(" ;,|/&+\t"):
+        written_as_asked = False
+    return given, written_as_asked
 
 
 def audit_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. Every count is over the export's
-    emails, so a missing file is that many errors, never zero."""
+    emails, so a missing file is that many errors, never zero. A code given
+    with the wrong evidence row is wrong for that code."""
     ref = audit_reference()
     rows = common.tables(response_text, AUDIT_FILES)["findings.csv"]
-    given: dict[str, set[str]] = {}
+    given: dict[str, dict[str, str]] = {}
     listed: list[str] = []
     malformed = 0
     for row in rows or []:
-        email_id = _row_id(common.cell(row, "email_id", "email", "id", "draft_id"), "E", 3)
+        email_id = _row_id(common.cell(row, "email_id", "email", "id"), "E", 3)
         if not email_id:
             continue
         listed.append(email_id)
-        codes, written_as_asked = _verdict(common.cell(row, "verdict", "codes", "violations"))
+        codes, written_as_asked = _crosscheck_verdict(common.cell(row, "verdict", "codes", "violations"))
         given[email_id] = codes
         malformed += email_id in ref and not written_as_asked
     facts = {
@@ -1119,7 +1167,7 @@ def audit_facts(response_text: str) -> dict[str, int]:
     }
     for code in CODES:
         facts[f"audit_{code.lower()}_error_count"] = sum(
-            1 for email_id, codes in ref.items() if (code in codes) != (code in given.get(email_id, set())))
+            1 for email_id, codes in ref.items() if codes.get(code) != given.get(email_id, {}).get(code))
     return facts
 
 
@@ -1127,7 +1175,7 @@ def audit_facts(response_text: str) -> dict[str, int]:
 
 def fixtures() -> dict[str, str]:
     """Every file the email tasks supply, by path under FIXTURE_DIR."""
-    return {**calendar_fixtures(), **audit_fixtures()}
+    return {**calendar_fixtures(), **crosscheck_fixtures()}
 
 
 def facts_for(task: dict | None, response_text: str) -> dict[str, int]:

@@ -1,0 +1,22 @@
+audience_id,brand,region,name,consent_type,consent_date,last_activity_date
+A01,Ostrel,US,US newsletter sign-ups,express,2024-06-04,2025-02-15
+A02,Ostrel,US,US customers,customer,2025-04-21,2027-01-07
+A03,Ostrel,US,US loyalty members,express,2024-12-20,2025-03-01
+A04,Ostrel,UK,UK newsletter sign-ups,express,2027-02-19,2027-01-25
+A05,Ostrel,UK,UK customers,customer,2025-03-15,2026-08-20
+A06,Ostrel,UK,Spring fair leads,express,2025-02-15,2025-09-03
+A07,Ostrel,EU,EU newsletter sign-ups,express,2025-03-15,2026-12-18
+A08,Ostrel,EU,EU customers,customer,2025-10-05,2027-01-21
+A09,Ostrel,EU,EU loyalty members,express,2025-09-12,2026-02-18
+A10,Ostrel,CA,Canada newsletter sign-ups,express,2024-08-26,2026-12-13
+A11,Ostrel,CA,Canada customers,customer,2027-02-27,2026-12-19
+A12,Ostrel,CA,Canada lapsed customers,customer,2024-08-22,2025-03-01
+A13,Tamsin,US,US newsletter sign-ups,express,2024-08-13,2025-02-16
+A14,Tamsin,US,US customers,customer,2024-11-23,2027-01-03
+A15,Tamsin,US,Holiday pop-up sign-ups,express,2027-02-24,2026-12-22
+A16,Tamsin,UK,UK newsletter sign-ups,express,2025-04-11,2025-08-26
+A17,Tamsin,UK,UK customers,customer,2025-09-18,2027-01-14
+A18,Tamsin,EU,EU newsletter sign-ups,express,2025-12-20,2026-02-21
+A19,Tamsin,EU,EU customers,customer,2025-09-05,2026-12-20
+A20,Tamsin,CA,Canada newsletter sign-ups,express,2024-12-29,2027-01-27
+A21,Tamsin,CA,Canada customers,customer,2024-10-07,2025-02-22
