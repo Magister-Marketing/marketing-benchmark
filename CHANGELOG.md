@@ -15,18 +15,23 @@
   `p=`, `~all` read as a fail, a PO box refused, transactional drafts held
   to the marketing footer rules, only the first audience checked, and more)
   scores zero on the checks it touches and full on the rest.
-- Tasks: `email-send-calendar` (development split): a 12-campaign plan, a
-  300-subscriber export with six overlapping segments and a calendar policy
-  in; each campaign's send date, audience size and reason out, with five
-  labeled figures. 11 of its 12 checks are a program's. Its fixtures, oracle
-  and checker live in `eval_runner/task_facts_email.py`
+- Tasks: `email-send-calendar` (development split): a 12-campaign plan, an
+  800-subscriber export (six overlapping segments, join dates, pauses) and a
+  calendar policy in; each campaign's send date, audience size and reason,
+  every subscriber's February email count, and five labeled figures out. 12
+  of its 13 checks are a program's, and every one of the 800 subscriber rows
+  is checked. Audience sizes and counts are checked against the reply's own
+  calendar, so a wrong date is charged once, to the dates. Its fixtures,
+  oracle and checker live in `eval_runner/task_facts_email.py`
   (`python3 -m eval_runner.task_facts_email --check`), which
   `bench.measured_facts` calls; `tests/test_tasks_email.py` recomputes every
-  pinned figure from the fixture files with separate code and shows that a
-  reply built from each tempting wrong reading (campaigns taken by date,
-  calendar weeks, only the days before, the cap per segment, unsubscribed
-  people counted, the teaser gap read as clear days) scores zero on the
-  checks it touches.
+  pinned figure from the fixture files with its own scheduler and shows that
+  a reply built from each of ten tempting wrong readings (campaigns taken by
+  date, calendar weeks, only the days before, the cap per segment,
+  unsubscribed people counted, clear days between teaser and launch, join
+  dates or pauses ignored, a pause read as the whole month, a moved
+  campaign's audience taken on its requested date) scores zero on every
+  check it touches and full on the rest.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

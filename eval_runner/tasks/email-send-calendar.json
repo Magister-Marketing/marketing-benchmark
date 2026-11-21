@@ -16,12 +16,12 @@
     "count": 5,
     "single_number": true
   },
-  "prompt": "Marrowfield Garden Co. sells seeds, tools and houseplants online and emails its subscribers. Its CRM lead wants February's email calendar built from the supplied campaign plan and subscriber export, following the supplied calendar policy exactly.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly the header shown: one row per campaign, no totals row, and nothing inside the file but its rows.\n\n### schedule.csv\ncampaign_id,send_date,audience_size,reason\nEvery campaign in the plan, once. `send_date` is the date the campaign goes out, as YYYY-MM-DD, or `none` when the policy does not send it. `audience_size` is how many subscribers the campaign goes to under the policy, given also for a campaign that is not sent. `reason` is empty for a campaign sent on its requested date; for every other campaign it is the policy's reason code.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone. If you use a thousands separator, use a comma.\n\nA1: <number of campaigns sent on a date other than their requested date>\nA2: <number of campaigns not sent>\nA3: <total emails sent in February: the audience sizes of the campaigns that are sent, added up>\nA4: <the most emails any one subscriber receives in February>\nA5: <number of subscribers who receive that many>\n\nThis is a plan for review. Schedule nothing in any email platform and fetch nothing external.",
+  "prompt": "Marrowfield Garden Co. sells seeds, tools and houseplants online and emails its subscribers. Its CRM lead wants February's email calendar built from the supplied campaign plan and subscriber export, following the supplied calendar policy exactly.\n\nDeliver two files in your reply, each under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside a file but its rows.\n\n### schedule.csv\ncampaign_id,send_date,audience_size,reason\nEvery campaign in the plan, once. `send_date` is the date the campaign goes out, as YYYY-MM-DD, or `none` when the policy does not send it. `audience_size` is how many subscribers receive the campaign on its send date; for a campaign that is not sent, how many would have received it on its requested date. `reason` is empty for a campaign sent on its requested date; for every other campaign it is the policy's reason code.\n\n### frequency.csv\nsubscriber_id,emails\nEvery subscriber in the export, once, with the number of emails your calendar sends them in February (0 for a subscriber who receives none).\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone. If you use a thousands separator, use a comma.\n\nA1: <number of campaigns sent on a date other than their requested date>\nA2: <number of campaigns not sent>\nA3: <total emails sent in February: the audience sizes of the campaigns that are sent, added up>\nA4: <the most emails any one subscriber receives in February>\nA5: <number of subscribers who receive that many>\n\nThis is a plan for review. Schedule nothing in any email platform and fetch nothing external.",
   "rubric": {
     "completion": [
       {
-        "id": "schedule_file",
-        "check": "schedule.csv is in the reply, under a line with its file name.",
+        "id": "files_present",
+        "check": "Both files, schedule.csv and frequency.csv, are in the reply, each under a line with its file name.",
         "programmatic": {
           "fact": "calendar_missing_file_count",
           "equals": 0
@@ -76,14 +76,14 @@
       },
       {
         "id": "a3_emails_sent",
-        "check": "A3 states the total emails sent in February: the audience sizes of the campaigns the policy sends, added up. Full credit for the exact figure; zero credit 20 or more off.",
+        "check": "A3 states the total emails sent in February: the audience sizes of the campaigns the policy sends, added up. Full credit for the exact figure; zero credit 10 or more off.",
         "programmatic": {
           "fact": "answer_q3",
-          "near": 1247,
+          "near": 3200,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
-            "zero": 20
+            "zero": 10
           }
         }
       },
@@ -105,7 +105,7 @@
         "check": "A5 states how many subscribers receive that many emails. Full credit for the exact figure; zero credit 3 or more off.",
         "programmatic": {
           "fact": "answer_q5",
-          "near": 8,
+          "near": 21,
           "tolerance": {
             "kind": "absolute",
             "full": 0,
@@ -143,7 +143,7 @@
       },
       {
         "id": "audiences_right",
-        "check": "Every campaign's audience_size is the number of active subscribers in at least one of its segments, each counted once. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "check": "Every campaign's audience_size is the number of subscribers who receive it on the send date schedule.csv gives it, or on its requested date for a campaign given none: active, joined by that day, not paused on it, and in at least one of its segments, each counted once. A wrong send date is charged to the send dates, not here. Full credit for none wrong or missing; zero credit at 2 or more.",
         "programmatic": {
           "fact": "calendar_wrong_audience_count",
           "near": 0,
@@ -151,6 +151,19 @@
             "kind": "absolute",
             "full": 0,
             "zero": 2
+          }
+        }
+      },
+      {
+        "id": "frequency_right",
+        "check": "Every subscriber in the export has one row in frequency.csv with the number of emails the reply's own schedule sends them under the policy's rules for who receives a campaign, and no subscriber is listed twice or invented. A wrong send date is charged to the send dates, not here. Full credit for none wrong or missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "calendar_wrong_frequency_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
           }
         }
       }

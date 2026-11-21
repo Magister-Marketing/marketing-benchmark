@@ -47,7 +47,7 @@ FIXTURE_DIR = Path("eval_runner") / "fixtures"
 # ── email-send-calendar ──────────────────────────────────────────────────────
 
 BRAND = "Marrowfield Garden Co."
-CALENDAR_FILES = ["schedule.csv"]
+CALENDAR_FILES = ["schedule.csv", "frequency.csv"]
 MONTH_START = date(2027, 2, 1)  # a Monday
 MONTH_END = date(2027, 2, 28)
 SEGMENTS = ["veg_growers", "houseplants", "vip", "new_subscribers", "lapsed_buyers", "local"]
@@ -91,37 +91,62 @@ CAMPAIGNS: list[tuple[str, str, str, tuple[str, ...], int, int, str, int]] = [
 
 # Who is on the list: segment combination -> (active, not active). The
 # combinations decide which campaigns collide under the cap, so they are set
-# by hand; the shuffle that orders the rows is seeded. Four combinations exist
-# only among people who unsubscribed or bounced: counting them would move
-# campaigns the policy leaves where they are.
+# by hand; everything else about a row is drawn from SUBSCRIBER_SEED. Four
+# combinations exist only among people who unsubscribed or bounced: counting
+# them would move campaigns the policy leaves where they are.
 _V, _H, _P, _N, _L, _C = SEGMENTS
 PROFILES: list[tuple[tuple[str, ...], int, int]] = [
-    ((_V,), 58, 8), ((_H,), 40, 6), ((_V, _H), 20, 3), ((_V, _C), 18, 2), ((_H, _C), 10, 1),
-    ((_C,), 12, 1), ((_V, _P), 8, 0), ((_H, _P), 6, 0), ((_P, _C), 4, 0), ((_V, _H, _P), 2, 0),
-    ((_N,), 22, 3), ((_V, _N), 12, 1), ((_H, _N), 10, 1), ((_L,), 13, 3), ((_V, _L), 10, 2),
-    ((_H, _L), 6, 1), ((), 6, 3), ((_L, _C), 0, 2), ((_N, _C), 2, 0), ((_H, _L, _C), 0, 1),
-    ((_V, _P, _C), 0, 1), ((_V, _H, _N), 0, 2),
+    ((_V,), 160, 18), ((_H,), 113, 14), ((_V, _H), 52, 7), ((_V, _C), 46, 5), ((_H, _C), 26, 3),
+    ((_C,), 32, 3), ((_V, _P), 21, 1), ((_H, _P), 16, 1), ((_P, _C), 10, 0), ((_V, _H, _P), 5, 0),
+    ((_N,), 66, 7), ((_V, _N), 32, 3), ((_H, _N), 26, 3), ((_L,), 34, 7), ((_V, _L), 26, 5),
+    ((_H, _L), 16, 2), ((), 16, 7), ((_L, _C), 0, 4), ((_N, _C), 5, 0), ((_H, _L, _C), 0, 2),
+    ((_V, _P, _C), 0, 2), ((_V, _H, _N), 0, 4),
 ]
 SUBSCRIBER_SEED = 20270201
+# Some new subscribers join during February, on one of these days; they
+# receive only what is sent on or after the day they join.
+JOINABLE = {(_N,), (_V, _N), (_H, _N)}
+JOIN_SHARE = 0.35
+FEBRUARY_JOIN_DAYS = [3, 7, 8, 10, 11, 12, 16, 17, 18, 22, 25]
+# Some subscribers paused their emails; they receive nothing sent before the
+# date. The January dates are over before the month starts.
+PAUSABLE = {(_V,), (_H,), (_V, _H), (_V, _C), (_H, _C), (_C,), (_N,), (_V, _N), (_H, _N), (_L,), (_V, _L)}
+PAUSE_SHARE = 0.09
+PAUSED_UNTIL = [date(2027, 1, 12), date(2027, 1, 25), date(2027, 2, 9), date(2027, 2, 17), date(2027, 2, 18),
+                date(2027, 2, 23), date(2027, 2, 26), date(2027, 3, 1)]
 
 
 def day(number: int) -> date:
     return MONTH_START + timedelta(days=number - 1)
 
 
+def _random_day(rng: random.Random, first: date, last: date) -> date:
+    return first + timedelta(days=rng.randrange((last - first).days + 1))
+
+
 @lru_cache(maxsize=1)
 def subscribers() -> list[dict]:
-    """The subscriber export: 300 rows, one per subscriber, the same every time."""
+    """The subscriber export, one row per subscriber, the same every time."""
     rng = random.Random(SUBSCRIBER_SEED)
     entries: list[tuple[tuple[str, ...], str]] = []
     for segments, active, inactive in PROFILES:
         entries += [(segments, "active")] * active
         entries += [(segments, "unsubscribed" if rng.random() < 0.65 else "bounced") for _ in range(inactive)]
     rng.shuffle(entries)
-    return [
-        {"subscriber_id": f"S{number:03d}", "status": status, **{name: int(name in segments) for name in SEGMENTS}}
-        for number, (segments, status) in enumerate(entries, 1)
-    ]
+    rows = []
+    for number, (segments, status) in enumerate(entries, 1):
+        if _N in segments:
+            joined = _random_day(rng, date(2026, 12, 1), date(2027, 1, 31))
+        else:
+            joined = _random_day(rng, date(2023, 1, 1), date(2026, 11, 30))
+        paused = None
+        if status == "active" and segments in JOINABLE and rng.random() < JOIN_SHARE:
+            joined = day(rng.choice(FEBRUARY_JOIN_DAYS))
+        elif segments in PAUSABLE and rng.random() < PAUSE_SHARE:
+            paused = rng.choice(PAUSED_UNTIL)
+        rows.append({"subscriber_id": f"S{number:04d}", "joined": joined, "status": status, "paused_until": paused,
+                     **{name: int(name in segments) for name in SEGMENTS}})
+    return rows
 
 
 def campaigns() -> list[dict]:
@@ -132,10 +157,15 @@ def campaigns() -> list[dict]:
     ]
 
 
-def audience(campaign: dict) -> list[str]:
-    """Active subscribers in at least one of the campaign's segments, each once."""
-    return [row["subscriber_id"] for row in subscribers()
-            if row["status"] == "active" and any(row[name] for name in campaign["segments"])]
+def receives(row: dict, campaign: dict, when: date) -> bool:
+    """Whether a subscriber receives a campaign sent on ``when``."""
+    return (row["status"] == "active" and row["joined"] <= when
+            and (row["paused_until"] is None or row["paused_until"] <= when)
+            and any(row[name] for name in campaign["segments"]))
+
+
+def audience(campaign: dict, when: date) -> list[str]:
+    return [row["subscriber_id"] for row in subscribers() if receives(row, campaign, when)]
 
 
 def _over_cap(dates: list[date], candidate: date) -> bool:
@@ -154,9 +184,9 @@ def calendar_reference() -> dict:
     """The calendar the policy's procedure builds: priority order, each
     campaign on the first allowed date from its request to its deadline."""
     plan = campaigns()
-    audiences = {c["campaign_id"]: audience(c) for c in plan}
     placed: dict[str, date | None] = {}
     reasons: dict[str, str] = {}
+    sizes: dict[str, int] = {}
     received: dict[str, list[date]] = {}
 
     def ruled_out(campaign: dict, when: date) -> list[str]:
@@ -169,7 +199,7 @@ def calendar_reference() -> dict:
             before = placed.get(campaign["depends_on"])
             if before is None or when < before + timedelta(days=DEPENDENCY_GAP_DAYS):
                 out.append("dependency")
-        if any(_over_cap(received.get(sid, []), when) for sid in audiences[campaign["campaign_id"]]):
+        if any(_over_cap(received.get(sid, []), when) for sid in audience(campaign, when)):
             out.append("frequency_cap")
         return out
 
@@ -185,16 +215,12 @@ def calendar_reference() -> dict:
                 break
             when += timedelta(days=1)
         placed[cid] = chosen
-        if chosen:
-            for sid in audiences[cid]:
-                received.setdefault(sid, []).append(chosen)
-    counts = {sid: len(dates) for sid, dates in received.items()}
-    most = max(counts.values())
-    return {
-        "send_date": placed, "reason": reasons,
-        "audience_size": {cid: len(ids) for cid, ids in audiences.items()},
-        "emails_per_subscriber": counts, "most": most,
-    }
+        sizes[cid] = len(audience(campaign, chosen or campaign["requested_date"]))
+        for sid in audience(campaign, chosen) if chosen else []:
+            received.setdefault(sid, []).append(chosen)
+    counts = {row["subscriber_id"]: len(received.get(row["subscriber_id"], [])) for row in subscribers()}
+    return {"send_date": placed, "reason": reasons, "audience_size": sizes,
+            "emails_per_subscriber": counts, "most": max(counts.values())}
 
 
 def calendar_answers() -> dict[int, float]:
@@ -215,26 +241,30 @@ def calendar_answers() -> dict[int, float]:
 def calendar_reference_answer() -> str:
     """A reply that follows the policy to the letter: what a checker must pass."""
     ref = calendar_reference()
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
+    schedule = io.StringIO()
+    writer = csv.writer(schedule, lineterminator="\n")
     writer.writerow(["campaign_id", "send_date", "audience_size", "reason"])
     for campaign in campaigns():
         cid = campaign["campaign_id"]
         when = ref["send_date"][cid]
         writer.writerow([cid, when.isoformat() if when else "none", ref["audience_size"][cid], ref["reason"][cid]])
+    frequency = ["subscriber_id,emails"] + [f"{sid},{count}" for sid, count in ref["emails_per_subscriber"].items()]
     figures = calendar_answers()
     return "\n".join([
         f"February calendar for {BRAND}, built by the calendar policy's procedure.", "",
-        "### schedule.csv", "```csv", buffer.getvalue().rstrip("\n"), "```", "",
+        "### schedule.csv", "```csv", schedule.getvalue().rstrip("\n"), "```", "",
+        "### frequency.csv", "```csv", *frequency, "```", "",
         *[f"A{index}: {int(figures[index])}" for index in range(1, 6)], "",
     ])
 
 
 def subscribers_csv() -> str:
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=["subscriber_id", "status", *SEGMENTS], lineterminator="\n")
-    writer.writeheader()
-    writer.writerows(subscribers())
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(["subscriber_id", "joined", "status", "paused_until", *SEGMENTS])
+    for row in subscribers():
+        writer.writerow([row["subscriber_id"], row["joined"].isoformat(), row["status"],
+                         row["paused_until"].isoformat() if row["paused_until"] else "", *[row[name] for name in SEGMENTS]])
     return out.getvalue()
 
 
@@ -272,10 +302,17 @@ the same calendar. February 2027 starts on a Monday and has 28 days.
 The subscriber export has one row per subscriber and one column per segment:
 {segments}. A 1 means the subscriber is in that segment.
 
-A campaign goes to every subscriber whose `status` is `active` and who is in
-at least one of the campaign's segments. A subscriber in several of its
-segments receives it once. Subscribers whose status is `unsubscribed` or
-`bounced` receive nothing.
+A campaign sent on a given day goes to every subscriber who, on that day:
+
+- has `status` `active` (subscribers who are `unsubscribed` or `bounced`
+  receive nothing);
+- has joined: their `joined` date is that day or earlier;
+- is not paused: their `paused_until` is empty, or is that day or earlier
+  (a paused subscriber receives nothing sent before that date);
+- is in at least one of the campaign's segments.
+
+A subscriber in several of a campaign's segments receives it once. Who
+receives a campaign therefore depends on the day it is sent.
 
 ## The rules a send date must meet
 
@@ -348,9 +385,11 @@ def _whole(text: object) -> int | None:
 
 def calendar_facts(response_text: str) -> dict[str, int]:
     """Counts of what a reply got wrong. Every count is over the plan's
-    campaigns, so a missing file is that many errors, never zero."""
+    campaigns or the export's subscribers, so a missing file is that many
+    errors, never zero."""
     ref = calendar_reference()
-    rows = common.tables(response_text, CALENDAR_FILES)["schedule.csv"]
+    found = common.tables(response_text, CALENDAR_FILES)
+    rows = found["schedule.csv"]
     wanted = [c["campaign_id"] for c in campaigns()]
     given: dict[str, dict] = {}
     listed: list[str] = []
@@ -370,12 +409,35 @@ def calendar_facts(response_text: str) -> dict[str, int]:
         return sum(1 for cid in wanted
                    if cid not in given or read(common.cell(given[cid], *names)) != reference[cid])
 
+    # Audience sizes and counts per subscriber are checked against the reply's
+    # own calendar, so they test the counting and a wrong date is charged once,
+    # to the dates. A campaign the reply leaves out, or dates unreadably,
+    # counts at the policy's date.
+    plan = {c["campaign_id"]: c for c in campaigns()}
+    own: dict[str, date | None] = {}
+    for cid in wanted:
+        written = _send_date(common.cell(given[cid], "send_date", "date")) if cid in given else "unreadable"
+        own[cid] = ref["send_date"][cid] if written == "unreadable" else written
+    own_sizes = {cid: len(audience(plan[cid], own[cid] or plan[cid]["requested_date"])) for cid in wanted}
+    own_counts = {row["subscriber_id"]: sum(1 for cid in wanted if own[cid] and receives(row, plan[cid], own[cid]))
+                  for row in subscribers()}
+
+    counts: dict[str, int | None] = {}
+    seen: list[str] = []
+    for row in found["frequency.csv"] or []:
+        sid = common.norm(common.cell(row, "subscriber_id", "subscriber", "id")).upper()
+        if sid:
+            seen.append(sid)
+            counts[sid] = _whole(common.cell(row, "emails", "email_count", "count"))
+    frequency_errors = (sum(1 for sid, count in own_counts.items() if counts.get(sid) != count)
+                        + (len(seen) - len(set(seen))) + len(set(seen) - set(own_counts)))
     return {
-        "calendar_missing_file_count": int(rows is None),
+        "calendar_missing_file_count": sum(1 for name in CALENDAR_FILES if found[name] is None),
         "calendar_row_error_count": accounting,
         "calendar_wrong_date_count": wrong(ref["send_date"], _send_date, "send_date", "date"),
         "calendar_wrong_reason_count": wrong(ref["reason"], _reason, "reason", "reason_code"),
-        "calendar_wrong_audience_count": wrong(ref["audience_size"], _whole, "audience_size", "recipients", "audience"),
+        "calendar_wrong_audience_count": wrong(own_sizes, _whole, "audience_size", "recipients", "audience"),
+        "calendar_wrong_frequency_count": frequency_errors,
     }
 
 

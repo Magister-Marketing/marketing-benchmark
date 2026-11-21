@@ -69,10 +69,11 @@ CALENDAR_REFERENCE = email.calendar_reference_answer()
 # What the policy states, written out again here: the cap, its window and the
 # teaser gap. The test below checks the policy text says exactly these.
 CAP, WINDOW, GAP = 3, 7, 3
+CALENDAR_FIGURES = [5, 1, 3200, 8, 21]
 CALENDAR_BANDS = {
-    "every_campaign_once": (0, 1), "a1_moved": (0, 1), "a2_not_sent": (0, 1), "a3_emails_sent": (0, 20),
+    "every_campaign_once": (0, 1), "a1_moved": (0, 1), "a2_not_sent": (0, 1), "a3_emails_sent": (0, 10),
     "a4_most_emails": (0, 1), "a5_subscribers_at_most": (0, 3), "send_dates_right": (0, 2),
-    "reasons_right": (0, 2), "audiences_right": (0, 2),
+    "reasons_right": (0, 2), "audiences_right": (0, 2), "frequency_right": (0, 8),
 }
 
 
@@ -90,19 +91,34 @@ def _calendar_files():
     return subscribers, plan, policy, blackouts, send_days
 
 
-def build_calendar(order="priority", window="rolling", counting="subscriber", everyone=False, gap=GAP):
+def build_calendar(order="priority", window="rolling", counting="subscriber", everyone=False, gap=GAP,
+                   joined_ignored=False, pause_ignored=False, pause_all_month=False, audience_on_request=False):
     """The policy's procedure, read from the files, with a switch for each
     tempting wrong reading: campaigns taken by date instead of priority; the
     cap counted per calendar week or only over the days before; the cap
     counted per segment instead of per subscriber; unsubscribed and bounced
-    subscribers counted; and the teaser gap read as clear days between."""
+    subscribers counted; the teaser gap read as clear days between; the join
+    date ignored; the pause ignored, or read as a pause for the whole month
+    whatever its date; and a moved campaign's audience taken on its requested
+    date."""
     subscribers, plan, _policy, blackouts, send_days = _calendar_files()
     segments = {c["campaign_id"]: c["segments"].split(";") for c in plan}
-    audience = {cid: [s["subscriber_id"] for s in subscribers
-                      if (everyone or s["status"] == "active") and any(s[g] == "1" for g in segs)]
-                for cid, segs in segments.items()}
+    requested = {c["campaign_id"]: date.fromisoformat(c["requested_date"]) for c in plan}
+
+    def audience(cid, when):
+        out = []
+        for s in subscribers:
+            if not (everyone or s["status"] == "active") or not any(s[g] == "1" for g in segments[cid]):
+                continue
+            if not joined_ignored and date.fromisoformat(s["joined"]) > when:
+                continue
+            if s["paused_until"] and not pause_ignored and (pause_all_month or date.fromisoformat(s["paused_until"]) > when):
+                continue
+            out.append(s["subscriber_id"])
+        return out
+
     key = (lambda c: int(c["priority"])) if order == "priority" else (lambda c: (c["requested_date"], int(c["priority"])))
-    placed, reasons, got, by_segment = {}, {}, {}, {}
+    placed, reasons, sizes, got, by_segment = {}, {}, {}, {}, {}
 
     def full(dates, when):
         if window == "rolling":
@@ -127,34 +143,31 @@ def build_calendar(order="priority", window="rolling", counting="subscriber", ev
         if counting == "segment":
             capped = any(full(by_segment.get(g, []), when) for g in segments[cid])
         else:
-            capped = any(full(got.get(s, []), when) for s in audience[cid])
+            capped = any(full(got.get(s, []), when) for s in audience(cid, requested[cid] if audience_on_request else when))
         if capped:
             out.append("frequency_cap")
         return out
 
     for campaign in sorted(plan, key=key):
         cid = campaign["campaign_id"]
-        requested, deadline = date.fromisoformat(campaign["requested_date"]), date.fromisoformat(campaign["deadline"])
-        first = blocked(campaign, requested)
+        deadline = date.fromisoformat(campaign["deadline"])
+        first = blocked(campaign, requested[cid])
         reasons[cid] = first[0] if first else ""
-        when, placed[cid] = requested, None
+        when, placed[cid] = requested[cid], None
         while when <= deadline:
             if not blocked(campaign, when):
                 placed[cid] = when
                 break
             when += timedelta(days=1)
+        on = requested[cid] if audience_on_request or not placed[cid] else placed[cid]
+        sizes[cid] = len(audience(cid, on))
         if placed[cid]:
-            for s in audience[cid]:
+            for s in audience(cid, on):
                 got.setdefault(s, []).append(placed[cid])
             for g in segments[cid]:
                 by_segment.setdefault(g, []).append(placed[cid])
-    sizes = {cid: len(ids) for cid, ids in audience.items()}
-    received: dict[str, int] = {}
-    for cid, when in placed.items():
-        for s in audience[cid] if when else []:
-            received[s] = received.get(s, 0) + 1
+    received = {s["subscriber_id"]: len(got.get(s["subscriber_id"], [])) for s in subscribers}
     most = max(received.values())
-    requested = {c["campaign_id"]: date.fromisoformat(c["requested_date"]) for c in plan}
     figures = [
         sum(1 for cid, when in placed.items() if when and when != requested[cid]),
         sum(1 for when in placed.values() if when is None),
@@ -162,15 +175,21 @@ def build_calendar(order="priority", window="rolling", counting="subscriber", ev
         most,
         sum(1 for count in received.values() if count == most),
     ]
-    return {"send_date": placed, "reason": reasons, "audience_size": sizes, "figures": figures}
+    return {"send_date": placed, "reason": reasons, "audience_size": sizes, "received": received, "figures": figures}
 
 
-def summed_segment_sizes() -> dict[str, int]:
-    """Audience sizes as the sum of each segment's active count: a subscriber in
-    two of a campaign's segments counted twice."""
+def summed_segment_sizes(calendar: dict) -> dict[str, int]:
+    """Audience sizes as the sum of each segment's count on the same day: a
+    subscriber in two of a campaign's segments counted twice."""
     subscribers, plan, *_ = _calendar_files()
-    return {c["campaign_id"]: sum(sum(1 for s in subscribers if s["status"] == "active" and s[g] == "1")
-                                  for g in c["segments"].split(";")) for c in plan}
+    out = {}
+    for c in plan:
+        on = calendar["send_date"][c["campaign_id"]] or date.fromisoformat(c["requested_date"])
+        out[c["campaign_id"]] = sum(
+            sum(1 for s in subscribers if s["status"] == "active" and s[g] == "1" and date.fromisoformat(s["joined"]) <= on
+                and (not s["paused_until"] or date.fromisoformat(s["paused_until"]) <= on))
+            for g in c["segments"].split(";"))
+    return out
 
 
 def calendar_reply(calendar: dict, sizes: dict | None = None, figures: list | None = None) -> str:
@@ -182,29 +201,32 @@ def calendar_reply(calendar: dict, sizes: dict | None = None, figures: list | No
     for cid in sorted(calendar["send_date"]):
         when = calendar["send_date"][cid]
         writer.writerow([cid, when.isoformat() if when else "none", sizes[cid], calendar["reason"][cid]])
+    frequency = "\n".join(f"{sid},{count}" for sid, count in calendar["received"].items())
     return ("The calendar.\n\n### schedule.csv\n```csv\n" + out.getvalue() + "```\n\n"
+            + "### frequency.csv\n```csv\nsubscriber_id,emails\n" + frequency + "\n```\n\n"
             + "\n".join(f"A{index}: {value}" for index, value in enumerate(figures, 1)) + "\n")
 
 
 def test_the_calendar_task_pins_what_the_files_give():
     calendar = build_calendar()
     figures = calendar["figures"]
-    assert figures == [5, 1, 1247, 8, 8]
+    assert figures == CALENDAR_FIGURES
     criteria = _by_id(CALENDAR)
     for index, criterion_id in enumerate(
             ["a1_moved", "a2_not_sent", "a3_emails_sent", "a4_most_emails", "a5_subscribers_at_most"]):
+        full, zero = CALENDAR_BANDS[criterion_id]
         assert criteria[criterion_id]["programmatic"] == {
-            "fact": f"answer_q{index + 1}", "near": figures[index],
-            "tolerance": {"kind": "absolute", "full": CALENDAR_BANDS[criterion_id][0], "zero": CALENDAR_BANDS[criterion_id][1]}}
+            "fact": f"answer_q{index + 1}", "near": figures[index], "tolerance": {"kind": "absolute", "full": full, "zero": zero}}
     for criterion_id, (full, zero) in CALENDAR_BANDS.items():
         tolerance = criteria[criterion_id]["programmatic"]["tolerance"]
         assert (tolerance["full"], tolerance["zero"]) == (full, zero), criterion_id
         assert f"zero credit {zero:g} or more off." in criteria[criterion_id]["check"] or (
             f"zero credit at {zero:g}" in criteria[criterion_id]["check"]), criterion_id
-    # The module's oracle and this file's agree on every campaign.
+    # The module's oracle and this file's agree on every campaign and every subscriber.
     reference = email.calendar_reference()
     for field in ("send_date", "reason", "audience_size"):
         assert reference[field] == calendar[field], field
+    assert reference["emails_per_subscriber"] == calendar["received"]
     assert email.calendar_answers() == dict(enumerate(figures, 1))
     assert f"plan's {len(calendar['send_date'])} campaigns" in criteria["every_campaign_once"]["check"]
     assert CALENDAR["answers"] == {"count": 5, "single_number": True}
@@ -214,20 +236,24 @@ def test_the_calendar_task_pins_what_the_files_give():
     named = {c["programmatic"]["fact"] for c in criteria.values() if "programmatic" in c}
     assert {fact for fact in named if fact.startswith("calendar_")} == set(email.calendar_facts(""))
     assert 10 <= len(criteria) <= 18 and (len(criteria) - len(judged)) / len(criteria) >= 0.7
-    assert sum((CALENDAR_DIR / name).stat().st_size for name in ("calendar_policy.md", "campaigns.csv", "subscribers.csv")) < 60_000
+    size = sum((CALENDAR_DIR / name).stat().st_size for name in ("calendar_policy.md", "campaigns.csv", "subscribers.csv"))
+    assert 30_000 <= size < 60_000
+    # Every subscriber is a row the reply must get right: 800 of them.
+    assert len(calendar["received"]) == 800
 
 
 def test_the_calendar_policy_states_the_rules_the_checker_applies():
     subscribers, plan, policy, blackouts, send_days = _calendar_files()
     assert f"more than {CAP} emails in any\n   {WINDOW} consecutive days" in policy
     assert f"at least\n   {GAP} days after" in policy
+    assert "their `joined` date is that day or earlier" in policy
+    assert "a paused subscriber receives nothing sent before that date" in policy
     assert blackouts == set(email.BLACKOUTS)
     assert send_days == {kind: set(days) for kind, days in email.SEND_DAYS.items()}
     assert ", ".join(f"`{code}`" for code in email.REASONS) in policy
     assert (CAP, WINDOW, GAP) == (email.CAP_EMAILS, email.CAP_WINDOW_DAYS, email.DEPENDENCY_GAP_DAYS)
     assert date(2027, 2, 1).weekday() == 0 and "February 2027 starts on a Monday" in policy
-    assert len(subscribers) == 300 and len(plan) == 12
-    assert sorted(int(c["priority"]) for c in plan) == list(range(1, 13))
+    assert len(plan) == 12 and sorted(int(c["priority"]) for c in plan) == list(range(1, 13))
     # A launch is processed after its teaser, so the procedure always knows the teaser's date.
     by_id = {c["campaign_id"]: c for c in plan}
     for c in plan:
@@ -253,26 +279,45 @@ def test_the_calendar_exercises_every_rule_and_the_look_alikes_are_planted():
     for s in subscribers:
         combo = tuple(g for g in email.SEGMENTS if s[g] == "1")
         combos.setdefault(combo, set()).add(s["status"])
-    only_inactive = [combo for combo, statuses in combos.items() if "active" not in statuses]
-    assert len(only_inactive) == 4
+    assert len([combo for combo, statuses in combos.items() if "active" not in statuses]) == 4
     assert {s["status"] for s in subscribers} == set(email.STATUSES)
+    active = [s for s in subscribers if s["status"] == "active"]
+    joined_in_february = [s for s in active if s["joined"] >= "2027-02-01"]
+    paused = [s for s in active if s["paused_until"]]
+    assert len(joined_in_february) >= 30 and len(paused) >= 30
+    # Some pauses ended in January: those subscribers receive everything.
+    assert any(s["paused_until"] < "2027-02-01" for s in paused)
+    # Four of the five campaigns that move reach people their requested date would not.
+    on_request = build_calendar(audience_on_request=True)["audience_size"]
+    changed = [cid for cid in calendar["audience_size"] if on_request[cid] != calendar["audience_size"][cid]]
+    assert sorted(changed) == ["C02", "C03", "C07", "C10"]
 
 
 TRAPS = {
-    # name: (switches, the checks it must score zero on)
+    # name: (switches, the checks it must score zero on). Audience sizes and
+    # counts per subscriber are checked against the reply's own calendar, so a
+    # reading that only gets dates wrong costs the dates, and one that only
+    # counts wrongly costs the counts.
     "by requested date": ({"order": "requested"},
                           {"send_dates_right", "reasons_right", "a2_not_sent", "a3_emails_sent", "a4_most_emails"}),
     "calendar weeks": ({"window": "calendar"},
                        {"send_dates_right", "reasons_right", "a1_moved", "a2_not_sent", "a3_emails_sent", "a4_most_emails"}),
     "only the days before": ({"window": "backward"},
-                             {"send_dates_right", "reasons_right", "a1_moved", "a2_not_sent", "a3_emails_sent", "a4_most_emails"}),
+                             {"send_dates_right", "reasons_right", "a1_moved", "a2_not_sent", "a3_emails_sent",
+                              "a4_most_emails"}),
     "per segment": ({"counting": "segment"},
                     {"send_dates_right", "reasons_right", "a1_moved", "a2_not_sent", "a3_emails_sent", "a4_most_emails"}),
     "unsubscribed counted": ({"everyone": True},
-                             {"send_dates_right", "reasons_right", "audiences_right", "a1_moved", "a2_not_sent",
-                              "a3_emails_sent", "a4_most_emails", "a5_subscribers_at_most"}),
+                             {"send_dates_right", "reasons_right", "audiences_right", "frequency_right", "a1_moved",
+                              "a2_not_sent", "a3_emails_sent", "a4_most_emails", "a5_subscribers_at_most"}),
     "clear days between": ({"gap": GAP + 1},
                            {"send_dates_right", "reasons_right", "a1_moved", "a3_emails_sent", "a5_subscribers_at_most"}),
+    "join dates ignored": ({"joined_ignored": True}, {"audiences_right", "frequency_right", "a3_emails_sent"}),
+    "pauses ignored": ({"pause_ignored": True}, {"audiences_right", "frequency_right", "a3_emails_sent"}),
+    "a pause is the whole month": ({"pause_all_month": True},
+                                   {"audiences_right", "frequency_right", "a3_emails_sent"}),
+    "audience on the requested date": ({"audience_on_request": True},
+                                       {"audiences_right", "frequency_right", "a3_emails_sent"}),
 }
 
 
@@ -286,11 +331,15 @@ def test_the_reference_passes_every_program_check_and_a_blank_reply_none():
     blank = _results(CALENDAR, "")
     assert not any(item["pass"] for item in blank.values())
     assert bench.free_credit_scores(CALENDAR) == {}
-    # The answer block alone earns its own checks and nothing of the file's.
+    # The answer block alone earns its own checks and nothing of the files'.
     answer_checks = {"answer_block", "a1_moved", "a2_not_sent", "a3_emails_sent", "a4_most_emails", "a5_subscribers_at_most"}
     only_answers = CALENDAR_REFERENCE[CALENDAR_REFERENCE.index("A1:"):]
     for name, item in _results(CALENDAR, only_answers).items():
         assert item["score"] == (1.0 if name in answer_checks else 0.0), name
+    # The schedule without the frequency file scores nothing on the frequency check.
+    no_frequency = CALENDAR_REFERENCE[:CALENDAR_REFERENCE.index("### frequency.csv")] + only_answers
+    assert {name for name, item in _results(CALENDAR, no_frequency).items() if not item["pass"]} == {
+        "files_present", "frequency_right"}
 
 
 @pytest.mark.parametrize("trap", sorted(TRAPS))
@@ -304,7 +353,7 @@ def test_each_tempting_wrong_reading_scores_zero_on_what_it_touches(trap):
 
 def test_an_audience_added_up_by_segment_scores_zero_on_audiences_and_a3():
     calendar = build_calendar()
-    summed = summed_segment_sizes()
+    summed = summed_segment_sizes(calendar)
     figures = list(calendar["figures"])
     figures[2] = sum(summed[cid] for cid, when in calendar["send_date"].items() if when)
     scores = {name: item["score"] for name, item in _results(CALENDAR, calendar_reply(calendar, summed, figures)).items()}
@@ -315,25 +364,52 @@ def test_a_slip_is_counted_where_it_went_wrong():
     def changed(text: str) -> dict:
         return {name: value for name, value in email.calendar_facts(text).items() if value}
 
-    line = "C07,2027-02-18,94,frequency_cap"
-    assert changed(_swap(CALENDAR_REFERENCE, line, "C07,2027-02-16,94,")) == {
-        "calendar_wrong_date_count": 1, "calendar_wrong_reason_count": 1}
-    assert changed(_swap(CALENDAR_REFERENCE, line, "C07,2027-02-18,95,frequency_cap")) == {"calendar_wrong_audience_count": 1}
-    assert changed(_swap(CALENDAR_REFERENCE, line, "C07,2027-02-18,94,dependency")) == {"calendar_wrong_reason_count": 1}
-    assert changed(_swap(CALENDAR_REFERENCE, line, "C07,18/02/2027,94,frequency_cap")) == {
+    line = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("C07,"))
+    cid, when, size, reason = line.split(",")
+    assert (when, reason) == ("2027-02-18", "frequency_cap")
+    # Moved back to its requested date with everything else as it was: the date
+    # and the reason are wrong, and on the 16th fewer people receive C07 than
+    # the size and the counts say (some join or end a pause on the 17th or 18th).
+    on_16 = len(email.audience(next(c for c in email.campaigns() if c["campaign_id"] == "C07"), date(2027, 2, 16)))
+    assert on_16 < int(size)
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"C07,2027-02-16,{size},")) == {
+        "calendar_wrong_date_count": 1, "calendar_wrong_reason_count": 1, "calendar_wrong_audience_count": 1,
+        "calendar_wrong_frequency_count": int(size) - on_16}
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"C07,2027-02-16,{on_16},")) == {
+        "calendar_wrong_date_count": 1, "calendar_wrong_reason_count": 1, "calendar_wrong_frequency_count": int(size) - on_16}
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"C07,{when},{int(size) + 1},{reason}")) == {"calendar_wrong_audience_count": 1}
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"C07,{when},{size},dependency")) == {"calendar_wrong_reason_count": 1}
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"C07,18/02/2027,{size},{reason}")) == {
         "calendar_row_error_count": 1, "calendar_wrong_date_count": 1}
     assert changed(_swap(CALENDAR_REFERENCE, line + "\n", "")) == {
         "calendar_row_error_count": 1, "calendar_wrong_date_count": 1, "calendar_wrong_reason_count": 1,
         "calendar_wrong_audience_count": 1}
+    # The counts are read against the reply's own calendar: correct counts for
+    # a calendar the reply does not give are wrong.
+    wrong_calendar = build_calendar(window="calendar")
+    mixed = CALENDAR_REFERENCE[:CALENDAR_REFERENCE.index("### frequency.csv")] + calendar_reply(wrong_calendar)[
+        calendar_reply(wrong_calendar).index("### frequency.csv"):]
+    assert changed(mixed)["calendar_wrong_frequency_count"] >= 8
     assert changed(_swap(CALENDAR_REFERENCE, line, line + "\nC13,2027-02-26,40,")) == {"calendar_row_error_count": 1}
     assert changed(_swap(CALENDAR_REFERENCE, line, line + "\n" + line)) == {"calendar_row_error_count": 1}
     # Written loosely, still the same answer: the reason in words, the campaign
-    # in lower case, "Not sent" for none, a thousands separator.
-    assert changed(_swap(CALENDAR_REFERENCE, line, "c07,2027-02-18,94,Frequency cap")) == {}
-    assert changed(_swap(CALENDAR_REFERENCE, "C04,none,130,frequency_cap", "C04,Not sent,130,frequency_cap")) == {}
-    assert changed(_swap(CALENDAR_REFERENCE, "C11,2027-02-23,218,", 'C11,2027-02-23,"218",none')) == {}
+    # in lower case, "Not sent" for none, a quoted number.
+    assert changed(_swap(CALENDAR_REFERENCE, line, f"c07,{when},{size},Frequency cap")) == {}
+    c04 = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("C04,"))
+    assert changed(_swap(CALENDAR_REFERENCE, c04, c04.replace(",none,", ",Not sent,"))) == {}
+    c11 = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("C11,"))
+    assert changed(_swap(CALENDAR_REFERENCE, c11, c11.replace(",2027-02-23,", ',2027-02-23,"').rstrip(",") + '",none')) == {}
+    # A subscriber's count wrong, missing, repeated or invented.
+    first = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("S0001,"))
+    count = int(first.split(",")[1])
+    assert changed(_swap(CALENDAR_REFERENCE, first + "\n", f"S0001,{count + 1}\n")) == {"calendar_wrong_frequency_count": 1}
+    assert changed(_swap(CALENDAR_REFERENCE, first + "\n", "")) == {"calendar_wrong_frequency_count": 1}
+    assert changed(_swap(CALENDAR_REFERENCE, first + "\n", first + "\n" + first + "\nS9999,0\n")) == {
+        "calendar_wrong_frequency_count": 2}
+    assert changed(_swap(CALENDAR_REFERENCE, first + "\n", f"s0001,{count}\n")) == {}
     # A Markdown table in place of the CSV is read the same way.
-    rows = CALENDAR_REFERENCE[CALENDAR_REFERENCE.index("campaign_id,"):CALENDAR_REFERENCE.index("```\n\nA1")].strip().splitlines()
+    start = CALENDAR_REFERENCE.index("campaign_id,")
+    rows = CALENDAR_REFERENCE[start:CALENDAR_REFERENCE.index("```", start)].strip().splitlines()
     table = "\n".join(["| " + " | ".join(next(csv.reader([rows[0]]))) + " |", "|---|---|---|---|"]
                       + ["| " + " | ".join(next(csv.reader([row]))) + " |" for row in rows[1:]])
     markdown = CALENDAR_REFERENCE.replace("```csv\n" + "\n".join(rows) + "\n```", table)

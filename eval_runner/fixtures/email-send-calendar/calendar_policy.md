@@ -9,10 +9,17 @@ the same calendar. February 2027 starts on a Monday and has 28 days.
 The subscriber export has one row per subscriber and one column per segment:
 `veg_growers`, `houseplants`, `vip`, `new_subscribers`, `lapsed_buyers`, `local`. A 1 means the subscriber is in that segment.
 
-A campaign goes to every subscriber whose `status` is `active` and who is in
-at least one of the campaign's segments. A subscriber in several of its
-segments receives it once. Subscribers whose status is `unsubscribed` or
-`bounced` receive nothing.
+A campaign sent on a given day goes to every subscriber who, on that day:
+
+- has `status` `active` (subscribers who are `unsubscribed` or `bounced`
+  receive nothing);
+- has joined: their `joined` date is that day or earlier;
+- is not paused: their `paused_until` is empty, or is that day or earlier
+  (a paused subscriber receives nothing sent before that date);
+- is in at least one of the campaign's segments.
+
+A subscriber in several of a campaign's segments receives it once. Who
+receives a campaign therefore depends on the day it is sent.
 
 ## The rules a send date must meet
 
