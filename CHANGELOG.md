@@ -256,6 +256,38 @@
   dates or pauses ignored, a pause read as the whole month, a moved
   campaign's audience taken on its requested date) scores zero on every
   check it touches and full on the rest.
+- Tasks: workflow task `claims-check` (development split): six product
+  pages making 150 numbered claims, and the sources (lab results with a
+  superseded June round, an owner survey by group and country, price history,
+  offers with dates, a policy, an awards list) in; a verdict per claim and the
+  six pages rewritten out. Traps run through every page: a retest whose June
+  row disagrees with the final one, one country's survey figure, a sibling
+  model's figure, a price or offer not in force on the day, a discontinued
+  model that is lighter, a shortlist read as an award, a retailer-only
+  model's returns and shipping, review counts near a respondent count, and
+  conditions the rewrite must keep. Each kept or corrected claim is checked
+  where it stands, between the claim number before it and its own. 13 of its
+  14 checks are a program's. Vendors `copy-editing` (2.0.0) unchanged from
+  marketingskills `2c38021`, the pin of the other skill files, for its "with
+  skills" arm.
+- Tasks: workflow task `catalog-descriptions` (development split): a 60-row
+  product table in twelve families of near-identical variants, a certificate
+  register, a warranty policy by category and last season's descriptions in;
+  60 descriptions out, each with a fixed spec line, the warranty its row or
+  its category gives, only the standards whose certificates count on the
+  publish date, nothing for a blank weight or country, and no fact borrowed
+  from a sibling or kept from stale copy. 11 of its 12 checks are a
+  program's.
+- Tasks: workflow task `launch-copy-pack` (development split): a launch
+  brief, a 133-row claims register, an engineering spec sheet, last year's
+  launch copy, voice rules and a placements table in; 72 assets for four
+  products out. Every figure and claim phrase must come from a register row
+  usable for the asset's product and channel, prices carry the product's own
+  offer date, an SMS limit counts the opt-out line and falls to 70
+  characters for one non-plain character, and no two of a product's
+  headlines open alike. 14 of its 15 checks are a program's. The three copy
+  tasks share `eval_runner/task_facts_copy.py` (documents, reference replies
+  and checkers); each has a thin interface module in `eval_runner/workflows/`.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

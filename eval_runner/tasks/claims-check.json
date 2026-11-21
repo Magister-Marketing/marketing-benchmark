@@ -1,0 +1,199 @@
+{
+  "id": "claims-check",
+  "title": "Claims check",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "claims-check",
+  "fixtures": [
+    "eval_runner/fixtures/claims-check/draft.md",
+    "eval_runner/fixtures/claims-check/lab_results.csv",
+    "eval_runner/fixtures/claims-check/lab_notes.md",
+    "eval_runner/fixtures/claims-check/owner_survey.csv",
+    "eval_runner/fixtures/claims-check/price_history.csv",
+    "eval_runner/fixtures/claims-check/offers.csv",
+    "eval_runner/fixtures/claims-check/policy.md",
+    "eval_runner/fixtures/claims-check/awards.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copy-editing/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "Corvane's product pages on corvane.example for its 6 stick vacuums go live on Nov 30, 2026. The supplied draft.md holds all 6 pages; together they make 150 claims, each followed by its number in square brackets. Check every claim against the supplied sources (lab_results.csv with lab_notes.md, owner_survey.csv, price_history.csv, offers.csv, policy.md and awards.md), then rewrite the pages.\n\nGive each claim one verdict, deciding in this order:\n\n- supported: a source states it. A figure must be the source's figure, in the same unit, for the same measure of the same product, and any condition the claim states (a mode, a test group, an order minimum) must be the condition the source gives for that figure. A claim without a figure is supported when the sources show it is true.\n- contradicted: not supported, and a source gives a different figure for the same measure of the same product.\n- unsupported: neither. A figure that a source gives only for a different measure, another product or another group of people does not count, and a claim without a figure that the sources show to be false is unsupported, since contradicted needs a figure.\n\nRead the sources this way:\n\n- A model's lab result is its final result; a superseded result is not.\n- A claim about owners is about all owners. A figure for one country's owners, or for the 30-day home trial, is not a figure for all owners, and a claim about the home trial is about the trial alone.\n- A price or an offer is what is in force on the day the pages go live. An offer that has ended, or has not yet begun, is not in force.\n- The policy's terms apply only to what the policy says they cover.\n- A claim that compares a model with the others Corvane has made (our lightest, the quietest we have made) is about every stick vacuum Corvane has made.\n\nThen rewrite the pages. Keep every supported claim as it is, with its condition. Correct every contradicted claim to the source's figure, changing nothing else in it. Take every unsupported claim out completely, without saying it in other words. Keep each kept or corrected claim's number in square brackets right after it, as the draft does, and leave out the numbers of the claims you took out. Keep every heading of the draft, in its order, even where a section is left with nothing under it. Add nothing: no new claim, and no figure or date that is not already in the draft, apart from the corrected figures.\n\nDeliver two files in your reply, each under a line with its file name.\n\n### claims.csv\nclaim,verdict\n\nOne row per claim, 1 to 150, as CSV with exactly this header and nothing else inside the file. `verdict` is supported, contradicted or unsupported.\n\n### rewrite.md\n```\n<all 6 pages after the review, in Markdown>\n```\n\nThis is copy for review. Publish nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "both_files",
+        "check": "claims.csv and rewrite.md are both in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_claim_judged",
+        "check": "claims.csv has one row for each of the 150 claims, with a verdict of supported, contradicted or unsupported, and no row repeats a claim or names one the draft does not have. Full credit for none missing, unreadable, repeated or extra; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_claim_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "headings_kept",
+        "check": "rewrite.md keeps all 36 of the draft's headings, in their order. A missing rewrite, or the draft handed back unchanged, counts as all 36 missing. Full credit for none missing or out of order; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_heading_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "claim_numbers_match",
+        "check": "The bracketed claim numbers in rewrite.md are exactly the 111 claims that are kept or corrected: none of them left out, and none of the 39 removed claims' numbers left in. Full credit for none wrong; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_claim_number_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "supported_verdicts",
+        "check": "All 64 claims the sources support are marked supported, including those whose June lab result differs from the final one, and the boasts the sources bear out. Full credit for none misread; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_supported_misread_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "contradicted_verdicts",
+        "check": "All 47 claims whose figure differs from the source's figure for the same measure are marked contradicted, including figures slightly off, figures from a superseded test, another model or one country's owners, and prices no longer in force. Full credit for none misread; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_contradicted_misread_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "unsupported_verdicts",
+        "check": "All 39 claims no source states are marked unsupported, including comparisons a discontinued or another model disproves, a shortlist read as an award, offers not in force, a retailer-only model's returns and shipping, survey figures for a model with no survey and review counts close to a respondent count. Full credit for none misread; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_unsupported_misread_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "supported_claims_kept",
+        "check": "Every one of the 64 supported claims is still in rewrite.md, read between the claim number before it and its own number, with its figure and the word that carries it (quietest, Halberd, award, year warranty, free shipping). Full credit for none dropped; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_kept_claim_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "conditions_kept",
+        "check": "The 13 supported claims that are true only under a condition keep it where they stand: eco mode, the 30-day home trial, orders over $150. Full credit for none dropped; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_qualifier_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "corrected_figures_in",
+        "check": "Every one of the 47 contradicted claims carries the source's figure where it stands in rewrite.md. Full credit for none missing; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_corrected_figure_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "wrong_figures_out",
+        "check": "None of the 47 contradicted claims keeps its draft figure where it stands in rewrite.md. Full credit for none left; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_figure_left_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "removed_claims_out",
+        "check": "None of the 39 unsupported claims is left on its page of rewrite.md, under its number or in its own words. Full credit for none left; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_removed_claim_left_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "no_new_figures",
+        "check": "rewrite.md writes no figure that is not in the draft, apart from the corrected figures. A missing rewrite counts as an error. Full credit for none; zero credit at 1.",
+        "programmatic": {
+          "fact": "workflow_new_figure_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "no_claim_restated",
+        "check": "Judge rewrite.md only. No removed claim survives in other words (an allergy, award, lifespan, pet-hair comparison, review-count, conversation-noise, lightest, quietest, offer, returns or shipping claim where it was removed), no new claim is added, and each corrected figure is attached to the measure its claim was about. It fails if any of those happens, or if rewrite.md is missing."
+      }
+    ]
+  }
+}

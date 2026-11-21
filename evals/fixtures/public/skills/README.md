@@ -22,6 +22,7 @@ Each file's own version is in its frontmatter. At this pin:
 | `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
 | `competitor-profiling/SKILL.md` | `skills/competitor-profiling/SKILL.md` | 2.0.1 |
 | `content-strategy/SKILL.md` | `skills/content-strategy/SKILL.md` | 2.0.1 |
+| `copy-editing/SKILL.md` | `skills/copy-editing/SKILL.md` | 2.0.0 |
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
 | `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
 | `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |

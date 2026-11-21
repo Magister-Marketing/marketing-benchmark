@@ -1,0 +1,209 @@
+test_id,tested,model,measure,value,unit,status
+HTL-2606-01,2026-06-15,Mira,weight,2.4,kg,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"runtime, eco mode",52,min,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"runtime, standard power",29,min,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"runtime, boost mode",11,min,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,full charge,3.5,hours,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"noise, standard power",66,dB,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"noise, eco mode",61,dB,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,dust bin,0.7,L,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,"suction, boost mode",185,AW,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,particles of 0.3 microns and larger captured,99.5,%,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,debris picked up on carpet,92,%,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,debris picked up on hard floors,99,%,superseded by HTL-2609-01
+HTL-2606-01,2026-06-15,Mira,debris picked up along edges,81,%,superseded by HTL-2609-01
+HTL-2606-02,2026-06-15,Mira Pet,weight,2.8,kg,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"runtime, eco mode",47,min,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"runtime, standard power",27,min,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"runtime, boost mode",10,min,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,full charge,3,hours,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"noise, standard power",70,dB,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"noise, eco mode",63,dB,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,dust bin,0.6,L,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,"suction, boost mode",205,AW,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,particles of 0.3 microns and larger captured,99.9,%,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,debris picked up on carpet,95,%,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,debris picked up on hard floors,99,%,superseded by HTL-2609-02
+HTL-2606-02,2026-06-15,Mira Pet,debris picked up along edges,80,%,superseded by HTL-2609-02
+HTL-2606-03,2026-06-15,Aster,weight,3,kg,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"runtime, eco mode",44,min,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"runtime, standard power",26,min,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"runtime, boost mode",9,min,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,full charge,4,hours,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"noise, standard power",73,dB,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"noise, eco mode",64,dB,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,dust bin,0.8,L,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,"suction, boost mode",160,AW,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,particles of 0.3 microns and larger captured,99.5,%,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,debris picked up on carpet,86,%,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,debris picked up on hard floors,98,%,superseded by HTL-2609-03
+HTL-2606-03,2026-06-15,Aster,debris picked up along edges,76,%,superseded by HTL-2609-03
+HTL-2606-04,2026-06-15,Aster Pro,weight,3.1,kg,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"runtime, eco mode",58,min,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"runtime, standard power",35,min,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"runtime, boost mode",13,min,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,full charge,4.5,hours,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"noise, standard power",72,dB,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"noise, eco mode",65,dB,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,dust bin,0.8,L,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,"suction, boost mode",220,AW,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,particles of 0.3 microns and larger captured,99.9,%,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,debris picked up on carpet,97,%,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,debris picked up on hard floors,99,%,superseded by HTL-2609-04
+HTL-2606-04,2026-06-15,Aster Pro,debris picked up along edges,86,%,superseded by HTL-2609-04
+HTL-2606-05,2026-06-15,Lumen,weight,2.6,kg,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"runtime, eco mode",38,min,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"runtime, standard power",26,min,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"runtime, boost mode",8,min,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,full charge,3,hours,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"noise, standard power",69,dB,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"noise, eco mode",62,dB,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,dust bin,0.5,L,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,"suction, boost mode",150,AW,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,particles of 0.3 microns and larger captured,99,%,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,debris picked up on carpet,85,%,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,debris picked up on hard floors,97,%,superseded by HTL-2609-05
+HTL-2606-05,2026-06-15,Lumen,debris picked up along edges,74,%,superseded by HTL-2609-05
+HTL-2606-06,2026-06-15,Lumen Lite,weight,2.2,kg,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"runtime, eco mode",32,min,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"runtime, standard power",20,min,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"runtime, boost mode",7,min,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,full charge,3,hours,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"noise, standard power",67,dB,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"noise, eco mode",60,dB,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,dust bin,0.4,L,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,"suction, boost mode",120,AW,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,particles of 0.3 microns and larger captured,98,%,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,debris picked up on carpet,79,%,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,debris picked up on hard floors,96,%,superseded by HTL-2609-06
+HTL-2606-06,2026-06-15,Lumen Lite,debris picked up along edges,70,%,superseded by HTL-2609-06
+HTL-2606-07,2026-06-15,Wisp,weight,2.1,kg,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"runtime, eco mode",25,min,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"runtime, standard power",18,min,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"runtime, boost mode",6,min,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,full charge,3,hours,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"noise, standard power",70,dB,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"noise, eco mode",63,dB,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,dust bin,0.4,L,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,"suction, boost mode",100,AW,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,particles of 0.3 microns and larger captured,97,%,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,debris picked up on carpet,72,%,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,debris picked up on hard floors,94,%,superseded by HTL-2609-07
+HTL-2606-07,2026-06-15,Wisp,debris picked up along edges,65,%,superseded by HTL-2609-07
+HTL-2606-08,2026-06-15,Arc,weight,3.4,kg,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"runtime, eco mode",40,min,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"runtime, standard power",22,min,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"runtime, boost mode",8,min,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,full charge,5,hours,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"noise, standard power",75,dB,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"noise, eco mode",68,dB,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,dust bin,0.7,L,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,"suction, boost mode",150,AW,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,particles of 0.3 microns and larger captured,99,%,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,debris picked up on carpet,84,%,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,debris picked up on hard floors,96,%,superseded by HTL-2609-08
+HTL-2606-08,2026-06-15,Arc,debris picked up along edges,71,%,superseded by HTL-2609-08
+HTL-2609-01,2026-09-14,Mira,weight,2.4,kg,final
+HTL-2609-01,2026-09-14,Mira,"runtime, eco mode",52,min,final
+HTL-2609-01,2026-09-14,Mira,"runtime, standard power",29,min,final
+HTL-2609-01,2026-09-14,Mira,"runtime, boost mode",11,min,final
+HTL-2609-01,2026-09-14,Mira,full charge,3.5,hours,final
+HTL-2609-01,2026-09-14,Mira,"noise, standard power",68,dB,final
+HTL-2609-01,2026-09-14,Mira,"noise, eco mode",61,dB,final
+HTL-2609-01,2026-09-14,Mira,dust bin,0.6,L,final
+HTL-2609-01,2026-09-14,Mira,"suction, boost mode",185,AW,final
+HTL-2609-01,2026-09-14,Mira,particles of 0.3 microns and larger captured,99.9,%,final
+HTL-2609-01,2026-09-14,Mira,debris picked up on carpet,92,%,final
+HTL-2609-01,2026-09-14,Mira,debris picked up on hard floors,99,%,final
+HTL-2609-01,2026-09-14,Mira,debris picked up along edges,81,%,final
+HTL-2609-02,2026-09-14,Mira Pet,weight,2.7,kg,final
+HTL-2609-02,2026-09-14,Mira Pet,"runtime, eco mode",47,min,final
+HTL-2609-02,2026-09-14,Mira Pet,"runtime, standard power",27,min,final
+HTL-2609-02,2026-09-14,Mira Pet,"runtime, boost mode",10,min,final
+HTL-2609-02,2026-09-14,Mira Pet,full charge,3.5,hours,final
+HTL-2609-02,2026-09-14,Mira Pet,"noise, standard power",70,dB,final
+HTL-2609-02,2026-09-14,Mira Pet,"noise, eco mode",63,dB,final
+HTL-2609-02,2026-09-14,Mira Pet,dust bin,0.6,L,final
+HTL-2609-02,2026-09-14,Mira Pet,"suction, boost mode",205,AW,final
+HTL-2609-02,2026-09-14,Mira Pet,particles of 0.3 microns and larger captured,99.9,%,final
+HTL-2609-02,2026-09-14,Mira Pet,debris picked up on carpet,95,%,final
+HTL-2609-02,2026-09-14,Mira Pet,debris picked up on hard floors,99,%,final
+HTL-2609-02,2026-09-14,Mira Pet,debris picked up along edges,83,%,final
+HTL-2609-03,2026-09-14,Aster,weight,2.9,kg,final
+HTL-2609-03,2026-09-14,Aster,"runtime, eco mode",44,min,final
+HTL-2609-03,2026-09-14,Aster,"runtime, standard power",26,min,final
+HTL-2609-03,2026-09-14,Aster,"runtime, boost mode",9,min,final
+HTL-2609-03,2026-09-14,Aster,full charge,4,hours,final
+HTL-2609-03,2026-09-14,Aster,"noise, standard power",71,dB,final
+HTL-2609-03,2026-09-14,Aster,"noise, eco mode",64,dB,final
+HTL-2609-03,2026-09-14,Aster,dust bin,0.8,L,final
+HTL-2609-03,2026-09-14,Aster,"suction, boost mode",160,AW,final
+HTL-2609-03,2026-09-14,Aster,particles of 0.3 microns and larger captured,99.5,%,final
+HTL-2609-03,2026-09-14,Aster,debris picked up on carpet,88,%,final
+HTL-2609-03,2026-09-14,Aster,debris picked up on hard floors,98,%,final
+HTL-2609-03,2026-09-14,Aster,debris picked up along edges,76,%,final
+HTL-2609-04,2026-09-14,Aster Pro,weight,3.1,kg,final
+HTL-2609-04,2026-09-14,Aster Pro,"runtime, eco mode",60,min,final
+HTL-2609-04,2026-09-14,Aster Pro,"runtime, standard power",35,min,final
+HTL-2609-04,2026-09-14,Aster Pro,"runtime, boost mode",13,min,final
+HTL-2609-04,2026-09-14,Aster Pro,full charge,4.5,hours,final
+HTL-2609-04,2026-09-14,Aster Pro,"noise, standard power",72,dB,final
+HTL-2609-04,2026-09-14,Aster Pro,"noise, eco mode",65,dB,final
+HTL-2609-04,2026-09-14,Aster Pro,dust bin,0.8,L,final
+HTL-2609-04,2026-09-14,Aster Pro,"suction, boost mode",230,AW,final
+HTL-2609-04,2026-09-14,Aster Pro,particles of 0.3 microns and larger captured,99.95,%,final
+HTL-2609-04,2026-09-14,Aster Pro,debris picked up on carpet,97,%,final
+HTL-2609-04,2026-09-14,Aster Pro,debris picked up on hard floors,99,%,final
+HTL-2609-04,2026-09-14,Aster Pro,debris picked up along edges,86,%,final
+HTL-2609-05,2026-09-14,Lumen,weight,2.6,kg,final
+HTL-2609-05,2026-09-14,Lumen,"runtime, eco mode",38,min,final
+HTL-2609-05,2026-09-14,Lumen,"runtime, standard power",24,min,final
+HTL-2609-05,2026-09-14,Lumen,"runtime, boost mode",8,min,final
+HTL-2609-05,2026-09-14,Lumen,full charge,3,hours,final
+HTL-2609-05,2026-09-14,Lumen,"noise, standard power",69,dB,final
+HTL-2609-05,2026-09-14,Lumen,"noise, eco mode",62,dB,final
+HTL-2609-05,2026-09-14,Lumen,dust bin,0.5,L,final
+HTL-2609-05,2026-09-14,Lumen,"suction, boost mode",140,AW,final
+HTL-2609-05,2026-09-14,Lumen,particles of 0.3 microns and larger captured,99,%,final
+HTL-2609-05,2026-09-14,Lumen,debris picked up on carpet,85,%,final
+HTL-2609-05,2026-09-14,Lumen,debris picked up on hard floors,97,%,final
+HTL-2609-05,2026-09-14,Lumen,debris picked up along edges,74,%,final
+HTL-2609-06,2026-09-14,Lumen Lite,weight,2.2,kg,final
+HTL-2609-06,2026-09-14,Lumen Lite,"runtime, eco mode",30,min,final
+HTL-2609-06,2026-09-14,Lumen Lite,"runtime, standard power",20,min,final
+HTL-2609-06,2026-09-14,Lumen Lite,"runtime, boost mode",7,min,final
+HTL-2609-06,2026-09-14,Lumen Lite,full charge,2.5,hours,final
+HTL-2609-06,2026-09-14,Lumen Lite,"noise, standard power",67,dB,final
+HTL-2609-06,2026-09-14,Lumen Lite,"noise, eco mode",58,dB,final
+HTL-2609-06,2026-09-14,Lumen Lite,dust bin,0.4,L,final
+HTL-2609-06,2026-09-14,Lumen Lite,"suction, boost mode",120,AW,final
+HTL-2609-06,2026-09-14,Lumen Lite,particles of 0.3 microns and larger captured,98,%,final
+HTL-2609-06,2026-09-14,Lumen Lite,debris picked up on carpet,79,%,final
+HTL-2609-06,2026-09-14,Lumen Lite,debris picked up on hard floors,96,%,final
+HTL-2609-06,2026-09-14,Lumen Lite,debris picked up along edges,70,%,final
+HTL-2609-07,2026-09-14,Wisp,weight,2.1,kg,final
+HTL-2609-07,2026-09-14,Wisp,"runtime, eco mode",25,min,final
+HTL-2609-07,2026-09-14,Wisp,"runtime, standard power",18,min,final
+HTL-2609-07,2026-09-14,Wisp,"runtime, boost mode",6,min,final
+HTL-2609-07,2026-09-14,Wisp,full charge,3,hours,final
+HTL-2609-07,2026-09-14,Wisp,"noise, standard power",70,dB,final
+HTL-2609-07,2026-09-14,Wisp,"noise, eco mode",63,dB,final
+HTL-2609-07,2026-09-14,Wisp,dust bin,0.4,L,final
+HTL-2609-07,2026-09-14,Wisp,"suction, boost mode",100,AW,final
+HTL-2609-07,2026-09-14,Wisp,particles of 0.3 microns and larger captured,97,%,final
+HTL-2609-07,2026-09-14,Wisp,debris picked up on carpet,72,%,final
+HTL-2609-07,2026-09-14,Wisp,debris picked up on hard floors,94,%,final
+HTL-2609-07,2026-09-14,Wisp,debris picked up along edges,65,%,final
+HTL-2609-08,2026-09-14,Arc,weight,3.4,kg,final
+HTL-2609-08,2026-09-14,Arc,"runtime, eco mode",40,min,final
+HTL-2609-08,2026-09-14,Arc,"runtime, standard power",22,min,final
+HTL-2609-08,2026-09-14,Arc,"runtime, boost mode",8,min,final
+HTL-2609-08,2026-09-14,Arc,full charge,5,hours,final
+HTL-2609-08,2026-09-14,Arc,"noise, standard power",75,dB,final
+HTL-2609-08,2026-09-14,Arc,"noise, eco mode",68,dB,final
+HTL-2609-08,2026-09-14,Arc,dust bin,0.7,L,final
+HTL-2609-08,2026-09-14,Arc,"suction, boost mode",150,AW,final
+HTL-2609-08,2026-09-14,Arc,particles of 0.3 microns and larger captured,99,%,final
+HTL-2609-08,2026-09-14,Arc,debris picked up on carpet,84,%,final
+HTL-2609-08,2026-09-14,Arc,debris picked up on hard floors,96,%,final
+HTL-2609-08,2026-09-14,Arc,debris picked up along edges,71,%,final
