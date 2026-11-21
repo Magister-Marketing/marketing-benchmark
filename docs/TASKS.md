@@ -81,6 +81,15 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
+Conversion tasks added on 2026-11-20 for the 35-task board. No setup has run
+them yet and their judged checks are not calibrated. Every figure a program
+checks is recomputed from the fixtures by separate code in
+`tests/test_tasks_conversion.py`.
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Test plan sizing](../eval_runner/tasks/test-plan-sizing.json) | The sample size and weeks of six proposed A/B tests, the calendar that runs them and the tests rejected, with 18 labeled figures | One lift is in percentage points among relative ones, one page's traffic is in sessions that must be turned into users, and weeks round up; a four-week limit, a freeze week and a priority rule decide which test on a shared page goes first and which are dropped | 14 |
+
 ### Forecast tasks
 
 The two "Which headline won?" tasks grade a judgment against what happened,

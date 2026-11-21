@@ -1,0 +1,42 @@
+{
+  "id": "test-plan-sizing",
+  "title": "Sizing and scheduling a backlog of A/B tests",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/test-plan-sizing/testing_rules.md",
+    "eval_runner/fixtures/test-plan-sizing/test_backlog.csv",
+    "eval_runner/fixtures/test-plan-sizing/traffic_by_page.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ab-testing/SKILL.md"
+  ],
+  "answers": {
+    "count": 18,
+    "single_number": true
+  },
+  "prompt": "Quillfeather Coffee Roasters has six A/B tests proposed for its next testing calendar, and the growth lead wants a plan the team can follow: how large each test must be, how long it needs, which tests run and when, and which are rejected. You are supplied the team's experimentation rules, the test backlog and eight weeks of traffic by page. Follow the rules exactly. Every figure you use must come from the supplied files.\n\nWrite the plan. For each test, give its sample size per variant and the weeks it needs. Then give the calendar: each test that runs, with its page, its start week and its end week. Then list each test that is rejected and the rule that rejects it. Write it for a growth lead who will hand the calendar to the team.\n\nEnd the plan with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. Use a comma as the thousands separator, if you use one.\n\nA1: <sample size per variant of T1>\nA2: <sample size per variant of T2>\nA3: <sample size per variant of T3>\nA4: <sample size per variant of T4>\nA5: <sample size per variant of T5>\nA6: <sample size per variant of T6>\nA7: <weeks T1 needs>\nA8: <weeks T2 needs>\nA9: <weeks T3 needs>\nA10: <weeks T4 needs>\nA11: <weeks T5 needs>\nA12: <weeks T6 needs>\nA13: <start week of T1, or 0 if T1 is rejected>\nA14: <start week of T2, or 0 if T2 is rejected>\nA15: <start week of T3, or 0 if T3 is rejected>\nA16: <start week of T4, or 0 if T4 is rejected>\nA17: <start week of T5, or 0 if T5 is rejected>\nA18: <start week of T6, or 0 if T6 is rejected>\n\nThis is an internal plan. Fetch nothing external and do not invent benchmarks.",
+  "rubric": {
+    "completion": [
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 18 labeled answers A1-A18 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 18}},
+      {"id": "sample_sizes", "check": "A1, A2, A4, A5 and A6 state the sample sizes per variant of the five tests whose lift is relative (T1, T2, T4, T5 and T6), by the rules' formula; each has full credit within 0.2% and zero credit beyond 1.5% off, and all five must be in full credit.", "programmatic": [{"fact": "answer_q1", "near": 53148, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}, {"fact": "answer_q2", "near": 21858, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}, {"fact": "answer_q4", "near": 25708, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}, {"fact": "answer_q5", "near": 10307, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}, {"fact": "answer_q6", "near": 27614, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}]},
+      {"id": "points_lift_test", "check": "A3 and A9 state T3's sample size per variant and the weeks it needs, with its lift read in percentage points as its lift_unit says; the sample size has full credit within 0.2% and zero credit beyond 1.5% off, the weeks full credit for the exact figure and zero credit 1 or more off.", "programmatic": [{"fact": "answer_q3", "near": 5753, "tolerance": {"kind": "relative", "full": 0.002, "zero": 0.015}}, {"fact": "answer_q9", "near": 1, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}]},
+      {"id": "weeks_needed", "check": "A7, A11 and A12 state the weeks T1, T5 and T6 need; each has full credit for the exact figure and zero credit 1 or more off, and all three must be exact.", "programmatic": [{"fact": "answer_q7", "near": 4, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}, {"fact": "answer_q11", "near": 2, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}, {"fact": "answer_q12", "near": 2, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}]},
+      {"id": "weeks_rounded_up", "check": "A8 states the weeks T2 needs, rounded up to a whole week as the rules say; full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q8", "near": 3, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "sessions_page_weeks", "check": "A10 states the weeks T4 needs, with the subscribe page's sessions turned into users as the rules say; full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q10", "near": 5, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "calendar_presented", "check": "The plan presents the calendar the prompt asks for: for every test it runs, the test's page, its start week and its end week. A test the plan runs without its page, start week or end week stated fails. Whether the weeks are right is checked separately."}
+    ],
+    "skill_adherence": [
+      {"id": "rejections_explained", "check": "For every test the plan rejects, it names the rule that rejects it and the figure that breaks the rule (for a test rejected on length, the weeks it would need against the four-week limit). A rejected test given without a reason fails. Whether the right tests are rejected is checked separately."}
+    ],
+    "best_practices": [
+      {"id": "start_t1", "check": "A13 states T1's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q13", "near": 6, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_t2", "check": "A14 states T2's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q14", "near": 2, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_t3", "check": "A15 states T3's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q15", "near": 1, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_t4", "check": "A16 states T4's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q16", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_t5", "check": "A17 states T5's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q17", "near": 1, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_t6", "check": "A18 states T6's start week under the rules (0 if rejected); full credit for the exact figure, zero credit 1 or more off.", "programmatic": {"fact": "answer_q18", "near": 1, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}}
+    ]
+  }
+}

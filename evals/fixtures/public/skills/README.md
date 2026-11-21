@@ -16,6 +16,7 @@ Each file's own version is in its frontmatter. At this pin:
 
 | Benchmark path | Upstream path | Version |
 |---|---|---|
+| `ab-testing/SKILL.md` | `skills/ab-testing/SKILL.md` | 2.0.2 |
 | `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.9.4 |
 | `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |

@@ -25,6 +25,8 @@ import re
 import warnings
 from decimal import Decimal
 
+from . import task_facts_conversion
+
 VERSION = 3
 
 _SOURCE_HEADING = re.compile(r"(?m)^---\n\n## (?:Supplied source: (?P<name>[^\n]+)|[^\n]*)\n\n")
@@ -434,7 +436,8 @@ REFERENCES = {
 
 def task_reference(task_id: str | None, exact_prompt: str) -> dict:
     """The judge's reference for one recorded prompt, or {} when there is none."""
-    build = REFERENCES.get(task_id)
+    # The conversion tasks keep their figures in a module of their own.
+    build = REFERENCES.get(task_id) or task_facts_conversion.REFERENCES.get(task_id)
     if build is None:
         return {}
     try:

@@ -1,0 +1,49 @@
+week_start,page,unit,traffic
+2026-11-09,blog,users,11457
+2026-11-09,cart,users,5942
+2026-11-09,checkout,users,4073
+2026-11-09,homepage,users,30946
+2026-11-09,product page,users,18080
+2026-11-09,subscribe page,sessions,13504
+2026-11-16,blog,users,12084
+2026-11-16,cart,users,6270
+2026-11-16,checkout,users,3937
+2026-11-16,homepage,users,30087
+2026-11-16,product page,users,20060
+2026-11-16,subscribe page,sessions,13792
+2026-11-23,blog,users,12247
+2026-11-23,cart,users,6273
+2026-11-23,checkout,users,4050
+2026-11-23,homepage,users,28110
+2026-11-23,product page,users,19282
+2026-11-23,subscribe page,sessions,14017
+2026-11-30,blog,users,12343
+2026-11-30,cart,users,6460
+2026-11-30,checkout,users,3892
+2026-11-30,homepage,users,28921
+2026-11-30,product page,users,19867
+2026-11-30,subscribe page,sessions,13983
+2026-12-07,blog,users,11472
+2026-12-07,cart,users,6394
+2026-12-07,checkout,users,3737
+2026-12-07,homepage,users,28042
+2026-12-07,product page,users,19050
+2026-12-07,subscribe page,sessions,14698
+2026-12-14,blog,users,11607
+2026-12-14,cart,users,6417
+2026-12-14,checkout,users,4128
+2026-12-14,homepage,users,30186
+2026-12-14,product page,users,18935
+2026-12-14,subscribe page,sessions,14138
+2026-12-21,blog,users,12417
+2026-12-21,cart,users,5755
+2026-12-21,checkout,users,3894
+2026-12-21,homepage,users,28857
+2026-12-21,product page,users,19488
+2026-12-21,subscribe page,sessions,14264
+2026-12-28,blog,users,11641
+2026-12-28,cart,users,6052
+2026-12-28,checkout,users,3752
+2026-12-28,homepage,users,29154
+2026-12-28,product page,users,19279
+2026-12-28,subscribe page,sessions,14657

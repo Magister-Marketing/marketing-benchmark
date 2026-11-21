@@ -1,0 +1,7 @@
+test_id,page,change,primary_metric,baseline_rate_pct,expected_lift,lift_unit
+T1,homepage,Hero leads with the subscription offer,orders per homepage user,3.0,10,relative %
+T2,product page,Tasting notes moved above the price,orders per product-page user,5.0,12,relative %
+T3,product page,Grind selector shown before add-to-cart,orders per product-page user,5.0,1.2,percentage points
+T4,subscribe page,Delivery-frequency picker replaces the dropdown,subscriptions started per subscribe-page user,6.0,10,relative %
+T5,subscribe page,Plan comparison table,subscriptions started per subscribe-page user,6.0,16,relative %
+T6,homepage,Free-shipping threshold in the announcement bar,orders per homepage user,3.0,14,relative %

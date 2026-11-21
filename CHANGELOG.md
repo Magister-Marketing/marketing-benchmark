@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Tasks: `test-plan-sizing` (development split): six proposed A/B tests,
+  eight weeks of traffic by page and the team's experimentation rules in;
+  each test's sample size per variant and weeks, the calendar and the tests
+  rejected out, as 18 labeled figures. One lift is in percentage points among
+  relative ones, the subscribe page counts sessions, weeks round up, and a
+  four-week limit, a week-5 freeze and a priority rule set the calendar. 12 of
+  its 14 checks are a program's. The fixtures' generator sits beside them
+  (`eval_runner/fixtures/test-plan-sizing/generate.py`), the oracle is in
+  `eval_runner/task_facts_conversion.py`, which `task_references` now
+  consults for the judge's reference, and `tests/test_tasks_conversion.py`
+  recomputes every target. Vendors `ab-testing/SKILL.md` unchanged from
+  marketingskills `2c38021` (2.0.2) for the "with skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

@@ -228,6 +228,7 @@ rather than inline:
 | development | `launch-trafficking` | a workflow task: a launch brief, platform specs and a tracking standard in; a budget, 114 text fields across 36 assets and 36 tracked URLs out; 18 of its 19 checks are a program's |
 | development | `outbound-sequence` | a workflow task: a 200-lead list, an outbound standard and product facts in; exclusions with reasons, segment and country-group assignments and 30 emails across 10 sequences out; 21 of its 22 checks are a program's |
 | development | `price-change-rollout` | a workflow task: a change brief and 14 assets in; every asset returned in full, changed exactly as the brief says, with a change log; 18 of its 19 checks are a program's |
+| development | `test-plan-sizing` | six proposed A/B tests sized by a stated formula and put on a calendar with a four-week limit, a freeze week and a priority rule; one lift in percentage points, one page counted in sessions; 18 labeled figures |
 | development | `headline-forecast`, `headline-forecast-unpublished` | 100 pairs of headlines each from real tests with a clear winner (Upworthy Research Archive, CC BY 4.0): pick the one that got the higher click rate and say how sure; graded on picks right (a coin flip scores nothing, nine in ten passes) and on the Brier score of the stated confidence |
 
 The ad-performance CSV has planted, exactly computable findings
