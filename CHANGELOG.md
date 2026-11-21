@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Tasks: `ab-test-readout` prompt version 5 (rubric 5 unchanged). The prompt now
+  says every answer-block figure is read as the plan reads its results (the
+  analysis window, the visits the plan counts), and defines a lift (B's rate
+  ÷ control's − 1) and a pooled rate (signups and visitors summed over both
+  devices first). Version 4 left the pooled lift's scope to the plan, whose QA
+  rule covers the plan's own metrics, so counting the QA visits in A3 could be
+  argued (55.8% against 11.7%). The mobile and device-weighted lifts had one
+  reading each and do not change. The targets are the same, so version 4's
+  prompt is archived in `rubric_compatible_prompts` and its runs still grade.
 - Tasks: `ab-test-readout` hardened (prompt version 4, rubric version 5; the
   id is kept, as the 35-task board plan asks). Every setup passed all 17
   checks of version 3. The fixtures are now 616 daily rows by device and

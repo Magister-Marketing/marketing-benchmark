@@ -16,6 +16,7 @@ What is pinned here, for every task:
 """
 import collections
 import csv
+import hashlib
 import datetime as dt
 import importlib.util
 import io
@@ -754,6 +755,9 @@ def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
     assert "Follow the plan exactly" in prompt
     assert "which of the plan's decision rules decides and what it decides" in prompt   # recommendation_stated
     assert "with both devices pooled" in prompt                                         # what the manager saw
+    # Every answer is read as the plan reads its results, and a lift and a pooled rate are defined.
+    assert "the way the plan reads its results: over the analysis window and from the visits the plan counts" in prompt
+    assert "a rate with both devices pooled sums signups and visitors over both devices before dividing" in prompt
 
 
 def test_the_parser_tests_keep_the_version_3_task_they_were_written_against():
@@ -761,4 +765,22 @@ def test_the_parser_tests_keep_the_version_3_task_they_were_written_against():
     assert (frozen["id"], frozen["prompt_version"], frozen["rubric_version"]) == ("ab-test-readout", 3, 4)
     assert frozen["answers"] == {"count": 7, "single_number": True}
     task = _task("ab-test-readout")
-    assert (task["prompt_version"], task["rubric_version"]) == (4, 5)
+    assert (task["prompt_version"], task["rubric_version"]) == (5, 5)
+    # Version 4's prompt is kept so its runs can be graded: same rubric, same targets.
+    (archived,) = task["rubric_compatible_prompts"]
+    assert archived["version"] == 4 and "Read every figure in the answer block" not in archived["prompt"]
+    assert archived["prompt"] == task["prompt"].replace(
+        " Read every figure in the answer block the way the plan reads its results: over the analysis window and from "
+        "the visits the plan counts. A lift is variant B's rate ÷ control's rate − 1, and a rate with both devices "
+        "pooled sums signups and visitors over both devices before dividing.", "")
+
+
+def test_a_version_4_run_of_the_ab_readout_still_resolves(tmp_path):
+    task = _task("ab-test-readout")
+    (archived,) = task["rubric_compatible_prompts"]
+    (tmp_path / "prompts").mkdir()
+    for include_skills in (False, True):
+        recorded = bench._prompt_candidate(task, archived["prompt"], include_skills)
+        (tmp_path / "prompts" / "ab-test-readout.md").write_text(recorded)
+        attempts = [{"task_id": "ab-test-readout", "prompt_sha256": hashlib.sha256(recorded.encode()).hexdigest()}]
+        assert bench._resolve_recorded_prompt(tmp_path, task, {"skills_included": include_skills}, attempts) == (recorded, 4)
