@@ -18,6 +18,7 @@ All brands, people and figures are invented.
 from __future__ import annotations
 
 import csv
+import datetime as _dt
 import io
 import itertools
 import re
@@ -538,11 +539,198 @@ def comparison_facts(response_text: str) -> dict:
     return facts
 
 
+# ─────────────────────────────────────────────────────────────── launch-timeline
+
+TIMELINE_TASK_ID = "launch-timeline"
+TIMELINE_DIR = FIXTURES / "launch-timeline"
+TIMELINE_FILES = ["schedule.csv", "answers.csv"]
+TIMELINE_ITEMS = ["launch_date", "critical_path", "target_met", "cut", "launch_date_after_cut"]
+_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_TASK_ID = re.compile(r"\bT(\d{2})\b", re.IGNORECASE)
+
+
+@lru_cache(maxsize=1)
+def timeline_inputs() -> dict:
+    """The plan, the calendar and the target, as the two fixture files state them."""
+    brief = (TIMELINE_DIR / "launch_brief.md").read_text()
+    start = _iso(re.search(r"The\nwork starts on Monday (\S+),", brief).group(1))
+    target = _iso(re.search(r"the launch is on\n\*\*(\S+)\*\*", brief).group(1))
+    holidays = {_iso(day) for day in re.findall(r"(?m)^- (\d{4}-\d{2}-\d{2}) \(", brief)}
+    tasks = {}
+    for row in _read_csv(TIMELINE_DIR / "launch_plan.csv"):
+        tasks[row["task_id"]] = {
+            "owner": row["owner"], "days": int(row["duration_days"]), "deps": row["depends_on"].split(),
+            "optional": row["optional"] == "yes", "not_before": _iso(row["not_before"]) if row["not_before"] else None,
+        }
+    asked = re.findall(r"T\d{2}", brief.split("I also want the slack of", 1)[1])
+    days, day = [], start
+    while len(days) < 400:  # far beyond any schedule this plan can make
+        if day.weekday() < 5 and day not in holidays:
+            days.append(day)
+        day += _dt.timedelta(days=1)
+    return {"start": start, "target": target, "holidays": holidays, "tasks": tasks, "slack_asked": asked,
+            "days": days, "index": {day: number for number, day in enumerate(days)}}
+
+
+
+def _iso(text: str) -> _dt.date:
+    return _dt.date.fromisoformat(text)
+
+
+def timeline_schedule(cut: tuple[str, ...] = ()) -> dict:
+    """Every task's first and last working day (as day numbers) under the
+    brief's rules, with the given optional tasks cut, and each task's slack."""
+    inputs = timeline_inputs()
+    tasks, days = inputs["tasks"], inputs["days"]
+    kept = [task_id for task_id in tasks if task_id not in cut]
+
+    def depends(task_id: str) -> set[str]:
+        out, stack, seen = set(), list(tasks[task_id]["deps"]), set()
+        while stack:
+            other = stack.pop()
+            if other in seen:
+                continue
+            seen.add(other)
+            if other in cut:
+                stack.extend(tasks[other]["deps"])
+            else:
+                out.add(other)
+        return out
+
+    before: dict[str, list[str]] = {}
+    last_of_owner: dict[str, str] = {}
+    for task_id in sorted(kept):
+        owner = tasks[task_id]["owner"]
+        before[task_id] = sorted(depends(task_id)) + ([last_of_owner[owner]] if owner in last_of_owner else [])
+        last_of_owner[owner] = task_id
+    first, last = {}, {}
+    for task_id in sorted(kept):
+        earliest = 0
+        not_before = tasks[task_id]["not_before"]
+        if not_before is not None:
+            earliest = next(number for number, day in enumerate(days) if day >= not_before)
+        earliest = max([earliest] + [last[other] + 1 for other in before[task_id]])
+        first[task_id], last[task_id] = earliest, earliest + tasks[task_id]["days"] - 1
+    after: dict[str, list[str]] = {task_id: [] for task_id in kept}
+    for task_id, others in before.items():
+        for other in others:
+            after[other].append(task_id)
+    launch = max(kept)
+    latest_start: dict[str, int] = {}
+    for task_id in sorted(kept, reverse=True):
+        latest_finish = min((latest_start[other] - 1 for other in after[task_id]), default=last[launch])
+        latest_start[task_id] = latest_finish - tasks[task_id]["days"] + 1
+    slack = {task_id: latest_start[task_id] - first[task_id] for task_id in kept}
+    return {"first": first, "last": last, "slack": slack, "launch": first[launch]}
+
+
+@lru_cache(maxsize=1)
+def timeline_reference() -> dict:
+    inputs = timeline_inputs()
+    days, target = inputs["days"], inputs["target"]
+    plan = timeline_schedule()
+    critical = sorted((task_id for task_id, value in plan["slack"].items() if value == 0), key=lambda t: plan["first"][t])
+    optional = [task_id for task_id, task in inputs["tasks"].items() if task["optional"]]
+    best: tuple | None = None
+    for size in range(len(optional) + 1):
+        for cut in itertools.combinations(optional, size):
+            launch = days[timeline_schedule(cut)["launch"]]
+            if launch <= target and (best is None or (launch, cut) < best[1:]):
+                best = (size, launch, cut)
+        if best is not None:
+            break
+    return {
+        "starts": {task_id: days[number] for task_id, number in plan["first"].items()},
+        "finishes": {task_id: days[number] for task_id, number in plan["last"].items()},
+        "launch_date": days[plan["launch"]],
+        "critical_path": critical,
+        "slack": {task_id: plan["slack"][task_id] for task_id in inputs["slack_asked"]},
+        "target_met": "yes" if days[plan["launch"]] <= target else "no",
+        "cut": list(best[2]) if best else [],
+        "launch_date_after_cut": best[1] if best else None,
+    }
+
+
+def _one_date(text: object) -> _dt.date | None:
+    found = _DATE.findall(str(text or ""))
+    if len(found) != 1:
+        return None
+    try:
+        return _dt.date(*(int(part) for part in found[0]))
+    except ValueError:
+        return None
+
+
+def _task_ids(text: object) -> list[str]:
+    return [f"T{number}" for number in _TASK_ID.findall(str(text or ""))]
+
+
+def timeline_facts(response_text: str) -> dict:
+    inputs = timeline_inputs()
+    reference = timeline_reference()
+    found = common.tables(response_text, TIMELINE_FILES)
+    rows: dict[str, list[dict]] = {}
+    unknown = 0
+    for row in found["schedule.csv"] or []:
+        ids = _task_ids(common.cell(row, "task_id", "task"))
+        if len(ids) == 1 and ids[0] in inputs["tasks"]:
+            rows.setdefault(ids[0], []).append(row)
+        elif any(str(value).strip() for value in row.values()):
+            unknown += 1
+    single = {task_id: found_rows[0] for task_id, found_rows in rows.items() if len(found_rows) == 1}
+    starts = {task_id: _one_date(common.cell(row, "start")) for task_id, row in single.items()}
+    wrong_starts = sum(1 for task_id, day in reference["starts"].items() if starts.get(task_id) != day)
+    # Each finish follows from its own start by the calendar: the duration in working days.
+    index, days = inputs["index"], inputs["days"]
+    calendar_errors = 0
+    for task_id, task in inputs["tasks"].items():
+        start = starts.get(task_id)
+        finish = _one_date(common.cell(single[task_id], "finish")) if task_id in single else None
+        if start not in index or finish != days[index[start] + task["days"] - 1]:
+            calendar_errors += 1
+
+    items: dict[str, list[str]] = {}
+    extra_items = 0
+    for row in found["answers.csv"] or []:
+        name = common.norm(common.cell(row, "item")).strip("`").replace(" ", "_")
+        if name in TIMELINE_ITEMS or name.startswith("slack_"):
+            items.setdefault(name, []).append(common.cell(row, "answer"))
+        elif name:
+            extra_items += 1
+    wanted = TIMELINE_ITEMS + [f"slack_{task_id.lower()}" for task_id in reference["slack"]]
+
+    def answer(name: str) -> str | None:
+        given = items.get(name)
+        return given[0] if given and len(given) == 1 else None
+
+    cut = answer("cut")
+    cut_ids = _task_ids(cut) if cut is not None else None
+    facts = {
+        "timeline_missing_file_count": sum(1 for name in TIMELINE_FILES if found[name] is None),
+        "timeline_task_row_error_count": unknown + sum(1 for task_id in inputs["tasks"] if task_id not in single),
+        "timeline_wrong_start_count": wrong_starts,
+        "timeline_calendar_error_count": calendar_errors,
+        "timeline_answer_item_error_count": extra_items + sum(1 for name in wanted if answer(name) is None),
+        "timeline_launch_date_wrong": int(_one_date(answer("launch_date")) != reference["launch_date"]),
+        "timeline_critical_path_wrong": int(_task_ids(answer("critical_path")) != reference["critical_path"]),
+        "timeline_target_met_wrong": int(_yes_no(answer("target_met")) != reference["target_met"]),
+        "timeline_cut_wrong": int(cut_ids is None or len(set(cut_ids)) != len(cut_ids)
+                                  or set(cut_ids) != set(reference["cut"])),
+        "timeline_launch_after_cut_wrong": int(
+            _one_date(answer("launch_date_after_cut")) != reference["launch_date_after_cut"]),
+    }
+    for task_id, value in reference["slack"].items():
+        given = answer(f"slack_{task_id.lower()}")
+        facts[f"timeline_slack_{task_id.lower()}_wrong"] = int(given is None or _integer(given) != value)
+    return facts
+
+
 # ──────────────────────────────────────────────────────────────── the hook
 
 _HANDLERS = {
     BUDGET_TASK_ID: budget_facts,
     COMPARISON_TASK_ID: comparison_facts,
+    TIMELINE_TASK_ID: timeline_facts,
 }
 
 

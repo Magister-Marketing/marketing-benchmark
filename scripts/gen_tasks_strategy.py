@@ -401,6 +401,129 @@ def comparison_fixtures() -> dict[str, str]:
     return files
 
 
+# ─────────────────────────────────────────────────────────────── launch-timeline
+
+TIMELINE_DIR = "launch-timeline"
+TIMELINE_START = "2027-03-01"
+TIMELINE_TARGET = "2027-04-13"
+HOLIDAYS = [("2027-03-12", "company offsite"), ("2027-03-26", "Good Friday"), ("2027-03-29", "Easter Monday")]
+OWNERS = [
+    ("Ana", "brand lead"), ("Ben", "copywriter"), ("Cleo", "designer"), ("Dev", "web developer"),
+    ("Esme", "PR and partnerships"), ("Finn", "paid media"), ("Gia", "lifecycle and support"),
+    ("Printer", "the outside packaging printer"),
+]
+# (id, task, owner, working days, depends on, optional, not before)
+LAUNCH_TASKS = [
+    ("T01", "Launch brief and positioning", "Ana", 3, [], "no", ""),
+    ("T02", "Product photography shoot", "Cleo", 2, ["T01"], "no", "2027-03-09"),
+    ("T03", "Messaging and copy deck", "Ben", 4, ["T01"], "no", ""),
+    ("T04", "Packaging artwork", "Cleo", 4, ["T01"], "no", ""),
+    ("T05", "Retail lookbook", "Cleo", 3, ["T02", "T03"], "yes", ""),
+    ("T06", "Packaging print run", "Printer", 10, ["T04"], "no", ""),
+    ("T07", "Landing page design", "Cleo", 3, ["T02", "T03"], "no", ""),
+    ("T08", "Landing page build", "Dev", 5, ["T07"], "no", ""),
+    ("T09", "Email sequence copy", "Ben", 3, ["T03"], "no", ""),
+    ("T10", "Email build and test sends", "Gia", 2, ["T02", "T09"], "no", ""),
+    ("T11", "Ad creative", "Cleo", 4, ["T02", "T03"], "no", ""),
+    ("T12", "Influencer shortlist and outreach", "Esme", 5, ["T01"], "no", ""),
+    ("T13", "Influencer seeding kits", "Esme", 3, ["T06", "T12"], "yes", ""),
+    ("T14", "Press kit", "Ben", 2, ["T02", "T03"], "no", ""),
+    ("T15", "Press outreach under embargo", "Esme", 3, ["T14"], "no", "2027-04-05"),
+    ("T16", "Retail partner deck", "Ana", 5, ["T03"], "yes", ""),
+    ("T17", "Paid social campaign setup", "Finn", 3, ["T08", "T11"], "no", ""),
+    ("T18", "Search campaign setup", "Finn", 2, ["T03", "T08"], "no", ""),
+    ("T19", "Tracking and analytics QA", "Dev", 2, ["T08", "T17"], "no", ""),
+    ("T20", "Customer service FAQ and macros", "Gia", 2, ["T03"], "no", ""),
+    ("T21", "Launch blog post", "Ben", 2, ["T14"], "yes", ""),
+    ("T22", "Site QA and checkout test", "Dev", 2, ["T10", "T19"], "no", ""),
+    ("T23", "Go/no-go review", "Ana", 1, ["T05", "T13", "T15", "T16", "T17", "T18", "T20", "T21", "T22"], "no", ""),
+    ("T24", "Launch day", "Ana", 1, ["T23"], "no", ""),
+]
+SLACK_ASKED = ["T06", "T11", "T16"]
+
+
+def launch_plan_csv() -> str:
+    return _csv_text(
+        ["task_id", "task", "owner", "duration_days", "depends_on", "optional", "not_before"],
+        [[task_id, name, owner, days, " ".join(deps), optional, not_before]
+         for task_id, name, owner, days, deps, optional, not_before in LAUNCH_TASKS],
+    )
+
+
+def launch_brief_md() -> str:
+    holidays = "\n".join(f"- {day} ({why})" for day, why in HOLIDAYS)
+    owners = "\n".join(f"- {name}: {role}" for name, role in OWNERS)
+    slack = ", ".join(SLACK_ASKED)
+    return f"""# Orlo Fold launch: plan, calendar and scheduling rules
+
+From Mara Quill, Head of Marketing. Orlo sells reusable food containers online, and the Orlo Fold
+collapsible lunch box launches this spring. `launch_plan.csv` lists every task of the launch. The
+work starts on Monday {TIMELINE_START}, and I have told retail partners the launch is on
+**{TIMELINE_TARGET}**. I need to know whether that holds.
+
+## The plan file
+
+- `duration_days`: working days the task takes.
+- `depends_on`: the tasks that must be finished before it can start (space-separated).
+- `owner`: the one person, or the printer, who does it.
+- `optional`: `yes` for a task we could cut.
+- `not_before`: the earliest date the task can start, set from outside (a booked studio, a press
+  embargo). Blank means none.
+
+## Owners
+
+{owners}
+
+## Calendar
+
+Working days are Monday to Friday, except these company holidays:
+
+{holidays}
+
+## Scheduling rules
+
+1. A task starts at the start of a working day and runs for its duration in working days: a
+   3-day task that starts on a Monday finishes at the end of Wednesday. Its finish date is its
+   last working day.
+2. A task can start on the first working day after every task it depends on has finished.
+3. An owner does one task at a time and takes their tasks in task ID order: a task cannot start
+   until the same owner's previous task (the one with the closest lower ID) has finished, even if
+   it could otherwise start sooner. Nobody starts a later task early.
+4. A task with a `not_before` date cannot start before that date, or before the first working
+   day after it when the date is not a working day.
+5. No task starts before {TIMELINE_START}. Every task starts on the earliest working day that
+   rules 2 to 5 allow.
+6. The launch date is the day T24 runs.
+
+## Definitions
+
+- A task's **slack** is the number of working days its finish could move later without moving
+  the launch date, if every task that waits for it (because it depends on it, or because its
+  owner takes it next) moved later as needed and nothing else changed.
+- The **critical path** is the tasks whose slack is 0, in the order they run.
+
+## Cutting tasks
+
+Only optional tasks can be cut. A cut task is removed from the plan: a task that depended on it
+depends instead on the tasks the cut task depended on, and its owner's next task follows the
+owner's task before it. Everything else, including every duration, owner and `not_before` date,
+stays as it is.
+
+If the launch misses {TIMELINE_TARGET}, I need the smallest set of optional tasks to cut that
+brings it to {TIMELINE_TARGET} or earlier: the fewest tasks; if two sets of that size both do it,
+the one with the earlier launch date; if they are still tied, the one whose task IDs come first.
+
+For the review I also want the slack of {slack}.
+"""
+
+
+def timeline_fixtures() -> dict[str, str]:
+    return {
+        f"{TIMELINE_DIR}/launch_brief.md": launch_brief_md(),
+        f"{TIMELINE_DIR}/launch_plan.csv": launch_plan_csv(),
+    }
+
+
 # ───────────────────────────────────────────────────────────────── all of them
 
 def planned() -> dict[Path, str]:
@@ -408,6 +531,7 @@ def planned() -> dict[Path, str]:
     files: dict[str, str] = {}
     files.update(budget_fixtures())
     files.update(comparison_fixtures())
+    files.update(timeline_fixtures())
     return {FIXTURES / name: text for name, text in files.items()}
 
 

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Tasks: `launch-timeline` (development split, strategy area): schedule a
+  24-task product launch under written rules (working days, three holidays,
+  dependencies, owners who take their tasks one at a time in ID order, two
+  not-before dates), then give the launch date, the critical path, the slack
+  of three named tasks, whether the promised date holds and the smallest set
+  of optional tasks to cut to make it. The oracle schedules the plan as a
+  longest path and tries every set of optional tasks; the test schedules it
+  again day by day and measures slack by delaying each task. 13 of its 14
+  checks are a program's. The `launch` skill is vendored unchanged at
+  `2c38021`.
 - Tasks: `competitor-comparison` (development split, strategy area): a
   comparison table of 12 attributes for Tallyhour and five fictional
   competitors, read from six saved pricing pages under a brief's rules, and a
