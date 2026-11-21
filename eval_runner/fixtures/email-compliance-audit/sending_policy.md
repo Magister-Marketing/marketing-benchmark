@@ -56,7 +56,8 @@ states it. An email gets `SUBJECT` when its subject or its preheader:
    products or excludes any;
 3. names a day or date the offer ends that is not the day the body's offer
    ends;
-4. promises free shipping without a minimum order when the body sets one.
+4. says free shipping is on every order, or has no minimum, when the body
+   sets a minimum order.
 
 A subject or preheader may leave out any part of the offer.
 

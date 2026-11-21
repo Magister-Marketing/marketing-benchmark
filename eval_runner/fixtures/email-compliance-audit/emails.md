@@ -74,7 +74,7 @@ Footer: Ostrel Botanicals Inc. · ostrel.example
 
 ## E011
 marketing · free shipping · A01, A02 · offers@news.ostrel.example
-Subject: Free shipping this week
+Subject: Free shipping on every order
 Preheader: For dry, cold days
 Body: [offer] Free shipping on orders over $40 until Tuesday 16 February.
 Footer: Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA · Unsubscribe: {{ unsubscribe_link }}
@@ -95,7 +95,7 @@ Footer: Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209,
 
 ## E014
 marketing · abandoned cart · A10 · offers@ca.ostrel.example
-Subject: Free shipping this week
+Subject: Free shipping on every order
 Preheader: Made in small batches
 Body: [offer] Free shipping on orders over $35 until Thursday 18 February.
 Footer: Ostrel Botanicals Inc., Portland, Oregon · Unsubscribe: {{ unsubscribe_link }}
@@ -124,7 +124,7 @@ Footer: Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209,
 ## E018
 marketing · welcome offer · A02, A03 · offers@mail.ostrel.example
 Subject: This week at Ostrel
-Preheader: Free shipping this week
+Preheader: Free shipping on every order
 Body: [offer] Free shipping on orders over $50 until Wednesday 17 February.
 Footer: Ostrel Botanicals Inc., 418 Larch Street, Suite 200, Portland, OR 97209, USA · Unsubscribe: {{ unsubscribe_link }}
 
@@ -235,7 +235,7 @@ Footer: Ostrel Botanicals Inc. · 418 Larch Street, Suite 200 · Portland, OR 97
 
 ## E034
 marketing · free shipping · A04, A05 · offers@mail.ostrel.example
-Subject: Free shipping this week
+Subject: Free shipping on every order
 Preheader: Your favourites are waiting
 Body: [offer] Free shipping on orders over $50 until Thursday 18 February.
 Footer: Ostrel Botanicals Inc. · 418 Larch Street, Suite 200 · Portland, OR 97209 · USA · Choose your emails or unsubscribe: {{ preferences_link }}

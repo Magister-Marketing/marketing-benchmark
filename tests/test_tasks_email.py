@@ -709,3 +709,40 @@ def test_an_audit_slip_is_counted_where_it_went_wrong():
     assert changed(_swap(AUDIT_REFERENCE, f"{clean},pass\n", f"{clean},pass\nE151,pass\n")) == {"audit_row_error_count": 1}
     # The fix lines after the file are not rows of it.
     assert "- DOMAIN:" in AUDIT_REFERENCE and email.audit_facts(AUDIT_REFERENCE)["audit_row_error_count"] == 0
+
+
+def test_replies_written_the_way_models_write_them_read_as_the_reference():
+    """An unfenced file followed at once by notes or the answer block, an em
+    dash for an empty reason, and ids written loosely all read as written."""
+    calendar_clean = email.calendar_facts(CALENDAR_REFERENCE)
+    unfenced = CALENDAR_REFERENCE.replace("```csv\n", "").replace("```\n\nA1:", "A1:").replace("```\n", "")
+    assert "```" not in unfenced and "\nA1:" in unfenced
+    assert email.calendar_facts(unfenced) == calendar_clean
+    on_time = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("C01,"))
+    for dash in ("—", "–", "-"):
+        assert email.calendar_facts(_swap(CALENDAR_REFERENCE, on_time, on_time + dash)) == calendar_clean
+    first = next(row for row in CALENDAR_REFERENCE.splitlines() if row.startswith("S0001,"))
+    assert email.calendar_facts(_swap(CALENDAR_REFERENCE, first, first.replace("S0001", "s1"))) == calendar_clean
+    assert email.calendar_facts(_swap(CALENDAR_REFERENCE, on_time, on_time.replace("C01", "C1"))) == calendar_clean
+
+    audit_clean = email.audit_facts(AUDIT_REFERENCE)
+    unfenced = AUDIT_REFERENCE.replace("```csv\n", "").replace("```\n\nFixes:\n\n", "")
+    assert "```" not in unfenced and "pass\n- DOMAIN:" in unfenced
+    assert email.audit_facts(unfenced) == audit_clean
+    assert all(value == 0 for value in audit_clean.values())
+    clean = next(email_id for email_id, codes in email.audit_reference().items() if not codes)
+    assert email.audit_facts(_swap(AUDIT_REFERENCE, f"{clean},pass", f"E{int(clean[1:])},pass")) == audit_clean
+
+
+def test_free_shipping_claims_are_unambiguous_under_section_4():
+    """Every free-shipping claim over a body with a minimum either states that
+    minimum or says the offer is on every order: no claim leaves the minimum
+    out, which section 4 would allow."""
+    _policy, _audiences, _records, emails = _audit_files()
+    for email_id, mail in emails.items():
+        claim = mail["subject"] + " / " + mail["preheader"]
+        body = " ".join(text for _kind, text in mail["blocks"])
+        if re.search(r"free shipping", claim, re.I) and re.search(r"over \$\d+", body):
+            stated = re.search(r"over \$\d+", claim)
+            assert stated or "on every order" in claim, email_id
+            assert ("SUBJECT" in email.audit_reference()[email_id]) == (not stated), email_id

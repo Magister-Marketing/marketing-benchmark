@@ -356,7 +356,15 @@ def calendar_fixtures() -> dict[str, str]:
     }
 
 
-_NOT_SENT = {"", "none", "not sent", "not_sent", "unscheduled", "n/a", "-"}
+_NOT_SENT = {"", "none", "not sent", "not_sent", "unscheduled", "n/a", "-", "\u2013", "\u2014"}
+
+
+def _row_id(text: object, prefix: str, width: int) -> str | None:
+    """A row's id written as the export writes it ("C07", "S0001", "E001"),
+    or loosely ("c7"), or None when the cell is not an id at all: a line of
+    notes or an answer line that follows an unfenced file is not a row."""
+    match = re.fullmatch(prefix + r"(\d{1,%d})" % width, common.norm(text), re.IGNORECASE)
+    return f"{prefix}{int(match.group(1)):0{width}d}" if match else None
 
 
 def _send_date(text: object) -> date | None | str:
@@ -375,7 +383,7 @@ def _send_date(text: object) -> date | None | str:
 
 def _reason(text: object) -> str:
     value = re.sub(r"[\s-]+", "_", common.norm(text))
-    return "" if value in ("", "none", "_", "n/a") else value
+    return "" if value in ("", "none", "_", "n/a", "\u2013", "\u2014") else value
 
 
 def _whole(text: object) -> int | None:
@@ -395,7 +403,7 @@ def calendar_facts(response_text: str) -> dict[str, int]:
     listed: list[str] = []
     unreadable = 0
     for row in rows or []:
-        cid = common.norm(common.cell(row, "campaign_id", "campaign", "id")).upper()
+        cid = _row_id(common.cell(row, "campaign_id", "campaign", "id"), "C", 2)
         if not cid:
             continue
         listed.append(cid)
@@ -425,7 +433,7 @@ def calendar_facts(response_text: str) -> dict[str, int]:
     counts: dict[str, int | None] = {}
     seen: list[str] = []
     for row in found["frequency.csv"] or []:
-        sid = common.norm(common.cell(row, "subscriber_id", "subscriber", "id")).upper()
+        sid = _row_id(common.cell(row, "subscriber_id", "subscriber", "id"), "S", 4)
         if sid:
             seen.append(sid)
             counts[sid] = _whole(common.cell(row, "emails", "email_count", "count"))
@@ -656,7 +664,7 @@ def _offer_email(pattern: str, rng: random.Random) -> dict:
         offer["shipping_minimum"] = minimum
         if minimum:
             body = f"Free shipping on orders over ${minimum} {until}."
-            claim = f"Free shipping over ${minimum}" if pattern == "shipping_minimum_stated" else "Free shipping this week"
+            claim = f"Free shipping over ${minimum}" if pattern == "shipping_minimum_stated" else "Free shipping on every order"
         else:
             body = f"Free shipping on every order {until}."
             claim = "Free shipping on every order"
@@ -1033,7 +1041,8 @@ states it. An email gets `SUBJECT` when its subject or its preheader:
    products or excludes any;
 3. names a day or date the offer ends that is not the day the body's offer
    ends;
-4. promises free shipping without a minimum order when the body sets one.
+4. says free shipping is on every order, or has no minimum, when the body
+   sets a minimum order.
 
 A subject or preheader may leave out any part of the offer.
 
@@ -1096,7 +1105,7 @@ def audit_facts(response_text: str) -> dict[str, int]:
     listed: list[str] = []
     malformed = 0
     for row in rows or []:
-        email_id = common.norm(common.cell(row, "email_id", "email", "id", "draft_id")).upper()
+        email_id = _row_id(common.cell(row, "email_id", "email", "id", "draft_id"), "E", 3)
         if not email_id:
             continue
         listed.append(email_id)
