@@ -321,7 +321,7 @@ def _meta_row(row: dict, target: str, keeps: bool, price=True) -> list[str]:
     elif row["page_type"] == "category":
         text = f"Browse {row['product_count']} {target}{extra} at Quillon Pet Supply, each one picked by our team."
     else:
-        text = f"Our guide to {target}{extra}, with practical steps for pet owners: {row['name'].lower()}."
+        text = f"Our guide to {target}{extra}, with practical steps for pet owners from the Quillon team."
     for pad in (" Shop with care at Quillon.", " Delivered to your door.", " Read more online."):
         if len(text) < 100:
             text += pad
@@ -341,7 +341,7 @@ def test_titles_meta_oracle_matches_the_task_file_and_an_independent_recomputati
     assert ref["conceded"] == gave_up
     priced = [page_id for page_id, row in indexed.items() if row["page_type"] == "product" and row["in_stock"] == "yes"]
     answers = [len(indexed), len(gave_up), len(priced)]
-    assert answers == [41, 6, 13] == list(ref["answers"].values())
+    assert answers == [99, 14, 40] == list(ref["answers"].values())
     by_id = _by_id(task)
     assert [by_id[name]["programmatic"]["near"] for name in ("q1_rows", "q2_conceded", "q3_priced")] == answers
     assert f"Each of the {len(indexed)} indexed pages" in by_id["every_page_once"]["check"]
@@ -373,7 +373,17 @@ def test_titles_meta_traps_are_in_the_data():
     # "dog bed" and "dog beds" are different keywords.
     assert targets["P-101"] == "dog bed" and targets["C-01"] == "dog beds"
     # Out-of-stock products carry a price in the inventory that must not be shown.
-    assert sum(1 for row in indexed.values() if row["in_stock"] == "no" and row["price"]) == 7
+    assert sum(1 for row in indexed.values() if row["in_stock"] == "no" and row["price"]) == 16
+    # Size variants share a keyword: the most clicks keeps it, and a tie goes to the lower id.
+    assert targets["P-167"] == "orthopedic dog bed" and {"P-164", "P-170"} <= set(gave_up)
+    assert by_id["P-167"]["clicks_28d"] == by_id["P-170"]["clicks_28d"]
+    # Three pages tie on clicks: the category keeps the keyword. A product beats a guide on a tie.
+    assert targets["C-15"] == "cat carrier" and {"P-179", "G-215"} <= set(gave_up)
+    assert targets["P-188"] == "senior dog food" and "G-216" in gave_up
+    # Noindex pages with the most clicks in four groups take no part.
+    for page_id, noindex in (("P-122", "G-209"), ("P-182", "P-260"), ("P-167", "P-278"), ("G-217", "G-223")):
+        assert int(by_id[noindex]["clicks_28d"]) > int(by_id[page_id]["clicks_28d"]) and page_id not in gave_up
+    assert {targets["P-203"], targets["C-19"]} == {"cat scratcher", "cat scratchers"}
 
 
 def _meta_reference_rows(**overrides) -> list[list[str]]:
@@ -385,7 +395,7 @@ def _meta_reference_rows(**overrides) -> list[list[str]]:
 def test_titles_meta_reference_reply_passes_every_check_and_a_blank_reply_none():
     rows = _meta_reference_rows()
     assert all(len(title) <= 60 and 100 <= len(meta) <= 155 for _id, title, meta in rows)
-    reference = _meta_reply(rows, [41, 6, 13])
+    reference = _meta_reply(rows, [99, 14, 40])
     results = _results("seo-titles-meta", reference)
     assert _all_pass(results), {name: item["evidence"] for name, item in results.items() if not item["pass"]}
     assert not any(item["pass"] for item in _results("seo-titles-meta", "").values())
@@ -406,10 +416,10 @@ def test_titles_meta_careless_readings_score_zero_on_their_checks():
     reference = _meta_reference_rows()
     # Writing every page in the inventory, noindex pages too.
     every = reference + [_meta_row(row, row["primary_keyword"], True) for row in raw if row["index"] == "noindex"]
-    assert {"noindex_left_out", "q1_rows"} <= zeroed(every, [46, 6, 13])
+    assert {"noindex_left_out", "q1_rows"} <= zeroed(every, [113, 14, 40])
     # Letting every page keep its primary keyword.
     kept = [_meta_row(row, row["primary_keyword"], True) for _id, row in sorted(indexed.items())]
-    assert {"keyword_given_up", "title_keyword", "q2_conceded"} <= zeroed(kept, [41, 0, 13])
+    assert {"keyword_given_up", "title_keyword", "q2_conceded"} <= zeroed(kept, [99, 0, 40])
     # Giving a shared keyword to the category whatever the clicks.
     rank = {"category": 0, "product": 1, "guide": 2}
     category_first = {}
@@ -420,18 +430,18 @@ def test_titles_meta_careless_readings_score_zero_on_their_checks():
         category_first[group[0]["page_id"]] = keyword
     careless = [_meta_row(row, category_first[page_id], category_first[page_id] == row["primary_keyword"])
                 for page_id, row in sorted(indexed.items())]
-    assert {"keyword_given_up", "title_keyword"} <= zeroed(careless, [41, 6, 13])
+    assert {"keyword_given_up", "title_keyword"} <= zeroed(careless, [99, 14, 40])
     # Counting the noindex page in the keyword rule, or "dog bed" as "dog beds": one more page gives up.
-    assert "q2_conceded" in zeroed(_meta_reference_rows(**{"P-122": by_id["P-122"]["secondary_keyword"]}), [41, 7, 13])
+    assert "q2_conceded" in zeroed(_meta_reference_rows(**{"P-122": by_id["P-122"]["secondary_keyword"]}), [99, 15, 40])
     # Showing the price of an out-of-stock product, or a price written another way.
     out_of_stock = [row for row in reference]
     for index, (page_id, title, meta) in enumerate(out_of_stock):
         row = indexed[page_id]
         if row["page_type"] == "product" and row["in_stock"] == "no":
             out_of_stock[index] = [page_id, title, meta[:140] + f" ${row['price']}."]
-    assert {"price_only_in_stock", "q3_priced"} <= zeroed(out_of_stock, [41, 6, 20])
+    assert {"price_only_in_stock", "q3_priced"} <= zeroed(out_of_stock, [99, 14, 56])
     rounded = [[page_id, title, meta.replace(".00.", ".")] for page_id, title, meta in reference]
-    assert "price_only_in_stock" in zeroed(rounded, [41, 6, 13])
+    assert "price_only_in_stock" in zeroed(rounded, [99, 14, 40])
 
 
 # --------------------------------------------------------------------- blog-post
