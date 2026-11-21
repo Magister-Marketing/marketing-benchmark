@@ -1,7 +1,13 @@
-channel,description,max_blocks,minimum_if_used_blocks,committed_blocks,fee_usd_per_month,routed_to_aes
-search,"Google Ads search, non-brand keywords",10,0,0,0,no
-linkedin,LinkedIn Ads sponsored content to the target-account list,8,0,0,0,yes
-webinars,Monthly webinar series promoted to the house list and partner lists,5,0,0,1400,yes
-syndication,Content syndication of the clinic benchmark report through a B2B publisher network,8,4,0,0,no
-review_sites,Paid profile and lead program on software review marketplaces,4,0,2,0,no
-meta,Meta retargeting of site visitors and trial drop-offs,6,0,0,0,no
+channel,description,field_channel,licence
+search,"Google Ads search, non-brand keywords",no,no
+linkedin,LinkedIn Ads sponsored content to the target-account list,no,no
+meta,Meta prospecting and retargeting,no,no
+programmatic,Programmatic display through the demand-side platform,no,no
+video,Online video and connected TV,no,no
+syndication,Content syndication of the clinic benchmark report through a publisher network,no,no
+review_sites,Paid profiles and lead programs on software review marketplaces,no,no
+podcasts,Sponsorships on physiotherapy and practice-management podcasts,no,yes
+webinars,Regional webinar series run with partner clinics,yes,yes
+events,Trade-show and conference booths,yes,no
+abm,Account-based direct mail and gifting to target clinics,yes,yes
+partners,Co-marketing with referral partners: equipment suppliers and training providers,no,no

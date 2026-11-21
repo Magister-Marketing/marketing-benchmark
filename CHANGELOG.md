@@ -15,6 +15,44 @@
   both turns' tokens). The share is shown as `decoy_cost_usd` and
   `decoy_latency_seconds`. A turn with no recorded cost or time makes the
   total unknown, never lower. Other tasks are unchanged.
+- Tasks: `competitor-comparison` version 2 (prompt and rubric 2). Version 1 (6
+  companies, 12 attributes, 7.9 KB) was passed outright by a strong model
+  with no tools or skills. Version 2 reads ten pricing pages (30 KB), each
+  with a plan table, footnotes, a feature list, a security section, an FAQ
+  and a dated changelog, into a table of 20 attributes (200 cells, 63 with a
+  trap) and judges nine draft claims, each against several companies' cells
+  and each turning on one trap. A claim is supportable only if it holds
+  whatever a `not stated` cell really is. The oracle parses the pages and
+  applies the brief's precedence (changelog, then FAQ, then table, then the
+  rest); the test holds the table written out by hand, checks every trap is
+  on its page, and recomputes the verdicts with its own logic. 17 of 18
+  checks are a program's, one per trap group and one per claim.
+- Tasks: `launch-timeline` version 2 (prompt and rubric 2). Version 1 (24
+  tasks, one calendar) was passed outright by a strong model with no tools
+  or skills. Version 2 schedules 96 tasks: ten people in London and Boston
+  with different holidays, two part-timers, two absences, three suppliers
+  working in calendar days, lead times in calendar days on some dependencies
+  and five outside start dates, and a plan history of superseded estimates.
+  Every task's start, finish and slack is checked (288 values), with the
+  launch date, the critical path, whether the target holds and the smallest
+  cut; 11 of 12 checks are a program's. The oracle schedules by longest path
+  and a backward pass over each owner's calendar and tries every set of
+  optional tasks; the test schedules again day by day and finds every slack
+  by delaying each task.
+- Tasks: `channel-budget-allocation` version 2 (prompt and rubric 2). Version
+  1 (six channels, 4.7 KB) was passed outright by a strong model with no tools
+  or skills, so the task is now a quarter split across 12 channels, 3 regions
+  and 3 months from 416 forecast blocks (32 KB of fixtures): regional
+  minimums and maximums, monthly pacing, a field-marketing limit per region
+  and month, contracted blocks, three licences priced by how many months a
+  channel is live, a syndication vendor forecast given as cumulative leads,
+  and a forecast range and Q1 actuals that play no part. Every one of the 108
+  cells is checked, with the licences, 25 binding verdicts and eight figures;
+  16 of 17 checks are a program's. The oracle tries every licence pattern and
+  takes blocks greedily within each, which is exact because the other limits
+  are nested (a laminar matroid); the test proves the answer with an exact
+  dynamic programme that assumes nothing of the kind, shows it is the only
+  best split, and checks the oracle against brute force on small instances.
 - Tasks: `launch-timeline` (development split, strategy area): schedule a
   24-task product launch under written rules (working days, three holidays,
   dependencies, owners who take their tasks one at a time in ID order, two

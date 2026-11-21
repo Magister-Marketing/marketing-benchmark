@@ -17,6 +17,7 @@ All brands, people and figures are invented.
 """
 from __future__ import annotations
 
+import bisect
 import csv
 import datetime as _dt
 import io
@@ -54,179 +55,269 @@ def _yes_no(text: object) -> str | None:
 
 BUDGET_TASK_ID = "channel-budget-allocation"
 BUDGET_DIR = FIXTURES / "channel-budget"
-BUDGET_FILES = ["allocation.csv", "constraints.csv"]
+BUDGET_FILES = ["allocation.csv", "fees.csv", "constraints.csv"]
+
+
+def _licence_fee(text: str):
+    """A licence as the brief words it, as a function of the months a channel is live."""
+    per_month = re.fullmatch(r"\$([\d,]+) for each month it is live", text)
+    tiers = re.fullmatch(r"\$([\d,]+) if it is live in one month, \$([\d,]+) if live in two, "
+                         r"\$([\d,]+) if live in all three", text)
+    setup = re.fullmatch(r"\$([\d,]+) one-off agency setup if it is live in any month, plus \$([\d,]+) "
+                         r"for each month it is live", text)
+    amounts = [int(value.replace(",", "")) for value in (per_month or tiers or setup).groups()]
+    if per_month:
+        return lambda months: amounts[0] * months
+    if tiers:
+        return lambda months: ([0] + amounts)[months]
+    return lambda months: (amounts[0] + amounts[1] * months) if months else 0
 
 
 @lru_cache(maxsize=1)
 def budget_inputs() -> dict:
-    """The rules and the forecasts, as the three fixture files state them."""
+    """The rules, the limits and every block's leads, as the fixture files state them."""
     brief = (BUDGET_DIR / "planning_brief.md").read_text()
-
-    def dollars(label: str) -> int:
-        match = re.search(re.escape(label) + r"\*\*\s*\$([\d,]+)", brief)
-        return int(match.group(1).replace(",", ""))
-
-    budget = dollars("Quarter budget:")
+    regions: dict[str, dict] = {}
+    for region, low, high, month, field in re.findall(
+            r"(?m)^\| ([a-z]+) \| \$([\d,]+) \| \$([\d,]+) \| \$([\d,]+) \| (\d+) \|$", brief):
+        regions[region] = {"min": int(low.replace(",", "")), "max": int(high.replace(",", "")),
+                           "month": int(month.replace(",", "")), "field": int(field)}
+    licences = {channel: _licence_fee(text) for channel, text in re.findall(
+        r"(?m)^\| ([a-z_]+) \| (\$[^|]+?) \|$", brief.split("## Licences", 1)[1].split("## ", 1)[0])}
+    terms = {row["channel"]: row for row in _read_csv(BUDGET_DIR / "channel_terms.csv")}
+    cells: dict[tuple[str, str, str], dict] = {}
+    for row in _read_csv(BUDGET_DIR / "cell_limits.csv"):
+        cells[(row["channel"], row["region"], row["month"])] = {
+            "max": int(row["max_blocks"]), "committed": int(row["committed_blocks"]), "leads": []}
+    for row in _read_csv(BUDGET_DIR / "forecasts.csv"):
+        cell = cells[(row["channel"], row["region"], row["month"])]
+        assert int(row["block"]) == len(cell["leads"]) + 1
+        cell["leads"].append(int(row["added_leads"]))
     block = int(re.search(r"whole blocks of \$([\d,]+)", brief).group(1).replace(",", ""))
-    capacity = int(re.search(r"at most \*\*(\d+) new leads\*\*", brief).group(1))
-    channels: dict[str, dict] = {}
-    for row in _read_csv(BUDGET_DIR / "channel_terms.csv"):
-        channels[row["channel"]] = {
-            "max": int(row["max_blocks"]),
-            "min_if_used": int(row["minimum_if_used_blocks"]),
-            "committed": int(row["committed_blocks"]),
-            # The licence is held for each of the quarter's three months.
-            "fee": int(row["fee_usd_per_month"]) * 3,
-            "routed": row["routed_to_aes"] == "yes",
-            "leads": [],
-        }
-    for row in _read_csv(BUDGET_DIR / "channel_forecasts.csv"):
-        channel = channels[row["channel"]]
-        assert int(row["block"]) == len(channel["leads"]) + 1
-        channel["leads"].append(int(row["added_leads"]))
-    constraints = re.findall(r"`([a-z_]+)`", brief.split("## Constraints, by name", 1)[1].split("\n\n")[1])
-    return {"budget": budget, "block": block, "capacity": capacity, "channels": channels,
-            "constraints": constraints}
+    for row in _read_csv(BUDGET_DIR / "syndication_vendor_forecast.csv"):
+        cell = cells[("syndication", row["region"], row["month"])]
+        assert int(row["spend_usd"]) == block * (len(cell["leads"]) + 1)
+        cell["leads"].append(int(row["cumulative_leads"]) - sum(cell["leads"]))
+    for key, cell in cells.items():
+        assert len(cell["leads"]) == cell["max"], key
+        assert all(a > b for a, b in zip(cell["leads"], cell["leads"][1:])), key
+    names = brief.split("## Constraints, by name", 1)[1].split("\n\n")[1]
+    return {
+        "budget": int(re.search(r"\*\*Quarter budget:\*\* \$([\d,]+)", brief).group(1).replace(",", "")),
+        "block": block, "regions": regions, "months": list(dict.fromkeys(key[2] for key in cells)),
+        "field": {channel for channel, row in terms.items() if row["field_channel"] == "yes"},
+        "licences": licences, "cells": cells,
+        "constraints": re.findall(r"`([a-z_]+)`", names),
+    }
 
 
-def budget_split_figures(blocks: dict[str, int]) -> dict:
+def budget_solve(inputs: dict, *, field_capacity: bool = True) -> dict:
+    """The split with the most leads under every rule (the field capacity
+    optional), the cheaper on a tie.
+
+    Which licence months to pay for is tried every way (8 for each licensed
+    channel). For a given set of live months every other limit is a cap on a
+    nested family of block sets (the budget's blocks, a region's, a region's
+    month, its field blocks, a cell), and a cell's blocks add ever fewer
+    leads, so the blocks form a laminar matroid: taking blocks by most added
+    leads first, skipping any a cap forbids, is optimal. Committed blocks are
+    bought first, and a region below its minimum then takes its own best
+    blocks before the rest are taken in order. tests/test_tasks_strategy.py
+    proves the result with an exact search that assumes none of this."""
+    cells, regions, months, block = inputs["cells"], inputs["regions"], inputs["months"], inputs["block"]
+    licensed = list(inputs["licences"])
+    ranked = sorted(((leads, key, index) for key, cell in cells.items() for index, leads in enumerate(cell["leads"])),
+                    key=lambda item: (-item[0], item[1], item[2]))
+    best: tuple | None = None
+    for pattern in itertools.product(*(list(itertools.product((False, True), repeat=len(months))) for _ in licensed)):
+        live = {channel: [month for month, on in zip(months, flags) if on] for channel, flags in zip(licensed, pattern)}
+        fees = sum(inputs["licences"][channel](len(live[channel])) for channel in licensed)
+        if fees > inputs["budget"]:
+            continue
+        allowed = inputs["budget"] - fees
+        taken = {key: 0 for key in cells}
+        spend = {"all": 0, **{region: 0 for region in regions}}
+        monthly = {(region, month): 0 for region in regions for month in months}
+        field = {(region, month): 0 for region in regions for month in months}
+
+        def fits(key: tuple) -> bool:
+            channel, region, month = key
+            cell = cells[key]
+            if taken[key] >= cell["max"] or (channel in live and month not in live[channel]):
+                return False
+            if spend["all"] + block > allowed or spend[region] + block > regions[region]["max"]:
+                return False
+            if monthly[(region, month)] + block > regions[region]["month"]:
+                return False
+            return not (field_capacity and channel in inputs["field"]
+                        and field[(region, month)] + 1 > regions[region]["field"])
+
+        def buy(key: tuple) -> None:
+            channel, region, month = key
+            taken[key] += 1
+            spend["all"] += block
+            spend[region] += block
+            monthly[(region, month)] += block
+            field[(region, month)] += channel in inputs["field"]
+
+        feasible = True
+        for key, cell in cells.items():
+            for _ in range(cell["committed"]):
+                feasible = feasible and fits(key)
+                buy(key)
+        for region in regions:
+            for _leads, key, index in ranked:
+                if spend[region] >= regions[region]["min"]:
+                    break
+                if key[1] == region and index == taken[key] and fits(key):
+                    buy(key)
+            feasible = feasible and spend[region] >= regions[region]["min"]
+        for _leads, key, index in ranked:
+            if index == taken[key] and fits(key):
+                buy(key)
+        if not feasible:
+            continue
+        leads = sum(sum(cells[key]["leads"][:count]) for key, count in taken.items())
+        rank = (leads, -(spend["all"] + fees))
+        if best is None or rank > best[0]:
+            best = (rank, dict(taken), fees)
+    (leads, negative_cost), taken, fees = best
+    return {"blocks": taken, "leads": leads, "cost": -negative_cost, "fees": fees}
+
+
+def budget_live_months(blocks: dict) -> dict[str, list[str]]:
+    inputs = budget_inputs()
+    return {channel: [month for month in inputs["months"]
+                      if any(count for (c, _region, m), count in blocks.items() if c == channel and m == month)]
+            for channel in inputs["licences"]}
+
+
+def budget_figures(blocks: dict) -> dict:
     """What a split costs and projects, by the brief's rules."""
     inputs = budget_inputs()
-    channels = inputs["channels"]
-    cost = leads = routed = 0
-    for name, count in blocks.items():
-        channel = channels[name]
-        if count:
-            got = sum(channel["leads"][:count])
-            cost += count * inputs["block"] + channel["fee"]
-            leads += got
-            routed += got if channel["routed"] else 0
-    return {"cost": cost, "leads": leads, "routed": routed}
+    cells, block = inputs["cells"], inputs["block"]
+    live = budget_live_months(blocks)
+    fees = {channel: inputs["licences"][channel](len(months)) for channel, months in live.items()}
+    leads = {key: sum(cells[key]["leads"][:count]) for key, count in blocks.items()}
+    by_region = {region: sum(value for key, value in leads.items() if key[1] == region) for region in inputs["regions"]}
+    media = sum(blocks.values()) * block
+    return {
+        "media": media, "fees": fees, "cost": media + sum(fees.values()), "leads": sum(leads.values()),
+        "by_region": by_region, "field_leads": sum(value for key, value in leads.items() if key[0] in inputs["field"]),
+        "region_spend": {region: block * sum(n for key, n in blocks.items() if key[1] == region) for region in inputs["regions"]},
+        "month_spend": {(region, month): block * sum(n for key, n in blocks.items() if key[1] == region and key[2] == month)
+                        for region in inputs["regions"] for month in inputs["months"]},
+        "field_blocks": {(region, month): sum(n for key, n in blocks.items()
+                                              if key[0] in inputs["field"] and key[1] == region and key[2] == month)
+                         for region in inputs["regions"] for month in inputs["months"]},
+        "live": live,
+    }
 
 
-def _budget_options(channel: dict) -> list[int]:
-    low = max(1, channel["min_if_used"], channel["committed"])
-    return ([] if channel["committed"] else [0]) + list(range(low, channel["max"] + 1))
-
-
-def best_budget_split(*, with_capacity: bool = True) -> dict[str, int]:
-    """The split with the most leads under every rule (the AE capacity
-    optional), the cheaper one on a tie. Every split is tried: there are
-    under a hundred thousand."""
-    inputs = budget_inputs()
-    names = list(inputs["channels"])
-    best: tuple | None = None
-    for combo in itertools.product(*(_budget_options(inputs["channels"][name]) for name in names)):
-        blocks = dict(zip(names, combo))
-        figures = budget_split_figures(blocks)
-        if figures["cost"] > inputs["budget"]:
-            continue
-        if with_capacity and figures["routed"] > inputs["capacity"]:
-            continue
-        key = (figures["leads"], -figures["cost"])
-        if best is None or key > best[0]:
-            best = (key, blocks)
-    return best[1]
-
-
-def budget_binding(blocks: dict[str, int]) -> dict[str, str]:
+def budget_binding(blocks: dict) -> dict[str, str]:
     """Whether each named constraint binds in a split, by the brief's definitions."""
     inputs = budget_inputs()
-    channels = inputs["channels"]
-    figures = budget_split_figures(blocks)
-    below_max = [name for name, channel in channels.items() if channel["routed"] and blocks[name] < channel["max"]]
-    over = all(figures["routed"] + channels[name]["leads"][blocks[name]] > inputs["capacity"] for name in below_max)
-    binding = {
-        "budget": inputs["budget"] - figures["cost"] < inputs["block"],
-        "ae_capacity": bool(below_max) and over,
-    }
-    for name, channel in channels.items():
-        if channel["min_if_used"]:
-            binding[f"{name}_min_order"] = blocks[name] == channel["min_if_used"]
-        if channel["committed"]:
-            binding[f"{name}_commitment"] = blocks[name] == channel["committed"]
-        binding[f"{name}_max"] = blocks[name] == channel["max"]
+    figures = budget_figures(blocks)
+    binding = {"budget": inputs["budget"] - figures["cost"] < inputs["block"]}
+    for region, limits in inputs["regions"].items():
+        binding[f"{region}_min"] = figures["region_spend"][region] == limits["min"]
+        binding[f"{region}_max"] = figures["region_spend"][region] == limits["max"]
+        for month in inputs["months"]:
+            binding[f"pacing_{region}_{month}"] = figures["month_spend"][(region, month)] == limits["month"]
+            binding[f"field_{region}_{month}"] = figures["field_blocks"][(region, month)] == limits["field"]
     assert set(binding) == set(inputs["constraints"]), "the brief names the constraints the definitions cover"
     return {name: "yes" if binding[name] else "no" for name in inputs["constraints"]}
+
+
+def budget_violations(blocks: dict) -> int:
+    """How many of the brief's rules a split breaks."""
+    inputs = budget_inputs()
+    figures = budget_figures(blocks)
+    broken = sum(1 for key, count in blocks.items()
+                 if not inputs["cells"][key]["committed"] <= count <= inputs["cells"][key]["max"])
+    broken += figures["cost"] > inputs["budget"]
+    for region, limits in inputs["regions"].items():
+        broken += not limits["min"] <= figures["region_spend"][region] <= limits["max"]
+        for month in inputs["months"]:
+            broken += figures["month_spend"][(region, month)] > limits["month"]
+            broken += figures["field_blocks"][(region, month)] > limits["field"]
+    return broken
 
 
 @lru_cache(maxsize=1)
 def budget_reference() -> dict:
     """The one right answer, and the figures the answer block asks for."""
     inputs = budget_inputs()
-    split = best_budget_split()
-    figures = budget_split_figures(split)
-    uncapped = budget_split_figures(best_budget_split(with_capacity=False))
+    best = budget_solve(inputs)
+    blocks = best["blocks"]
+    figures = budget_figures(blocks)
+    assert (figures["cost"], figures["leads"]) == (best["cost"], best["leads"])
+    uncapped = budget_solve(inputs, field_capacity=False)
     per_lead = (Decimal(figures["cost"]) / Decimal(figures["leads"])).quantize(Decimal("0.01"), ROUND_HALF_UP)
     return {
-        "blocks": split,
-        "binding": budget_binding(split),
+        "blocks": blocks,
+        "live": figures["live"],
+        "fees": figures["fees"],
+        "binding": budget_binding(blocks),
         "answers": {
-            1: float(figures["cost"]),
-            2: float(figures["leads"]),
-            3: float(per_lead),
-            4: float(figures["routed"]),
-            5: float(uncapped["leads"] - figures["leads"]),
+            1: float(figures["cost"]), 2: float(figures["leads"]), 3: float(per_lead),
+            4: float(figures["by_region"]["na"]), 5: float(figures["by_region"]["emea"]),
+            6: float(figures["by_region"]["apac"]), 7: float(figures["field_leads"]),
+            8: float(uncapped["leads"] - figures["leads"]),
         },
-        "left_over": inputs["budget"] - figures["cost"],
     }
 
 
 def budget_facts(response_text: str) -> dict:
     inputs = budget_inputs()
-    channels = inputs["channels"]
+    cells = inputs["cells"]
     reference = budget_reference()
     found = common.tables(response_text, BUDGET_FILES)
-    rows = found["allocation.csv"] or []
-    by_channel: dict[str, list[dict]] = {}
+    by_cell: dict[tuple, list[dict]] = {}
     unknown = 0
-    for row in rows:
-        name = common.norm(common.cell(row, "channel")).replace(" ", "_")
-        if name in channels:
-            by_channel.setdefault(name, []).append(row)
+    for row in found["allocation.csv"] or []:
+        key = tuple(common.norm(common.cell(row, name)).replace(" ", "_") for name in ("channel", "region", "month"))
+        if key in cells:
+            by_cell.setdefault(key, []).append(row)
         elif any(str(value).strip() for value in row.values()):
             unknown += 1
-    single = {name: found_rows[0] for name, found_rows in by_channel.items() if len(found_rows) == 1}
-    blocks = {name: _integer(common.cell(row, "blocks")) for name, row in single.items()}
+    single = {key: rows[0] for key, rows in by_cell.items() if len(rows) == 1}
+    blocks = {key: _integer(common.cell(row, "blocks")) for key, row in single.items()}
 
-    channel_errors = unknown + sum(1 for name in channels if name not in single)
-    wrong_blocks = sum(1 for name, count in reference["blocks"].items() if blocks.get(name) != count)
+    readable = {key: count for key, count in blocks.items() if count is not None and 0 <= count <= cells[key]["max"]}
+    split = {key: readable.get(key, 0) for key in cells}
+    infeasible = budget_violations(split) + (found["allocation.csv"] is None)
+    infeasible += sum(1 for key in cells if key not in readable)          # a cell that cannot be read keeps no rule
 
-    # The reply's own split, held to every rule. A split that cannot be read
-    # cannot be shown to keep them.
-    infeasible = 0
-    readable = {name: count for name, count in blocks.items() if count is not None}
-    if found["allocation.csv"] is None or len(readable) != len(channels):
-        infeasible += 1
-    split = {name: readable.get(name, 0) for name in channels}
-    for name, count in split.items():
-        channel = channels[name]
-        if count < 0 or count > channel["max"]:
-            infeasible += 1
-            split[name] = max(0, min(count, channel["max"]))
-        if split[name] < channel["committed"]:
-            infeasible += 1
-        if 0 < split[name] < channel["min_if_used"]:
-            infeasible += 1
-    figures = budget_split_figures(split)
-    infeasible += figures["cost"] > inputs["budget"]
-    infeasible += figures["routed"] > inputs["capacity"]
-
-    # Each row agrees with its own block count: spend, leads and fee.
-    arithmetic_errors = fee_errors = 0
-    for name, channel in channels.items():
-        row, count = single.get(name), blocks.get(name)
-        if row is None or count is None or not 0 <= count <= channel["max"]:
-            arithmetic_errors += 1
-            fee_errors += 1
+    arithmetic = 0
+    for key, cell in cells.items():
+        row, count = single.get(key), readable.get(key)
+        if row is None or count is None:
+            arithmetic += 1
             continue
         spend = common.money(common.cell(row, "media_spend_usd", "media_spend", "spend_usd"))
         leads = _integer(common.cell(row, "leads", "projected_leads"))
-        if spend != count * inputs["block"] or leads != sum(channel["leads"][:count]):
-            arithmetic_errors += 1
-        fee = common.money(common.cell(row, "fee_usd", "fee"))
-        if fee != (channel["fee"] if count else 0):
+        arithmetic += spend != count * inputs["block"] or leads != sum(cell["leads"][:count])
+
+    live = budget_live_months(split)
+    fee_rows: dict[str, list[dict]] = {}
+    extra_fees = 0
+    for row in found["fees.csv"] or []:
+        channel = common.norm(common.cell(row, "channel")).replace(" ", "_")
+        if channel in inputs["licences"]:
+            fee_rows.setdefault(channel, []).append(row)
+        elif any(str(value).strip() for value in row.values()):
+            extra_fees += 1
+    fee_errors = extra_fees
+    for channel, months in live.items():
+        rows = fee_rows.get(channel, [])
+        if len(rows) != 1 or found["allocation.csv"] is None:
             fee_errors += 1
+            continue
+        stated = [month for month in inputs["months"]
+                  if re.search(rf"\b{month}\b", common.norm(common.cell(rows[0], "live_months", "months_live")))]
+        fee = common.money(common.cell(rows[0], "fee_usd", "fee"))
+        fee_errors += stated != months or fee != inputs["licences"][channel](len(months))
 
     stated: dict[str, list[str | None]] = {}
     extra_constraints = 0
@@ -241,10 +332,10 @@ def budget_facts(response_text: str) -> dict:
 
     return {
         "budget_missing_file_count": sum(1 for name in BUDGET_FILES if found[name] is None),
-        "budget_channel_row_error_count": channel_errors,
+        "budget_cell_row_error_count": unknown + sum(1 for key in cells if key not in single),
         "budget_infeasible_count": infeasible,
-        "budget_wrong_blocks_count": wrong_blocks,
-        "budget_row_arithmetic_error_count": arithmetic_errors,
+        "budget_wrong_cell_count": sum(1 for key, count in reference["blocks"].items() if blocks.get(key) != count),
+        "budget_row_arithmetic_error_count": arithmetic,
         "budget_fee_error_count": fee_errors,
         "budget_binding_error_count": binding_errors,
     }
@@ -255,211 +346,277 @@ def budget_facts(response_text: str) -> dict:
 COMPARISON_TASK_ID = "competitor-comparison"
 COMPARISON_DIR = FIXTURES / "competitor-comparison"
 COMPARISON_FILES = ["comparison.csv", "claims.csv"]
-COMPANIES = ["tallyhour", "brisktime", "quillhour", "ticklog", "fenwork", "larchpoint"]
+COMPANIES = ["tallyhour", "brisktime", "quillhour", "ticklog", "fenwork", "larchpoint", "clockwell", "pacemark",
+             "hourglen", "ledgerline"]
 US = "tallyhour"
 NOT_STATED = "not stated"
-# Each attribute and the kind of value its cells hold.
 ATTRIBUTES = {
     "free_plan": "yes_no", "trial_days": "number", "entry_plan": "plan", "entry_price_usd": "number",
-    "entry_min_users": "number", "sso_on_entry": "yes_no", "sso_cheapest_plan": "plan",
-    "invoicing_on_entry": "yes_no", "api_on_entry": "yes_no", "top_plan_price_usd": "number",
-    "uptime_sla_percent": "number", "eu_hosting": "yes_no",
+    "entry_min_users": "number", "entry_projects": "projects", "top_plan_price_usd": "number",
+    "sso_on_entry": "yes_no", "sso_cheapest_plan": "plan", "audit_log_cheapest_plan": "plan",
+    "invoicing_on_entry": "yes_no", "api_on_entry": "yes_no", "approvals_on_entry": "yes_no",
+    "budgets_on_entry": "yes_no", "phone_support_on_entry": "yes_no", "mobile_app": "yes_no",
+    "uptime_sla_percent": "number", "eu_hosting": "yes_no", "soc2_type2": "yes_no", "dpa": "yes_no",
 }
 PRICE_ATTRIBUTES = ("entry_price_usd", "top_plan_price_usd")
-TIER_ATTRIBUTES = ("sso_on_entry", "sso_cheapest_plan", "invoicing_on_entry", "api_on_entry")
-
-# Where each cell's value is stated on its company's page: a plan-table row, a
-# sentence, an FAQ answer, or nothing at all. The value itself is read from
-# the page through this, so a page that changes changes the answer, and one
-# that stops saying what its source says stops the oracle.
-_ENTRY, _TOP = "entry", "top"
-PRICE_ROWS = {  # the row each company's prices are read from, and what one price there covers
-    "tallyhour": ("Billed monthly", "month"),
-    "brisktime": ("Price per user per year", "year"),
-    "quillhour": ("Billed monthly, per user per month", "month"),
-    "ticklog": ("Price", "month"),
-    "fenwork": ("Price", "month"),
-    "larchpoint": ("Per user per month, billed monthly", "month"),
+# A plan table row, by what its label says. The plan-level features of the table.
+FEATURE_ROWS = {"approvals": r"approval", "budgets": r"budget", "invoicing": r"invoic", "api": r"\bAPI\b",
+                "sso": r"single sign-on|\bSSO\b", "audit": r"\baudit\b", "phone": r"phone support"}
+# Cells whose value is decided against a statement nearby that reads otherwise: a feature list
+# or an introduction the plan table overrides, a footnote, a beta, a plan, a Type I report, a
+# money-back guarantee, an entry plan's SLA below the highest.
+LOOK_ALIKES = {
+    ("brisktime", "sso_on_entry"), ("brisktime", "soc2_type2"), ("ticklog", "mobile_app"), ("ticklog", "trial_days"),
+    ("ticklog", "uptime_sla_percent"), ("fenwork", "soc2_type2"), ("larchpoint", "budgets_on_entry"),
+    ("larchpoint", "trial_days"), ("larchpoint", "uptime_sla_percent"), ("clockwell", "budgets_on_entry"),
+    ("clockwell", "phone_support_on_entry"), ("clockwell", "uptime_sla_percent"), ("pacemark", "api_on_entry"),
+    ("pacemark", "eu_hosting"), ("pacemark", "uptime_sla_percent"), ("hourglen", "soc2_type2"),
+    ("ledgerline", "budgets_on_entry"), ("ledgerline", "mobile_app"), ("ledgerline", "trial_days"),
 }
-_SLA_NOT_STATED = [r"\bSLA\b", r"service[- ]level", r"\bcommit"]
-SOURCES: dict[str, dict[str, tuple]] = {
-    "tallyhour": {
-        "free_plan": ("quote", "The Free plan is free for as long as you use it", "yes"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("table_number", "Users"),
-        "sso_on_entry": ("table_flag", "Single sign-on (SAML)"),
-        "invoicing_on_entry": ("table_flag", "Invoices from tracked time"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("text", r"(\d+(?:\.\d+)?)% uptime SLA"),
-        "eu_hosting": ("any_plan_flag", "EU data hosting"),
-    },
-    "brisktime": {
-        "free_plan": ("absent", [r"free plan", r"free forever", r"free tier", r"\$0\b"]),
-        "trial_days": ("faq", "Is there a free trial?", r"free for (\d+) days"),
-        "entry_min_users": ("table_number", "Minimum seats"),
-        "sso_on_entry": ("table_flag", "Single sign-on (SAML) and SCIM"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("quote", "EU hosting is not available", "no"),
-    },
-    "quillhour": {
-        "free_plan": ("quote", "Quillhour has no free plan", "no"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("faq", "What is the smallest team I can sign up?", r"start at (\d+) users"),
-        "sso_on_entry": ("table_flag", "SAML single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("absent", _SLA_NOT_STATED),
-        "eu_hosting": ("any_plan_flag", "EU data residency"),
-    },
-    "ticklog": {
-        "free_plan": ("quote", "Ticklog has no free plan", "no"),
-        "trial_days": ("quote", "no free trial", 0),
-        "entry_min_users": ("table_number", "Minimum users"),
-        "sso_on_entry": ("table_flag", "SAML single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing from timesheets"),
-        "api_on_entry": ("faq", "Is the REST API included on Basic?", r"^Yes\b", "yes"),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("absent", [r"\bEU\b", r"europe", r"hosting", r"hosted", r"residency", r"data cent", r"region"]),
-    },
-    "fenwork": {
-        "free_plan": ("faq", "Is there a free plan?", r"^No\b", "no"),
-        "trial_days": ("faq", "How long is the free trial?", r"(\d+)-day free trial"),
-        "entry_min_users": ("absent", [r"minimum", r"\bfrom \d", r"at least", r"\bseats?\b", r"\d+ users"]),
-        "sso_on_entry": ("table_flag", "Single sign-on"),
-        "invoicing_on_entry": ("table_flag", "Invoicing"),
-        "api_on_entry": ("table_flag", "API access"),
-        "uptime_sla_percent": ("text", r"(\d+(?:\.\d+)?)% uptime SLA"),
-        "eu_hosting": ("quote", "Every plan lets you choose EU or US hosting", "yes"),
-    },
-    "larchpoint": {
-        "free_plan": ("quote", "Larchpoint has no free plan", "no"),
-        "trial_days": ("text", r"(\d+)-day free trial"),
-        "entry_min_users": ("table_number", "Users"),
-        "sso_on_entry": ("table_flag", "Single sign-on through your identity provider"),
-        "invoicing_on_entry": ("table_flag", "Client invoicing"),
-        "api_on_entry": ("absent", [r"\bAPI\b", r"integrat", r"developer"]),
-        "uptime_sla_percent": ("max_percent", "Uptime SLA"),
-        "eu_hosting": ("quote", "We do not offer EU hosting", "no"),
-    },
+# Company-wide statements, wherever the page makes them outside its table, FAQ and changelog.
+PROSE = {
+    "free_plan": [(r"free for as long as you use it|free forever", "yes"), (r"\bno free plan\b", "no")],
+    "trial_days": [(r"\bno free trial\b", 0), (r"(\d+)-day free trial", None)],
+    "mobile_app": [(r"mobile app is in beta|mobile app coming", "no"),
+                   (r"apps for iOS and Android are included on every plan|mobile apps on every plan", "yes")],
+    "eu_hosting": [(r"EU hosting is not available|do not offer EU hosting|hosted in the US only|EU hosting is coming", "no"),
+                   (r"can be hosted in the EU|choose EU or US hosting|EU data residency is available|hosted in the EU \(", "yes")],
+    "soc2_type2": [(r"SOC 2 Type II audit is in progress|SOC 2 Type I (?:report|audit)", "no"),
+                   (r"hold a SOC 2 Type II report|holds a SOC 2 Type II report|SOC 2 Type II report is available", "yes")],
+    "dpa": [(r"sign a data processing agreement with every customer", "yes")],
 }
-# The cells where a page's FAQ overrides what its plan table says.
-FAQ_OVERRIDES = {("fenwork", "trial_days"), ("ticklog", "api_on_entry"), ("quillhour", "entry_min_users")}
 
 
-def _page(company: str) -> dict:
-    """A saved pricing page: its text, its plan table and its FAQ."""
+def _comparison_page(company: str) -> dict:
+    """A saved pricing page, read into its parts."""
     text = (COMPARISON_DIR / f"{company}.md").read_text()
-    lines = text.splitlines()
-    rows = [line for line in lines if line.startswith("|")]
-    header = [cell.strip() for cell in rows[0].strip("|").split("|")]
+    head, _, rest = text.partition("\n## ")
+    rest = "## " + rest
+    rows = [line for line in head.splitlines() if line.startswith("|")]
+    plans = [cell.strip() for cell in rows[0].strip("|").split("|")][1:]
     table = {}
     for line in rows[2:]:
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        table[cells[0]] = dict(zip(header[1:], cells[1:]))
-    faq = dict(re.findall(r"(?m)^\*\*(.+?)\*\*\n(.+)$", text.split("## FAQ", 1)[1])) if "## FAQ" in text else {}
-    return {"text": text, "plans": header[1:], "table": table, "faq": faq}
+        table[cells[0]] = dict(zip(plans, cells[1:]))
+    footnotes = dict(re.findall(r"(?m)^([¹²³⁴])\s+(.+)$", head))
+    prose = [line for line in head.splitlines()[1:] if line and not line.startswith("|") and line[0] not in "¹²³⁴#"]
+    sections = dict((name, body) for name, body in re.findall(r"(?ms)^## (.+?)\n(.*?)(?=^## |\Z)", rest))
+    faq = re.findall(r"(?m)^\*\*(.+?)\*\*\n(.+)$", sections.get("FAQ", ""))
+    changelog = re.findall(r"(?m)^- (\d{4}-\d{2}-\d{2}): (.+)$", sections.get("Changelog", ""))
+    other = prose + [line for name in ("Features", "Security and compliance") for line in sections.get(name, "").splitlines()]
+    return {"plans": plans, "table": table, "footnotes": footnotes, "prose": " ".join(other), "faq": faq,
+            "changelog": sorted(changelog)}
 
 
-def _price(cell: str, per: str) -> float | str:
-    if "contact sales" in cell.lower():
+def _row(page: dict, pattern: str) -> dict | None:
+    found = [cells for label, cells in page["table"].items() if re.search(pattern, label, re.IGNORECASE)]
+    return found[0] if found else None
+
+
+def _flag(page: dict, cell: str) -> str:
+    """A plan-table cell as included or not, its footnote read by rule 4."""
+    mark = cell[1:] if cell[:1] == "✓" else ""
+    if cell[:1] == "✓":
+        return "no" if mark and "paid add-on" in page["footnotes"][mark] else "yes"
+    assert cell == "—", cell
+    return "no"
+
+
+def _plan_after(plans: list[str], plan: str) -> list[str]:
+    return plans[plans.index(plan):]
+
+
+def _company_cells(company: str) -> tuple[dict, dict]:
+    """The twenty cells of one company, and the value each had before an FAQ or a changelog entry overrode it."""
+    page = _comparison_page(company)
+    plans, table = page["plans"], page["table"]
+
+    # Prices on a monthly basis, plan by plan (rule 7), then the changelog's price changes.
+    prices: dict[str, object] = {}
+    monthly = _row(page, r"billed monthly")
+    yearly = _row(page, r"per year")
+    billing = table.get("Billing", {})
+    for plan in plans:
+        cell = (monthly or {}).get(plan, "—")
+        if cell == "Contact sales":
+            prices[plan] = NOT_STATED
+        elif cell.startswith("$"):
+            prices[plan] = float(cell[1:])
+        elif yearly and billing.get(plan) == "Annual only":
+            prices[plan] = float((Decimal(yearly[plan][1:]) / 12).quantize(Decimal("0.01"), ROUND_HALF_UP))
+        else:
+            raise ValueError((company, plan))
+    base_prices = dict(prices)
+    for _day, entry in page["changelog"]:
+        match = re.fullmatch(r"(\w+) is now \$([\d.]+) per user per month, billed monthly\.", entry)
+        if match:
+            prices[match.group(1)] = float(match.group(2))
+
+    # Plan-level features: the table, then the FAQ, then the changelog (rule 3).
+    features = {name: ({plan: _flag(page, cell) for plan, cell in row.items()} if (row := _row(page, pattern)) else None)
+                for name, pattern in FEATURE_ROWS.items()}
+    base_features = {name: dict(value) if value else None for name, value in features.items()}
+
+    def feature_of(phrase: str) -> str:
+        return next(name for name, pattern in FEATURE_ROWS.items() if re.search(pattern, phrase, re.IGNORECASE))
+
+    for question, answer in page["faq"]:
+        if re.search(r"every \w+ ?plan includes the (?:REST )?API", answer):
+            features["api"] = {plan: "yes" for plan in plans}
+    for _day, entry in page["changelog"]:
+        if match := re.fullmatch(r"(.+?) (?:is|are) now included on (\w+)\.", entry):
+            features[feature_of(match.group(1))][match.group(2)] = "yes"
+        elif match := re.fullmatch(r"(.+?) is now included from (\w+)\.", entry):
+            for plan in _plan_after(plans, match.group(2)):
+                features[feature_of(match.group(1))][plan] = "yes"
+        elif match := re.fullmatch(r"(.+?) moved to (\w+) and above\.", entry):
+            name = feature_of(match.group(1))
+            features[name] = {plan: "yes" if plan in _plan_after(plans, match.group(2)) else "no" for plan in plans}
+
+    # Minimum users: the table, then the FAQ and the changelog.
+    users_row = _row(page, r"^(?:users|minimum users|minimum seats)$")
+    users = {plan: float(re.search(r"\d+", cell).group(0)) for plan, cell in users_row.items()} if users_row else None
+    base_users = dict(users) if users else None
+    for _question, answer in page["faq"]:
+        if match := re.search(r"((?:\w+ and )?\w+) now start at (\d+) users", answer):
+            for plan in match.group(1).split(" and "):
+                users[plan] = float(match.group(2))
+    for _day, entry in page["changelog"]:
+        if match := re.fullmatch(r"(\w+) now starts at (\d+) users\.", entry):
+            users[match.group(1)] = float(match.group(2))
+
+    paid = [plan for plan in plans if prices[plan] != NOT_STATED and prices[plan] > 0]
+    entry = min(paid, key=lambda plan: (prices[plan], plans.index(plan)))
+    base_entry = min((p for p in plans if base_prices[p] != NOT_STATED and base_prices[p] > 0),
+                     key=lambda plan: (base_prices[plan], plans.index(plan)))
+
+    def cheapest(values: dict | None) -> str:
+        if values is None:
+            return NOT_STATED
+        return next((plan for plan in plans if values[plan] == "yes"), "none")
+
+    def on_entry(values: dict | None, plan: str) -> str:
+        return NOT_STATED if values is None else values[plan]
+
+    projects_row = _row(page, r"^active projects$")
+    sla_row = _row(page, r"uptime sla")
+    trial_row = _row(page, r"free trial")
+    prose = page["prose"]
+
+    def company_wide(attribute: str) -> object:
+        for pattern, value in PROSE.get(attribute, []):
+            if match := re.search(pattern, prose, re.IGNORECASE):
+                return float(match.group(1)) if value is None else value
         return NOT_STATED
-    value = Decimal(re.fullmatch(r"\$(\d+(?:\.\d+)?)", cell).group(1))
-    if per == "year":
-        value = (value / 12).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    return float(value)
+
+    trial = float(re.search(r"\d+", next(iter(trial_row.values()))).group(0)) if trial_row else company_wide("trial_days")
+    base_trial = trial
+    for question, answer in page["faq"]:
+        if "free trial" in question.lower():
+            if match := re.search(r"(\d+)-day free trial|trials last (\d+) days|free for (\d+) days", answer):
+                trial = float(next(group for group in match.groups() if group))
+    sla = [float(cell.rstrip("%")) for cell in (sla_row or {}).values() if cell != "—"]
+    mobile_row = _row(page, r"mobile app")
+    free_plan = company_wide("free_plan")
+    for question, answer in page["faq"]:
+        if "free plan" in question.lower() and re.match(r"(Yes|No)\b", answer):
+            free_plan = answer[:2].strip(".").lower() if answer.startswith("No") else "yes"
+    cells = {
+        "free_plan": free_plan,
+        "trial_days": trial,
+        "entry_plan": entry,
+        "entry_price_usd": prices[entry],
+        "entry_min_users": users[entry] if users else NOT_STATED,
+        "entry_projects": NOT_STATED if not projects_row else (
+            "unlimited" if projects_row[entry] == "Unlimited" else float(projects_row[entry])),
+        "top_plan_price_usd": prices[plans[-1]],
+        "sso_on_entry": on_entry(features["sso"], entry),
+        "sso_cheapest_plan": cheapest(features["sso"]),
+        "audit_log_cheapest_plan": cheapest(features["audit"]),
+        "invoicing_on_entry": on_entry(features["invoicing"], entry),
+        "api_on_entry": on_entry(features["api"], entry),
+        "approvals_on_entry": on_entry(features["approvals"], entry),
+        "budgets_on_entry": on_entry(features["budgets"], entry),
+        "phone_support_on_entry": on_entry(features["phone"], entry),
+        "mobile_app": ("yes" if "yes" in {_flag(page, c) for c in mobile_row.values()} else "no") if mobile_row
+        else company_wide("mobile_app"),
+        "uptime_sla_percent": max(sla) if sla else NOT_STATED,
+        "eu_hosting": company_wide("eu_hosting"),
+        "soc2_type2": company_wide("soc2_type2"),
+        "dpa": company_wide("dpa"),
+    }
+    before = dict(cells)
+    before.update({
+        "trial_days": base_trial, "entry_price_usd": base_prices[base_entry],
+        "entry_min_users": base_users[base_entry] if base_users else NOT_STATED,
+        "sso_on_entry": on_entry(base_features["sso"], base_entry),
+        "sso_cheapest_plan": cheapest(base_features["sso"]),
+        "audit_log_cheapest_plan": cheapest(base_features["audit"]),
+        "api_on_entry": on_entry(base_features["api"], base_entry),
+        "approvals_on_entry": on_entry(base_features["approvals"], base_entry),
+    })
+    return cells, before
 
 
-def _flag(cell: str) -> str:
-    return {"✓": "yes", "—": "no"}[cell]
+def _claim_holds(table: dict, number: int) -> bool:
+    """Whether a draft claim holds for every value its `not stated` cells might really have."""
+    others = [company for company in COMPANIES if company != US]
+    ours = table[US]
+
+    def worlds(attributes: list[str]):
+        """Every way the not-stated cells of these attributes could really be."""
+        open_cells = [(company, attribute) for company in COMPANIES for attribute in attributes
+                      if table[company][attribute] == NOT_STATED]
+        choices = {"yes_no": ["yes", "no"], "number": [-1e9, 1e9], "plan": ["?"], "projects": [0.0]}
+        for picked in itertools.product(*(choices[ATTRIBUTES[attribute]] for _company, attribute in open_cells)):
+            world = {company: dict(row) for company, row in table.items()}
+            for (company, attribute), value in zip(open_cells, picked):
+                world[company][attribute] = value
+            yield world
+
+    tests = {
+        1: (["entry_price_usd"], lambda w: all(w[US]["entry_price_usd"] < w[c]["entry_price_usd"] for c in others)),
+        2: (["free_plan"], lambda w: w[US]["free_plan"] == "yes" and sum(w[c]["free_plan"] == "yes" for c in COMPANIES) == 2),
+        3: (["sso_on_entry"], lambda w: w[US]["sso_on_entry"] == "yes" and all(w[c]["sso_on_entry"] == "no" for c in others)),
+        4: (["trial_days"], lambda w: all(w[c]["trial_days"] <= 0 or w[US]["trial_days"] > w[c]["trial_days"] for c in others)),
+        5: (["approvals_on_entry", "budgets_on_entry"], lambda w: all(
+            (w[c]["approvals_on_entry"], w[c]["budgets_on_entry"]) == ("yes", "yes") for c in [US])
+            and not any((w[c]["approvals_on_entry"], w[c]["budgets_on_entry"]) == ("yes", "yes") for c in others)),
+        6: (["soc2_type2", "eu_hosting"], lambda w: (w[US]["soc2_type2"], w[US]["eu_hosting"]) == ("yes", "yes") and sum(
+            (w[c]["soc2_type2"], w[c]["eu_hosting"]) == ("yes", "yes") for c in COMPANIES) == 3),
+        7: (["eu_hosting", "top_plan_price_usd"], lambda w: all(
+            w[c]["eu_hosting"] == "no" or w[US]["top_plan_price_usd"] < w[c]["top_plan_price_usd"] for c in others)),
+        8: (["entry_min_users"], lambda w: w[US]["entry_min_users"] == 1 and all(w[c]["entry_min_users"] >= 2 for c in others)),
+        9: (["phone_support_on_entry"], lambda w: w[US]["phone_support_on_entry"] == "yes"
+            and all(w[c]["phone_support_on_entry"] == "no" for c in others)),
+    }
+    attributes, test = tests[number]
+    assert all(ours[attribute] != NOT_STATED for attribute in attributes)
+    return all(test(world) for world in worlds(attributes))
 
 
 @lru_cache(maxsize=1)
 def comparison_reference() -> dict:
-    """The table the brief defines, read from the six pages, and the verdict
-    on each draft claim."""
-    table: dict[str, dict[str, object]] = {}
+    """The table the brief defines, read from the ten pages, and the verdict on each draft claim."""
+    table, before = {}, {}
     for company in COMPANIES:
-        page = _page(company)
-        label, per = PRICE_ROWS[company]
-        prices = page["table"][label]
-        if per == "year":  # sold only on annual billing
-            assert set(page["table"]["Billing"].values()) == {"Annual only"}
-        entry = next(plan for plan in page["plans"] if prices[plan] == "Contact sales" or _price(prices[plan], per) > 0)
-        top = page["plans"][-1]
-        cells: dict[str, object] = {
-            "entry_plan": entry,
-            "entry_price_usd": _price(prices[entry], per),
-            "top_plan_price_usd": _price(prices[top], per),
-        }
-        for attribute, source in SOURCES[company].items():
-            kind = source[0]
-            if kind == "quote":
-                assert source[1] in page["text"], (company, attribute)
-                value = source[2]
-            elif kind == "text":
-                value = float(re.search(source[1], page["text"]).group(1))
-            elif kind == "faq":
-                answer = page["faq"][source[1]]
-                match = re.search(source[2], answer)
-                assert match, (company, attribute)
-                value = source[3] if len(source) > 3 else float(match.group(1))
-            elif kind == "absent":
-                assert not any(re.search(term, page["text"], re.IGNORECASE) for term in source[1]), (company, attribute)
-                value = NOT_STATED
-            elif kind == "table_flag":
-                value = _flag(page["table"][source[1]][entry])
-            elif kind == "table_number":
-                value = float(re.search(r"\d+", page["table"][source[1]][entry]).group(0))
-            elif kind == "any_plan_flag":
-                value = "yes" if "yes" in {_flag(cell) for cell in page["table"][source[1]].values()} else "no"
-            elif kind == "max_percent":
-                value = max(float(cell.rstrip("%")) for cell in page["table"][source[1]].values() if cell != "—")
-            else:
-                raise ValueError(kind)
-            cells[attribute] = value
-        sso_row = SOURCES[company]["sso_on_entry"][1]
-        cells["sso_cheapest_plan"] = next(
-            (plan for plan in page["plans"] if page["table"][sso_row][plan] == "✓"), NOT_STATED)
-        table[company] = {attribute: cells[attribute] for attribute in ATTRIBUTES}
-
-    def numbers(attribute: str) -> list:
-        return [table[company][attribute] for company in COMPANIES if company != US]
-
-    def beats(attribute: str) -> bool:  # strictly below every competitor, every cell stated
-        ours, theirs = table[US][attribute], numbers(attribute)
-        return NOT_STATED not in theirs and ours != NOT_STATED and all(ours < value for value in theirs)
-
-    def none_have(attribute: str) -> bool:
-        return table[US][attribute] == "yes" and all(value == "no" for value in numbers(attribute))
-
-    claims = {
-        1: beats("entry_price_usd"),
-        2: none_have("free_plan"),
-        3: NOT_STATED not in numbers("trial_days") and all(table[US]["trial_days"] > v for v in numbers("trial_days")),
-        4: none_have("sso_on_entry"),
-        5: beats("top_plan_price_usd"),
-    }
-    groups: dict[str, list[tuple[str, str]]] = {"faq": [], "not_stated": [], "prices": [], "tiers": [], "other": []}
+        table[company], before[company] = _company_cells(company)
+    groups: dict[str, list[tuple[str, str]]] = {"overrides": [], "not_stated": [], "prices": [], "look_alikes": [], "other": []}
     for company in COMPANIES:
         for attribute in ATTRIBUTES:
-            cell = (company, attribute)
-            if cell in FAQ_OVERRIDES:
-                groups["faq"].append(cell)
-            elif table[company][attribute] == NOT_STATED:
+            cell, value, earlier = (company, attribute), table[company][attribute], before[company][attribute]
+            if earlier != value and earlier != NOT_STATED:
+                groups["overrides"].append(cell)
+            elif value == NOT_STATED:
                 groups["not_stated"].append(cell)
             elif attribute in PRICE_ATTRIBUTES:
                 groups["prices"].append(cell)
-            elif attribute in TIER_ATTRIBUTES:
-                groups["tiers"].append(cell)
+            elif cell in LOOK_ALIKES:
+                groups["look_alikes"].append(cell)
             else:
                 groups["other"].append(cell)
-    return {
-        "table": table,
-        "claims": {number: "supportable" if holds else "not supportable" for number, holds in claims.items()},
-        "groups": groups,
-    }
+    claims = {number: "supportable" if _claim_holds(table, number) else "not supportable" for number in range(1, 10)}
+    return {"table": table, "claims": claims, "groups": groups}
 
 
 def _company_of(text: object) -> str | None:
@@ -469,11 +626,11 @@ def _company_of(text: object) -> str | None:
 
 def _cell_matches(kind: str, expected: object, given: object, company: str) -> bool:
     value = common.norm(given).strip("*_`. ")
-    if expected == NOT_STATED or value == NOT_STATED:
+    if expected in (NOT_STATED, "none", "unlimited") or value in (NOT_STATED, "none", "unlimited"):
         return value == expected
     if kind == "yes_no":
         return value == expected
-    if kind == "number":
+    if kind in ("number", "projects"):
         found = re.findall(r"\d[\d,]*(?:\.\d+)?", value)
         return len(found) == 1 and abs(float(found[0].replace(",", "")) - float(expected)) <= 0.005
     words = value.replace("-", " ").split()
@@ -527,10 +684,10 @@ def comparison_facts(response_text: str) -> dict:
     facts = {
         "comparison_missing_file_count": sum(1 for name in COMPARISON_FILES if found[name] is None),
         "comparison_structure_error_count": structure,
-        "comparison_price_cell_error_count": errors("prices"),
-        "comparison_tier_cell_error_count": errors("tiers"),
-        "comparison_faq_cell_error_count": errors("faq"),
+        "comparison_override_cell_error_count": errors("overrides"),
         "comparison_not_stated_cell_error_count": errors("not_stated"),
+        "comparison_price_cell_error_count": errors("prices"),
+        "comparison_look_alike_cell_error_count": errors("look_alikes"),
         "comparison_other_cell_error_count": errors("other"),
         "comparison_claim_structure_error_count": claim_structure,
     }
@@ -547,107 +704,149 @@ TIMELINE_FILES = ["schedule.csv", "answers.csv"]
 TIMELINE_ITEMS = ["launch_date", "critical_path", "target_met", "cut", "launch_date_after_cut"]
 _DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _TASK_ID = re.compile(r"\bT(\d{2})\b", re.IGNORECASE)
-
-
-@lru_cache(maxsize=1)
-def timeline_inputs() -> dict:
-    """The plan, the calendar and the target, as the two fixture files state them."""
-    brief = (TIMELINE_DIR / "launch_brief.md").read_text()
-    start = _iso(re.search(r"The\nwork starts on Monday (\S+),", brief).group(1))
-    target = _iso(re.search(r"the launch is on\n\*\*(\S+)\*\*", brief).group(1))
-    holidays = {_iso(day) for day in re.findall(r"(?m)^- (\d{4}-\d{2}-\d{2}) \(", brief)}
-    tasks = {}
-    for row in _read_csv(TIMELINE_DIR / "launch_plan.csv"):
-        tasks[row["task_id"]] = {
-            "owner": row["owner"], "days": int(row["duration_days"]), "deps": row["depends_on"].split(),
-            "optional": row["optional"] == "yes", "not_before": _iso(row["not_before"]) if row["not_before"] else None,
-        }
-    asked = re.findall(r"T\d{2}", brief.split("I also want the slack of", 1)[1])
-    days, day = [], start
-    while len(days) < 400:  # far beyond any schedule this plan can make
-        if day.weekday() < 5 and day not in holidays:
-            days.append(day)
-        day += _dt.timedelta(days=1)
-    return {"start": start, "target": target, "holidays": holidays, "tasks": tasks, "slack_asked": asked,
-            "days": days, "index": {day: number for number, day in enumerate(days)}}
-
+_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _iso(text: str) -> _dt.date:
     return _dt.date.fromisoformat(text)
 
 
-def timeline_schedule(cut: tuple[str, ...] = ()) -> dict:
-    """Every task's first and last working day (as day numbers) under the
-    brief's rules, with the given optional tasks cut, and each task's slack."""
-    inputs = timeline_inputs()
-    tasks, days = inputs["tasks"], inputs["days"]
-    kept = [task_id for task_id in tasks if task_id not in cut]
+def _table_rows(markdown: str, heading: str) -> list[list[str]]:
+    """The body rows of the first table under a heading."""
+    section = markdown.split(heading, 1)[1].split("\n## ", 1)[0]
+    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+            for line in section.splitlines() if line.startswith("|")]
+    return rows[2:]
 
-    def depends(task_id: str) -> set[str]:
-        out, stack, seen = set(), list(tasks[task_id]["deps"]), set()
+
+def _weekdays(text: str) -> set[int]:
+    if text == "Monday to Friday":
+        return {0, 1, 2, 3, 4}
+    if text == "every calendar day":
+        return set(range(7))
+    return {_WEEKDAYS.index(day) for day in re.findall(r"[A-Z][a-z]+day", text)}
+
+
+@lru_cache(maxsize=1)
+def timeline_inputs() -> dict:
+    """The plan, every owner's working days and the target, as the fixture files state them."""
+    brief = (TIMELINE_DIR / "launch_brief.md").read_text()
+    calendar = (TIMELINE_DIR / "team_calendar.md").read_text()
+    flat = " ".join(brief.split())
+    start = _iso(re.search(r"The work starts on Monday (\S+),", flat).group(1))
+    target = _iso(re.search(r"the launch is on \*\*(\S+)\*\*", flat).group(1))
+    holidays = {office: {_iso(day) for day in re.findall(r"(\d{4}-\d{2}-\d{2}) \(", days)}
+                for office, _working, days in _table_rows(calendar, "## Offices")}
+    owners: dict[str, dict] = {}
+    for name, _role, office, works, away in _table_rows(calendar, "## People"):
+        absent: set[_dt.date] = set()
+        if away != "none":
+            first, last = (_iso(day) for day in away.split(" to "))
+            absent = {first + _dt.timedelta(days=n) for n in range((last - first).days + 1)}
+        owners[name] = {"weekdays": _weekdays(works), "off": holidays[office] | absent}
+    for name, _what, works in _table_rows(calendar, "## Outside suppliers"):
+        owners[name] = {"weekdays": _weekdays(works), "off": set()}
+    tasks = {}
+    for row in _read_csv(TIMELINE_DIR / "launch_plan.csv"):
+        deps = []
+        for entry in row["depends_on"].split():
+            other, _plus, lead = entry.partition("+")
+            deps.append((other, int(lead) if lead else 1))
+        assert row["duration_unit"] == ("calendar days" if owners[row["owner"]]["weekdays"] == set(range(7))
+                                        else "working days"), row["task_id"]
+        tasks[row["task_id"]] = {"owner": row["owner"], "days": int(row["duration"]), "deps": deps,
+                                 "optional": row["optional"] == "yes",
+                                 "not_before": _iso(row["not_before"]) if row["not_before"] else None}
+    working = {}
+    for name, owner in owners.items():
+        days, day = [], start
+        while day < start + _dt.timedelta(days=500):
+            if day.weekday() in owner["weekdays"] and day not in owner["off"]:
+                days.append(day)
+            day += _dt.timedelta(days=1)
+        working[name] = days
+    return {"start": start, "target": target, "tasks": tasks, "working": working,
+            "index": {name: {day: n for n, day in enumerate(days)} for name, days in working.items()},
+            "launch": max(tasks)}
+
+
+def _on_or_after(inputs: dict, owner: str, day: _dt.date) -> int:
+    """The index of the owner's first working day on or after a date."""
+    return bisect.bisect_left(inputs["working"][owner], day)
+
+
+def timeline_schedule(cut: tuple[str, ...] = ()) -> dict:
+    """Every task's first and last day under the brief's rules, with the given
+    optional tasks cut, and each task's slack in its owner's days."""
+    inputs = timeline_inputs()
+    tasks, working = inputs["tasks"], inputs["working"]
+    kept = [task_id for task_id in sorted(tasks) if task_id not in cut]
+
+    def waits_for(task_id: str) -> dict[str, int]:
+        """What a task waits for once the cut tasks are gone: task -> lead time in days."""
+        out: dict[str, int] = {}
+        stack = list(tasks[task_id]["deps"])
         while stack:
-            other = stack.pop()
-            if other in seen:
-                continue
-            seen.add(other)
+            other, lead = stack.pop()
             if other in cut:
                 stack.extend(tasks[other]["deps"])
             else:
-                out.add(other)
+                out[other] = max(out.get(other, 0), lead)
         return out
 
-    before: dict[str, list[str]] = {}
-    last_of_owner: dict[str, str] = {}
-    for task_id in sorted(kept):
+    before: dict[str, dict[str, int]] = {}
+    previous: dict[str, str] = {}
+    for task_id in kept:
         owner = tasks[task_id]["owner"]
-        before[task_id] = sorted(depends(task_id)) + ([last_of_owner[owner]] if owner in last_of_owner else [])
-        last_of_owner[owner] = task_id
-    first, last = {}, {}
-    for task_id in sorted(kept):
-        earliest = 0
-        not_before = tasks[task_id]["not_before"]
-        if not_before is not None:
-            earliest = next(number for number, day in enumerate(days) if day >= not_before)
-        earliest = max([earliest] + [last[other] + 1 for other in before[task_id]])
-        first[task_id], last[task_id] = earliest, earliest + tasks[task_id]["days"] - 1
-    after: dict[str, list[str]] = {task_id: [] for task_id in kept}
+        before[task_id] = waits_for(task_id)
+        if owner in previous:
+            before[task_id][previous[owner]] = max(before[task_id].get(previous[owner], 0), 1)
+        previous[owner] = task_id
+    first: dict[str, _dt.date] = {}
+    last: dict[str, _dt.date] = {}
+    for task_id in kept:
+        task = tasks[task_id]
+        earliest = max([inputs["start"], task["not_before"] or inputs["start"]]
+                       + [last[other] + _dt.timedelta(days=lead) for other, lead in before[task_id].items()])
+        number = _on_or_after(inputs, task["owner"], earliest)
+        first[task_id] = working[task["owner"]][number]
+        last[task_id] = working[task["owner"]][number + task["days"] - 1]
+    after: dict[str, list[tuple[str, int]]] = {task_id: [] for task_id in kept}
     for task_id, others in before.items():
-        for other in others:
-            after[other].append(task_id)
-    launch = max(kept)
-    latest_start: dict[str, int] = {}
-    for task_id in sorted(kept, reverse=True):
-        latest_finish = min((latest_start[other] - 1 for other in after[task_id]), default=last[launch])
-        latest_start[task_id] = latest_finish - tasks[task_id]["days"] + 1
-    slack = {task_id: latest_start[task_id] - first[task_id] for task_id in kept}
+        for other, lead in others.items():
+            after[other].append((task_id, lead))
+    launch = kept[-1]
+    latest_start: dict[str, _dt.date] = {}
+    slack: dict[str, int] = {}
+    for task_id in reversed(kept):
+        owner = tasks[task_id]["owner"]
+        bound = min((latest_start[other] - _dt.timedelta(days=lead) for other, lead in after[task_id]),
+                    default=last[launch])
+        latest_finish = bisect.bisect_right(working[owner], bound) - 1        # its last working day on or before
+        latest_start[task_id] = working[owner][latest_finish - tasks[task_id]["days"] + 1]
+        slack[task_id] = latest_finish - inputs["index"][owner][last[task_id]]
     return {"first": first, "last": last, "slack": slack, "launch": first[launch]}
 
 
 @lru_cache(maxsize=1)
 def timeline_reference() -> dict:
     inputs = timeline_inputs()
-    days, target = inputs["days"], inputs["target"]
     plan = timeline_schedule()
-    critical = sorted((task_id for task_id, value in plan["slack"].items() if value == 0), key=lambda t: plan["first"][t])
+    critical = sorted((task_id for task_id, value in plan["slack"].items() if value == 0), key=lambda t: (plan["first"][t], t))
     optional = [task_id for task_id, task in inputs["tasks"].items() if task["optional"]]
     best: tuple | None = None
     for size in range(len(optional) + 1):
         for cut in itertools.combinations(optional, size):
-            launch = days[timeline_schedule(cut)["launch"]]
-            if launch <= target and (best is None or (launch, cut) < best[1:]):
+            launch = timeline_schedule(cut)["launch"]
+            if launch <= inputs["target"] and (best is None or (launch, cut) < best[1:]):
                 best = (size, launch, cut)
         if best is not None:
             break
     return {
-        "starts": {task_id: days[number] for task_id, number in plan["first"].items()},
-        "finishes": {task_id: days[number] for task_id, number in plan["last"].items()},
-        "launch_date": days[plan["launch"]],
-        "critical_path": critical,
-        "slack": {task_id: plan["slack"][task_id] for task_id in inputs["slack_asked"]},
-        "target_met": "yes" if days[plan["launch"]] <= target else "no",
-        "cut": list(best[2]) if best else [],
-        "launch_date_after_cut": best[1] if best else None,
+        "starts": plan["first"], "finishes": plan["last"], "launch_date": plan["launch"],
+        "critical_path": critical, "slack": plan["slack"],
+        "target_met": "yes" if plan["launch"] <= inputs["target"] else "no",
+        "cut": list(best[2]) if best else [], "launch_date_after_cut": best[1] if best else None,
     }
 
 
@@ -680,24 +879,25 @@ def timeline_facts(response_text: str) -> dict:
     single = {task_id: found_rows[0] for task_id, found_rows in rows.items() if len(found_rows) == 1}
     starts = {task_id: _one_date(common.cell(row, "start")) for task_id, row in single.items()}
     wrong_starts = sum(1 for task_id, day in reference["starts"].items() if starts.get(task_id) != day)
-    # Each finish follows from its own start by the calendar: the duration in working days.
-    index, days = inputs["index"], inputs["days"]
+    wrong_slack = sum(1 for task_id, value in reference["slack"].items()
+                      if task_id not in single or _integer(common.cell(single[task_id], "slack")) != value)
+    # Each finish follows from its own start by its owner's calendar, whatever start the reply gives.
     calendar_errors = 0
     for task_id, task in inputs["tasks"].items():
         start = starts.get(task_id)
         finish = _one_date(common.cell(single[task_id], "finish")) if task_id in single else None
-        if start not in index or finish != days[index[start] + task["days"] - 1]:
+        index = inputs["index"][task["owner"]]
+        if start not in index or finish != inputs["working"][task["owner"]][index[start] + task["days"] - 1]:
             calendar_errors += 1
 
     items: dict[str, list[str]] = {}
     extra_items = 0
     for row in found["answers.csv"] or []:
         name = common.norm(common.cell(row, "item")).strip("`").replace(" ", "_")
-        if name in TIMELINE_ITEMS or name.startswith("slack_"):
+        if name in TIMELINE_ITEMS:
             items.setdefault(name, []).append(common.cell(row, "answer"))
         elif name:
             extra_items += 1
-    wanted = TIMELINE_ITEMS + [f"slack_{task_id.lower()}" for task_id in reference["slack"]]
 
     def answer(name: str) -> str | None:
         given = items.get(name)
@@ -710,7 +910,8 @@ def timeline_facts(response_text: str) -> dict:
         "timeline_task_row_error_count": unknown + sum(1 for task_id in inputs["tasks"] if task_id not in single),
         "timeline_wrong_start_count": wrong_starts,
         "timeline_calendar_error_count": calendar_errors,
-        "timeline_answer_item_error_count": extra_items + sum(1 for name in wanted if answer(name) is None),
+        "timeline_wrong_slack_count": wrong_slack,
+        "timeline_answer_item_error_count": extra_items + sum(1 for name in TIMELINE_ITEMS if answer(name) is None),
         "timeline_launch_date_wrong": int(_one_date(answer("launch_date")) != reference["launch_date"]),
         "timeline_critical_path_wrong": int(_task_ids(answer("critical_path")) != reference["critical_path"]),
         "timeline_target_met_wrong": int(_yes_no(answer("target_met")) != reference["target_met"]),
@@ -719,9 +920,6 @@ def timeline_facts(response_text: str) -> dict:
         "timeline_launch_after_cut_wrong": int(
             _one_date(answer("launch_date_after_cut")) != reference["launch_date_after_cut"]),
     }
-    for task_id, value in reference["slack"].items():
-        given = answer(f"slack_{task_id.lower()}")
-        facts[f"timeline_slack_{task_id.lower()}_wrong"] = int(given is None or _integer(given) != value)
     return facts
 
 
