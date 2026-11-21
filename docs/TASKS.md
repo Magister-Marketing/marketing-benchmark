@@ -81,6 +81,12 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
+Strategy tasks added on 2026-11-20 for the 35-task board (not run yet; the judged checks are not calibrated). Every figure a program checks is computed from the fixtures by `eval_runner/task_facts_strategy.py` and recomputed by separate code in `tests/test_tasks_strategy.py`:
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Channel budget allocation](../eval_runner/tasks/channel-budget-allocation.json) | A quarterly budget split across six channels in whole $5,000 blocks, from diminishing-returns forecasts and channel terms: blocks, spend, fee and leads per channel, which of ten named constraints bind, and five labeled figures | Finding the one best split when the rules interact: the account executives can take only 520 leads from two of the channels, one channel's fee is monthly and held all quarter, one has a 4-block minimum order and one a contracted commitment. Buying the best blocks as if the AEs could take every lead projects 85 more leads and breaks the cap, and scores zero on every check it touches | 14 |
+
 ### Forecast tasks
 
 The two "Which headline won?" tasks grade a judgment against what happened,

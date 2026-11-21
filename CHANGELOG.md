@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Tasks: `channel-budget-allocation` (development split, strategy area): split
+  a $128,000 quarter across six channels in whole $5,000 blocks from
+  diminishing-returns forecasts, under a lead cap the account executives set
+  on two channels, a monthly licence held all quarter, a 4-block minimum
+  order and a contracted commitment. Two CSV files and five labeled figures;
+  13 of its 14 checks are a program's, against the one best split the oracle
+  finds by trying every split (`eval_runner/task_facts_strategy.py`, hooked
+  into `measured_facts`). Its fixtures are written by
+  `scripts/gen_tasks_strategy.py`. The `ads` skill is vendored unchanged at
+  the same marketingskills pin (`2c38021`) for its "with skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

@@ -1,0 +1,42 @@
+{
+  "id": "channel-budget-allocation",
+  "title": "Split a quarterly demand budget across six channels",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/channel-budget/planning_brief.md",
+    "eval_runner/fixtures/channel-budget/channel_terms.csv",
+    "eval_runner/fixtures/channel-budget/channel_forecasts.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ads/SKILL.md"
+  ],
+  "answers": {
+    "count": 5,
+    "single_number": true
+  },
+  "prompt": "Fernmoor sells practice-management software to physiotherapy clinics. Ines Varga, its Head of Demand Generation, needs next quarter's demand budget split across six paid channels. The supplied planning brief sets the rules, `channel_terms.csv` gives each channel's limits and fees, and `channel_forecasts.csv` gives the leads each $5,000 block of spend is projected to add. Everything you need is in those three files.\n\nFind the split the brief asks for: the one that projects the most leads while keeping every rule in it. Write Ines a short recommendation, then deliver the two files and the answer block below.\n\nPut each file under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows.\n\n### allocation.csv\nchannel,blocks,media_spend_usd,fee_usd,leads\nOne row for each of the six channels, named by the `channel` id the files use, including a channel that gets no blocks (0 in every column). `media_spend_usd` is the channel's blocks times $5,000, `fee_usd` is the fee it pays for the quarter, and `leads` is its projected leads.\n\n### constraints.csv\nconstraint,binds\nOne row for each constraint the brief names, by that name, with `yes` or `no` as the brief defines binding.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone. A currency sign and a comma as thousands separator are fine.\n\nA1: <total cost of the split in dollars: media spend plus fees>\nA2: <total projected leads of the split>\nA3: <blended cost per lead in dollars, to the cent: A1 divided by A2>\nA4: <projected leads of the split that go to the account executives>\nA5: <leads the AE capacity costs: the projected leads of the best split that keeps every rule except the AE capacity, minus A2>\n\nThis is a plan for review. Buy nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {"id": "both_files", "check": "Both files (allocation.csv and constraints.csv) are in the reply, each under a line with its file name.", "programmatic": {"fact": "budget_missing_file_count", "equals": 0}},
+      {"id": "six_channels_once", "check": "allocation.csv has exactly one row for each of the six channels (search, linkedin, webinars, syndication, review_sites, meta) and no other row.", "programmatic": {"fact": "budget_channel_row_error_count", "equals": 0}},
+      {"id": "answer_block_complete", "check": "The reply ends with the answer block and all 5 labeled answers A1-A5 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 5}}
+    ],
+    "skill_adherence": [
+      {"id": "split_keeps_every_rule", "check": "The split in allocation.csv keeps every rule of the brief: with three months of every fee it pays it costs no more than $128,000, no channel is over its max_blocks, review_sites buys at least its 2 committed blocks, syndication buys 0 blocks or at least its 4-block minimum, and the leads of linkedin and webinars together are no more than the AEs' 520. A split that breaks any rule fails.", "programmatic": {"fact": "budget_infeasible_count", "equals": 0}},
+      {"id": "best_split", "check": "allocation.csv gives every channel the blocks of the one best split: search 10, linkedin 1, webinars 3, syndication 4, review_sites 2, meta 4. One channel off fails.", "programmatic": {"fact": "budget_wrong_blocks_count", "equals": 0}},
+      {"id": "rows_add_up", "check": "Every row of allocation.csv agrees with its own block count: media_spend_usd is the blocks times $5,000 and leads is the sum of the channel's first that-many added_leads. One row off fails.", "programmatic": {"fact": "budget_row_arithmetic_error_count", "equals": 0}},
+      {"id": "fees_for_the_quarter", "check": "Every row's fee_usd is three months of the channel's monthly fee when it buys any block, and 0 when it buys none: $4,200 for webinars when used, $0 for every other channel. One row off fails.", "programmatic": {"fact": "budget_fee_error_count", "equals": 0}}
+    ],
+    "best_practices": [
+      {"id": "a1_total_cost", "check": "A1 states the cost of the best split, media spend plus fees; full credit for the exact figure, zero credit 1000 or more off.", "programmatic": {"fact": "answer_q1", "near": 124200, "tolerance": {"kind": "absolute", "full": 0, "zero": 1000}}},
+      {"id": "a2_total_leads", "check": "A2 states the projected leads of the best split; full credit for the exact figure, zero credit 5 or more off.", "programmatic": {"fact": "answer_q2", "near": 2121, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "a3_cost_per_lead", "check": "A3 states the blended cost per lead of the best split, its cost divided by its leads; full credit within 0.01, zero credit 0.3 or more off.", "programmatic": {"fact": "answer_q3", "near": 58.56, "tolerance": {"kind": "absolute", "full": 0.01, "zero": 0.3}}},
+      {"id": "a4_routed_leads", "check": "A4 states the projected leads of the best split that go to the account executives (linkedin and webinars); full credit for the exact figure, zero credit 6 or more off.", "programmatic": {"fact": "answer_q4", "near": 475, "tolerance": {"kind": "absolute", "full": 0, "zero": 6}}},
+      {"id": "a5_capacity_cost", "check": "A5 states the leads the AE capacity costs: the best split without it (2,206 leads) minus the best split with it; full credit for the exact figure, zero credit 5 or more off.", "programmatic": {"fact": "answer_q5", "near": 85, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "binding_named", "check": "constraints.csv has one row for each of the ten constraints the brief names and no other, with yes exactly for budget, ae_capacity, search_max, syndication_min_order and review_sites_commitment. One row wrong or missing fails.", "programmatic": {"fact": "budget_binding_error_count", "equals": 0}},
+      {"id": "no_invented_projections", "negative": true, "check": "Every figure the recommendation presents as a projection or a cost comes from the supplied files or from arithmetic on them. It states no revenue, pipeline, win rate, customer count or other forecast the files do not contain. A clearly labelled assumption that plays no part in the split is not a projection."}
+    ]
+  }
+}
