@@ -701,9 +701,16 @@ def cmd_retry(args: argparse.Namespace) -> int:
                 "attempt's prompt_sha256; refusing to retry a different experiment"
             )
         spec = models[record["model_id"]]
+        # The run-wide value is null when the models' ceilings differ; each
+        # model's own is what its attempt ran with.
+        ceiling = (
+            (run_meta.get("max_output_tokens_by_model") or {}).get(record["model_id"])
+            or run_meta.get("max_output_tokens")
+            or MAX_OUTPUT_TOKENS
+        )
         try:
             result = providers.generate(
-                spec["model"], prompt, run_meta["max_output_tokens"],
+                spec["model"], prompt, ceiling,
                 web_search=run_meta["tools_enabled"],
                 settings=_candidate_settings(spec),
             )

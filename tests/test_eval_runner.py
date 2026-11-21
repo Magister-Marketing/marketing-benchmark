@@ -1359,6 +1359,30 @@ def test_retry_reruns_only_errored_attempts(tmp_path, monkeypatch):
     assert "retried" not in updated[0]  # successful attempts are untouched
 
 
+def test_retry_sends_each_model_the_ceiling_its_run_recorded(tmp_path, monkeypatch):
+    """A run whose models have different ceilings records no single
+    `max_output_tokens`; the retry must still send each model the one its
+    attempt ran with, never null."""
+    run_dir = _retry_fixture(tmp_path)
+    meta = json.loads((run_dir / "run.json").read_text())
+    meta["max_output_tokens"] = None
+    meta["max_output_tokens_by_model"] = {"m": 16000, "other": 65536}
+    (run_dir / "run.json").write_text(json.dumps(meta))
+    ceilings = []
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None):
+        ceilings.append(max_output_tokens)
+        return {"text": "recovered answer", "input_tokens": 10,
+                "output_tokens": 20, "tool_calls": {}, "web_search_calls": 0,
+                "finish_reason": "end_turn", "ceiling_retried": False,
+                "provider": "anthropic", "model": "x", "latency_seconds": 1.0}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    assert bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True)) == 0
+    assert ceilings == [16000]
+
+
 def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
     run_dir = _retry_fixture(tmp_path)
     (run_dir / "prompts" / "t.md").write_text("a different prompt")

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Runner: `retry` sends each model the output ceiling its run recorded
+  (`max_output_tokens_by_model`). A run whose models have different ceilings
+  records no single `max_output_tokens`, and its retries sent Anthropic and
+  OpenRouter models without a cap of their own `max_tokens: null`.
 - Skills: the six skill files the "with skills" arm pastes into a prompt are
   refreshed, unchanged, to marketingskills 2.8.23 (commit `2c38021`,
   2026-11-20). They were copies from 2026-08-31 (2.8.16), three months behind
