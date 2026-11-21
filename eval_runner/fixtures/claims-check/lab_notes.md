@@ -6,8 +6,8 @@ no say in how they were run or in their results.
 ## What was tested
 
 Every stick vacuum Corvane has ever made: the 6 on sale today and
-Wisp (discontinued in 2024), Arc (discontinued in 2023), one production unit of each, bought at retail. lab_results.csv
-holds every result.
+Wisp (discontinued in 2024), Arc (discontinued in 2023), on production units bought at retail. lab_results.csv holds
+every result.
 
 ## Reading the results
 

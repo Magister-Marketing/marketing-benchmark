@@ -2321,8 +2321,8 @@ no say in how they were run or in their results.
 ## What was tested
 
 Every stick vacuum {COMPANY} has ever made: the {len(PAGE_MODELS)} on sale today and
-{discontinued}, one production unit of each, bought at retail. lab_results.csv
-holds every result.
+{discontinued}, on production units bought at retail. lab_results.csv holds
+every result.
 
 ## Reading the results
 
