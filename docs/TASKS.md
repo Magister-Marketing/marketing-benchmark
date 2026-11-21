@@ -81,6 +81,12 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
+Email tasks added on 2026-11-20 for the 35-task board (not run yet; the one judged check of each is not calibrated):
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Email send calendar](../eval_runner/tasks/email-send-calendar.json) | February's calendar for 12 campaigns to six overlapping segments of a 300-subscriber list: each campaign's send date (or none), audience size and the reason it moved, with five labeled figures | A per-subscriber cap of 3 emails in any 7 consecutive days, applied in priority order and counting campaigns already placed on later dates, together with blackout dates, send days by type, a teaser gap that moves a launch, and deadlines; collisions that exist only for people in two segments, one campaign that cannot go out, and unsubscribed people whose segment overlaps would move campaigns if they were counted | 12 |
+
 ### Forecast tasks
 
 The two "Which headline won?" tasks grade a judgment against what happened,

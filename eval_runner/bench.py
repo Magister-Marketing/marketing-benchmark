@@ -1711,6 +1711,9 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     # A workflow task's own checker: counts of what the reply got wrong
     # against the task's reference (eval_runner/workflows).
     facts.update(workflows.facts_for(task, response_text))
+    # The email tasks' own checker (eval_runner/task_facts_email.py).
+    from eval_runner import task_facts_email
+    facts.update(task_facts_email.facts_for(task, response_text))
     return facts
 
 

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Tasks: `email-send-calendar` (development split): a 12-campaign plan, a
+  300-subscriber export with six overlapping segments and a calendar policy
+  in; each campaign's send date, audience size and reason out, with five
+  labeled figures. 11 of its 12 checks are a program's. Its fixtures, oracle
+  and checker live in `eval_runner/task_facts_email.py`
+  (`python3 -m eval_runner.task_facts_email --check`), which
+  `bench.measured_facts` calls; `tests/test_tasks_email.py` recomputes every
+  pinned figure from the fixture files with separate code and shows that a
+  reply built from each tempting wrong reading (campaigns taken by date,
+  calendar weeks, only the days before, the cap per segment, unsubscribed
+  people counted, the teaser gap read as clear days) scores zero on the
+  checks it touches.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same
