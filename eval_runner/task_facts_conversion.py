@@ -8,6 +8,8 @@ prompt) and returns the figures its rubric checks, under `answers` by answer
 label, beside the intermediate figures a judge needs to read a reply. The
 task files' `near` targets are these answers; `tests/test_tasks_conversion.py`
 recomputes every one of them from the committed fixtures with code of its own.
+test-plan-sizing has no answer block: its reply carries a calendar file, which
+`facts_for` (called from `bench.measured_facts`) reads and counts wrong rows in.
 
 The constants below are the numbers the sources state. Each fixture's
 generator (`eval_runner/fixtures/<folder>/generate.py`) renders its rules from
@@ -26,6 +28,10 @@ import io
 import math
 from decimal import Decimal
 from fractions import Fraction
+from functools import lru_cache
+from pathlib import Path
+
+from .workflows import common
 
 
 def _rows(text: str) -> list[dict]:
@@ -41,11 +47,16 @@ def _ceil(value: Fraction) -> int:
 # Decimals, so the rules render them as written; the arithmetic below is exact (Fraction).
 SIZING_Z_ALPHA = Decimal("1.96")       # two-sided 5% significance
 SIZING_Z_BETA = Decimal("0.84")        # 80% power
-SIZING_USERS_PER_SESSION = Decimal("0.8")
 SIZING_MAX_WEEKS = 4
-SIZING_FREEZE_WEEK = 5
-SIZING_CALENDAR_WEEKS = 10
+SIZING_CALENDAR_WEEKS = 12
 SIZING_TRAFFIC_WEEKS = 8
+SIZING_OUTAGE_NOTE = "tracking outage"
+SIZING_FILE = "test_calendar.csv"
+SIZING_COLUMNS = ("test_id", "page_weekly_users", "sample_size_per_variant", "weeks_needed", "start_week", "status")
+SIZING_STATUSES = ("run", "too long", "no slot")
+# What can go wrong in sizing a test, one kind per test (the generator keeps them apart).
+SIZING_CATEGORIES = ("sessions site", "outage page", "points lift", "part traffic", "plain")
+SIZING_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "test-plan-sizing"
 
 
 def sizing_rates(test: dict) -> tuple[Fraction, Fraction]:
@@ -59,86 +70,190 @@ def sizing_rates(test: dict) -> tuple[Fraction, Fraction]:
     raise ValueError(f"unknown lift_unit {test['lift_unit']!r}")
 
 
-def sizing_sample_size(p1: Fraction, p2: Fraction) -> int:
-    """Users per variant, rounded up: (z_a + z_b)^2 (p1 q1 + p2 q2) / (p2 - p1)^2."""
+def sizing_sample_size_exact(p1: Fraction, p2: Fraction) -> Fraction:
+    """(z_a + z_b)^2 (p1 q1 + p2 q2) / (p2 - p1)^2, before rounding up."""
     z = Fraction(SIZING_Z_ALPHA + SIZING_Z_BETA) ** 2
-    return _ceil(z * (p1 * (1 - p1) + p2 * (1 - p2)) / (p2 - p1) ** 2)
+    return z * (p1 * (1 - p1) + p2 * (1 - p2)) / (p2 - p1) ** 2
 
 
-def sizing_weekly_users(traffic: list[dict]) -> dict[str, Fraction]:
-    """Each page's weekly users: the mean of its weeks, sessions turned into users."""
-    by_page: dict[str, list[dict]] = {}
+def sizing_sample_size(p1: Fraction, p2: Fraction) -> int:
+    """Users per variant, rounded up."""
+    return _ceil(sizing_sample_size_exact(p1, p2))
+
+
+def sizing_sites(text: str) -> dict[str, dict]:
+    sites = {}
+    for row in _rows(text):
+        sites[row["site"]] = {
+            "users_per_session": Fraction(row["users_per_session"]) if row["users_per_session"] else None,
+            "freeze_week": int(row["freeze_week"]),
+            "max_tests_at_once": int(row["max_tests_at_once"]),
+        }
+    return sites
+
+
+def sizing_weekly_users(traffic: list[dict], sites: dict[str, dict]) -> dict[tuple[str, str], Fraction]:
+    """Each page's weekly users: the mean of its weeks without a tracking outage, sessions turned into users."""
+    by_page: dict[tuple[str, str], list[dict]] = {}
     for row in traffic:
-        by_page.setdefault(row["page"], []).append(row)
+        by_page.setdefault((row["site"], row["page"]), []).append(row)
     users = {}
-    for page, rows in by_page.items():
+    for (site, page), rows in by_page.items():
         if len(rows) != SIZING_TRAFFIC_WEEKS or len({row["unit"] for row in rows}) != 1:
-            raise ValueError(f"{page}: expected {SIZING_TRAFFIC_WEEKS} weeks in one unit")
-        mean = Fraction(sum(int(row["traffic"]) for row in rows), len(rows))
-        users[page] = mean * Fraction(SIZING_USERS_PER_SESSION) if rows[0]["unit"] == "sessions" else mean
+            raise ValueError(f"{site} {page}: expected {SIZING_TRAFFIC_WEEKS} weeks in one unit")
+        kept = [int(row["traffic"]) for row in rows if row["note"] != SIZING_OUTAGE_NOTE]
+        mean = Fraction(sum(kept), len(kept))
+        if rows[0]["unit"] == "sessions":
+            mean *= sites[site]["users_per_session"]
+        users[site, page] = mean
     return users
 
 
-def sizing_schedule(tests: list[dict]) -> dict[str, int]:
+def sizing_schedule(tests: list[dict], sites: dict[str, dict]) -> dict[str, int]:
     """Start week of each test, 0 when it does not run, by the rules' greedy order.
 
-    Each test is a dict with `test_id`, `page`, `weeks` and `priority`.
+    Each test is a dict with `test_id`, `site`, `page`, `weeks` and `priority`.
     """
     start = {test["test_id"]: 0 for test in tests}
     runnable = [test for test in tests if test["weeks"] <= SIZING_MAX_WEEKS]
     order = sorted(runnable, key=lambda test: (-test["priority"], int(test["test_id"][1:])))
-    busy: dict[str, set[int]] = {}
+    page_weeks: dict[tuple[str, str], set[int]] = {}
+    site_load: dict[str, dict[int, int]] = {}
     for test in order:
-        taken = busy.setdefault(test["page"], set())
+        site = sites[test["site"]]
+        taken = page_weeks.setdefault((test["site"], test["page"]), set())
+        load = site_load.setdefault(test["site"], {})
         for first in range(1, SIZING_CALENDAR_WEEKS - test["weeks"] + 2):
-            weeks = set(range(first, first + test["weeks"]))
-            if SIZING_FREEZE_WEEK not in weeks and not weeks & taken:
+            weeks = range(first, first + test["weeks"])
+            if (site["freeze_week"] not in weeks and not taken.intersection(weeks)
+                    and all(load.get(week, 0) < site["max_tests_at_once"] for week in weeks)):
                 start[test["test_id"]] = first
-                taken |= weeks
+                taken.update(weeks)
+                for week in weeks:
+                    load[week] = load.get(week, 0) + 1
                 break
     return start
 
 
-def sizing_reference(sources: dict[str, str]) -> dict:
-    tests = _rows(sources["test_backlog.csv"])
-    users = sizing_weekly_users(_rows(sources["traffic_by_page.csv"]))
+def sizing_plan(sources: dict[str, str]) -> list[dict]:
+    """Every test of the backlog with what the rules give it, and the traps it carries."""
+    sites = sizing_sites(sources["sites.csv"])
+    traffic = _rows(sources["traffic_by_page.csv"])
+    users = sizing_weekly_users(traffic, sites)
+    outage_pages = {(row["site"], row["page"]) for row in traffic if row["note"] == SIZING_OUTAGE_NOTE}
     sized = []
-    for test in tests:
+    for test in _rows(sources["test_backlog.csv"]):
         p1, p2 = sizing_rates(test)
         n = sizing_sample_size(p1, p2)
-        page_users = users[test["page"]]
+        page = (test["site"], test["page"])
+        share = Fraction(test["traffic_share_pct"]) / 100
         sized.append({
-            "test_id": test["test_id"], "page": test["page"], "p1": p1, "p2": p2, "n": n,
-            "weeks": _ceil(2 * n / page_users), "priority": page_users * (p2 - p1),
+            "test_id": test["test_id"], "site": test["site"], "page": test["page"], "p1": p1, "p2": p2,
+            "page_weekly_users": users[page], "n": n, "weeks": _ceil(2 * n / (users[page] * share)),
+            "priority": users[page] * share * (p2 - p1),
+            "category": ("sessions site" if sites[test["site"]]["users_per_session"] is not None else
+                         "outage page" if page in outage_pages else
+                         "points lift" if test["lift_unit"] == "percentage points" else
+                         "part traffic" if share < 1 else "plain"),
+            "traps": sum((sites[test["site"]]["users_per_session"] is not None, page in outage_pages,
+                          test["lift_unit"] == "percentage points", share < 1)),
         })
-    start = sizing_schedule(sized)
-    # A1-A6 sample sizes, A7-A12 weeks, A13-A18 start weeks, each in test order.
-    values = [test["n"] for test in sized] + [test["weeks"] for test in sized] + [
-        start[test["test_id"]] for test in sized]
+    start = sizing_schedule(sized, sites)
+    for test in sized:
+        test["start"] = start[test["test_id"]]
+        test["status"] = ("too long" if test["weeks"] > SIZING_MAX_WEEKS else
+                          "run" if test["start"] else "no slot")
+    return sized
+
+
+def sizing_reference(sources: dict[str, str]) -> dict:
+    plan = sizing_plan(sources)
+    by_status = {status: [test["test_id"] for test in plan if test["status"] == status] for status in SIZING_STATUSES}
     return {
-        "answers": {f"A{index}": value for index, value in enumerate(values, 1)},
-        "weekly_users_by_page": {page: round(float(value), 2) for page, value in users.items()},
-        "tests": [
-            {
-                "test_id": test["test_id"], "page": test["page"],
-                "baseline_rate": float(test["p1"]), "rate_with_expected_lift": round(float(test["p2"]), 6),
-                "sample_size_per_variant": test["n"], "weeks_needed": test["weeks"],
-                "priority_extra_conversions_per_week": round(float(test["priority"]), 2),
-                "start_week": start[test["test_id"]],
-                "end_week": start[test["test_id"]] + test["weeks"] - 1 if start[test["test_id"]] else None,
-                "rejected_because": (
-                    f"needs {test['weeks']} weeks, more than {SIZING_MAX_WEEKS}"
-                    if test["weeks"] > SIZING_MAX_WEEKS else
-                    "cannot be placed in the calendar" if not start[test["test_id"]] else None
-                ),
-            }
-            for test in sized
-        ],
+        "tests": len(plan),
+        "tests_by_status": {status: len(ids) for status, ids in by_status.items()},
+        "tests_by_kind": {category: sum(1 for test in plan if test["category"] == category)
+                          for category in SIZING_CATEGORIES},
+        "too_long": [{"test_id": test["test_id"], "weeks_needed": test["weeks"]}
+                     for test in plan if test["status"] == "too long"],
+        "no_slot": by_status["no slot"],
+        "no_slot_by_site": {site: sum(1 for test in plan if test["status"] == "no slot" and test["site"] == site)
+                            for site in sorted({test["site"] for test in plan})},
+        "last_week_in_use": max(test["start"] + test["weeks"] - 1 for test in plan if test["start"]),
         "interpretation": (
-            "Answers A1-A6 are sample sizes per variant, A7-A12 weeks needed and A13-A18 start weeks "
-            "(0 = not run), each in test order T1-T6, under testing_rules.md."
+            "Every row of test_calendar.csv is checked by program against the rules (page weekly users, sample "
+            "size, weeks, start week, status). Statuses: run, too long (needs more than four weeks), no slot "
+            "(no start week satisfies the calendar's limits)."
         ),
     }
+
+
+@lru_cache(maxsize=1)
+def _sizing_plan_on_disk() -> tuple[dict, ...]:
+    sources = {path.name: path.read_text() for path in SIZING_FIXTURES.iterdir()
+               if path.suffix in (".csv", ".md")}
+    return tuple(sizing_plan(sources))
+
+
+def _number(text: str) -> Fraction | None:
+    value = common.money(text)
+    return None if value is None else Fraction(value)
+
+
+def _status(text: str) -> str:
+    return common.norm(text).replace("_", " ").replace("-", " ")
+
+
+def sizing_facts(response_text: str) -> dict:
+    """Counts of the calendar's tests that are missing or wrong, by the kind of test.
+
+    A test is sized wrong when its row is missing or its page weekly users, its
+    sample size or its weeks are off; that is counted by kind, so each trap has
+    a count of its own. Status and start week are counted over every test. A
+    test with no row counts as wrong everywhere, so a file left out is that many
+    errors, never zero.
+    """
+    plan = _sizing_plan_on_disk()
+    rows = common.tables(response_text, [SIZING_FILE])[SIZING_FILE] or []
+    given: dict[str, dict] = {}
+    repeated = set()
+    for row in rows:
+        test_id = common.norm(common.cell(row, "test_id", "test")).upper()
+        if test_id in given:
+            repeated.add(test_id)
+        given.setdefault(test_id, row)
+    known = {test["test_id"] for test in plan}
+
+    def value(test: dict, column: str) -> Fraction | None:
+        row = given.get(test["test_id"])
+        return None if row is None else _number(row.get(column, ""))
+
+    def sized_wrong(test: dict) -> bool:
+        users, n, weeks = (value(test, column) for column in SIZING_COLUMNS[1:4])
+        return (users is None or abs(users - test["page_weekly_users"]) > Fraction(1, 2)
+                or n is None or abs(n - test["n"]) > Fraction(2, 1000) * test["n"]
+                or weeks != test["weeks"])
+
+    facts = {
+        "sizing_row_accounting_error_count": (
+            len(known - set(given)) + len(repeated & known) + len(set(given) - known)),
+    }
+    for category in SIZING_CATEGORIES:
+        facts[f"sizing_wrong_{category.replace(' ', '_')}_count"] = sum(
+            1 for test in plan if test["category"] == category and sized_wrong(test))
+    facts["sizing_status_wrong_count"] = sum(
+        1 for test in plan if test["test_id"] not in given or _status(given[test["test_id"]].get("status", "")) != test["status"])
+    facts["sizing_start_wrong_count"] = sum(1 for test in plan if value(test, "start_week") != test["start"])
+    # What the reply's own file says, for the judge to compare the reply's summary with.
+    statuses = [_status(row.get("status", "")) for row in given.values()]
+    for status in SIZING_STATUSES:
+        facts[f"sizing_file_{status.replace(' ', '_')}_count"] = statuses.count(status)
+    return facts
+
+
+def facts_for(task: dict | None, response_text: str) -> dict:
+    """The measured facts a conversion task adds beyond its answer block, or nothing."""
+    return sizing_facts(response_text) if (task or {}).get("id") == "test-plan-sizing" else {}
 
 
 # -------------------------------------------------------------------- funnel-dropoff

@@ -1,0 +1,13 @@
+site,unit,users_per_session,freeze_week,max_tests_at_once
+us,users,,5,3
+uk,users,,6,2
+de,sessions,0.80,7,2
+ca,users,,5,2
+au,sessions,0.85,3,2
+fr,sessions,0.75,8,2
+nl,users,,6,1
+se,users,,7,1
+ch,users,,7,1
+at,users,,7,1
+ie,users,,6,1
+nz,users,,3,1

@@ -36,13 +36,23 @@
   in four segments, a day and a four-day run below it that recover, and a
   change two days before the break. 14 of its 16 checks are a program's.
   Same layout as `test-plan-sizing`.
-- Tasks: `test-plan-sizing` (development split): six proposed A/B tests,
-  eight weeks of traffic by page and the team's experimentation rules in;
-  each test's sample size per variant and weeks, the calendar and the tests
-  rejected out, as 18 labeled figures. One lift is in percentage points among
-  relative ones, the subscribe page counts sessions, weeks round up, and a
-  four-week limit, a week-5 freeze and a priority rule set the calendar. 12 of
-  its 14 checks are a program's. The fixtures' generator sits beside them
+- Tasks: `test-plan-sizing` (development split): a 150-test backlog across
+  twelve country storefronts, their settings, eight weeks of traffic for 72
+  pages (576 rows, 36 KB of sources in all) and the team's experimentation
+  rules in; a calendar file out, `test_calendar.csv`, with each test's page
+  weekly users, sample size per variant, weeks, start week and status (run,
+  too long, no slot), every row checked by program, and a short note for the
+  growth lead. Traps spread through the data, one kind per test: 40 tests on
+  storefronts that count sessions (each with its own users per session), 20
+  on pages with a tracking-outage week to leave out, 26 lifts in percentage
+  points, 22 tests on half their page's traffic; weeks round up; each
+  storefront has its own freeze week and limit on tests at once, and one
+  priority order runs over all of them (101 run, 33 too long, 16 no slot).
+  Wrong rows are counted by kind of test (zero credit at 5), status and start
+  week over every test (zero credit at 1), so each careless reading zeroes
+  its own count and the two it cascades into. 8 of its 10 checks are a
+  program's; `task_facts_conversion.facts_for` reads the file and is called
+  from `bench.measured_facts`. The fixtures' generator sits beside them
   (`eval_runner/fixtures/test-plan-sizing/generate.py`), the oracle is in
   `eval_runner/task_facts_conversion.py`, which `task_references` now
   consults for the judge's reference, and `tests/test_tasks_conversion.py`
