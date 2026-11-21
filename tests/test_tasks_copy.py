@@ -1,4 +1,4 @@
-"""The copy tasks: launch-copy-pack.
+"""The copy tasks: launch-copy-pack and catalog-descriptions.
 
 For each task:
 
@@ -482,6 +482,331 @@ def test_launch_each_kind_of_wrong_answer_fails_its_own_check():
     assert launch_changed(repeated) == {"workflow_duplicate_asset_id_count": 1}
     extra = swap(LAUNCH_REF, launch_row("PET-PB-01"), launch_row("PET-PB-01") + "\nPET-PB-02,Another push body")
     assert launch_changed(extra) == {"workflow_asset_coverage_error_count": 1}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# catalog-descriptions
+# ═════════════════════════════════════════════════════════════════════════════
+
+CATALOG = task_file("catalog-descriptions")
+CATALOG_REF = m.catalog_reference_answer()
+CATALOG_CLEAN = m.catalog_facts(CATALOG_REF)
+
+
+def catalog_doc(name: str) -> str:
+    return (FIXTURES / "catalog-descriptions" / name).read_text()
+
+
+def spec_rows() -> list[dict[str, str]]:
+    return list(csv.DictReader(io.StringIO(catalog_doc("product_specs.csv"))))
+
+
+def catalog_row(sku: str) -> str:
+    return next(line for line in CATALOG_REF.splitlines() if line.startswith(sku + ","))
+
+
+def with_description(sku: str, text: str, base: str = CATALOG_REF) -> str:
+    out = io.StringIO()
+    csv.writer(out, lineterminator="").writerow([sku, text])
+    return swap(base, catalog_row(sku), out.getvalue())
+
+
+def with_descriptions(changes: dict[str, str], base: str = CATALOG_REF) -> str:
+    for sku, text in changes.items():
+        base = with_description(sku, text, base)
+    return base
+
+
+def description(sku: str) -> str:
+    return m.catalog_description(m.PRODUCT_BY_SKU[sku])
+
+
+def prose(sku: str) -> str:
+    return m.catalog_prose(m.PRODUCT_BY_SKU[sku])
+
+
+def spec(sku: str) -> str:
+    return m.spec_line(m.PRODUCT_BY_SKU[sku])
+
+
+def catalog_changed(text: str) -> dict:
+    facts = m.catalog_facts(text)
+    return {name: facts[name] - CATALOG_CLEAN[name] for name in facts if facts[name] != CATALOG_CLEAN[name]}
+
+
+def facts_from_files() -> dict[str, dict]:
+    """Each product's warranty, standards held and blanks, worked out from the
+    three files by the style sheet's own words."""
+    style = catalog_doc("style_sheet.md")
+    publish = re.search(r"published on\s+(\w{3}) (\d+), (\d{4})", style).groups()
+    months = {"Mar": "03"}
+    publish_date = f"{publish[2]}-{months[publish[0]]}-{int(publish[1]):02d}"
+    certs = {row["certificate_id"]: row for row in csv.DictReader(io.StringIO(catalog_doc("certificates.csv")))}
+    policy = {row["category"]: row["warranty"].split()[0] for row in md_table(catalog_doc("warranty_policy.md"), "category")}
+    out = {}
+    for row in spec_rows():
+        held = []
+        for cert_id in [c for c in row["certificate_ids"].split("; ") if c]:
+            cert = certs[cert_id]
+            if cert["status"] == "valid" and cert["valid_until"] >= publish_date and cert["standard"] not in held:
+                held.append(cert["standard"])
+        warranty = row["warranty_years"] or (policy[row["category"]] if policy[row["category"]] != "none" else "")
+        out[row["sku"]] = {"held": held, "warranty": warranty, "listed": [c for c in row["certificate_ids"].split("; ") if c],
+                           "row": row}
+    return out
+
+
+def test_catalog_files_are_generated_and_fit_one_call():
+    the_files_are_generated("catalog-descriptions")
+    assert len(CATALOG_REF) < 20_000
+
+
+def test_catalog_reference_passes_and_a_blank_reply_earns_nothing():
+    the_reference_passes_and_a_blank_reply_earns_nothing("catalog-descriptions")
+
+
+def test_catalog_values_in_the_task_file_come_from_the_files():
+    rows = spec_rows()
+    worked = facts_from_files()
+    style = catalog_doc("style_sheet.md")
+    low, high = (int(n) for n in re.search(r"(\d+) to (\d+) words", style).groups())
+    given = sum(len(f["held"]) + bool(f["warranty"]) + bool(f["row"]["made_in"]) for f in worked.values())
+    no_weight = sum(not row["weight_kg"] for row in rows)
+    no_warranty = sum(not f["warranty"] for f in worked.values())
+    no_country = sum(not row["made_in"] for row in rows)
+    lapsed = sum(1 for f in worked.values() for c in f["listed"]) - sum(len(f["held"]) for f in worked.values())
+    criteria = by_id(CATALOG)
+    assert len(rows) == 60 and f"Every one of the {len(rows)} products" in criteria["every_product_present"]["check"]
+    assert f"{low} to {high} words" in criteria["word_range"]["check"] and (low, high) == m.WORD_RANGE
+    assert f"{given} facts in all" in criteria["given_facts_stated"]["check"]
+    check = criteria["nothing_invented_for_blanks"]["check"]
+    assert (no_weight, no_warranty, no_country) == (8, 13, 12)
+    assert f"the {no_weight} rows with no weight" in check and f"the {no_warranty} products with none" in check
+    assert f"the {no_country} rows with none" in check
+    assert lapsed == 7 and f"({lapsed} of the listed certificates do not count)" in criteria["no_certification_not_held"]["check"]
+    banned = re.findall(r"`([^`]+)`", style.split("hyphenated\n    word:")[1])
+    assert banned == m.CATALOG_BANNED
+    # The module's rows and rules are the files'.
+    assert [(p.sku, p.name, p.category, p.material, p.dimensions, p.weight, "; ".join(p.certificate_ids),
+             p.warranty_override, p.made_in, p.price) for p in m.PRODUCTS] == [
+        (r["sku"], r["name"], r["category"], r["material"], (r["width_cm"], r["depth_cm"], r["height_cm"]),
+         r["weight_kg"], r["certificate_ids"], r["warranty_years"], r["made_in"], r["price_usd"]) for r in rows]
+    for product in m.PRODUCTS:
+        assert list(product.certifications) == worked[product.sku]["held"], product.sku
+        assert product.warranty == worked[product.sku]["warranty"], product.sku
+
+
+def test_catalog_the_planted_look_alikes_are_in_the_files():
+    rows = {row["name"]: row for row in spec_rows()}
+    columns = ["category", "material", "width_cm", "depth_cm", "height_cm", "weight_kg", "colour",
+               "certificate_ids", "warranty_years", "made_in", "features"]
+
+    def differ(a: str, b: str) -> set[str]:
+        return {c for c in columns if rows[a][c] != rows[b][c]}
+
+    assert differ("Tove Side Table, Low", "Tove Side Table, Tall") == {"height_cm"}
+    assert differ("Linden Desk 120", "Linden Desk 140") == {"width_cm", "weight_kg"}
+    assert differ("Ferro Floor Lamp, Black", "Ferro Floor Lamp, White") == {"colour", "features"}
+    assert differ("Linden Desk 140", "Linden Desk 140, Walnut") == {"material", "weight_kg", "colour", "certificate_ids"}
+    assert differ("Hale Bookcase 90", "Hale Bookcase 90, Low") == {"height_cm", "weight_kg", "features"}
+    # Certificates that look held and are not: a lapsed date on a valid status, a suspension, an expiry.
+    certs = {row["certificate_id"]: row for row in csv.DictReader(io.StringIO(catalog_doc("certificates.csv")))}
+    assert certs["OT-19.HIN.12201"]["status"] == "valid" and certs["OT-19.HIN.12201"]["valid_until"] == "2027-02-28"
+    assert {certs[c]["status"] for c in ("FSC-C099001", "GG-4120")} == {"suspended", "expired"}
+    # Warranties the policy decides: overrides shorter and longer than the category, and one where it has none.
+    policy = {row["category"]: row["warranty"] for row in md_table(catalog_doc("warranty_policy.md"), "category")}
+    assert rows["Hale Bookcase 60, Low"]["warranty_years"] == "2" and policy["bookcase"] == "5 years"
+    assert rows["Brae Hamper"]["warranty_years"] == "2" and policy["laundry hamper"] == "none"
+    # Last season's copy disagrees with the files where they changed.
+    previous = catalog_doc("previous_descriptions.md")
+    stale = previous.split("### WF-1104")[1].split("###")[0]
+    assert "Made in Portugal" in stale and rows["Linden Desk 160"]["made_in"] == "Lithuania"
+    assert "Weight: 28 kg" in previous and rows["Linden Desk 140"]["weight_kg"] == ""
+    for row in rows.values():  # a row's price is none of its other figures, so a price check cannot misfire
+        assert row["price_usd"] not in {row[c] for c in ("width_cm", "depth_cm", "height_cm", "weight_kg")}
+
+
+def test_catalog_reference_obeys_the_files_read_by_separate_code():
+    style = catalog_doc("style_sheet.md")
+    template = re.search(r"`(Material: <material>[^`]+)`", style).group(1)
+    worked = facts_from_files()
+    rows = list(csv.reader(io.StringIO(CATALOG_REF.split("```csv\n")[1].split("\n```")[0])))[1:]
+    countries = {r["made_in"] for r in spec_rows()} - {""}
+    for (sku, text), row in zip(rows, spec_rows()):
+        assert sku == row["sku"]
+        line = (template.replace("<material>", row["material"]).replace("<width_cm>", row["width_cm"])
+                .replace("<depth_cm>", row["depth_cm"]).replace("<height_cm>", row["height_cm"])
+                .replace("<weight_kg>", row["weight_kg"]))
+        if not row["weight_kg"]:
+            line = line.split(" Weight:")[0]
+        assert text.endswith(line) and text.startswith(row["name"]), sku
+        assert 35 <= len(text.split()) <= 75
+        warranty = worked[sku]["warranty"]
+        if warranty:
+            assert f"{warranty}-year warranty" in text
+        else:
+            assert "warrant" not in text.lower() and "guarantee" not in text.lower()
+        if row["made_in"]:
+            assert f"Made in {row['made_in']}" in text
+        else:
+            assert not any(country in text for country in countries)
+        for standard in ("FSC", "GREENGUARD Gold", "OEKO-TEX Standard 100", "GOTS"):
+            assert (standard in text) == (standard in worked[sku]["held"]), (sku, standard)
+        assert "$" not in text and row["price_usd"] not in re.findall(r"\d+", text)
+
+
+# ── The careless readings ────────────────────────────────────────────────────
+
+def test_catalog_every_listed_certificate_named_without_the_register():
+    """Naming the standard of every certificate a row lists, without reading
+    certificates.csv: the seven that lapsed, were suspended or expired."""
+    changes = {}
+    for product in m.PRODUCTS:
+        listed = [m.CERTIFICATES[c].standard for c in product.certificate_ids if not m.CERTIFICATES[c].counts]
+        if listed:
+            changes[product.sku] = f"{prose(product.sku)} It is also {' and '.join(listed)} certified. {spec(product.sku)}"
+    assert len(changes) == 7
+    zero_on(CATALOG, with_descriptions(changes), {"no_certification_not_held"})
+
+
+def test_catalog_warranty_from_the_row_alone():
+    """Stating a warranty only where the row has warranty_years, so every
+    product that takes its category's warranty goes without one."""
+    changes = {}
+    for product in m.PRODUCTS:
+        if product.warranty and not product.warranty_override:
+            changes[product.sku] = description(product.sku).replace(
+                f" it comes with a {m.warranty_phrase(product)}.", " it is ready to use.").replace(
+                f"It comes with a {m.warranty_phrase(product)}.", "It is ready to use.")
+    assert len(changes) >= 30
+    zero_at_least(CATALOG, with_descriptions(changes), {"given_facts_stated"})
+
+
+def test_catalog_a_two_year_warranty_on_every_product():
+    changes = {}
+    for product in m.PRODUCTS:
+        if product.warranty != "2":
+            text = description(product.sku)
+            text = (text.replace(m.warranty_phrase(product), "2-year warranty") if product.warranty else
+                    f"{prose(product.sku)} It comes with a 2-year warranty. {spec(product.sku)}")
+            changes[product.sku] = text
+    zero_on(CATALOG, with_descriptions(changes), {"nothing_invented_for_blanks", "given_facts_stated"})
+
+
+def test_catalog_last_seasons_descriptions_copied():
+    """Reusing last season's copy where there is some: weights, countries,
+    warranties and certificates that have changed since."""
+    got = zero_at_least(CATALOG, with_descriptions(dict(m.PREVIOUS)),
+                        {"nothing_invented_for_blanks", "no_certification_not_held", "given_facts_stated"})
+    assert got["spec_line_exact"] < 1.0
+
+
+def test_catalog_dimensions_in_a_format_of_the_writers_own():
+    changes = {}
+    for product in m.PRODUCTS:
+        own = f"W {product.width} x D {product.depth} x H {product.height} cm"
+        changes[product.sku] = description(product.sku).replace(own, f"{product.width} x {product.depth} x "
+                                                                      f"{product.height} cm")
+    zero_at_least(CATALOG, with_descriptions(changes), {"spec_line_exact"})  # and the shortest falls under 35 words
+
+
+def test_catalog_family_variants_written_from_one_another():
+    """A variant's text copied from its sibling, its own name put in: the
+    sibling's width, height or material travels with it."""
+    zero_on(CATALOG, with_descriptions({
+        "WF-1103": prose("WF-1102").replace("Linden Desk 120 is a desk", "Linden Desk 140 is a 120 cm desk")
+        + " " + spec("WF-1103"),
+        "WF-1302": prose("WF-1301").replace("Tove Side Table, Low", "Tove Side Table, Tall")
+        .replace("in natural ash.", "in natural ash, 45 cm high.") + " " + spec("WF-1302"),
+        "WF-1402": prose("WF-1401").replace(", Brass", ", Black") + " " + spec("WF-1402"),
+    }), {"no_facts_from_other_rows"})
+
+
+def test_catalog_the_price_column_used():
+    changes = {sku: f"{prose(sku)} Yours for ${m.PRODUCT_BY_SKU[sku].price}. {spec(sku)}"
+               for sku in ("WF-1101", "WF-1401", "WF-2101")}
+    zero_on(CATALOG, with_descriptions(changes), {"no_price"})
+
+
+# ── The edges of the rules ───────────────────────────────────────────────────
+
+def test_catalog_spec_line_edges():
+    desk = m.PRODUCT_BY_SKU["WF-1103"]
+    line = m.spec_line(desk)
+    assert line == "Material: solid white oak. Dimensions: W 140 x D 60 x H 75 cm."
+    assert m.spec_line_right(desk, "Linden Desk 140 is a desk. " + line)
+    assert m.spec_line_right(desk, "Linden Desk 140 is a desk. " + line.lower())
+    assert not m.spec_line_right(desk, "Linden Desk 140 is a desk. " + line + " Weight: n/a.")
+    assert not m.spec_line_right(desk, "Linden Desk 140 is a desk. " + line.replace("solid white oak", "solid oak"))
+    assert not m.spec_line_right(desk, line + " A desk.")
+    assert not m.spec_line_right(desk, "A desk. " + line.replace(" x ", " × "))
+
+
+@pytest.mark.parametrize("sku, extra, invented", [
+    ("WF-1103", "It weighs 28 kg.", 1),
+    ("WF-1103", "It is lightweight.", 0),
+    ("WF-2101", "Its base is weighted.", 0),        # the row has a weight
+    ("WF-2101", "Guaranteed for years.", 1),        # a storage basket has no warranty
+    ("WF-2105", "It has a 2-year warranty.", 0),     # the row gives one where the category has none
+    ("WF-1301", "Made in Portugal.", 1),
+    ("WF-1301", "Crafted in Lithuania.", 1),
+    ("WF-1301", "It is made in solid ash.", 0),
+    ("WF-2202", "It weighs little. A 2-year warranty. Made in Italy.", 3),
+])
+def test_the_edges_of_the_blank_fields(sku, extra, invented):
+    product = m.PRODUCT_BY_SKU[sku]
+    assert m.blank_invented(product, prose(sku) + " " + extra) == invented
+
+
+@pytest.mark.parametrize("sku, extra, wrong", [
+    ("WF-1102", "FSC-certified oak.", 0),            # held
+    ("WF-1104", "FSC-certified oak.", 2),            # its certificate lapsed in January, and none counts
+    ("WF-1303", "FSC certified.", 2),                # suspended
+    ("WF-1505", "OEKO-TEX Standard 100 seat.", 1),   # valid status, lapsed two days before publishing
+    ("WF-1503", "OEKO-TEX Standard 100 seat.", 0),
+    ("WF-1701", "GOTS organic cotton.", 0),
+    ("WF-1702", "GOTS linen.", 1),
+    ("WF-1201", "Certified oak.", 1),
+    ("WF-1601", "FSC beech frame.", 1),             # holds GREENGUARD Gold, not FSC
+])
+def test_the_edges_of_certifications(sku, extra, wrong):
+    assert m.certs_not_held(m.PRODUCT_BY_SKU[sku], prose(sku) + " " + extra) == wrong
+
+
+@pytest.mark.parametrize("sku, selling, foreign", [
+    ("WF-1105", "Linden Desk 140, Walnut: the Linden Desk 140 in walnut.", 0),  # its own name holds the other's
+    ("WF-1103", "Linden Desk 140. Also in walnut: Linden Desk 140, Walnut.", 1),
+    ("WF-1401", "Ferro Floor Lamp, Brass with a linen drum shade.", 0),           # linen is its own feature
+    ("WF-1402", "Ferro Floor Lamp, Black in brushed brass.", 1),
+    ("WF-1102", "Linden Desk 120, 120 cm wide.", 0),
+    ("WF-1103", "Linden Desk 140, 1.2 m wide.", 1),
+    ("WF-1103", "Linden Desk 140, 1400 mm wide.", 0),
+    ("WF-1202", "Hale Bookcase 90 in solid white oak, not birch plywood.", 1),
+])
+def test_the_edges_of_facts_from_other_rows(sku, selling, foreign):
+    assert m.foreign_facts(m.PRODUCT_BY_SKU[sku], selling + " " + spec(sku)) == foreign
+
+
+def test_catalog_each_kind_of_wrong_answer_fails_its_own_check():
+    long = with_description("WF-1102", prose("WF-1102") + " " + "It is a desk. " * 8 + spec("WF-1102"))
+    assert catalog_changed(long) == {"workflow_word_range_error_count": 1}
+    renamed = with_description("WF-1301", description("WF-1301").replace("Tove Side Table, Low is", "The Tove is"))
+    assert catalog_changed(renamed) == {"workflow_name_opening_error_count": 1}
+    spelled = with_description("WF-1202", description("WF-1202").replace("5-year", "five-year"))
+    assert catalog_changed(spelled) == {"workflow_given_fact_missing_count": 1}
+    banned = with_description("WF-1404", description("WF-1404").replace("is a table lamp", "is a timeless table lamp"))
+    assert catalog_changed(banned) == {"workflow_banned_word_count": 1}
+    priced = with_description("WF-2104", description("WF-2104").replace("Made in Vietnam.", "On sale. Made in Vietnam."))
+    assert catalog_changed(priced) == {"workflow_price_mention_count": 1}
+    quoted = catalog_row("WF-2205")
+    assert quoted.startswith('WF-2205,"')
+    assert catalog_changed(swap(CATALOG_REF, quoted, f"WF-2205,{description('WF-2205')}")) == {}
+    missing = swap(CATALOG_REF, catalog_row("WF-2202") + "\n", "")
+    assert catalog_changed(missing) == {
+        "workflow_product_coverage_error_count": 1, "workflow_name_opening_error_count": 1,
+        "workflow_word_range_error_count": 1, "workflow_spec_line_error_count": 1,
+        "workflow_blank_field_invented_count": 3, "workflow_cert_not_held_count": 1,
+        "workflow_price_mention_count": 1, "workflow_banned_word_count": 1, "workflow_foreign_fact_count": 1}
 
 
 # ═════════════════════════════════════════════════════════════════════════════

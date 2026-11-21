@@ -1,0 +1,169 @@
+{
+  "id": "catalog-descriptions",
+  "title": "Catalog descriptions",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "catalog-descriptions",
+  "fixtures": [
+    "eval_runner/fixtures/catalog-descriptions/product_specs.csv",
+    "eval_runner/fixtures/catalog-descriptions/certificates.csv",
+    "eval_runner/fixtures/catalog-descriptions/warranty_policy.md",
+    "eval_runner/fixtures/catalog-descriptions/previous_descriptions.md",
+    "eval_runner/fixtures/catalog-descriptions/style_sheet.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "prompt": "Wrenfold Home publishes its spring catalog on Mar 2, 2027 and needs a description for each of the 60 products in the supplied product_specs.csv. Write them to the supplied style_sheet.md, each from its own row, the certificate register (certificates.csv) and the warranty policy (warranty_policy.md). Last season's descriptions are supplied in previous_descriptions.md.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly this header: one row per product, no other rows, and nothing inside the file but its rows.\n\n### descriptions.csv\nsku,description\n\n`sku` is the row's sku. `description` is the whole description exactly as it will be published, on one line, ending with its spec line. Put each description in double quotes.\n\nThis is copy for review. Publish nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "descriptions_file",
+        "check": "descriptions.csv is in the reply, under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_product_present",
+        "check": "Every one of the 60 products has a row with a description under its sku, given once, and no other sku appears. Full credit for none missing, repeated or extra; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_product_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "word_range",
+        "check": "Every description is 35 to 75 words, the spec line included, a word being anything between two spaces. A missing description counts as out of range. Full credit for none out; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_word_range_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "opens_with_name",
+        "check": "Every description begins with its product's name exactly as the name column writes it. A missing description counts as an error. Full credit for none; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_name_opening_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "spec_line_exact",
+        "check": "Every description ends with its own row's spec line in the style sheet's format, with nothing after it: the material exactly as the row writes it, W, D and H in cm from the row, and the weight part only when the row has a weight. A missing description counts as an error. Full credit for none wrong; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_spec_line_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "given_facts_stated",
+        "check": "Every description states what the product has: its warranty as <n>-year warranty (its row's warranty_years, else its category's from the policy), Made in <country> when its row names one, and the standard of each of its certificates that counts on the publish date, exactly as the register writes it: 119 facts in all. Full credit for none missing; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_given_fact_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "nothing_invented_for_blanks",
+        "check": "No description fills in what the product does not have: nothing about weight on the 8 rows with no weight, nothing about a warranty or guarantee on the 13 products with none, and no country on the 12 rows with none. A missing description counts as every blank of its row filled. Full credit for none filled in; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_blank_field_invented_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "no_certification_not_held",
+        "check": "No description names a standard the product does not hold on the publish date, such as one whose certificate is suspended or has lapsed (7 of the listed certificates do not count) or one its row does not list, and where none counts it does not say certified or certification. A missing description counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_cert_not_held_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "no_price",
+        "check": "No description mentions a price: no amount of money, none of the words price, priced, pricing, cost, sale or discount, and not the row's price. A missing description counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_price_mention_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "no_banned_words",
+        "check": "No description uses a word the style sheet bans. A missing description counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_banned_word_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "no_facts_from_other_rows",
+        "check": "No description's selling text (before its spec line) names another product, another product's material, or a size that is not one of its own row's dimensions: each variant of a family keeps to its own width, height and material. A missing description counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_foreign_fact_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "nothing_beyond_the_row",
+        "check": "Judge descriptions.csv only. No description states a fact about its product that its row, the register and the policy do not give: a feature, finish, use, care advice, comparison or claim of quality of its own (waterproof, scratch-resistant, ideal for small spaces, easy to assemble, built to last), or a stale fact kept from last season's description. Restating the row's own facts in other words, and saying what a listed feature plainly is or does, is fine. It fails if any description adds one, or if descriptions.csv is missing."
+      }
+    ]
+  }
+}

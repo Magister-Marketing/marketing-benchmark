@@ -1,4 +1,4 @@
-"""The copy tasks: a launch copy pack (more copy tasks follow).
+"""The copy tasks: a launch copy pack and a catalog of product descriptions.
 
 Each task is a workflow task (``eval_runner/workflows``): this one module
 builds the files the candidate reads, holds a reference answer written to
@@ -17,6 +17,9 @@ files are the same bytes on every run
     launch-copy-pack       a launch brief, a claims register, a spec sheet,
                            voice rules and a placements table in; 72 assets
                            for four products out
+    catalog-descriptions   a 60-row spec table, a certificate register, a
+                           warranty policy, last season's descriptions and a
+                           style sheet in; 60 product descriptions out
 
 All brands, products, people, places, sites and figures are invented.
 """
@@ -1041,6 +1044,724 @@ def launch_facts(response_text: str) -> dict[str, int]:
 
 
 _TASKS[LAUNCH_ID] = (launch_fixtures, launch_facts, launch_reference_answer)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# catalog-descriptions
+# ═════════════════════════════════════════════════════════════════════════════
+
+CATALOG_ID = "catalog-descriptions"
+CATALOG_DIR = FIXTURE_DIR / CATALOG_ID
+CATALOG_FILE = "descriptions.csv"
+STORE = "Wrenfold Home"
+PUBLISH_DATE = date(2027, 3, 2)
+WORD_RANGE = (35, 75)
+SPEC_COLUMNS = ["sku", "name", "category", "material", "width_cm", "depth_cm", "height_cm", "weight_kg",
+                "colour", "certificate_ids", "warranty_years", "made_in", "features", "price_usd"]
+
+
+@dataclass(frozen=True)
+class Product:
+    sku: str
+    name: str
+    family: str
+    category: str
+    material: str
+    width: str
+    depth: str
+    height: str
+    weight: str
+    colour: str
+    certificate_ids: tuple[str, ...]
+    warranty_override: str
+    made_in: str
+    features: tuple[str, ...]
+    price: str
+
+    @property
+    def dimensions(self) -> tuple[str, str, str]:
+        return self.width, self.depth, self.height
+
+    @property
+    def warranty(self) -> str:
+        """The warranty the description states: the row's own years, else the
+        category's from the policy, else none ("")."""
+        return self.warranty_override or WARRANTY_POLICY.get(self.category, "")
+
+    @property
+    def certifications(self) -> tuple[str, ...]:
+        """The standards the product holds on the publish date, as the
+        certificate register names them."""
+        out = []
+        for cert_id in self.certificate_ids:
+            cert = CERTIFICATES[cert_id]
+            if cert.counts and cert.standard not in out:
+                out.append(cert.standard)
+        return tuple(out)
+
+
+@dataclass(frozen=True)
+class Certificate:
+    cert_id: str
+    standard: str
+    holder: str
+    status: str
+    valid_until: date
+
+    @property
+    def counts(self) -> bool:
+        return self.status == "valid" and self.valid_until >= PUBLISH_DATE
+
+
+FSC, GREENGUARD, OEKO_TEX, GOTS = "FSC", "GREENGUARD Gold", "OEKO-TEX Standard 100", "GOTS"
+CERTIFICATES: dict[str, Certificate] = {cert.cert_id: cert for cert in [
+    Certificate("FSC-C104211", FSC, "Baltwood Joinery", "valid", date(2028, 6, 30)),
+    Certificate("FSC-C112233", FSC, "Mekong Timber Works", "valid", date(2027, 9, 30)),
+    Certificate("FSC-C087654", FSC, "Douro Moveis", "valid", date(2027, 1, 31)),       # lapsed before the date
+    Certificate("FSC-C099001", FSC, "Wisla Furniture", "suspended", date(2027, 12, 31)),
+    Certificate("FSC-C120005", FSC, "Nordhavn Wood", "valid", date(2028, 3, 31)),     # no product of ours
+    Certificate("GG-5531", GREENGUARD, "Lisboa Estofos", "valid", date(2027, 11, 30)),
+    Certificate("GG-4120", GREENGUARD, "Lisboa Estofos", "expired", date(2026, 12, 31)),
+    Certificate("OT-21.HIN.77045", OEKO_TEX, "Jaipur Looms", "valid", date(2027, 8, 31)),
+    Certificate("OT-19.HIN.12201", OEKO_TEX, "Jaipur Looms", "valid", date(2027, 2, 28)),  # lapses two days before
+    Certificate("GOTS-CU-8811", GOTS, "Jaipur Looms", "valid", date(2027, 10, 31)),
+    Certificate("GOTS-CU-7702", GOTS, "Saigon Weavers", "withdrawn", date(2027, 6, 30)),
+]}
+WARRANTY_POLICY: dict[str, str] = {
+    "desk": "5", "bookcase": "5", "side table": "2", "floor lamp": "2", "table lamp": "2", "dining chair": "2",
+    "armchair": "2", "sofa": "10", "sideboard": "2", "media unit": "2", "wall shelf": "2", "bed frame": "10",
+    "headboard": "2",
+}
+NO_WARRANTY_CATEGORIES = ("cushion", "storage basket", "laundry hamper", "planter")
+
+
+def _p(sku, name, family, category, material, dims, weight, colour, certs, warranty, made_in, features, price):
+    width, depth, height = dims
+    return Product(sku, name, family, category, material, width, depth, height, weight, colour,
+                   tuple(c for c in certs.split("; ") if c), warranty, made_in, tuple(features.split("; ")), price)
+
+
+_OAK, _WALNUT, _ASH = "solid white oak", "solid walnut", "solid ash"
+_FSC_A, _FSC_B, _FSC_OLD, _FSC_SUSP = "FSC-C104211", "FSC-C112233", "FSC-C087654", "FSC-C099001"
+_DESK = "two cable ports; one shallow drawer; oiled finish"
+_HALE = "five fixed shelves; wall anchor included"
+_HALE_LOW = "three fixed shelves; wall anchor included"
+_SHELF = "hidden brackets; screws included"
+_CUSHION = "zip closure; washable cover; feather insert"
+_COVE = "drainage hole; saucer included; unglazed finish"
+PRODUCTS: list[Product] = [
+    _p("WF-1101", "Linden Desk 100", "Linden", "desk", _OAK, ("100", "55", "75"), "19", "natural oak", _FSC_A, "",
+       "Portugal", "one shallow drawer; oiled finish", "549"),
+    _p("WF-1102", "Linden Desk 120", "Linden", "desk", _OAK, ("120", "60", "75"), "24", "natural oak", _FSC_A, "",
+       "Portugal", _DESK, "649"),
+    _p("WF-1103", "Linden Desk 140", "Linden", "desk", _OAK, ("140", "60", "75"), "", "natural oak", _FSC_A, "",
+       "Portugal", _DESK, "729"),
+    _p("WF-1104", "Linden Desk 160", "Linden", "desk", _OAK, ("160", "70", "75"), "33", "natural oak", _FSC_OLD, "7",
+       "Lithuania", "two cable ports; two shallow drawers; oiled finish", "849"),
+    _p("WF-1105", "Linden Desk 140, Walnut", "Linden", "desk", _WALNUT, ("140", "60", "75"), "26", "walnut", _FSC_B,
+       "", "Portugal", _DESK, "899"),
+    _p("WF-1201", "Hale Bookcase 60", "Hale", "bookcase", _OAK, ("60", "35", "180"), "29", "natural oak", "", "",
+       "Lithuania", _HALE, "599"),
+    _p("WF-1202", "Hale Bookcase 90", "Hale", "bookcase", _OAK, ("90", "35", "180"), "41", "natural oak", "", "",
+       "Lithuania", _HALE, "899"),
+    _p("WF-1203", "Hale Bookcase 90, Low", "Hale", "bookcase", _OAK, ("90", "35", "110"), "27", "natural oak", "", "",
+       "Lithuania", _HALE_LOW, "649"),
+    _p("WF-1204", "Hale Bookcase 90, Ash", "Hale", "bookcase", _ASH, ("90", "35", "180"), "38", "natural ash", _FSC_A,
+       "", "Lithuania", _HALE, "849"),
+    _p("WF-1205", "Hale Bookcase 60, Low", "Hale", "bookcase", _OAK, ("60", "35", "110"), "", "natural oak", "", "2",
+       "", _HALE_LOW, "449"),
+    _p("WF-1301", "Tove Side Table, Low", "Tove", "side table", _ASH, ("40", "40", "45"), "5", "natural ash", _FSC_A,
+       "", "", "round top; tapered legs", "189"),
+    _p("WF-1302", "Tove Side Table, Tall", "Tove", "side table", _ASH, ("40", "40", "55"), "5", "natural ash", _FSC_A,
+       "", "", "round top; tapered legs", "209"),
+    _p("WF-1303", "Tove Side Table, Square", "Tove", "side table", _ASH, ("40", "40", "45"), "6", "natural ash",
+       _FSC_SUSP, "", "Poland", "square top; tapered legs", "199"),
+    _p("WF-1304", "Tove Side Table, Walnut", "Tove", "side table", _WALNUT, ("40", "40", "45"), "5", "walnut", _FSC_B,
+       "", "", "round top; tapered legs", "249"),
+    _p("WF-1305", "Tove Nesting Tables", "Tove", "side table", _ASH, ("50", "40", "50"), "9", "natural ash", _FSC_A,
+       "5", "Poland", "two tables that nest; round tops; tapered legs", "329"),
+    _p("WF-1401", "Ferro Floor Lamp, Brass", "Ferro", "floor lamp", "brushed brass", ("30", "30", "152"), "6", "brass",
+       "", "", "Poland", "linen drum shade; foot switch", "289"),
+    _p("WF-1402", "Ferro Floor Lamp, Black", "Ferro", "floor lamp", "powder-coated steel", ("30", "30", "152"), "6",
+       "black", "", "", "Poland", "linen drum shade; foot switch", "259"),
+    _p("WF-1403", "Ferro Floor Lamp, White", "Ferro", "floor lamp", "powder-coated steel", ("30", "30", "152"), "6",
+       "white", "", "", "Poland", "cotton drum shade; foot switch", "259"),
+    _p("WF-1404", "Ferro Table Lamp, Brass", "Ferro", "table lamp", "brushed brass", ("25", "25", "48"), "2", "brass",
+       "", "", "Poland", "linen drum shade; inline switch", "149"),
+    _p("WF-1405", "Ferro Table Lamp, Black", "Ferro", "table lamp", "powder-coated steel", ("25", "25", "48"), "",
+       "black", "", "", "", "linen drum shade; inline switch", "129"),
+    _p("WF-1501", "Ivo Dining Chair, Walnut", "Ivo", "dining chair", _WALNUT, ("46", "52", "80"), "6", "walnut", _FSC_B,
+       "", "Vietnam", "curved backrest; sold singly", "239"),
+    _p("WF-1502", "Ivo Dining Chair, Oak", "Ivo", "dining chair", _OAK, ("46", "52", "80"), "6", "natural oak",
+       _FSC_OLD, "", "Vietnam", "curved backrest; sold singly", "229"),
+    _p("WF-1503", "Ivo Dining Chair, Linen Seat", "Ivo", "dining chair", "solid walnut with linen seat",
+       ("46", "52", "80"), "7", "walnut and oat", f"{_FSC_B}; OT-21.HIN.77045", "", "Vietnam",
+       "curved backrest; removable seat pad; sold singly", "279"),
+    _p("WF-1504", "Ivo Dining Chair, Wool Seat", "Ivo", "dining chair", "solid walnut with wool seat",
+       ("46", "52", "80"), "7", "walnut and charcoal", _FSC_B, "", "Vietnam",
+       "curved backrest; removable seat pad; sold singly", "289"),
+    _p("WF-1505", "Ivo Armchair", "Ivo", "armchair", "solid walnut with linen seat", ("58", "55", "80"), "9",
+       "walnut and oat", f"{_FSC_B}; OT-19.HIN.12201", "5", "Vietnam",
+       "curved backrest; armrests; removable seat pad", "389"),
+    _p("WF-1601", "Marlow Sofa, Two-Seat", "Marlow", "sofa", "beech frame with recycled polyester upholstery",
+       ("170", "92", "84"), "46", "slate grey", "GG-5531", "", "Portugal",
+       "removable seat covers; two back cushions", "1490"),
+    _p("WF-1602", "Marlow Sofa, Three-Seat", "Marlow", "sofa", "beech frame with recycled polyester upholstery",
+       ("210", "92", "84"), "58", "slate grey", "GG-5531", "", "Portugal",
+       "removable seat covers; three back cushions", "1890"),
+    _p("WF-1603", "Marlow Sofa, Three-Seat, Wool", "Marlow", "sofa", "beech frame with wool upholstery",
+       ("210", "92", "84"), "60", "moss green", "GG-4120", "", "Portugal",
+       "removable seat covers; three back cushions", "2190"),
+    _p("WF-1604", "Marlow Corner Sofa", "Marlow", "sofa", "beech frame with recycled polyester upholstery",
+       ("260", "190", "84"), "", "slate grey", "GG-5531", "", "",
+       "removable seat covers; four back cushions; chaise on the left or the right", "2690"),
+    _p("WF-1605", "Marlow Armchair", "Marlow", "armchair", "beech frame with wool upholstery", ("90", "88", "84"),
+       "24", "moss green", "GG-5531", "", "Portugal", "removable seat cushion; one back cushion", "849"),
+    _p("WF-1701", "Wren Cushion, Organic Cotton", "Wren", "cushion", "organic cotton", ("50", "50", "15"), "1", "oat",
+       "GOTS-CU-8811", "", "India", _CUSHION, "49"),
+    _p("WF-1702", "Wren Cushion, Linen", "Wren", "cushion", "linen", ("50", "50", "15"), "1", "rust",
+       "OT-21.HIN.77045", "", "India", _CUSHION, "59"),
+    _p("WF-1703", "Wren Cushion, Wool", "Wren", "cushion", "wool", ("50", "50", "15"), "1", "charcoal",
+       "OT-19.HIN.12201", "", "India", "zip closure; feather insert", "69"),
+    _p("WF-1704", "Wren Lumbar Cushion, Linen", "Wren", "cushion", "linen", ("60", "40", "12"), "1", "rust",
+       "OT-21.HIN.77045", "", "India", _CUSHION, "55"),
+    _p("WF-1705", "Wren Cushion, Velvet", "Wren", "cushion", "recycled polyester velvet", ("50", "50", "15"), "1",
+       "teal", "", "1", "", "zip closure; feather insert", "65"),
+    _p("WF-1801", "Juno Sideboard 160", "Juno", "sideboard", "walnut veneer on MDF", ("160", "45", "75"), "52",
+       "walnut", "", "", "Poland", "four push-to-open doors; adjustable shelves", "1150"),
+    _p("WF-1802", "Juno Sideboard 200", "Juno", "sideboard", "walnut veneer on MDF", ("200", "45", "75"), "64",
+       "walnut", "", "", "Poland", "five push-to-open doors; adjustable shelves", "1390"),
+    _p("WF-1803", "Juno Sideboard 160, Oak", "Juno", "sideboard", "oak veneer on MDF", ("160", "45", "75"), "50",
+       "natural oak", "", "", "Poland", "four push-to-open doors; adjustable shelves", "1090"),
+    _p("WF-1804", "Juno Media Unit 120", "Juno", "media unit", "walnut veneer on MDF", ("120", "40", "50"), "31",
+       "walnut", "", "", "Poland", "two push-to-open doors; cable outlet", "690"),
+    _p("WF-1805", "Juno Media Unit 180", "Juno", "media unit", "walnut veneer on MDF", ("180", "40", "50"), "43",
+       "walnut", "", "5", "Poland", "three push-to-open doors; cable outlet", "890"),
+    _p("WF-1901", "Elm Wall Shelf 80", "Shelf", "wall shelf", "solid elm", ("80", "20", "4"), "", "natural elm", "", "",
+       "Lithuania", _SHELF, "99"),
+    _p("WF-1902", "Elm Wall Shelf 120", "Shelf", "wall shelf", "solid elm", ("120", "20", "4"), "4", "natural elm", "",
+       "", "Lithuania", _SHELF, "139"),
+    _p("WF-1903", "Birch Wall Shelf 80", "Shelf", "wall shelf", "birch plywood", ("80", "20", "4"), "2",
+       "natural birch", _FSC_A, "", "Lithuania", _SHELF, "79"),
+    _p("WF-1904", "Birch Wall Shelf 120", "Shelf", "wall shelf", "birch plywood", ("120", "20", "4"), "3",
+       "natural birch", _FSC_SUSP, "", "Lithuania", _SHELF, "109"),
+    _p("WF-1905", "Ash Wall Shelf 80", "Shelf", "wall shelf", _ASH, ("80", "20", "4"), "2", "natural ash", _FSC_A, "",
+       "", _SHELF, "119"),
+    _p("WF-2001", "Tern Bed Frame, Double", "Tern", "bed frame", _OAK, ("148", "208", "95"), "52", "natural oak", "",
+       "", "Portugal", "slatted base; low headboard", "1290"),
+    _p("WF-2002", "Tern Bed Frame, Queen", "Tern", "bed frame", _OAK, ("168", "218", "95"), "", "natural oak", "", "",
+       "Portugal", "slatted base; low headboard", "1490"),
+    _p("WF-2003", "Tern Bed Frame, King", "Tern", "bed frame", _OAK, ("198", "218", "95"), "71", "natural oak", "", "",
+       "Portugal", "slatted base; low headboard; centre support leg", "1790"),
+    _p("WF-2004", "Tern Bed Frame, Queen, Walnut", "Tern", "bed frame", _WALNUT, ("168", "218", "95"), "64", "walnut",
+       _FSC_B, "", "Portugal", "slatted base; low headboard", "1990"),
+    _p("WF-2005", "Tern Headboard, Queen", "Tern", "headboard", _OAK, ("168", "8", "95"), "18", "natural oak", "", "",
+       "", "wall-mounted; fixings included", "590"),
+    _p("WF-2101", "Brae Basket, Small", "Brae", "storage basket", "woven seagrass", ("30", "30", "30"), "1", "natural",
+       "", "", "Vietnam", "two handles; folds flat when empty", "39"),
+    _p("WF-2102", "Brae Basket, Medium", "Brae", "storage basket", "woven seagrass", ("40", "40", "45"), "",
+       "natural", "", "", "Vietnam", "two handles; open top; folds flat when empty", "59"),
+    _p("WF-2103", "Brae Basket, Large", "Brae", "storage basket", "woven seagrass", ("50", "50", "55"), "2", "natural",
+       "", "", "Vietnam", "two handles; open top; folds flat when empty", "79"),
+    _p("WF-2104", "Brae Basket, Medium, Hyacinth", "Brae", "storage basket", "woven water hyacinth",
+       ("40", "40", "45"), "2", "natural", "", "", "Vietnam", "two handles; lid", "69"),
+    _p("WF-2105", "Brae Hamper", "Brae", "laundry hamper", "woven water hyacinth with cotton liner",
+       ("45", "35", "60"), "2", "natural", "", "2", "Vietnam", "removable cotton liner; lid", "119"),
+    _p("WF-2201", "Cove Planter, Small", "Cove", "planter", "terracotta", ("20", "20", "18"), "1", "terracotta", "",
+       "", "", _COVE, "25"),
+    _p("WF-2202", "Cove Planter, Medium", "Cove", "planter", "terracotta", ("30", "30", "28"), "", "terracotta", "",
+       "", "", _COVE, "47"),
+    _p("WF-2203", "Cove Planter, Large", "Cove", "planter", "terracotta", ("40", "40", "36"), "6", "terracotta", "", "",
+       "Portugal", _COVE, "79"),
+    _p("WF-2204", "Cove Planter, Glazed", "Cove", "planter", "glazed stoneware", ("30", "30", "28"), "4", "sage", "",
+       "", "Portugal", "drainage hole; glazed inside and out", "69"),
+    _p("WF-2205", "Cove Planter, Concrete", "Cove", "planter", "concrete", ("40", "40", "36"), "14", "grey", "", "",
+       "", "drainage hole; sealed finish", "89"),
+]
+PRODUCT_BY_SKU = {product.sku: product for product in PRODUCTS}
+COUNTRIES = sorted({product.made_in for product in PRODUCTS if product.made_in})
+# What says where a product is made, on a row that does not say: a country,
+# the table's or another maker's. "Made in solid ash" says nothing of the kind.
+ORIGINS = tuple(COUNTRIES) + ("Italy", "France", "Belgium", "Netherlands", "Canada", "Brazil", "Estonia", "Latvia",
+                              "China", "Spain", "Germany", "Denmark", "Sweden", "Norway", "Finland", "Indonesia",
+                              "Malaysia", "Thailand", "Mexico", "Turkey", "Romania", "Japan", "USA",
+                              "United States", "America", "England", "Britain", "UK", "Europe", "Scandinavia")
+# What a description that names a certification says, by the certification.
+CERT_MARKERS: dict[str, tuple[str, ...]] = {
+    FSC: ("fsc", "forest stewardship"),
+    GREENGUARD: ("greenguard",),
+    OEKO_TEX: ("oeko tex", "oekotex"),
+    GOTS: ("gots", "global organic textile"),
+    "Fair Trade": ("fair trade", "fairtrade"),
+}
+CERT_WORDS = ("certified", "certification", "certifications", "certificate", "certificates")
+CATALOG_BANNED = ["luxurious", "luxury", "timeless", "stunning", "perfect", "perfectly", "elevate", "elevates",
+                  "must-have", "premium", "eco-friendly", "sustainable", "non-toxic", "handcrafted", "handmade",
+                  "best"]
+PRICE_WORDS = ("price", "priced", "pricing", "cost", "costs", "sale", "discount", "discounted", "usd")
+PRICE_SIGNS = ("$", "€", "£")
+WARRANTY_WORDS = ("warranty", "warranties", "warranted", "guarantee", "guaranteed")
+WEIGHT_WORDS = ("kg", "kgs", "kilo", "kilos", "kilogram", "kilograms")
+
+
+def spec_line(product: Product) -> str:
+    line = (f"Material: {product.material}. "
+            f"Dimensions: W {product.width} x D {product.depth} x H {product.height} cm.")
+    return line + (f" Weight: {product.weight} kg." if product.weight else "")
+
+
+def warranty_phrase(product: Product) -> str:
+    return f"{product.warranty}-year warranty"
+
+
+def made_in_phrase(product: Product) -> str:
+    return f"Made in {product.made_in}"
+
+
+def blank_fields(product: Product) -> list[str]:
+    return [name for name, value in (("weight_kg", product.weight), ("warranty", product.warranty),
+                                     ("made_in", product.made_in)) if not value]
+
+
+def given_facts(product: Product) -> list[str]:
+    """The phrases a description of this row must carry."""
+    out = list(product.certifications)
+    if product.warranty:
+        out.append(warranty_phrase(product))
+    if product.made_in:
+        out.append(made_in_phrase(product))
+    return out
+
+
+def own_facts_text(product: Product) -> str:
+    return " ".join([product.name, product.category, product.material, product.colour, *product.features,
+                     *product.certifications])
+
+
+# ── The reference descriptions: selling text by hand, per family, from the row ──
+
+def _closing(product: Product) -> str:
+    parts = []
+    if product.certifications:
+        parts.append(f"It is {' and '.join(product.certifications)} certified.")
+    if product.made_in and product.warranty:
+        parts.append(f"Made in {product.made_in}, it comes with a {warranty_phrase(product)}.")
+    elif product.made_in:
+        parts.append(f"Made in {product.made_in}.")
+    elif product.warranty:
+        parts.append(f"It comes with a {warranty_phrase(product)}.")
+    return " ".join(parts)
+
+
+# A sentence per family, written for its products, saying what their shared
+# features plainly are or do.
+_FAMILY_LINE: dict[str, str] = {
+    "Linden": "The oiled finish leaves the grain of the wood on show.",
+    "Hale": "A wall anchor holds it to the wall.",
+    "Tove": "Its legs taper toward the floor.",
+    "Ferro": "The shade sits on top of the stand.",
+    "Ivo": "Its backrest curves around the sitter.",
+    "Marlow": "Its frame is beech.",
+    "Wren": "Its cover closes with a zip.",
+    "Juno": "Its doors open with a push.",
+    "Shelf": "Its brackets stay out of sight.",
+    "Tern": "It is made of solid wood.",
+    "Brae": "Its sides are woven.",
+    "Cove": "Water drains through the hole in its base.",
+}
+
+
+def catalog_prose(product: Product) -> str:
+    article = "an" if product.category[0] in "aeiou" else "a"
+    return " ".join(part for part in (
+        f"{product.name} is {article} {product.category} in {product.material}, in {product.colour}.",
+        f"Features: {', '.join(product.features)}.",
+        _FAMILY_LINE[product.family],
+        _closing(product),
+    ) if part)
+
+
+def catalog_description(product: Product) -> str:
+    return f"{catalog_prose(product)} {spec_line(product)}"
+
+
+def catalog_reference_answer() -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["sku", "description"])
+    for product in PRODUCTS:
+        writer.writerow([product.sku, catalog_description(product)])
+    return "\n".join([
+        f"The {len(PRODUCTS)} descriptions, each from its own row, the certificate register and the warranty policy.",
+        "",
+        f"### {CATALOG_FILE}",
+        "```csv",
+        buffer.getvalue().rstrip("\n"),
+        "```",
+        "",
+    ])
+
+
+# ── Last season's descriptions: some still right, some stale ────────────────
+
+PREVIOUS: dict[str, str] = {
+    "WF-1102": "Linden Desk 120 is a desk in solid white oak, in natural oak, with two cable ports, one shallow "
+               "drawer and an oiled finish. It is FSC certified. Made in Portugal, it comes with a 5-year warranty. "
+               "Material: solid white oak. Dimensions: W 120 x D 60 x H 75 cm. Weight: 24 kg.",
+    "WF-1103": "Linden Desk 140 is our roomiest oak desk, with two cable ports and one shallow drawer. FSC certified "
+               "and made in Portugal, with a 5-year warranty. Material: solid white oak. Dimensions: W 140 x D 60 x "
+               "H 75 cm. Weight: 28 kg.",
+    "WF-1104": "Linden Desk 160 is the largest Linden, in solid white oak, with two cable ports and two shallow "
+               "drawers. It is FSC certified. Made in Portugal, with a 5-year warranty. Material: solid white oak. "
+               "Dimensions: W 160 x D 70 x H 75 cm. Weight: 33 kg.",
+    "WF-1203": "Hale Bookcase 90, Low is a low bookcase in solid white oak with three fixed shelves and a wall "
+               "anchor. Made in Lithuania, with a 5-year warranty. Material: solid white oak. Dimensions: W 90 x "
+               "D 35 x H 120 cm. Weight: 27 kg.",
+    "WF-1205": "Hale Bookcase 60, Low is the smallest Hale, in solid white oak. Made in Lithuania, with a 5-year "
+               "warranty. Material: solid white oak. Dimensions: W 60 x D 35 x H 110 cm. Weight: 19 kg.",
+    "WF-1303": "Tove Side Table, Square is a square side table in FSC certified solid ash on tapered legs. Made in "
+               "Poland, with a 2-year warranty. Material: solid ash. Dimensions: W 40 x D 40 x H 45 cm. Weight: 6 kg.",
+    "WF-1305": "Tove Nesting Tables are two solid ash tables that nest, FSC certified. Made in Poland, with a "
+               "2-year warranty. Material: solid ash. Dimensions: W 50 x D 40 x H 50 cm. Weight: 9 kg.",
+    "WF-1403": "Ferro Floor Lamp, White pairs a white powder-coated steel stand with a linen drum shade and a foot "
+               "switch. Made in Poland, with a 2-year warranty. Material: powder-coated steel. Dimensions: W 30 x "
+               "D 30 x H 152 cm. Weight: 6 kg.",
+    "WF-1405": "Ferro Table Lamp, Black is a table lamp in powder-coated steel with a linen drum shade. Made in "
+               "Poland, with a 2-year warranty. Material: powder-coated steel. Dimensions: W 25 x D 25 x H 48 cm. "
+               "Weight: 2 kg.",
+    "WF-1502": "Ivo Dining Chair, Oak is a dining chair in solid white oak with a curved backrest, sold singly. "
+               "It is FSC certified. Made in Vietnam, with a 2-year warranty. Material: solid white oak. Dimensions: "
+               "W 46 x D 52 x H 80 cm. Weight: 6 kg.",
+    "WF-1505": "Ivo Armchair is an armchair in solid walnut with a linen seat that is OEKO-TEX Standard 100 "
+               "certified. The walnut is FSC certified. Made in Vietnam, with a 2-year warranty. Material: solid "
+               "walnut with linen seat. Dimensions: W 58 x D 55 x H 80 cm. Weight: 9 kg.",
+    "WF-1601": "Marlow Sofa, Two-Seat is a sofa with a beech frame and recycled polyester upholstery, in slate grey, "
+               "with removable seat covers and two back cushions. It is GREENGUARD Gold certified. Made in Portugal, "
+               "it comes with a 10-year warranty. Material: beech frame with recycled polyester upholstery. "
+               "Dimensions: W 170 x D 92 x H 84 cm. Weight: 46 kg.",
+    "WF-1603": "Marlow Sofa, Three-Seat, Wool is a wool sofa on a beech frame, in moss green. It is GREENGUARD Gold "
+               "certified. Made in Portugal, with a 10-year warranty. Material: beech frame with wool upholstery. "
+               "Dimensions: W 210 x D 92 x H 84 cm. Weight: 60 kg.",
+    "WF-1604": "Marlow Corner Sofa seats the whole family, with a chaise on either side. GREENGUARD Gold certified. "
+               "Made in Portugal, with a 10-year warranty. Material: beech frame with recycled polyester upholstery. "
+               "Dimensions: W 260 x D 190 x H 84 cm. Weight: 82 kg.",
+    "WF-1703": "Wren Cushion, Wool is a wool cushion in charcoal with a washable cover and a feather insert. It is "
+               "OEKO-TEX Standard 100 certified. Made in India. Material: wool. Dimensions: W 50 x D 50 x H 15 cm. "
+               "Weight: 1 kg.",
+    "WF-1705": "Wren Cushion, Velvet is a velvet cushion in teal. Made in India. Material: recycled polyester velvet. "
+               "Dimensions: W 50 x D 50 x H 15 cm. Weight: 1 kg.",
+    "WF-1802": "Juno Sideboard 200 is a long sideboard in walnut veneer on MDF with four push-to-open doors. Made in "
+               "Poland, with a 2-year warranty. Material: walnut veneer on MDF. Dimensions: W 200 x D 45 x H 75 cm. "
+               "Weight: 64 kg.",
+    "WF-1805": "Juno Media Unit 180 is a media unit in walnut veneer with three push-to-open doors and a cable "
+               "outlet. Made in Poland, with a 2-year warranty. Material: walnut veneer on MDF. Dimensions: W 180 x "
+               "D 40 x H 50 cm. Weight: 43 kg.",
+    "WF-1904": "Birch Wall Shelf 120 is a shelf in FSC certified birch plywood on hidden brackets. Made in "
+               "Lithuania, with a 2-year warranty. Material: birch plywood. Dimensions: W 120 x D 20 x H 4 cm. "
+               "Weight: 3 kg.",
+    "WF-2002": "Tern Bed Frame, Queen is a bed frame in solid white oak with a slatted base and a low headboard. "
+               "Made in Portugal, with a 10-year warranty. Material: solid white oak. Dimensions: W 168 x D 218 x "
+               "H 95 cm. Weight: 66 kg.",
+    "WF-2005": "Tern Headboard, Queen is a wall-mounted headboard in solid white oak. Made in Portugal, with a "
+               "10-year warranty. Material: solid white oak. Dimensions: W 168 x D 8 x H 95 cm. Weight: 18 kg.",
+    "WF-2104": "Brae Basket, Medium, Hyacinth is a basket of woven water hyacinth with two handles and a lid. Made "
+               "in Vietnam, with a 2-year warranty. Material: woven water hyacinth. Dimensions: W 40 x D 40 x "
+               "H 45 cm. Weight: 2 kg.",
+    "WF-2105": "Brae Hamper is a laundry hamper of woven water hyacinth with a removable cotton liner and a lid. "
+               "Made in Vietnam. Material: woven water hyacinth with cotton liner. Dimensions: W 45 x D 35 x H 60 cm. "
+               "Weight: 2 kg.",
+    "WF-2203": "Cove Planter, Large is a terracotta planter with a drainage hole and a saucer. Made in Italy. "
+               "Material: terracotta. Dimensions: W 40 x D 40 x H 36 cm. Weight: 6 kg.",
+    "WF-2205": "Cove Planter, Concrete is a concrete planter with a drainage hole and a sealed finish. Made in "
+               "Portugal. Material: concrete. Dimensions: W 40 x D 40 x H 36 cm. Weight: 14 kg.",
+}
+
+
+# ── The documents ────────────────────────────────────────────────────────────
+
+def product_specs_csv() -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(SPEC_COLUMNS)
+    for p_ in PRODUCTS:
+        writer.writerow([p_.sku, p_.name, p_.category, p_.material, p_.width, p_.depth, p_.height, p_.weight,
+                         p_.colour, "; ".join(p_.certificate_ids), p_.warranty_override, p_.made_in,
+                         "; ".join(p_.features), p_.price])
+    return buffer.getvalue()
+
+
+def certificates_csv() -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["certificate_id", "standard", "holder", "status", "valid_until"])
+    for cert in CERTIFICATES.values():
+        writer.writerow([cert.cert_id, cert.standard, cert.holder, cert.status, f"{cert.valid_until:%Y-%m-%d}"])
+    return buffer.getvalue()
+
+
+def warranty_policy_md() -> str:
+    rows = "\n".join(f"| {category} | {years} years |" for category, years in WARRANTY_POLICY.items())
+    rows += "\n" + "\n".join(f"| {category} | none |" for category in NO_WARRANTY_CATEGORIES)
+    return f"""# {STORE}: warranty policy
+
+Every product carries the warranty of its category, below, unless its row in
+product_specs.csv gives a number in `warranty_years`: that number is the
+product's warranty instead, longer or shorter. A product whose category has
+none and whose row gives none has no warranty.
+
+| category | warranty |
+|---|---|
+{rows}
+"""
+
+
+def previous_descriptions_md() -> str:
+    entries = "\n\n".join(f"### {sku}\n\n{text}" for sku, text in PREVIOUS.items())
+    return f"""# Last season's descriptions
+
+The descriptions published for the autumn catalog, for {len(PREVIOUS)} products. Some
+products have changed since: where a description here and product_specs.csv,
+certificates.csv or warranty_policy.md disagree, the description is out of
+date. Reuse its wording only where it still agrees.
+
+{entries}
+"""
+
+
+SAMPLE = _p("WF-0000", "Sample Table", "Tove", "table", "solid cherry", ("50", "50", "50"), "7", "cherry",
+            "", "", "", "round top", "100")
+
+
+def style_sheet_md() -> str:
+    banned = ", ".join(f"`{word}`" for word in CATALOG_BANNED)
+    low, high = WORD_RANGE
+    no_weight = _p("WF-0000", "Sample Table", "Tove", "table", "solid cherry", ("50", "50", "50"), "", "cherry",
+                   "", "", "", "round top", "100")
+    return f"""# {STORE}: product description style sheet
+
+Every product in product_specs.csv gets one description, written from its
+own row, the certificate register (certificates.csv) and the warranty policy
+(warranty_policy.md), and nothing else. The catalog is published on
+{_day(PUBLISH_DATE)}, {PUBLISH_DATE.year}.
+
+## Shape
+
+1. {low} to {high} words, the spec line included. A word is anything between two
+   spaces.
+2. Begin with the product's name, exactly as the `name` column writes it.
+3. End with the spec line, and put nothing after it. The spec line is:
+
+   `Material: <material>. Dimensions: W <width_cm> x D <depth_cm> x H <height_cm> cm. Weight: <weight_kg> kg.`
+
+   The material is written exactly as the `material` column writes it, the
+   dimensions are the row's own numbers, and the `x` is a lower-case letter x.
+   When `weight_kg` is blank, the spec line stops after `cm.`, with no weight
+   part. For a made-up row, with and without a weight:
+
+   `{spec_line(SAMPLE)}`
+
+   `{spec_line(no_weight)}`
+
+## Facts
+
+4. Use only the product's own facts: its name, category, material, colour,
+   features, certifications, warranty and where it is made. Saying what a
+   listed feature plainly is or does is fine. Add no other use, feature,
+   finish, care advice or comparison, and never name another product or
+   another product's material.
+5. Warranty: the product's warranty is its row's `warranty_years` when that
+   has a number, and otherwise its category's in warranty_policy.md. State it
+   once as `<n>-year warranty`, in digits with a hyphen (`2-year warranty`).
+   When the product has none, say nothing about a warranty or a guarantee.
+6. Where it is made: when `made_in` has a country, say `Made in <country>`.
+   When it is blank, name no country and do not say where it is made.
+7. Certifications: `certificate_ids` lists the product's certificates. A
+   certificate counts only when certificates.csv gives it the status `valid`
+   and a `valid_until` on or after the publish date. Name the `standard` of
+   every certificate that counts, exactly as certificates.csv writes it, and
+   no other standard. When none counts, do not use the words certified or
+   certification at all.
+8. Weight: only in the spec line, and only when `weight_kg` has a number.
+   When it is blank, say nothing about weight anywhere.
+9. A size given outside the spec line is one of the row's own dimensions, in
+   cm.
+10. No price: no amount of money, and none of the words price, priced,
+    pricing, cost, sale or discount.
+11. Last season's descriptions (previous_descriptions.md) may be reused only
+    where they still agree with the row, the register and the policy.
+
+## Words
+
+12. Never use these words, in any case, whole or as part of a hyphenated
+    word: {banned}.
+"""
+
+
+def catalog_fixtures() -> dict[str, str]:
+    return {
+        "product_specs.csv": product_specs_csv(),
+        "certificates.csv": certificates_csv(),
+        "warranty_policy.md": warranty_policy_md(),
+        "previous_descriptions.md": previous_descriptions_md(),
+        "style_sheet.md": style_sheet_md(),
+    }
+
+
+# ── The checker ──────────────────────────────────────────────────────────────
+
+_SKU = re.compile(r"WF[-_ ]?(\d{4})")
+_SIZE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)\s?(cm|mm|m)\b", re.IGNORECASE)
+
+
+def _sku(raw: str) -> str | None:
+    match = _SKU.fullmatch(raw.strip().upper()[:12])
+    return f"WF-{match.group(1)}" if match else None
+
+
+def split_spec(text: str) -> tuple[str, str]:
+    """(selling text, spec line): the spec line starts at the last
+    "Material:"; with none, the whole text is selling text."""
+    index = text.lower().rfind("material:")
+    return (text, "") if index < 0 else (text[:index], text[index:])
+
+
+def opens_with_name(product: Product, text: str) -> bool:
+    return common.norm(text).startswith(common.norm(product.name))
+
+
+def spec_line_right(product: Product, text: str) -> bool:
+    """The description ends with the row's spec line, character for character
+    apart from spacing and case."""
+    return common.norm(split_spec(text)[1]) == common.norm(spec_line(product))
+
+
+def given_missing(product: Product, text: str) -> int:
+    return sum(1 for phrase in given_facts(product) if not has_words(text, phrase))
+
+
+def blank_invented(product: Product, text: str) -> int:
+    """One for each blank field the description fills in anyway."""
+    words = word_list(text)
+    count = 0
+    if not product.weight:
+        count += any(word in WEIGHT_WORDS or word.startswith("weigh") for word in words)
+    if not product.warranty:
+        count += any(word in WARRANTY_WORDS for word in words)
+    if not product.made_in:
+        count += any(has_words(text, origin) for origin in ORIGINS)
+    return count
+
+
+def certs_not_held(product: Product, text: str) -> int:
+    count = sum(1 for cert, markers in CERT_MARKERS.items()
+                if cert not in product.certifications and any(has_words(text, marker) for marker in markers))
+    if not product.certifications:
+        count += any(word in CERT_WORDS for word in word_list(text))
+    return count
+
+
+def mentions_price(product: Product, text: str) -> bool:
+    words = set(word_list(text))
+    return (any(sign in text for sign in PRICE_SIGNS) or any(word in words for word in PRICE_WORDS)
+            or Decimal(product.price) in figures(text))
+
+
+def catalog_banned_in(text: str) -> int:
+    words = word_list(text)
+    return sum(1 for word in CATALOG_BANNED if common.has_phrase(words, word_list(word)))
+
+
+def _cm(value: str, unit: str) -> Decimal:
+    number = Decimal(value)
+    return number * {"cm": 1, "mm": Decimal("0.1"), "m": 100}[unit.lower()]
+
+
+def foreign_facts(product: Product, text: str) -> int:
+    """In the selling text: other products named, other products' materials,
+    and sizes that are not this row's own dimensions."""
+    selling = split_spec(text)[0]
+    own_name, own_facts = word_list(product.name), word_list(own_facts_text(product))
+    count = 0
+    named_materials: set[str] = set()
+    for other in PRODUCTS:
+        if other.sku == product.sku:
+            continue
+        if not common.has_phrase(own_name, word_list(other.name)) and has_words(selling, other.name):
+            count += 1
+        material = other.material
+        if (material not in named_materials and not common.has_phrase(own_facts, word_list(material))
+                and has_words(selling, material)):
+            named_materials.add(material)
+            count += 1
+    own_sizes = {Decimal(value) for value in product.dimensions}
+    count += sum(1 for value, unit in _SIZE.findall(selling[:_MAX_DOCUMENT]) if _cm(value, unit) not in own_sizes)
+    return count
+
+
+CATALOG_FACTS = (
+    "workflow_missing_file_count",
+    "workflow_product_coverage_error_count",
+    "workflow_name_opening_error_count",
+    "workflow_word_range_error_count",
+    "workflow_spec_line_error_count",
+    "workflow_given_fact_missing_count",
+    "workflow_blank_field_invented_count",
+    "workflow_cert_not_held_count",
+    "workflow_price_mention_count",
+    "workflow_banned_word_count",
+    "workflow_foreign_fact_count",
+)
+
+
+def catalog_facts(response_text: str) -> dict[str, int]:
+    """Counts of what a reply got wrong. A missing description counts against
+    every check it would be held to."""
+    document = csv_file(response_text, CATALOG_FILE)
+    texts: dict[str, str] = {}
+    seen: set[str] = set()
+    repeated = unknown = 0
+    for raw, value in keyed_lines(document, "sku"):
+        key = _sku(raw)
+        if key is None:
+            continue
+        if key in seen:
+            repeated += 1
+            continue
+        seen.add(key)
+        if key not in PRODUCT_BY_SKU:
+            unknown += 1
+            continue
+        if value:
+            texts[key] = value
+    out = dict.fromkeys(CATALOG_FACTS, 0)
+    out["workflow_missing_file_count"] = int(document is None)
+    out["workflow_product_coverage_error_count"] = (
+        sum(product.sku not in texts for product in PRODUCTS) + unknown + repeated)
+    low, high = WORD_RANGE
+    for product in PRODUCTS:
+        text = texts.get(product.sku)
+        if text is None:
+            for name in ("workflow_name_opening_error_count", "workflow_word_range_error_count",
+                         "workflow_spec_line_error_count", "workflow_cert_not_held_count",
+                         "workflow_price_mention_count", "workflow_banned_word_count",
+                         "workflow_foreign_fact_count"):
+                out[name] += 1
+            out["workflow_given_fact_missing_count"] += len(given_facts(product))
+            out["workflow_blank_field_invented_count"] += len(blank_fields(product))
+            continue
+        out["workflow_name_opening_error_count"] += not opens_with_name(product, text)
+        out["workflow_word_range_error_count"] += not low <= len(text.split()) <= high
+        out["workflow_spec_line_error_count"] += not spec_line_right(product, text)
+        out["workflow_given_fact_missing_count"] += given_missing(product, text)
+        out["workflow_blank_field_invented_count"] += blank_invented(product, text)
+        out["workflow_cert_not_held_count"] += certs_not_held(product, text)
+        out["workflow_price_mention_count"] += mentions_price(product, text)
+        out["workflow_banned_word_count"] += catalog_banned_in(text)
+        out["workflow_foreign_fact_count"] += foreign_facts(product, text)
+    return out
+
+
+_TASKS[CATALOG_ID] = (catalog_fixtures, catalog_facts, catalog_reference_answer)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

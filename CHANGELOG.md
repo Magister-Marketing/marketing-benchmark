@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Tasks: workflow task `catalog-descriptions` (development split): a 60-row
+  product table in twelve families of near-identical variants, a certificate
+  register, a warranty policy by category and last season's descriptions in;
+  60 descriptions out, each with a fixed spec line, the warranty its row or
+  its category gives, only the standards whose certificates count on the
+  publish date, nothing for a blank weight or country, and no fact borrowed
+  from a sibling or kept from stale copy. 11 of its 12 checks are a
+  program's.
 - Tasks: workflow task `launch-copy-pack` (development split): a launch
   brief, a 133-row claims register, an engineering spec sheet, last year's
   launch copy, voice rules and a placements table in; 72 assets for four

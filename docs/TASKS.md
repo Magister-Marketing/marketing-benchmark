@@ -86,6 +86,7 @@ Copy tasks added on 2026-11-20 for the 35-task board. No model has answered them
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
 | [Launch copy pack](../eval_runner/tasks/launch-copy-pack.json) | 72 assets for four air purifiers across nine placements (search, social, email, SMS, push), from a launch brief, a 133-row claims register, voice rules and a placements table | Every figure and claim phrase must come from a register row usable for that product and that channel (approved, not pending, withdrawn or internal, not another product's, not expired by the launch day); engineering figures a little off the approved ones, last year's launch copy written under looser rules, prices with each product's own offer date, an SMS limit that counts the opt-out line and drops to 70 for one curly apostrophe, and no two of a product's headlines opening alike | 15 |
+| [Catalog descriptions](../eval_runner/tasks/catalog-descriptions.json) | 60 product descriptions in twelve families of near-identical variants, from a spec table, a certificate register, a warranty policy and last season's descriptions | A fixed spec line per row; the warranty from the row or else the category's policy; only the standards whose certificates are valid on the publish date (seven listed ones lapsed, were suspended or expired); nothing for a blank weight or country; no fact borrowed from a sibling variant or kept from last season's stale copy | 12 |
 
 ### Forecast tasks
 
