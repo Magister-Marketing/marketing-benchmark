@@ -3,7 +3,7 @@
   "title": "Claims check",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "workflow": "claims-check",
   "fixtures": [
     "eval_runner/fixtures/claims-check/draft.md",

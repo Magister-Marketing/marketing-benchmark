@@ -3,7 +3,7 @@
   "title": "Launch copy pack",
   "split": "development",
   "prompt_version": 1,
-  "rubric_version": 1,
+  "rubric_version": 2,
   "workflow": "launch-copy-pack",
   "fixtures": [
     "eval_runner/fixtures/launch-copy-pack/launch_brief.md",
