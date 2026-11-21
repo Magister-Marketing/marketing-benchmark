@@ -160,12 +160,254 @@ def budget_fixtures() -> dict[str, str]:
     }
 
 
+# ───────────────────────────────────────────────────────────── competitor-comparison
+
+COMPARISON_DIR = "competitor-comparison"
+
+# The pages, as a product marketer saved them from each site on the same day.
+# Ours is first. Each is written out in full: what a page states, and what it
+# leaves out, is the task.
+COMPANY_PAGES = {
+    "tallyhour": """\
+# Tallyhour pricing
+
+Time tracking and invoicing for agencies and studios. Prices are per user per month.
+
+| | Free | Studio | Agency |
+|---|---|---|---|
+| Billed monthly | $0 | $21 | $34 |
+| Billed annually | $0 | $17.50 | $28 |
+| Users | 1 | From 1 | From 5 |
+| Time tracking and timesheets | ✓ | ✓ | ✓ |
+| Invoices from tracked time | — | ✓ | ✓ |
+| API access | — | ✓ | ✓ |
+| Single sign-on (SAML) | — | ✓ | ✓ |
+| EU data hosting | — | ✓ | ✓ |
+
+The Free plan is free for as long as you use it: one person, unlimited projects.
+
+Every paid plan starts with a 21-day free trial. No card needed.
+
+## Reliability
+
+Studio and Agency come with a 99.9% uptime SLA.
+
+## FAQ
+
+**Can I switch between monthly and annual billing?**
+Yes, at any time from the billing page.
+""",
+    "brisktime": """\
+# Brisktime plans and pricing
+
+Brisktime keeps timesheets, approvals and invoices in one place, and it is built for teams that
+take security seriously: single sign-on, SCIM provisioning and audit logs.
+
+| | Starter | Business |
+|---|---|---|
+| Price per user per year | $276 | $420 |
+| Billing | Annual only | Annual only |
+| Minimum seats | 3 | 10 |
+| Timesheets and approvals | ✓ | ✓ |
+| Invoicing | ✓ | ✓ |
+| Expense tracking | — | ✓ |
+| API access | — | ✓ |
+| Single sign-on (SAML) and SCIM | — | ✓ |
+| Audit logs | — | ✓ |
+| Uptime SLA | 99.5% | 99.5% |
+
+## Where your data lives
+
+All Brisktime data is hosted in our US data centres. EU hosting is not available.
+
+## FAQ
+
+**Is there a free trial?**
+Yes. Try either plan free for 7 days.
+
+**Can I pay monthly?**
+No. Brisktime plans are billed once a year.
+""",
+    "quillhour": """\
+# Quillhour pricing
+
+Plan, track and bill client work. Save 17% with annual billing.
+
+| | Team | Pro | Enterprise |
+|---|---|---|---|
+| Billed annually, per user per month | $19 | $27 | Contact sales |
+| Billed monthly, per user per month | $23 | $32 | Contact sales |
+| Minimum users | 2 | 2 | 25 |
+| Time tracking | ✓ | ✓ | ✓ |
+| Invoicing | ✓ | ✓ | ✓ |
+| API access | ✓ | ✓ | ✓ |
+| SAML single sign-on | — | — | ✓ |
+| EU data residency | ✓ | ✓ | ✓ |
+
+Quillhour has no free plan. Team and Pro come with a 14-day free trial.
+
+## FAQ
+
+**What is the smallest team I can sign up?**
+Team and Pro now start at 3 users. We raised the minimum in September.
+
+**Do you publish uptime?**
+Our status page shows the last 90 days of uptime for every service.
+""",
+    "ticklog": """\
+# Ticklog pricing
+
+Timesheets for professional-services firms. All prices are per user per month, billed monthly.
+
+| Plan | Basic | Pro | Enterprise |
+|---|---|---|---|
+| Price | $24 | $33 | $45 |
+| Minimum users | 5 | 5 | 20 |
+| Time tracking | ✓ | ✓ | ✓ |
+| Invoicing from timesheets | — | ✓ | ✓ |
+| REST API | — | ✓ | ✓ |
+| SAML single sign-on | — | — | ✓ |
+| Uptime SLA | — | — | 99.95% |
+
+Ticklog has no free plan and no free trial. Book a 30-minute demo and we will set up a sandbox
+with your own projects.
+
+## FAQ
+
+**Is the REST API included on Basic?**
+Yes. Since October every Ticklog plan includes the REST API.
+
+**Can I get a discount for paying yearly?**
+Yes, ask your account manager.
+""",
+    "fenwork": """\
+# Fenwork pricing
+
+Time tracking, budgets and invoicing for agencies. Prices are per user per month, billed monthly.
+Pay yearly and get two months free.
+
+| | Essentials | Growth | Scale |
+|---|---|---|---|
+| Price | $22 | $30 | $39 |
+| Free trial | 14 days | 14 days | 14 days |
+| Time tracking | ✓ | ✓ | ✓ |
+| Invoicing | ✓ | ✓ | ✓ |
+| API access | ✓ | ✓ | ✓ |
+| Single sign-on | — | ✓ | ✓ |
+| 99.9% uptime SLA | — | ✓ | ✓ |
+
+Every plan lets you choose EU or US hosting for your workspace.
+
+## FAQ
+
+**How long is the free trial?**
+Since March every plan comes with a 30-day free trial.
+
+**Is there a free plan?**
+No. The trial gives you every feature of Scale instead.
+""",
+    "larchpoint": """\
+# Larchpoint Time pricing
+
+Timesheets, approvals and client invoicing.
+
+| | Core | Scale |
+|---|---|---|
+| Per user per month, billed monthly | $29 | $48 |
+| Per user per year, billed yearly | $290 | $480 |
+| Users | From 1 | From 10 |
+| Timesheets and approvals | ✓ | ✓ |
+| Client invoicing | ✓ | ✓ |
+| Single sign-on through your identity provider | — | ✓ |
+| Uptime SLA | 99.5% | 99.9% |
+
+Larchpoint has no free plan. Start with a 14-day free trial; every paid subscription also carries
+a 30-day money-back guarantee.
+
+All Larchpoint data is stored in our US region. We do not offer EU hosting.
+""",
+}
+
+COMPARISON_CLAIMS = [
+    "Tallyhour's entry plan costs less per user per month than any competitor's entry plan.",
+    "Tallyhour is the only one of the six with a free plan.",
+    "Tallyhour's 21-day free trial is the longest of the six.",
+    "Tallyhour includes single sign-on on its entry plan, and no competitor includes it on theirs.",
+    "Tallyhour's top plan costs less per user per month than any competitor's top plan.",
+]
+
+
+def comparison_brief_md() -> str:
+    pages = ", ".join(f"`{name}.md`" for name in COMPANY_PAGES)
+    claims = "\n".join(f"{number}. {claim}" for number, claim in enumerate(COMPARISON_CLAIMS, 1))
+    return f"""# Tallyhour: competitor comparison, brief
+
+From Priya Raman, product marketing. Tallyhour sells time tracking and invoicing to agencies. Sales
+wants one comparison table of us and our five closest competitors, and I want to know which of our
+draft claims the table can back. The six pricing pages were saved from the sites today: {pages}.
+
+## The attributes
+
+One row per company, one column per attribute:
+
+- `free_plan`: whether the company offers a plan that is free with no time limit. A free trial is
+  not a free plan.
+- `trial_days`: the length of the free trial in days, and 0 when the page says there is no free
+  trial. A money-back guarantee is not a free trial.
+- `entry_plan`: the name of the entry plan, the cheapest plan with a price above $0, as the page
+  names it.
+- `entry_price_usd`: the entry plan's price per user per month, on a monthly basis (below).
+- `entry_min_users`: the fewest users the entry plan can be bought for.
+- `sso_on_entry`: whether the entry plan includes single sign-on.
+- `sso_cheapest_plan`: the name of the cheapest plan that includes single sign-on.
+- `invoicing_on_entry`: whether the entry plan includes invoicing.
+- `api_on_entry`: whether the entry plan includes API access.
+- `top_plan_price_usd`: the price per user per month, on a monthly basis, of the top plan: the
+  plan listed last in the company's plan table.
+- `uptime_sla_percent`: the highest uptime the company commits to in a service-level agreement,
+  on any plan, as a percentage.
+- `eu_hosting`: whether customer data can be hosted in the EU, on any plan.
+
+## Rules for every cell
+
+1. A cell holds the value the company's own page states, or exactly `not stated` when the page
+   does not state it. Do not infer a value from what a page leaves out: a feature or a plan the
+   page does not mention is `not stated`, not `no`.
+2. In a plan table a check mark (✓) means the plan includes it and a dash (—) means it does not.
+3. A price the page replaces with "Contact sales", "custom" or a quote is `not stated`.
+4. Monthly basis: when a plan has a price billed monthly, that is its price, even if the page
+   also gives a lower price for annual billing. When a plan is sold only on annual billing, its
+   price is its price per user per year divided by 12, rounded to the cent.
+5. Each page's FAQ was updated after its plan table. Where a page's FAQ and its plan table
+   disagree, the FAQ is right.
+6. Write yes or no as `yes` or `no`, a price in US dollars with two decimals and no currency sign,
+   a percentage without the % sign, a number of days or users as a whole number, and a plan by
+   its name alone.
+
+## The draft claims
+
+{claims}
+
+A claim is `supportable` when the table's cells prove it and `not supportable` otherwise. A claim
+that something holds for every competitor, or that no competitor has something, needs every
+competitor's cell: a `not stated` cell cannot support it. "Less" and "longest" are strict: a tie
+does not support them.
+"""
+
+
+def comparison_fixtures() -> dict[str, str]:
+    files = {f"{COMPARISON_DIR}/comparison_brief.md": comparison_brief_md()}
+    files.update({f"{COMPARISON_DIR}/{name}.md": page for name, page in COMPANY_PAGES.items()})
+    return files
+
+
 # ───────────────────────────────────────────────────────────────── all of them
 
 def planned() -> dict[Path, str]:
     """Every generated file, by its path in the repository."""
     files: dict[str, str] = {}
     files.update(budget_fixtures())
+    files.update(comparison_fixtures())
     return {FIXTURES / name: text for name, text in files.items()}
 
 

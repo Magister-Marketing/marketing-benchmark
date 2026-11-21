@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Tasks: `competitor-comparison` (development split, strategy area): a
+  comparison table of 12 attributes for Tallyhour and five fictional
+  competitors, read from six saved pricing pages under a brief's rules, and a
+  verdict on five draft claims. Every cell is checked: the oracle reads each
+  one out of its page through a declared source (a plan-table cell, a
+  sentence, an FAQ answer that overrides the table, or a term the page never
+  uses) and applies the monthly-basis and `not stated` rules. 13 of its 14
+  checks are a program's, one per trap group and one per claim. The
+  `competitor-profiling` skill is vendored unchanged at `2c38021`.
 - Tasks: `channel-budget-allocation` (development split, strategy area): split
   a $128,000 quarter across six channels in whole $5,000 blocks from
   diminishing-returns forecasts, under a lead cap the account executives set
