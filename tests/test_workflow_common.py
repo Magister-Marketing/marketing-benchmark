@@ -49,8 +49,8 @@ SIGN_OFFS = ["Let me know if you want any changes.", "Happy to adjust any of the
 
 
 def test_every_file_task_is_covered():
-    assert FILE_TASKS == ["launch-trafficking", "lifecycle-program", "outbound-sequence",
-                          "price-change-rollout", "search-account-build"]
+    assert FILE_TASKS == ["launch-copy-pack", "launch-trafficking",
+                          "lifecycle-program", "outbound-sequence", "price-change-rollout", "search-account-build"]
 
 
 @pytest.mark.parametrize("workflow", FILE_TASKS)

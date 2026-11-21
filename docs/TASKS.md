@@ -81,6 +81,12 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
+Copy tasks added on 2026-11-20 for the 35-task board. No model has answered them yet, and the one judged check of each is not calibrated:
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Launch copy pack](../eval_runner/tasks/launch-copy-pack.json) | 72 assets for four air purifiers across nine placements (search, social, email, SMS, push), from a launch brief, a 133-row claims register, voice rules and a placements table | Every figure and claim phrase must come from a register row usable for that product and that channel (approved, not pending, withdrawn or internal, not another product's, not expired by the launch day); engineering figures a little off the approved ones, last year's launch copy written under looser rules, prices with each product's own offer date, an SMS limit that counts the opt-out line and drops to 70 for one curly apostrophe, and no two of a product's headlines opening alike | 15 |
+
 ### Forecast tasks
 
 The two "Which headline won?" tasks grade a judgment against what happened,

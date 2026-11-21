@@ -1,0 +1,134 @@
+claim_id,product,claim,copy_wording,status,channels,valid_until,note
+CR-001,all,Warranty,2-year warranty,approved,all,,
+CR-002,all,Home trial,30-night home trial,approved,search; social; email; push,,Not in SMS: the trial terms need a link
+CR-003,all,Shipping costs nothing,free shipping,approved,all,,
+CR-004,all,Auto mode sets the fan from the air quality sensor,auto mode,approved,all,,
+CR-005,all,Sleep mode dims the lights and slows the fan,sleep mode,approved,all,,
+CR-006,all,Launch day,Feb 24,approved,email; push,,Announcements only
+CR-007,all,Meets the HEPA standard,HEPA,withdrawn,all,,Retest pending
+CR-008,all,Relief from allergies,allergies,withdrawn,all,,A health claim
+CR-009,all,Allergy relief,allergy,withdrawn,all,,A health claim
+CR-010,all,Helps with asthma,asthma,withdrawn,all,,A health claim
+CR-011,all,Removes viruses,viruses,withdrawn,all,,Never tested
+CR-012,all,Removes a virus,virus,withdrawn,all,,Never tested
+CR-013,all,Removes bacteria,bacteria,withdrawn,all,,Never tested
+CR-014,all,The quietest purifier,quietest,withdrawn,all,,Not measured against others
+CR-015,all,Ozone-free,ozone-free,pending,all,,Certificate expected in April
+CR-016,all,Energy Star certified,Energy Star,pending,all,,Application filed
+CR-017,all,Sold in more than 40 countries,40 countries,internal,all,,Distribution plan
+CR-018,all,Units ordered for launch,"60,000 units",internal,all,,Confidential
+CR-019,Halo Mini,"Launch price, until the launch offer ends",$99,approved,all,,
+CR-020,Halo Mini,The launch offer ends,Mar 7,approved,all,,
+CR-021,Halo Mini,Regular price,$129,approved,all,,
+CR-022,Halo Mini,Room size it cleans,rooms up to 200 sq ft,approved,all,,
+CR-023,Halo Mini,Air changes an hour in a 200 sq ft room,5 air changes an hour,approved,search; email,,
+CR-024,Halo Mini,Noise in sleep mode,19 dB,approved,all,,
+CR-025,Halo Mini,"Filtration, independent lab",99.5% of particles as small as 0.3 microns,approved,all,,
+CR-026,Halo Mini,Filter life,up to 6 months,approved,all,,
+CR-027,Halo Mini,A built-in night light,night light,approved,all,,
+CR-028,Halo Mini,Runs on USB-C power,USB-C,approved,all,,
+CR-029,Halo Mini,Early-bird price,$89,approved,email,2027-02-20,Pre-launch list only
+CR-030,Halo Mini,"Room size, first draft of the brief",250 sq ft,withdrawn,all,,Written before testing; the tested size is 200 sq ft
+CR-031,Halo Mini,Noise of the prototype,16 dB,withdrawn,all,,Shipping units measure 19 dB
+CR-032,Halo Mini,Filtration to the 99.97% standard,99.97%,pending,all,,Retest finishes in April
+CR-033,Halo Mini,Control from the Larkspur app,app,pending,all,,Planned for 2028
+CR-034,Halo Mini,Wi-Fi,Wi-Fi,withdrawn,all,,Cut from the design
+CR-035,Halo Mini,Retailer price,$109,internal,all,,Wholesale terms
+CR-036,Halo Mini,Battery runtime,8 hours,withdrawn,all,,The battery was cut from the design
+CR-037,Halo One,"Launch price, until the launch offer ends",$199,approved,all,,
+CR-038,Halo One,The launch offer ends,Mar 14,approved,all,,
+CR-039,Halo One,Regular price,$249,approved,all,,
+CR-040,Halo One,Room size it cleans,rooms up to 480 sq ft,approved,all,,
+CR-041,Halo One,Air changes an hour in a 480 sq ft room,4 air changes an hour,approved,all,,
+CR-042,Halo One,Noise in sleep mode,22 dB,approved,all,,
+CR-043,Halo One,"Filtration, independent lab",99.5% of particles as small as 0.3 microns,approved,all,,
+CR-044,Halo One,Filter life,up to 12 months,approved,all,,
+CR-045,Halo One,Control from the Larkspur app,app,approved,all,,
+CR-046,Halo One,Wi-Fi,Wi-Fi,approved,all,,
+CR-047,Halo One,Filter reminders in the app,filter reminders,approved,all,,
+CR-048,Halo One,A washable pre-filter,washable pre-filter,approved,all,,
+CR-049,Halo One,Early-bird price,$179,approved,email,2027-02-20,Pre-launch list only
+CR-050,Halo One,"Coverage, first draft of the brief",600 sq ft,withdrawn,all,,Written before testing; the tested size is 480 sq ft
+CR-051,Halo One,Noise of the prototype,18 dB,withdrawn,all,,Shipping units measure 22 dB
+CR-052,Halo One,Filtration to the 99.97% standard,99.97%,pending,all,,Retest finishes in April
+CR-053,Halo One,Quieter than the Larkspur Breeze,40% quieter,internal,all,,Never measured
+CR-054,Halo One,Pre-orders so far,"4,200 pre-orders",internal,all,,Confidential
+CR-055,Halo One,Helps clear smoke,smoke,pending,all,,Test report due in March
+CR-056,Halo One,Captures pet dander,pet dander,pending,all,,Not tested on this model
+CR-057,Halo One,Retailer price,$219,internal,all,,Wholesale terms
+CR-058,Halo Max,"Launch price, until the launch offer ends",$329,approved,all,,
+CR-059,Halo Max,The launch offer ends,Mar 21,approved,all,,
+CR-060,Halo Max,Regular price,$399,approved,all,,
+CR-061,Halo Max,Room size it cleans,"rooms up to 1,100 sq ft",approved,all,,
+CR-062,Halo Max,"Air changes an hour in a 1,100 sq ft room",3 air changes an hour,approved,social; email,,
+CR-063,Halo Max,Noise in sleep mode,26 dB,approved,all,,
+CR-064,Halo Max,"Filtration, independent lab",99.7% of particles as small as 0.3 microns,approved,all,,
+CR-065,Halo Max,Filter life,up to 12 months,approved,all,,
+CR-066,Halo Max,Control from the Larkspur app,app,approved,all,,
+CR-067,Halo Max,Wi-Fi,Wi-Fi,approved,all,,
+CR-068,Halo Max,A washable pre-filter,washable pre-filter,approved,all,,
+CR-069,Halo Max,A carbon filter,carbon filter,approved,all,,
+CR-070,Halo Max,Helps clear smoke,smoke,approved,email,,Email only: the test report has to be one click away
+CR-071,Halo Max,"Coverage, first draft of the brief","1,400 sq ft",withdrawn,all,,"Written before testing; the tested size is 1,100 sq ft"
+CR-072,Halo Max,"Noise in sleep mode, revised fan",24 dB,pending,all,,New fan from May
+CR-073,Halo Max,Filtration to the 99.97% standard,99.97%,pending,all,,Retest finishes in April
+CR-074,Halo Max,Retailer price,$349,internal,all,,Wholesale terms
+CR-075,Halo Max,Early-bird price,$299,approved,email,2027-02-20,Pre-launch list only
+CR-076,Halo Pet,"Launch price, until the launch offer ends",$229,approved,all,,
+CR-077,Halo Pet,The launch offer ends,Mar 14,approved,all,,
+CR-078,Halo Pet,Regular price,$279,approved,all,,
+CR-079,Halo Pet,Room size it cleans,rooms up to 480 sq ft,approved,all,,
+CR-080,Halo Pet,Noise in sleep mode,24 dB,approved,all,,
+CR-081,Halo Pet,"Filtration, independent lab",99.5% of particles as small as 0.3 microns,approved,all,,
+CR-082,Halo Pet,Filter life,up to 6 months,approved,all,,
+CR-083,Halo Pet,Captures pet dander,pet dander,approved,all,,
+CR-084,Halo Pet,A carbon filter,carbon filter,approved,all,,
+CR-085,Halo Pet,Reduces pet odor,odor,approved,all,,
+CR-086,Halo Pet,The pre-filter catches pet hair,pet hair,approved,social; email,,
+CR-087,Halo Pet,A washable pre-filter,washable pre-filter,approved,all,,
+CR-088,Halo Pet,Control from the Larkspur app,app,approved,all,,
+CR-089,Halo Pet,Wi-Fi,Wi-Fi,approved,all,,
+CR-090,Halo Pet,Captures 98% of pet dander,98% of pet dander,pending,all,,Lab report in review
+CR-091,Halo Pet,"Coverage, first draft of the brief",500 sq ft,withdrawn,all,,Written before testing; the tested size is 480 sq ft
+CR-092,Halo Pet,Air changes an hour,4 air changes an hour,pending,all,,Measured on Halo One only
+CR-093,Halo Pet,Retailer price,$239,internal,all,,Wholesale terms
+CR-094,Halo Pet,Early-bird price,$199,approved,email,2027-02-20,Pre-launch list only
+CR-095,Halo Mini,Replacement filter price,$19,approved,email; push,,
+CR-096,Halo One,Replacement filter price,$39,approved,email; push,,
+CR-097,Halo Max,Replacement filter price,$59,approved,email; push,,
+CR-098,Halo Pet,Replacement filter price,$45,approved,email; push,,
+CR-099,all,A filter subscription saves,15% on filters,approved,email,,Subscription page only
+CR-100,all,Filter subscription launch discount,25% on filters,approved,email,2027-01-31,Holiday promotion
+CR-101,Halo One,Stand accessory price,$49,pending,all,,Stand ships in May
+CR-102,Halo Max,Wheeled base,wheeled base,pending,all,,Ships in June
+CR-103,Halo Pet,Washable pet-hair screen,pet-hair screen,withdrawn,all,,Cut before launch
+CR-104,Breeze,Price,$179,approved,all,,
+CR-105,Breeze,Room size it cleans,rooms up to 350 sq ft,approved,all,,
+CR-106,Breeze,Noise in sleep mode,25 dB,approved,all,,
+CR-107,Breeze,Filter life,up to 9 months,approved,all,,
+CR-108,Breeze,Filtration,99% of particles as small as 0.3 microns,approved,all,,
+CR-109,Breeze,Replacement filter price,$35,approved,email; push,,
+CR-110,Breeze,A washable pre-filter,washable pre-filter,approved,all,,
+CR-111,Breeze,Air changes an hour,3 air changes an hour,approved,all,,
+CR-112,Breeze,Timer,8-hour timer,approved,all,,
+CR-113,Breeze,Colors,3 colors,approved,social; email,,
+CR-114,Drift,Price,$149,approved,all,,
+CR-115,Drift,Tank size,4 liter tank,approved,all,,
+CR-116,Drift,Runtime on a full tank,up to 40 hours,approved,all,,
+CR-117,Drift,Room size,rooms up to 400 sq ft,approved,all,,
+CR-118,Drift,Noise,28 dB,approved,all,,
+CR-119,Drift,Mist settings,5 mist settings,approved,all,,
+CR-120,Drift,Humidity sensor,humidity sensor,approved,all,,
+CR-121,Drift,Top-fill tank,top-fill tank,approved,all,,
+CR-122,Drift,Essential oil tray,essential oil tray,approved,social; email,,
+CR-123,Drift,Replacement wick price,$15,approved,email; push,,
+CR-124,Ember,Price,$129,approved,all,,
+CR-125,Ember,Heats rooms up to,rooms up to 300 sq ft,approved,all,,
+CR-126,Ember,Heat settings,3 heat settings,approved,all,,
+CR-127,Ember,Tip-over switch,tip-over switch,approved,all,,
+CR-128,Ember,Cool-touch case,cool-touch case,approved,all,,
+CR-129,Ember,Timer,12-hour timer,approved,all,,
+CR-130,Ember,Noise,35 dB,approved,all,,
+CR-131,Ember,Power,"1,500 watts",approved,all,,
+CR-132,Ember,Thermostat,digital thermostat,approved,all,,
+CR-133,Ember,Remote control,remote control,approved,social; email,,

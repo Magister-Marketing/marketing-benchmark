@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Tasks: workflow task `launch-copy-pack` (development split): a launch
+  brief, a 133-row claims register, an engineering spec sheet, last year's
+  launch copy, voice rules and a placements table in; 72 assets for four
+  products out. Every figure and claim phrase must come from a register row
+  usable for the asset's product and channel, prices carry the product's own
+  offer date, an SMS limit counts the opt-out line and falls to 70
+  characters for one non-plain character, and no two of a product's
+  headlines open alike. 14 of its 15 checks are a program's. The copy
+  tasks share `eval_runner/task_facts_copy.py` (documents, reference replies
+  and checkers); each has a thin interface module in `eval_runner/workflows/`.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

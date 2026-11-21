@@ -24,6 +24,7 @@ MODULES = {
     "launch-trafficking": "eval_runner.workflows.launch_trafficking",
     "outbound-sequence": "eval_runner.workflows.outbound_sequence",
     "price-change-rollout": "eval_runner.workflows.price_change_rollout",
+    "launch-copy-pack": "eval_runner.workflows.launch_copy_pack",
 }
 
 
