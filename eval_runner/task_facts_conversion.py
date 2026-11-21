@@ -1,6 +1,6 @@
 """The figures of the conversion tasks, computed from the text of their sources.
 
-Tasks: test-plan-sizing.
+Tasks: test-plan-sizing, funnel-dropoff.
 
 Each `*_reference` function takes a task's supplied sources (file name ->
 text, as `task_references.supplied_sources` reads them from a recorded
@@ -141,6 +141,156 @@ def sizing_reference(sources: dict[str, str]) -> dict:
     }
 
 
+# -------------------------------------------------------------------- funnel-dropoff
+
+FUNNEL_STEPS = ("cart", "shipping", "payment", "order")
+FUNNEL_BOT_BROWSER = "HeadlessChrome"
+FUNNEL_REFERENCE_WEEK = ("2026-03-02", "2026-03-08")
+FUNNEL_RANGE_POINTS = 5
+FUNNEL_DOUBLE_FIRED_DAYS = ("2026-03-10", "2026-03-11", "2026-03-12")
+FUNNEL_ORDER_VALUE = Decimal("72.00")
+
+
+def funnel_counts(rows: list[dict]) -> dict[tuple[str, str], dict[str, dict[str, int]]]:
+    """(device, browser) -> day -> step -> sessions: automated rows out, double-fired orders halved."""
+    counts: dict[tuple[str, str], dict[str, dict[str, int]]] = {}
+    for row in rows:
+        if row["browser"] == FUNNEL_BOT_BROWSER:
+            continue
+        value = int(row["count"])
+        if row["step"] == "order" and row["date"] in FUNNEL_DOUBLE_FIRED_DAYS:
+            if value % 2:
+                raise ValueError(f"an odd double-fired order count on {row['date']}")
+            value //= 2
+        day = counts.setdefault((row["device"], row["browser"]), {}).setdefault(row["date"], {})
+        if row["step"] in day:
+            raise ValueError(f"{row['date']} {row['device']} / {row['browser']} {row['step']} appears twice")
+        day[row["step"]] = value
+    return counts
+
+
+def _step_rate(days: dict[str, dict[str, int]], dates: list[str], step: str, start: str | None = None) -> Fraction:
+    """A step's rate over some days: sessions at it ÷ sessions at `start` (the step before it)."""
+    start = start or FUNNEL_STEPS[FUNNEL_STEPS.index(step) - 1]
+    return Fraction(sum(days[date][step] for date in dates), sum(days[date][start] for date in dates))
+
+
+def funnel_breaks(counts: dict) -> list[dict]:
+    """Every segment step that broke: below its normal range on a day and every day after it."""
+    found = []
+    for segment, days in sorted(counts.items()):
+        dates = sorted(days)
+        reference = [date for date in dates if FUNNEL_REFERENCE_WEEK[0] <= date <= FUNNEL_REFERENCE_WEEK[1]]
+        for step in FUNNEL_STEPS[1:]:
+            low = _step_rate(days, reference, step) - Fraction(FUNNEL_RANGE_POINTS, 100)
+            below = [_step_rate(days, [date], step) < low for date in dates]
+            first = None
+            for index in range(len(dates) - 1, -1, -1):
+                if not below[index]:
+                    break
+                first = dates[index]
+            if first:
+                found.append({"segment": segment, "step": step, "first_day": first})
+    return found
+
+
+def funnel_causes(text: str) -> list[dict]:
+    """The suspected causes table: id, date, segments ('every segment' or a list) and step."""
+    causes = []
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 5 and cells[0].startswith("C") and cells[0][1:].isdigit():
+            segments = None if cells[3] == "every segment" else [
+                tuple(part.strip() for part in item.split("/")) for item in cells[3].split(",")]
+            causes.append({"id": cells[0], "date": cells[2], "segments": segments, "step": cells[4]})
+    return causes
+
+
+def funnel_reference(sources: dict[str, str]) -> dict:
+    counts = funnel_counts(_rows(sources["funnel_daily.csv"]))
+    breaks = funnel_breaks(counts)
+    if len(breaks) != 1:
+        raise ValueError(f"expected one break, found {len(breaks)}")
+    (broken,) = breaks
+    dates = sorted({date for days in counts.values() for date in days})
+    before = [date for date in dates if date < broken["first_day"]]
+    after = [date for date in dates if date >= broken["first_day"]]
+
+    def conversion(period: list[str]) -> Fraction:
+        return Fraction(
+            sum(days[date]["order"] for days in counts.values() for date in period),
+            sum(days[date]["cart"] for days in counts.values() for date in period))
+
+    days = counts[broken["segment"]]
+    previous = FUNNEL_STEPS[FUNNEL_STEPS.index(broken["step"]) - 1]
+    to_order = _step_rate(days, before, "order", start=previous)
+    expected = sum(days[date][previous] for date in after) * to_order
+    lost = round(expected - sum(days[date]["order"] for date in after))
+    causes = funnel_causes(sources["suspected_causes.md"])
+    segments = sorted(counts)
+
+    def consistent(cause: dict) -> bool:
+        return any(item["segment"] in (cause["segments"] or segments) and item["step"] == cause["step"]
+                   and item["first_day"] == cause["date"] for item in breaks)
+
+    answers = [
+        round(float(conversion(before)) * 100, 2),
+        round(float(conversion(after)) * 100, 2),
+        int(broken["first_day"][-2:]),
+        round(float(_step_rate(days, before, broken["step"])) * 100, 1),
+        round(float(_step_rate(days, after, broken["step"])) * 100, 1),
+        lost,
+        float(lost * FUNNEL_ORDER_VALUE),
+    ] + [0 if consistent(cause) else 1 for cause in causes]
+    reference_week = [date for date in dates if FUNNEL_REFERENCE_WEEK[0] <= date <= FUNNEL_REFERENCE_WEEK[1]]
+    return {
+        "answers": {f"A{index}": value for index, value in enumerate(answers, 1)},
+        "break": {"segment": " / ".join(broken["segment"]), "step": broken["step"],
+                  "first_day": broken["first_day"]},
+        "before_days": [before[0], before[-1]],
+        "after_days": [after[0], after[-1]],
+        "normal_ranges_percent": {
+            " / ".join(segment): {
+                step: [round(float(_step_rate(counts[segment], reference_week, step)) * 100 - FUNNEL_RANGE_POINTS, 2),
+                       round(float(_step_rate(counts[segment], reference_week, step)) * 100 + FUNNEL_RANGE_POINTS, 2)]
+                for step in FUNNEL_STEPS[1:]
+            }
+            for segment in segments
+        },
+        "step_rates_before_and_after_percent": {
+            " / ".join(segment): {
+                step: [round(float(_step_rate(counts[segment], before, step)) * 100, 2),
+                       round(float(_step_rate(counts[segment], after, step)) * 100, 2)]
+                for step in FUNNEL_STEPS[1:]
+            }
+            for segment in segments
+        },
+        "days_below_normal_range": {
+            f"{' / '.join(segment)} {step}": [
+                date for date in sorted(counts[segment])
+                if _step_rate(counts[segment], [date], step)
+                < _step_rate(counts[segment], reference_week, step) - Fraction(FUNNEL_RANGE_POINTS, 100)
+            ]
+            for segment in segments for step in FUNNEL_STEPS[1:]
+            if any(_step_rate(counts[segment], [date], step)
+                   < _step_rate(counts[segment], reference_week, step) - Fraction(FUNNEL_RANGE_POINTS, 100)
+                   for date in counts[segment])
+        },
+        "orders_lost_working": {
+            "sessions_at_the_step_before_after_the_break": sum(days[date][previous] for date in after),
+            "rate_from_that_step_to_an_order_before_the_break_percent": round(float(to_order) * 100, 4),
+            "expected_orders_after_the_break": round(float(expected), 2),
+            "recorded_orders_after_the_break": sum(days[date]["order"] for date in after),
+        },
+        "causes_ruled_out": {cause["id"]: not consistent(cause) for cause in causes},
+        "interpretation": (
+            "Figures follow analysis_rules.md: automated rows left out, double-fired order rows halved. "
+            "A7 is A6 orders times the stated average order value. A8-A13 are 1 for a cause the data rules out."
+        ),
+    }
+
+
 REFERENCES = {
     "test-plan-sizing": sizing_reference,
+    "funnel-dropoff": funnel_reference,
 }

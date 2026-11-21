@@ -89,6 +89,7 @@ checks is recomputed from the fixtures by separate code in
 | Task | What the model must produce | What makes it challenging | Checks |
 |---|---|---|---:|
 | [Test plan sizing](../eval_runner/tasks/test-plan-sizing.json) | The sample size and weeks of six proposed A/B tests, the calendar that runs them and the tests rejected, with 18 labeled figures | One lift is in percentage points among relative ones, one page's traffic is in sessions that must be turned into users, and weeks round up; a four-week limit, a freeze week and a priority rule decide which test on a shared page goes first and which are dropped | 14 |
+| [Funnel drop-off](../eval_runner/tasks/funnel-dropoff.json) | A diagnosis of a checkout drop from a 459-row daily funnel export, a release log and six suspected causes: what broke, where and since when, the conversion rate before and after, the orders and revenue lost, and which causes the data rules out, with 13 labeled figures | Halving three days of double-fired order events and leaving out a crawler before any rate; finding the one segment and step that broke by a written normal-range rule, past a dip that stays inside its range, a day below it that recovers, and a change made two days before the break | 15 |
 
 ### Forecast tasks
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Tasks: `funnel-dropoff` (development split): a four-week checkout funnel
+  by day, device, browser and step (459 rows), the analytics team's rules, a
+  release log and six suspected causes in; the day and place of the break,
+  the conversion rate before and after, the orders and revenue lost and a
+  ruling on each cause out, as 13 labeled figures. Three days of order
+  events fired twice and a crawler must come out by the stated rules first;
+  a dip inside its normal range, a day below it that recovers and a change
+  two days before the break are look-alikes. 13 of its 15 checks are a
+  program's. Same layout as `test-plan-sizing`.
 - Tasks: `test-plan-sizing` (development split): six proposed A/B tests,
   eight weeks of traffic by page and the team's experimentation rules in;
   each test's sample size per variant and weeks, the calendar and the tests
