@@ -3,7 +3,7 @@
 ## The export
 - `funnel_daily.csv` has one row per day, device, browser and step. `count` is the number of sessions that reached the step that day: `cart` (viewed the cart), `shipping` (reached shipping details), `payment` (reached payment) and `order` (placed an order). A step with no sessions that day has no row.
 - A segment is one device and browser pair.
-- Double-fired events: on a day the release log says the order-confirmation tag fired twice for every order, that day's `order` rows count two events per order. Halve them.
+- Double-fired events: the release log records each time an event fired twice for every session, with the step, the browsers it hit and the days. On those days that step's rows, for those browsers, count two events per session. Halve them.
 - Automated traffic: rows whose browser is `HeadlessChrome` come from a price-monitoring crawler. Leave them out of every figure.
 
 ## Rates

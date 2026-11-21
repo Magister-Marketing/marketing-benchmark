@@ -147,20 +147,30 @@ FUNNEL_STEPS = ("cart", "shipping", "payment", "order")
 FUNNEL_BOT_BROWSER = "HeadlessChrome"
 FUNNEL_REFERENCE_WEEK = ("2026-03-02", "2026-03-08")
 FUNNEL_RANGE_POINTS = 5
-FUNNEL_DOUBLE_FIRED_DAYS = ("2026-03-10", "2026-03-11", "2026-03-12")
+# Each double-firing the release log records: the step, the browser it hit (None: every one) and the days.
+FUNNEL_DOUBLE_FIRED = (
+    ("order", None, ("2026-03-10", "2026-03-11", "2026-03-12")),
+    ("payment", "Safari", ("2026-03-27", "2026-03-28", "2026-03-29")),
+)
 FUNNEL_ORDER_VALUE = Decimal("72.00")
 
 
-def funnel_counts(rows: list[dict]) -> dict[tuple[str, str], dict[str, dict[str, int]]]:
-    """(device, browser) -> day -> step -> sessions: automated rows out, double-fired orders halved."""
+def funnel_double_fired(row: dict) -> bool:
+    return any(row["step"] == step and browser in (None, row["browser"]) and row["date"] in days
+               for step, browser, days in FUNNEL_DOUBLE_FIRED)
+
+
+def funnel_counts(rows: list[dict], halve: bool = True) -> dict[tuple[str, str], dict[str, dict[str, int]]]:
+    """(device, browser) -> day -> step -> sessions: automated rows out, double-fired rows halved
+    (`halve=False` keeps them as exported, for the careless reading)."""
     counts: dict[tuple[str, str], dict[str, dict[str, int]]] = {}
     for row in rows:
         if row["browser"] == FUNNEL_BOT_BROWSER:
             continue
         value = int(row["count"])
-        if row["step"] == "order" and row["date"] in FUNNEL_DOUBLE_FIRED_DAYS:
+        if halve and funnel_double_fired(row):
             if value % 2:
-                raise ValueError(f"an odd double-fired order count on {row['date']}")
+                raise ValueError(f"an odd double-fired count on {row['date']}")
             value //= 2
         day = counts.setdefault((row["device"], row["browser"]), {}).setdefault(row["date"], {})
         if row["step"] in day:
@@ -284,8 +294,8 @@ def funnel_reference(sources: dict[str, str]) -> dict:
         },
         "causes_ruled_out": {cause["id"]: not consistent(cause) for cause in causes},
         "interpretation": (
-            "Figures follow analysis_rules.md: automated rows left out, double-fired order rows halved. "
-            "A7 is A6 orders times the stated average order value. A8-A13 are 1 for a cause the data rules out."
+            "Figures follow analysis_rules.md: automated rows left out, double-fired rows halved. A7 is A6 "
+            "orders times the stated average order value. A8 onwards are 1 for a cause the data rules out."
         ),
     }
 

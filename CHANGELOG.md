@@ -25,14 +25,17 @@
   tests in `tests/test_more_tasks.py` read the version-3 task from
   `tests/data/ab-test-readout-v3.json`, the block they were written against.
 - Tasks: `funnel-dropoff` (development split): a four-week checkout funnel
-  by day, device, browser and step (459 rows), the analytics team's rules, a
-  release log and six suspected causes in; the day and place of the break,
-  the conversion rate before and after, the orders and revenue lost and a
-  ruling on each cause out, as 13 labeled figures. Three days of order
-  events fired twice and a crawler must come out by the stated rules first;
-  a dip inside its normal range, a day below it that recovers and a change
-  two days before the break are look-alikes. 13 of its 15 checks are a
-  program's. Same layout as `test-plan-sizing`.
+  by day, device, browser and step over ten segments (1,131 rows, 47 KB of
+  sources), the analytics team's rules, a release log and ten suspected
+  causes in; the day and place of the break, the conversion rate before and
+  after, the orders and revenue lost and a ruling on each cause out, as 17
+  labeled figures. Two double-firings must be halved first (every order row
+  on 10-12 March; the Safari payment rows on the last three days, which left
+  doubled make desktop and tablet Safari seem to break at the end of the
+  export) and a crawler left out. Look-alikes: dips inside the normal range
+  in four segments, a day and a four-day run below it that recover, and a
+  change two days before the break. 14 of its 16 checks are a program's.
+  Same layout as `test-plan-sizing`.
 - Tasks: `test-plan-sizing` (development split): six proposed A/B tests,
   eight weeks of traffic by page and the team's experimentation rules in;
   each test's sample size per variant and weeks, the calendar and the tests
