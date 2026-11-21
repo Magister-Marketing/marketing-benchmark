@@ -159,6 +159,37 @@
   consults for the judge's reference, and `tests/test_tasks_conversion.py`
   recomputes every target. Vendors `ab-testing/SKILL.md` unchanged from
   marketingskills `2c38021` (2.0.2) for the "with skills" arm.
+- Tasks: `email-compliance-audit` (development split): the 150 live emails
+  of a skincare brand before a platform move (110 marketing, 40
+  transactional), a sending policy with six violation codes, a consent table
+  of 17 audiences and the DNS records of seven sending domains in; a verdict
+  per email, a fix per code and three labeled counts out. 116 violations sit
+  in 87 emails, and every rule has look-alikes that pass. 12 of its 13
+  checks are a program's: one per code over all 150 rows (zero credit at 3
+  wrong) and exact counts. It lives in `eval_runner/task_facts_email.py`
+  beside `email-send-calendar`, generated from counted features so that
+  every trap occurs at least three times; `tests/test_tasks_email.py` reads
+  the four fixture files with its own parser, recomputes every verdict and
+  figure, and shows that each of 22 tempting misreadings of the policy
+  changes at least three emails and scores zero on its code's check, with
+  no check left at part credit.
+- Tasks: `email-send-calendar` (development split): a 12-campaign plan, an
+  800-subscriber export (six overlapping segments, join dates, pauses) and a
+  calendar policy in; each campaign's send date, audience size and reason,
+  every subscriber's February email count, and five labeled figures out. 12
+  of its 13 checks are a program's, and every one of the 800 subscriber rows
+  is checked. Audience sizes and counts are checked against the reply's own
+  calendar, so a wrong date is charged once, to the dates. Its fixtures,
+  oracle and checker live in `eval_runner/task_facts_email.py`
+  (`python3 -m eval_runner.task_facts_email --check`), which
+  `bench.measured_facts` calls; `tests/test_tasks_email.py` recomputes every
+  pinned figure from the fixture files with its own scheduler and shows that
+  a reply built from each of ten tempting wrong readings (campaigns taken by
+  date, calendar weeks, only the days before, the cap per segment,
+  unsubscribed people counted, clear days between teaser and launch, join
+  dates or pauses ignored, a pause read as the whole month, a moved
+  campaign's audience taken on its requested date) scores zero on every
+  check it touches and full on the rest.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same

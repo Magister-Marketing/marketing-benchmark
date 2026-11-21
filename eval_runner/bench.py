@@ -1758,6 +1758,9 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
     facts.update(task_facts_seo.facts_for(task, response_text))
     # A conversion task's own checker: counts of what the reply's file got wrong.
     facts.update(task_facts_conversion.facts_for(task, response_text))
+    # The email tasks' own checker (eval_runner/task_facts_email.py).
+    from eval_runner import task_facts_email
+    facts.update(task_facts_email.facts_for(task, response_text))
     return facts
 
 

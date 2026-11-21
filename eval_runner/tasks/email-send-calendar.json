@@ -1,0 +1,179 @@
+{
+  "id": "email-send-calendar",
+  "title": "Build a month's email send calendar under a frequency cap",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/email-send-calendar/calendar_policy.md",
+    "eval_runner/fixtures/email-send-calendar/campaigns.csv",
+    "eval_runner/fixtures/email-send-calendar/subscribers.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md"
+  ],
+  "answers": {
+    "count": 5,
+    "single_number": true
+  },
+  "prompt": "Marrowfield Garden Co. sells seeds, tools and houseplants online and emails its subscribers. Its CRM lead wants February's email calendar built from the supplied campaign plan and subscriber export, following the supplied calendar policy exactly.\n\nDeliver two files in your reply, each under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside a file but its rows.\n\n### schedule.csv\ncampaign_id,send_date,audience_size,reason\nEvery campaign in the plan, once. `send_date` is the date the campaign goes out, as YYYY-MM-DD, or `none` when the policy does not send it. `audience_size` is how many subscribers receive the campaign on its send date; for a campaign that is not sent, how many would have received it on its requested date. `reason` is empty for a campaign sent on its requested date; for every other campaign it is the policy's reason code.\n\n### frequency.csv\nsubscriber_id,emails\nEvery subscriber in the export, once, with the number of emails your calendar sends them in February (0 for a subscriber who receives none).\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone. If you use a thousands separator, use a comma.\n\nA1: <number of campaigns sent on a date other than their requested date>\nA2: <number of campaigns not sent>\nA3: <total emails sent in February: the audience sizes of the campaigns that are sent, added up>\nA4: <the most emails any one subscriber receives in February>\nA5: <number of subscribers who receive that many>\n\nThis is a plan for review. Schedule nothing in any email platform and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "files_present",
+        "check": "Both files, schedule.csv and frequency.csv, are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "calendar_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_campaign_once",
+        "check": "Every one of the plan's 12 campaigns appears exactly once in schedule.csv, no campaign appears that is not in the plan, and every send_date is a date written as YYYY-MM-DD or the word none. Full credit for no error; zero credit at 1.",
+        "programmatic": {
+          "fact": "calendar_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 5 labeled answers A1-A5 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 5
+        }
+      },
+      {
+        "id": "a1_moved",
+        "check": "A1 states how many campaigns the policy sends on a date other than their requested date. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 5,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "a2_not_sent",
+        "check": "A2 states how many campaigns the policy does not send. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 1,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "a3_emails_sent",
+        "check": "A3 states the total emails sent in February: the audience sizes of the campaigns the policy sends, added up. Full credit for the exact figure; zero credit 10 or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 3200,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 10
+          }
+        }
+      },
+      {
+        "id": "a4_most_emails",
+        "check": "A4 states the most emails any one subscriber receives in February on the policy's calendar. Full credit for the exact figure; zero credit 1 or more off.",
+        "programmatic": {
+          "fact": "answer_q4",
+          "near": 8,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "a5_subscribers_at_most",
+        "check": "A5 states how many subscribers receive that many emails. Full credit for the exact figure; zero credit 3 or more off.",
+        "programmatic": {
+          "fact": "answer_q5",
+          "near": 21,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "send_dates_right",
+        "check": "Every campaign has the send date the policy's procedure gives it, or none where the procedure does not send it. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "calendar_wrong_date_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "reasons_right",
+        "check": "Every campaign that does not go out on its requested date carries the code of the first rule that rules out that date, and every other campaign has no reason. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "calendar_wrong_reason_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "audiences_right",
+        "check": "Every campaign's audience_size is the number of subscribers who receive it on the send date schedule.csv gives it, or on its requested date for a campaign given none: active, joined by that day, not paused on it, and in at least one of its segments, each counted once. A wrong send date is charged to the send dates, not here. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "calendar_wrong_audience_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "frequency_right",
+        "check": "Every subscriber in the export has one row in frequency.csv with the number of emails the reply's own schedule sends them under the policy's rules for who receives a campaign, and no subscriber is listed twice or invented. A wrong send date is charged to the send dates, not here. Full credit for none wrong or missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "calendar_wrong_frequency_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "no_invented_data",
+        "negative": true,
+        "check": "The reply states no figure about Marrowfield's subscribers or campaigns (an open rate, a click rate, revenue, a list size) that the supplied files do not contain or yield. A clearly labelled assumption is not data."
+      }
+    ]
+  }
+}
