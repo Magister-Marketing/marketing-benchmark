@@ -11,4 +11,7 @@
 | C7 | Edge 136 blocks the payment page's scripts | 2026-03-20 | desktop / Edge | payment |
 | C8 | Analytics SDK 5.9.0 broke Safari checkouts on desktop and iPad | 2026-03-27 | desktop / Safari, tablet / Safari | order |
 | C9 | Express wallets (5.8.0) fail on Android phones | 2026-03-16 | mobile / Chrome, mobile / Samsung Internet | order |
-| C10 | The new shipping-rate table puts Firefox shoppers off | 2026-03-18 | desktop / Firefox, mobile / Firefox | shipping |
+| C10 | The new shipping-rate panel does not fit on tablets | 2026-03-18 | tablet / Safari, tablet / Chrome | shipping |
+| C11 | The new shipping-rate table puts Firefox shoppers off | 2026-03-18 | desktop / Firefox, mobile / Firefox | shipping |
+| C12 | The new payment form (5.8.0) fails on desktop Firefox | 2026-03-16 | desktop / Firefox | order |
+| C13 | The new payment form (5.8.0) also slows the shipping step on Android tablets | 2026-03-16 | tablet / Chrome | shipping |

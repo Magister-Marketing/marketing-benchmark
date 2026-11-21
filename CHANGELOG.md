@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Tasks: `funnel-dropoff` version 2 (prompt 2, rubric 2). Version 1 was run:
+  a strong model passed all 16 checks twice in about a minute, because 17
+  summary figures needed no row-level care. Version 2 asks for two files,
+  checked row by row: `segment_diagnosis.csv` (each of ten segments' six step
+  rates before and after the store's break date, a verdict, the broken step,
+  the break day and its orders lost) and `causes.csv` (a ruling on each of 13
+  causes), plus four store figures. A second, smaller real break (tablet
+  Chrome's shipping step from 18 March, the new shipping-rate panel) must not
+  be pinned on the first release. The double-firings now interact with the
+  breaks and the crawler: the order window covers the first break's day
+  (left doubled, the break seems to start two days late), a new shipping
+  window hits Chrome and the crawler (left doubled, tablet Chrome's break
+  moves and three crawler days pass the automated rule, which is now judged
+  after the halving), and the Safari payment window still fakes two breaks at
+  the end. More look-alikes: a two-day dip on Samsung Internet, dips inside
+  the range on Firefox, and a cause that blames the second break on 5.8.0.
+  Row checks are all-or-nothing, so any wrong segment or cause fails its
+  check; each careless reading zeroes exactly what it touches. 12 of its 14
+  checks are a program's; 49 KB of sources, 1,154 rows.
 - Tasks: `ab-test-readout` prompt version 5 (rubric 5 unchanged). The prompt now
   says every answer-block figure is read as the plan reads its results (the
   analysis window, the visits the plan counts), and defines a lift (B's rate

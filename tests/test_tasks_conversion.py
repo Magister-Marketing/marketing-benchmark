@@ -320,235 +320,254 @@ def test_the_sizing_prompt_asks_for_the_work_without_pointing_at_the_traps():
 
 # -------------------------------------------------------------------- funnel-dropoff
 
-FUNNEL_REPLY = """\
-Diagnosis: checkout conversion, March 2026
-
-What broke: the order step (payment to order) on mobile Safari, from 16 March, the day release
-5.8.0 shipped the new payment form. Mobile Safari's payment-to-order rate was 70.0% before the
-break and 41.0% after it; its normal range is about 65% to 75%, and it has been below that range
-every day since 16 March. Every other segment and step stayed inside its range, apart from desktop
-Chrome's order step on 24 March and desktop Edge's payment step on 20-23 March, which both recovered.
-
-Data handling: the crawler's rows are left out; the order rows of 10-12 March and the Safari
-payment rows of 27-29 March are halved, as the release log records both double-firings.
-
-Conversion (orders / cart sessions, every segment): 33.22% before the break, 29.54% after it.
-
-Orders lost: 3,795 mobile Safari payment sessions after the break x 70.00% = 2,656.6 expected
-orders, against 1,556 recorded: 1,101 orders, or $79,272 at $72.00 each.
-
-Suspected causes:
-- C1 autocomplete: ruled out; no shipping step broke on 10 March.
-- C2 CDN: ruled out; the break began on 16 March, not 14 March.
-- C3 payment form on iPhone Safari: consistent; this is the break.
-- C4 payment form on iPad Safari: ruled out; tablet Safari dipped but stayed inside its range.
-- C5 sale email: ruled out; no shipping step broke on 21 March.
-- C6 hotfix on desktop Chrome: ruled out; one day below the range, then back inside it.
-- C7 Edge 136: ruled out; four days below the range, then back inside it.
-- C8 analytics SDK on Safari: ruled out; with the doubled payment rows halved, nothing broke.
-- C9 express wallets on Android: ruled out; small dips inside the range.
-- C10 shipping rates and Firefox: ruled out; no Firefox shipping step broke.
-
-First: switch the new payment form off for mobile Safari (or roll 5.8.0 back there).
-
-A1: 33.22%
-A2: 29.54%
-A3: 16
-A4: 70.0%
-A5: 41.0%
-A6: 1,101
-A7: $79,272
-A8: 1
-A9: 1
-A10: 0
-A11: 1
-A12: 1
-A13: 1
-A14: 1
-A15: 1
-A16: 1
-A17: 1
-"""
+_STEPS = ["cart", "shipping", "payment", "order"]
 
 
-def _funnel(halve_orders: bool = True, halve_payments: bool = True, bots: bool = False,
-            baseline: str = "before") -> dict:
-    """The diagnosis recomputed from the fixtures; the flags are the careless readings."""
+def _funnel(halve: tuple = ("order", "shipping", "payment"), automated_after_halving: bool = True,
+            single_release: bool = False, baseline: str = "before") -> dict:
+    """The diagnosis recomputed from the fixtures with code of its own; the arguments are the careless readings."""
     rules = (FIXTURES / "funnel-dropoff/analysis_rules.md").read_text()
     log = (FIXTURES / "funnel-dropoff/release_log.md").read_text()
 
-    def span(match) -> set[str]:
-        first, last = (dt.date.fromisoformat(match.group(index)) for index in (1, 2))
-        return {(first + dt.timedelta(days=offset)).isoformat() for offset in range((last - first).days + 1)}
+    def span(first: str, last: str) -> set[str]:
+        start, end = dt.date.fromisoformat(first), dt.date.fromisoformat(last)
+        return {(start + dt.timedelta(days=offset)).isoformat() for offset in range((end - start).days + 1)}
 
-    orders_twice = span(re.search(r"From (\S+) to (\S+) the order-confirmation tag fired twice for every order, on every browser", log))
-    payments = re.search(r"From (\S+) to (\S+) the event fired twice on (\w+)\.", log)
+    windows = []   # (step, browsers or None, days)
+    match = re.search(r"From (\S+) to (\S+) the order-confirmation tag fired twice for every order, on every browser", log)
+    windows.append(("order", None, span(*match.groups())))
+    match = re.search(r"From (\S+) to (\S+) the shipping-step event fired twice for every session that reached shipping, on (\w+) and (\w+)\.", log)
+    windows.append(("shipping", {match.group(3), match.group(4)}, span(match.group(1), match.group(2))))
+    match = re.search(r"From (\S+) to (\S+) the event fired twice on (\w+)\.", log)
     assert "the payment-step event fires twice" in log
-    payments_twice, payment_browser = span(payments), payments.group(3)
-    crawler = re.search(r"rows whose browser is `([^`]+)`", rules).group(1)
-    data = collections.defaultdict(lambda: collections.defaultdict(dict))
-    carts_by_day = collections.Counter()
-    orders_by_day = collections.Counter()
+    windows.append(("payment", {match.group(3)}, span(match.group(1), match.group(2))))
+    share = Decimal(re.search(r"fewer than (\d+) in 100 of its cart sessions reached shipping, counted after the halving", rules).group(1)) / 100
+    raw = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    halved = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
     for row in _table("funnel-dropoff/funnel_daily.csv"):
+        segment = row["device"] + " / " + row["browser"]
         count = int(row["count"])
-        if halve_orders and row["step"] == "order" and row["date"] in orders_twice:
-            count //= 2
-        if (halve_payments and row["step"] == "payment" and row["browser"] == payment_browser
-                and row["date"] in payments_twice):
-            count //= 2
-        if row["browser"] == crawler and not bots:
-            continue
-        if row["step"] == "cart":
-            carts_by_day[row["date"]] += count
-        if row["step"] == "order":
-            orders_by_day[row["date"]] += count
-        if row["browser"] != crawler:
-            data[row["device"] + " / " + row["browser"]][row["date"]][row["step"]] = count
-    days = sorted(carts_by_day)
-    week = days[:7]
-    steps = ["cart", "shipping", "payment", "order"]
+        raw[segment][row["date"]][row["step"]] = count
+        twice = any(step == row["step"] and (browsers is None or row["browser"] in browsers) and row["date"] in days
+                    for step, browsers, days in windows if step in halve)
+        halved[segment][row["date"]][row["step"]] = count // 2 if twice else count
+    data = {}
+    for segment, days in halved.items():
+        judged = halved if automated_after_halving else raw
+        kept = {date: steps for date, steps in days.items()
+                if Decimal(judged[segment][date]["shipping"]) / judged[segment][date]["cart"] >= share}
+        if kept:
+            data[segment] = kept
+    dates = sorted({date for days in data.values() for date in days})
 
     def rate(segment, period, step, start=None):
-        start = start or steps[steps.index(step) - 1]
-        return (Decimal(sum(data[segment][day][step] for day in period))
-                / Decimal(sum(data[segment][day][start] for day in period)))
+        start = start or _STEPS[_STEPS.index(step) - 1]
+        entered = sum(data[segment][day][start] for day in period if day in data[segment])
+        return None if not entered else Decimal(sum(data[segment][day][step] for day in period if day in data[segment])) / entered
 
-    breaks, dips = [], []
+    breaks, below_any = {}, set()
     for segment in data:
-        for step in steps[1:]:
-            low = rate(segment, week, step) - Decimal("0.05")
-            under = [day for day in days if rate(segment, [day], step) < low]
+        week = [day for day in dates[:7] if day in data[segment]]
+        for step in _STEPS[1:]:
+            reference = rate(segment, week, step)
+            if reference is None:
+                continue
+            under = {day for day in data[segment] if (value := rate(segment, [day], step)) is not None
+                     and value < reference - Decimal("0.05")}
             if under:
-                dips.append((segment, step))
-            # The break begins on the first day from which every day is under the range.
-            begins = next((day for day in days if all(later in under for later in days if later >= day)), None)
+                below_any.add(segment)
+            ordered = sorted(data[segment])
+            begins = next((day for day in ordered if all(later in under for later in ordered if later >= day)), None)
             if begins:
-                breaks.append((segment, step, begins))
-    segment, step, begins = min(breaks, key=lambda item: item[2])
-    before = [day for day in days if day < begins]
-    after = [day for day in days if day >= begins]
-    previous = steps[steps.index(step) - 1]
-    to_order = rate(segment, before if baseline == "before" else week, "order", start=previous)
-    lost = int((sum(data[segment][day][previous] for day in after) * to_order
-                - sum(data[segment][day]["order"] for day in after)).to_integral_value())
+                breaks[segment] = (step, begins)
+    split = min(day for _step, day in breaks.values())
+    if single_release:     # every loss pinned on the store's break date
+        breaks = {segment: (step, split) for segment, (step, _day) in breaks.items()}
+    before = [day for day in dates if day < split]
+    after = [day for day in dates if day >= split]
+    table = {}
+    for segment in sorted(data):
+        row = {f"{step}_{period}": rate(segment, days, step)
+               for step in _STEPS[1:] for period, days in (("before", before), ("after", after))}
+        lost = 0
+        if segment in breaks:
+            step, begins = breaks[segment]
+            previous = _STEPS[_STEPS.index(step) - 1]
+            own_before = [day for day in dates if day < begins]
+            if baseline != "before":
+                own_before = dates[:7]
+            own_after = [day for day in dates if day >= begins]
+            expected = sum(data[segment][day][previous] for day in own_after if day in data[segment]) * rate(
+                segment, own_before, "order", start=previous)
+            lost = int((expected - sum(data[segment][day]["order"] for day in own_after if day in data[segment]))
+                       .to_integral_value(rounding=ROUND_HALF_UP))
+        row.update(verdict="broken" if segment in breaks else "recovered" if segment in below_any else "normal",
+                   broken_step=breaks[segment][0] if segment in breaks else "none",
+                   break_day=int(breaks[segment][1][-2:]) if segment in breaks else 0, orders_lost=lost)
+        table[segment] = row
     causes = {}
     for line in (FIXTURES / "funnel-dropoff/suspected_causes.md").read_text().splitlines():
         match = re.match(r"\| (C\d+) \| [^|]+ \| (\S+) \| ([^|]+) \| (\w+) \|$", line)
         if match:
             named = list(data) if match.group(3).strip() == "every segment" else [
                 item.strip() for item in match.group(3).split(",")]
-            causes[match.group(1)] = 0 if any(
-                (name, match.group(4), match.group(2)) in breaks for name in named) else 1
-    return {
-        "answers": [
-            round(100 * sum(orders_by_day[day] for day in before) / sum(carts_by_day[day] for day in before), 2),
-            round(100 * sum(orders_by_day[day] for day in after) / sum(carts_by_day[day] for day in after), 2),
-            int(begins[-2:]),
-            round(float(rate(segment, before, step)) * 100, 1),
-            round(float(rate(segment, after, step)) * 100, 1),
-            lost, lost * 72.0,
-        ] + [causes[f"C{index}"] for index in range(1, 11)],
-        "break": (segment, step, begins), "breaks": breaks, "dips": dips,
-    }
+            causes[match.group(1)] = "no" if any(
+                breaks.get(name) == (match.group(4), match.group(2)) for name in named) else "yes"
+
+    def conversion(period):
+        orders = sum(data[s][day]["order"] for s in data for day in period if day in data[s])
+        return round(100 * orders / sum(data[s][day]["cart"] for s in data for day in period if day in data[s]), 2)
+
+    total = sum(row["orders_lost"] for row in table.values())
+    return {"answers": [conversion(before), conversion(after), total, total * 72.0],
+            "table": table, "causes": causes, "breaks": breaks, "split": split}
+
+
+def _diagnosis_reply(found: dict) -> str:
+    def cell(value):
+        return "" if value is None else f"{float(value) * 100:.1f}" if isinstance(value, Decimal) else str(value)
+
+    header = "segment,shipping_before,shipping_after,payment_before,payment_after,order_before,order_after,verdict,broken_step,break_day,orders_lost"
+    rows = [header] + [",".join([segment] + [cell(row[column]) for column in header.split(",")[1:]])
+                       for segment, row in found["table"].items()]
+    causes = ["cause,ruled_out"] + [f"{cause},{ruling}" for cause, ruling in found["causes"].items()]
+    answers = found["answers"]
+    return ("Diagnosis: two breaks. Mobile Safari's order step from 16 March (release 5.8.0's payment form), and "
+            "tablet Chrome's shipping step from 18 March (the new shipping-rate panel). Fix the payment form on mobile "
+            "Safari first, then the panel on tablets.\n\n"
+            "### segment_diagnosis.csv\n```csv\n" + "\n".join(rows) + "\n```\n\n"
+            "### causes.csv\n```csv\n" + "\n".join(causes) + "\n```\n\n"
+            f"A1: {answers[0]:.2f}%\nA2: {answers[1]:.2f}%\nA3: {answers[2]:,}\nA4: ${answers[3]:,.0f}\n")
 
 
 def test_funnel_targets_are_recomputed_from_the_fixtures():
-    funnel = _funnel()
-    assert list(_targets(_task("funnel-dropoff")).values()) == funnel["answers"]
-    assert funnel["answers"] == [33.22, 29.54, 16, 70.0, 41.0, 1101, 79272.0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1]
-    assert funnel["breaks"] == [("mobile / Safari", "order", "2026-03-16")]
+    found = _funnel()
+    assert list(_targets(_task("funnel-dropoff")).values()) == found["answers"] == [33.17, 29.11, 1230, 88560.0]
+    assert found["breaks"] == {"mobile / Safari": ("order", "2026-03-16"), "tablet / Chrome": ("shipping", "2026-03-18")}
+    oracle = task_facts_conversion.funnel_reference(_sources("funnel-dropoff"))
+    assert [row["segment"] for row in oracle["segment_diagnosis"]] == list(found["table"])
+    for row in oracle["segment_diagnosis"]:
+        mine = found["table"][row["segment"]]
+        for column in task_facts_conversion.FUNNEL_TABLE_COLUMNS[1:7]:
+            assert abs(row[column] - float(mine[column]) * 100) < 0.005, (row["segment"], column)
+        assert [row[column] for column in ("verdict", "broken_step", "break_day", "orders_lost")] == [
+            mine[column] for column in ("verdict", "broken_step", "break_day", "orders_lost")], row["segment"]
+    assert {cause: "yes" if out else "no" for cause, out in oracle["causes_ruled_out"].items()} == found["causes"]
+    assert [cause for cause, ruling in found["causes"].items() if ruling == "no"] == ["C3", "C10"]
+    assert collections.Counter(row["verdict"] for row in found["table"].values()) == {
+        "broken": 2, "recovered": 3, "normal": 5}
+    assert {segment: row["orders_lost"] for segment, row in found["table"].items() if row["orders_lost"]} == {
+        "mobile / Safari": 1109, "tablet / Chrome": 121}
 
 
 def test_funnel_data_holds_the_traps_it_was_built_with():
-    funnel = _funnel()
     rows = _table("funnel-dropoff/funnel_daily.csv")
-    # Two steps fell below their range for a while and came back; every other dip stayed inside.
-    assert sorted(funnel["dips"]) == [("desktop / Chrome", "order"), ("desktop / Edge", "payment"),
-                                      ("mobile / Safari", "order")]
     reference = task_facts_conversion.funnel_reference(_sources("funnel-dropoff"))
     assert reference["days_below_normal_range"]["desktop / Chrome order"] == ["2026-03-24"]
     assert reference["days_below_normal_range"]["desktop / Edge payment"] == [
         "2026-03-20", "2026-03-21", "2026-03-22", "2026-03-23"]
-    # Tablet Safari's order step fell after the release, by less than its range allows.
-    tablet = reference["step_rates_before_and_after_percent"]["tablet / Safari"]["order"]
-    assert tablet[0] - tablet[1] > 2
-    # Left doubled, the Safari payment rows make desktop and tablet Safari seem to break from 27 March.
-    assert sorted(_funnel(halve_payments=False)["breaks"]) == [
-        ("desktop / Safari", "order", "2026-03-27"), ("mobile / Safari", "order", "2026-03-16"),
-        ("tablet / Safari", "order", "2026-03-27")]
-    # The crawler adds carts and nothing else, only after the break; every doubled row is even.
+    assert reference["days_below_normal_range"]["mobile / Samsung Internet shipping"] == ["2026-03-11", "2026-03-12"]
+    # A double-firing window covers the first break's first day.
+    assert "2026-03-16" in task_facts_conversion.FUNNEL_DOUBLE_FIRED[0][2]
+    # Left doubled, each window moves or fakes a break.
+    assert _funnel(halve=("shipping", "payment"))["breaks"]["mobile / Safari"] == ("order", "2026-03-18")
+    assert _funnel(halve=("order", "payment"))["breaks"]["tablet / Chrome"] == ("shipping", "2026-03-23")
+    assert set(_funnel(halve=("order", "shipping"))["breaks"]) == {
+        "mobile / Safari", "tablet / Chrome", "desktop / Safari", "tablet / Safari"}
+    # The crawler double-fires too: judged before the halving, three of its days pass for real traffic.
+    assert "desktop / HeadlessChrome" not in _funnel()["table"]
+    assert "desktop / HeadlessChrome" in _funnel(automated_after_halving=False)["table"]
     crawler = [row for row in rows if row["browser"] == "HeadlessChrome"]
-    assert {row["step"] for row in crawler} == {"cart"} and min(row["date"] for row in crawler) == "2026-03-19"
+    assert {row["step"] for row in crawler} == {"cart", "shipping"} and min(row["date"] for row in crawler) == "2026-03-13"
     assert all(int(row["count"]) % 2 == 0 for row in rows if task_facts_conversion.funnel_double_fired(row))
-    assert len(rows) > 1000 and len({(row["device"], row["browser"]) for row in rows}) == 11
+    assert len(rows) > 1100 and len({(row["device"], row["browser"]) for row in rows}) == 11
 
 
 def test_the_funnel_reference_reply_passes_and_a_blank_earns_nothing():
-    assert not _failed(_results("funnel-dropoff", FUNNEL_REPLY))
+    reply = _diagnosis_reply(_funnel())
+    assert not _failed(_results("funnel-dropoff", reply))
     assert _zeroed(_results("funnel-dropoff", "")) == set(_results("funnel-dropoff", ""))
+    # A rate written to two decimals, a Markdown table and `device/browser` without spaces read the same.
+    loose = reply.replace("mobile / Safari", "mobile/Safari").replace("```csv\n", "").replace("```\n", "")
+    assert not _failed(_results("funnel-dropoff", loose))
 
 
 def test_the_funnel_traps_score_zero_on_the_checks_they_touch():
-    right = _funnel()["answers"]
-
-    def zeroed(answers):
-        results = _results("funnel-dropoff", _block([f"{value:,}" for value in answers]))
+    def zeroed(found):
+        results = _results("funnel-dropoff", _diagnosis_reply(found))
         assert _failed(results) == _zeroed(results)               # no partial credit anywhere
         return _zeroed(results)
 
-    # Neither double-firing halved: the period before the break, the broken step's rate before and
-    # after it, the loss built on them, and a cause the doubled Safari rows seem to confirm.
-    doubled = _funnel(halve_orders=False, halve_payments=False)["answers"]
-    assert doubled[0] - right[0] > 5 and doubled[3] - right[3] > 10
-    assert zeroed(doubled) == {"q1_rate_before", "q4_step_rate_before", "q5_step_rate_after", "loss_size",
-                               "cause_c8"}
-    # The order rows halved and the Safari payment rows not: the second double-firing alone.
-    assert zeroed(_funnel(halve_payments=False)["answers"]) == {"q5_step_rate_after", "loss_size", "cause_c8"}
-    # The crawler's carts left in: only the period after the break.
-    assert zeroed(_funnel(bots=True)["answers"]) == {"q2_rate_after"}
-    # The loss counted from the reference week's rate instead of the rate before the break.
-    assert zeroed(_funnel(baseline="reference week")["answers"]) == {"loss_size"}
-    # The look-alikes taken for causes: a change two days before the break (C2), a dip inside the
-    # range (C4), a day below the range that recovered (C6) and four days that did (C7).
-    for label, criterion in ((9, "cause_c2"), (11, "cause_c4"), (13, "cause_c6"), (14, "cause_c7")):
-        wrong = list(right)
-        wrong[label - 1] = 0
-        assert zeroed(wrong) == {criterion}
+    every_row = {"rates_before", "rates_after", "segment_verdicts", "segment_orders_lost"}
+    # Nothing halved.
+    assert zeroed(_funnel(halve=())) == {"q1_rate_before", "q2_rate_after", "loss_total", "segment_rows",
+                                         "causes_consistent", "causes_look_alikes"} | every_row
+    # One window left doubled at a time: the one over the first break, the one the crawler shares, the last one.
+    assert zeroed(_funnel(halve=("shipping", "payment"))) == {
+        "q1_rate_before", "q2_rate_after", "loss_total", "causes_consistent"} | every_row
+    assert zeroed(_funnel(halve=("order", "payment"))) == {
+        "q2_rate_after", "loss_total", "segment_rows", "rates_after", "segment_verdicts", "segment_orders_lost",
+        "causes_consistent"}
+    assert zeroed(_funnel(halve=("order", "shipping"))) == {
+        "loss_total", "rates_after", "segment_verdicts", "segment_orders_lost", "causes_look_alikes"}
+    # The crawler judged before the halving: three of its days counted, and listed as a segment.
+    assert zeroed(_funnel(automated_after_halving=False)) == {"q2_rate_after", "segment_rows"}
+    # The second break pinned on the first release's date.
+    assert zeroed(_funnel(single_release=True)) == {
+        "loss_total", "segment_verdicts", "segment_orders_lost", "causes_consistent", "causes_look_alikes"}
+    assert _funnel(single_release=True)["answers"][2] - _funnel()["answers"][2] == 3       # zero credit from 3 orders off
+    # The loss counted from the reference week's rate instead of the days before each break.
+    assert zeroed(_funnel(baseline="reference week")) == {"loss_total", "segment_orders_lost"}
+    # A look-alike taken for a break: one segment's verdict, or one cause, is enough to fail.
+    found = _funnel()
+    found["table"]["desktop / Edge"].update(verdict="broken", broken_step="payment", break_day=20)
+    assert zeroed(found) == {"segment_verdicts"}
+    for cause, criterion in (("C2", "causes_look_alikes"), ("C13", "causes_look_alikes"), ("C10", "causes_consistent"),
+                             ("C5", "causes_plain")):
+        found = _funnel()
+        found["causes"][cause] = "no" if found["causes"][cause] == "yes" else "yes"
+        assert zeroed(found) == {criterion}, cause
 
 
 def test_the_funnel_rules_state_what_the_oracle_applies():
     rules = (FIXTURES / "funnel-dropoff/analysis_rules.md").read_text()
     log = (FIXTURES / "funnel-dropoff/release_log.md").read_text()
     for phrase in (
-        "On those days that step's rows, for those browsers, count two events per session. Halve them",
-        "rows whose browser is `HeadlessChrome` come from a price-monitoring crawler. Leave them out of every figure",
+        "On those days that step's rows, for those browsers, count two events per session. Halve them first, before anything else",
+        "a segment-day (one segment on one day) is automated when fewer than 2 in 100 of its cart sessions reached shipping, counted after the halving",
         "Conversion rate = orders ÷ cart sessions, over every segment",
         "The reference week is 2026-03-02 to 2026-03-08",
         "plus or minus 5 percentage points",
         "below its normal range on day D and on every later day in the export",
-        "Revenue lost = orders lost × $72.00",
+        "The store's break date is the day the earliest break begins",
+        "from the day its own break begins", "over the days before its own break",
+        "The store's orders lost = the sum over the broken segments", "Revenue lost = orders lost × $72.00",
+        "It is `recovered` when none broke but a step's daily rate was below its normal range on at least one day",
         "only when one of those segments has that step break, beginning on that date",
     ):
         assert phrase in rules, phrase
-    assert "From 2026-03-10 to 2026-03-12 the order-confirmation tag fired twice for every order, on every browser" in log
-    assert "From 2026-03-27 to 2026-03-29 the event fired twice on Safari." in log
-    assert "| 2026-03-16 | 5.8.0: new payment form" in log
-    assert task_facts_conversion.FUNNEL_DOUBLE_FIRED == (
-        ("order", None, ("2026-03-10", "2026-03-11", "2026-03-12")),
-        ("payment", "Safari", ("2026-03-27", "2026-03-28", "2026-03-29")))
-    # The judged action names the segment and the release the data points at.
-    action = _by_id(_task("funnel-dropoff"))["first_action_on_the_cause"]["check"]
-    assert "release 5.8.0's payment form on mobile Safari" in action
-    assert task_facts_conversion.funnel_reference(_sources("funnel-dropoff"))["break"] == {
-        "segment": "mobile / Safari", "step": "order", "first_day": "2026-03-16"}
+    for phrase in (
+        "From 2026-03-15 to 2026-03-17 the order-confirmation tag fired twice for every order, on every browser",
+        "From 2026-03-20 to 2026-03-22 the shipping-step event fired twice for every session that reached shipping, on Chrome and HeadlessChrome",
+        "From 2026-03-27 to 2026-03-29 the event fired twice on Safari.",
+        "| 2026-03-16 | 5.8.0: new payment form", "| 2026-03-18 | New shipping-rate table",
+    ):
+        assert phrase in log, phrase
+    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(_task("funnel-dropoff")).items()}
+    assert "release 5.8.0's payment form on mobile Safari" in wording["first_action_on_the_causes"]
+    assert "the shipping-rate panel on tablet Chrome" in wording["first_action_on_the_causes"]
+    assert "C3 (the payment form on mobile Safari, 16 March) and C10" in wording["causes_consistent"]
+    assert "C2, C4, C6, C7, C8, C9, C11, C12 and C13" in wording["causes_look_alikes"]
+    assert set(task_facts_conversion.FUNNEL_LOOK_ALIKE_CAUSES) == {"C2", "C4", "C6", "C7", "C8", "C9", "C11", "C12", "C13"}
 
 
 def test_the_funnel_prompt_asks_for_the_work_without_pointing_at_the_traps():
     prompt = _task("funnel-dropoff")["prompt"]
-    for hint in ("headless", "crawler", "bot", "double", "safari", "tablet", "16 march", "5.8", "range", "edge"):
+    for hint in ("headless", "crawler", "bot", "double", "safari", "tablet", "16 march", "5.8", "range", "edge",
+                 "second break", "two breaks", "automated"):
         assert hint not in prompt.lower(), hint
-    assert "for each suspected cause, whether the data rules it out and why" in prompt
-    assert "what to do first" in prompt                              # first_action_on_the_cause
+    assert "One row for every segment the rules count" in prompt
+    assert "what to fix first" in prompt                              # first_action_on_the_causes
 
 
 # ------------------------------------------------------------------- ab-test-readout
