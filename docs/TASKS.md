@@ -81,6 +81,14 @@ Known limits of those six tasks:
   as the sample size the plan required of each variant (18,000) is said only
   in the judge's reference, not in the criterion's own text.
 
+SEO tasks added on 2026-11-20 for the 35-task board. A program checks every row and figure against an oracle
+that reads only the fixtures (`eval_runner/task_facts_seo.py`), and the tests compute each one again with
+separate code. No model has been run on them yet:
+
+| Task | What the model must produce | What makes it challenging | Checks |
+|---|---|---|---:|
+| [Redirect map](../eval_runner/tasks/seo-redirect-map.json) | A redirect file for a shop moving platform, from a 214-URL crawl of the old site, the new site's URL list and ten migration rules in order, with four labeled counts | Applying the first rule that fits to every URL: products matched by SKU when a successor took a retired product's slug, old redirects and the new site's own redirects followed to a live page, parameter URLs and unchanged pages left out, a date stripped only when it is a date, and retired products with no signal at all gone instead of redirected | 15 |
+
 ### Forecast tasks
 
 The two "Which headline won?" tasks grade a judgment against what happened,

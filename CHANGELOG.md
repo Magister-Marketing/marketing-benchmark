@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Tasks: `seo-redirect-map` (development split): a shop moving platform on the
+  same domain. A 214-URL crawl of the old site, the new site's URL list and
+  ten migration rules in order in; a `redirects.csv` of 301s and 410s and four
+  labeled counts out. All 15 checks are a program's, counted row by row
+  against an oracle that reads only the fixtures
+  (`eval_runner/task_facts_seo.py`, hooked into `bench.measured_facts`; the
+  fixtures come from `scripts/gen_tasks_seo.py`). The traps: retired products
+  whose slug a successor with another SKU took, old redirects and the new
+  site's own redirects to follow to a live page, parameter URLs with
+  backlinks, 404s with inlinks but no backlinks, slugs with a number in front
+  that is not a `YYYY-MM-` date, and retired products with no signal at all.
+  Vendors `seo-audit` unchanged from marketingskills `2c38021` for its "with
+  skills" arm.
 - Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
   development tasks are shared by the model alone, the model with the skills
   and Magister. A decoy task is one conversation of two calls to the same
