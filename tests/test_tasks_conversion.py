@@ -539,42 +539,43 @@ Readout: pricing-page test, variant B (annual pricing first)
 Recommendation: do not ship variant B. The plan's rule 3 decides: the billing-ticket guardrail is
 breached.
 
-Analysis window (days 8-28; the burn-in week is left out as the plan says):
-- Visitors: control 16,963, variant B 10,571; both clear the 10,000 minimum.
-- The split holds: desktop chi-square 0.0 against 50/50, mobile 0.1 against the planned 70/30.
+Analysis window (days 8-28; the burn-in week and the QA visits are left out as the plan says):
+- Visitors: control 16,996, variant B 10,716; both clear the 10,000 minimum.
+- The split holds: desktop chi-square 0.0 against 50/50, mobile 0.3 against the planned 70/30.
   The burn-in week did not hold it (a cache problem in days 1-3), which is why it is left out.
-- Signup rate: desktop 7.95% control, 7.83% B (-1.5%); mobile 3.99% control, 3.81% B (-4.5%).
-  Device-weighted lift: -2.7%. Variant B is lower on both devices.
-- The dashboard's pooled +12.7% is not the result: B got a larger share of desktop visitors, who
+- Signup rate: desktop 8.12% control, 7.98% B (-1.7%); mobile 4.03% control, 3.75% B (-6.9%).
+  Device-weighted lift: -3.8%. Variant B is lower on both devices.
+- The dashboard's pooled +11.7% is not the result: B got a larger share of desktop visitors, who
   sign up about twice as often as mobile visitors, because mobile was split 70/30 by design.
-- The first week's +12.3% (device-weighted, days 1-7) did not last.
-- Guardrail: 3.78 billing tickets per 1,000 visitors on B against 3.01 on control, +25.9%, above
+- The first week's +15.7% (device-weighted, days 1-7) did not last.
+- Guardrail: 3.83 billing tickets per 1,000 visitors on B against 3.00 on control, +27.5%, above
   the 20% limit.
 
 Next step: keep control, and look at why annual-first pricing sends people to billing support
 before any new version is tested.
 
-A1: 16,963
-A2: 10,571
-A3: 12.7%
-A4: -1.5%
-A5: -4.5%
-A6: -2.7%
-A7: 12.3%
+A1: 16,996
+A2: 10,716
+A3: 11.7%
+A4: -1.7%
+A5: -6.9%
+A6: -3.8%
+A7: 15.7%
 A8: 0.0
-A9: 0.1
-A10: 25.9%
+A9: 0.3
+A10: 27.5%
 A11: 3
 """
 
 
 def _ab(days: range = range(8, 29), planned_mobile: Decimal = Decimal("0.7"), weighting: str = "plan",
-        guardrail_days: range | None = None) -> list:
+        guardrail_days: range | None = None, qa: bool = False) -> list:
     """The 11 answers, recomputed from the fixture; the arguments are the careless readings."""
     plan = (FIXTURES / "ab-test/test_plan.md").read_text()
     split = re.search(r"Mobile visitors are split (\d+)/(\d+)", plan)
     assert Decimal(split.group(1)) / 100 == Decimal("0.7")
-    rows = _table("ab-test/experiment_results.csv")
+    internal = re.search(r"recorded with source `([^`]+)`", plan).group(1)
+    rows = [row for row in _table("ab-test/experiment_results.csv") if qa or row["source"] != internal]
 
     def cells(period: range) -> dict:
         found = collections.defaultdict(collections.Counter)
@@ -634,7 +635,7 @@ def _ab(days: range = range(8, 29), planned_mobile: Decimal = Decimal("0.7"), we
 def test_ab_targets_are_recomputed_from_the_fixtures():
     answers = _ab()
     assert list(_targets(_task("ab-test-readout")).values()) == answers
-    assert answers == [16963, 10571, 12.7, -1.5, -4.5, -2.7, 12.3, 0.0, 0.1, 25.9, 3]
+    assert answers == [16996, 10716, 11.7, -1.7, -6.9, -3.8, 15.7, 0.0, 0.3, 27.5, 3]
 
 
 def test_ab_data_holds_the_traps_it_was_built_with():
@@ -658,12 +659,12 @@ def test_the_ab_reference_reply_passes_and_a_blank_earns_nothing():
     assert not _failed(_results("ab-test-readout", AB_REPLY))
     assert _zeroed(_results("ab-test-readout", "")) == set(_results("ab-test-readout", ""))
     # Computed from rounded inputs (rates to two decimals, shares to two), the weighted lift is still exact enough.
-    control = Decimal("7.95") * Decimal("0.42") + Decimal("3.99") * Decimal("0.58")
-    variant = Decimal("7.83") * Decimal("0.42") + Decimal("3.81") * Decimal("0.58")
-    assert abs(float(variant / control - 1) * 100 - (-2.7)) <= 0.15
-    control = Decimal("7.85") * Decimal("0.43") + Decimal("4.06") * Decimal("0.57")    # the burn-in week
-    variant = Decimal("8.95") * Decimal("0.43") + Decimal("4.47") * Decimal("0.57")
-    assert abs(float(variant / control - 1) * 100 - 12.3) <= 0.15
+    control = Decimal("8.12") * Decimal("0.43") + Decimal("4.03") * Decimal("0.57")
+    variant = Decimal("7.98") * Decimal("0.43") + Decimal("3.75") * Decimal("0.57")
+    assert abs(float(variant / control - 1) * 100 - (-3.8)) <= 0.15
+    control = Decimal("8.07") * Decimal("0.43") + Decimal("3.97") * Decimal("0.57")    # the burn-in week
+    variant = Decimal("9.66") * Decimal("0.43") + Decimal("4.35") * Decimal("0.57")
+    assert abs(float(variant / control - 1) * 100 - 15.7) <= 0.15
 
 
 def test_the_ab_traps_score_zero_on_the_checks_they_touch():
@@ -690,6 +691,13 @@ def test_the_ab_traps_score_zero_on_the_checks_they_touch():
     guardrail = _ab(guardrail_days=range(1, 29))
     assert guardrail[9] < 20 and guardrail[10] == 5
     assert zeroed(guardrail) == {"q10_guardrail", "q11_decision_rule"}
+    # The QA visits counted in: variant B's visitors, every lift, the mobile split and the guardrail
+    # move, and the split then fails the check.
+    with_qa = _ab(qa=True)
+    assert with_qa[10] == 2 and with_qa[1] > 1.1 * right[1]
+    assert zeroed(with_qa) == {"q2_variant_visitors", "q3_pooled_lift", "q4_desktop_lift", "q5_mobile_lift",
+                               "q6_weighted_lift", "q7_burn_in_lift", "q8_desktop_srm", "q9_mobile_srm",
+                               "q10_guardrail", "q11_decision_rule"}
     # The burn-in week's lift with both devices pooled.
     reference = task_facts_conversion.ab_test_reference(_sources("ab-test-readout"))
     burn_in_pooled = round(reference["burn_in_week_days_1_to_7"]["pooled_lift_percent"], 1)
@@ -699,6 +707,7 @@ def test_the_ab_traps_score_zero_on_the_checks_they_touch():
 def test_the_ab_plan_states_what_the_oracle_applies():
     plan = (FIXTURES / "ab-test/test_plan.md").read_text()
     for phrase in (
+        "recorded with source `internal`", "are left out of every metric, check and decision rule below",
         "Desktop visitors are split 50/50", "Mobile visitors are split 70/30: 70% to control and 30% to variant B",
         "the burn-in week is left out of every metric, check and decision rule below",
         "The analysis window is days 8 to 28",
@@ -721,7 +730,7 @@ def test_the_ab_plan_states_what_the_oracle_applies():
 
 def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
     prompt = _task("ab-test-readout")["prompt"]
-    for hint in ("mix", "70/30", "cache", "simpson", "revers", "fade", "28 days", "breach"):
+    for hint in ("mix", "70/30", "cache", "simpson", "revers", "fade", "28 days", "breach", "qa visit", "office", "source `internal`"):
         assert hint not in prompt.lower(), hint
     assert "Follow the plan exactly" in prompt
     assert "which of the plan's decision rules decides and what it decides" in prompt   # recommendation_stated

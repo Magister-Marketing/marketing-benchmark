@@ -8,6 +8,7 @@ Kestrel Notes is a note-taking app with a free plan and a paid plan.
 - **Guardrail metric:** billing-support tickets opened within 7 days of the visit, per 1,000 visitors.
 - **Assignment:** each new visitor is assigned once. Desktop visitors are split 50/50 between control and variant B. Mobile visitors are split 70/30: 70% to control and 30% to variant B, because variant B's mobile layout is new.
 - **Duration:** 28 days, 2026-04-06 to 2026-05-03.
+- **QA visits:** visits from the company's office network are recorded with source `internal`. They are the team's own checks, forced into variant B with a URL flag, and are left out of every metric, check and decision rule below; every other source counts.
 - **Burn-in week:** days 1 to 7. A new page draws curiosity clicks and a new test carries set-up problems, so the burn-in week is left out of every metric, check and decision rule below. The analysis window is days 8 to 28.
 
 ## How the result is read (analysis window only)

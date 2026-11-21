@@ -299,6 +299,7 @@ AB_MIN_VISITORS = 10_000                      # per variant, in the analysis win
 AB_CHI_SQUARE_LIMIT = Decimal("3.841")
 AB_GUARDRAIL_LIMIT_PERCENT = 20
 AB_SHIP_LIFT_PERCENT = Decimal("3.0")
+AB_INTERNAL_SOURCE = "internal"            # QA visits forced into variant B: left out
 AB_DECISIONS = {
     1: "keep the test running",
     2: "fix the assignment and run the test again",
@@ -308,11 +309,12 @@ AB_DECISIONS = {
 }
 
 
-def ab_totals(rows: list[dict], days: range) -> dict:
-    """(variant, device) -> visitors, signups and billing tickets over some days."""
+def ab_totals(rows: list[dict], days: range, internal: bool = False) -> dict:
+    """(variant, device) -> visitors, signups and billing tickets over some days, every source
+    summed, the QA visits left out (`internal` keeps them, for the careless reading)."""
     totals: dict = {}
     for row in rows:
-        if int(row["day"]) in days:
+        if int(row["day"]) in days and (internal or row["source"] != AB_INTERNAL_SOURCE):
             cell = totals.setdefault((row["variant"], row["device"]), {"visitors": 0, "signups": 0, "billing_tickets": 0})
             for field in cell:
                 cell[field] += int(row[field])
@@ -381,6 +383,7 @@ def ab_test_reference(sources: dict[str, str]) -> dict:
     window = ab_readout(ab_totals(rows, range(AB_WINDOW_FIRST_DAY, AB_DAYS + 1)))
     burn_in = ab_readout(ab_totals(rows, range(1, AB_WINDOW_FIRST_DAY)))
     whole = ab_readout(ab_totals(rows, range(1, AB_DAYS + 1)))
+    with_qa = ab_readout(ab_totals(rows, range(AB_WINDOW_FIRST_DAY, AB_DAYS + 1), internal=True))
     decision = ab_decision(window)
     answers = [
         window["visitors"]["control"],
@@ -415,10 +418,13 @@ def ab_test_reference(sources: dict[str, str]) -> dict:
         "analysis_window_days_8_to_28": summary(window),
         "burn_in_week_days_1_to_7": summary(burn_in),
         "all_28_days_not_the_plans_reading": {**summary(whole), "decision_rule_it_would_give": ab_decision(whole)},
+        "analysis_window_with_the_qa_visits_not_the_plans_reading": {
+            **summary(with_qa), "decision_rule_it_would_give": ab_decision(with_qa)},
         "decision": {"rule": decision, "outcome": AB_DECISIONS[decision]},
         "interpretation": (
-            "The plan reads every metric, check and decision rule over the analysis window (days 8-28). The "
-            "all-28-days figures are what reading the burn-in week in gives; they are not the plan's result."
+            "The plan reads every metric, check and decision rule over the analysis window (days 8-28), every "
+            "source summed except the QA visits (source internal). The all-28-days and with-QA figures are what "
+            "those two misreadings give; they are not the plan's result."
         ),
     }
 
