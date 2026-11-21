@@ -4,7 +4,7 @@
 
 - Tasks: `seo-content-brief` hardened (prompt 4, rubric 5; same id). Every
   setup passed all 15 checks of rubric 4. The choice of topic is now a
-  computation across a 149-keyword export: winnable clicks are a keyword's
+  computation across a 455-keyword export: winnable clicks are a keyword's
   searches times the click-through rate of third place less the rate at its
   current rank (a table in the prompt), keywords already ranking third or
   better and keywords of the wrong intent or above the difficulty limit are

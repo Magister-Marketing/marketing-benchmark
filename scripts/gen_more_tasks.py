@@ -199,6 +199,22 @@ SEO_FILLER = {
         "cast iron teapot", "tea kettle with thermometer", "how to clean a teapot", "tea cups"]),
 }
 SEO_FILLER_SEARCHES = [90, 110, 140, 170, 210, 260, 320, 390, 480, 590, 720, 880]
+# More topics around the edges, each a set of keywords written from these templates, at most
+# 480 searches a keyword: each topic stays far below the two that decide the choice.
+SEO_MORE_TOPICS = [
+    "yerba mate", "hibiscus tea", "jasmine tea", "darjeeling tea", "assam tea", "genmaicha", "hojicha", "barley tea",
+    "turmeric tea", "ginger tea", "peppermint tea", "bubble tea", "decaf tea", "lemongrass tea", "nettle tea",
+    "butterfly pea tea", "rose tea",
+]
+SEO_TEMPLATES = [
+    ("{} benefits", "informational"), ("how to make {}", "informational"), ("{} caffeine", "informational"),
+    ("{} recipe", "informational"), ("best {}", "commercial"), ("{} vs green tea", "informational"),
+    ("is {} good for you", "informational"), ("{} side effects", "informational"), ("{} taste", "informational"),
+    ("how to brew {}", "informational"), ("buy {}", "transactional"), ("{} bags", "transactional"),
+    ("loose leaf {}", "transactional"), ("{} before bed", "informational"), ("{} temperature", "informational"),
+    ("{} latte", "informational"), ("organic {}", "commercial"), ("what does {} taste like", "informational"),
+]
+SEO_MORE_SEARCHES = [50, 70, 90, 110, 140, 170, 210, 260, 320, 390, 480]
 
 SEO_PAGES_MD = """\
 # Fernhollow Tea: existing pages (site inventory, 2026-05)
@@ -229,6 +245,23 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 | /collections/samplers | Category | Tea sampler boxes |
 | /collections/teaware | Category | Teapots, gaiwans and infusers |
 | /products/tieguanyin | Product | Tieguanyin oolong, 50 g tin |
+| /collections/yerba-mate | Category | Yerba mate |
+| /collections/hibiscus-tea | Category | Hibiscus tea |
+| /collections/jasmine-tea | Category | Jasmine tea |
+| /collections/darjeeling-tea | Category | Darjeeling tea |
+| /collections/assam-tea | Category | Assam tea |
+| /collections/genmaicha | Category | Genmaicha |
+| /collections/hojicha | Category | Hojicha |
+| /collections/barley-tea | Category | Barley tea |
+| /collections/turmeric-tea | Category | Turmeric tea |
+| /collections/ginger-tea | Category | Ginger tea |
+| /collections/peppermint-tea | Category | Peppermint tea |
+| /collections/bubble-tea | Category | Bubble tea |
+| /collections/decaf-tea | Category | Decaf tea |
+| /collections/lemongrass-tea | Category | Lemongrass tea |
+| /collections/nettle-tea | Category | Nettle tea |
+| /collections/butterfly-pea-tea | Category | Butterfly pea tea |
+| /collections/rose-tea | Category | Rose tea |
 
 Notes from the content lead:
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
@@ -291,6 +324,13 @@ def build_seo_brief() -> dict[str, str]:
             intent = rng.choice(["informational", "informational", "informational", "commercial", "transactional"])
             rank = rng.choice(["", "", "", 4, 6, 9, 12, 17, 25])
             rows.append([keyword, topic, rng.choice(SEO_FILLER_SEARCHES), rng.randint(12, 68), intent,
+                         rank, page if rank != "" else ""])
+    more = random.Random(1703)
+    for topic in SEO_MORE_TOPICS:
+        page = "/collections/" + topic.replace(" ", "-")
+        for template, intent in SEO_TEMPLATES:
+            rank = more.choice(["", "", "", "", "", 1, 2, 3, 4, 7, 9, 13, 18, 24])
+            rows.append([template.format(topic), topic, more.choice(SEO_MORE_SEARCHES), more.randint(10, 70), intent,
                          rank, page if rank != "" else ""])
     rng.shuffle(rows)
     return {

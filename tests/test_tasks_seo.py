@@ -711,12 +711,12 @@ The intent is informational: an explanatory article, not a buying guide.
 
 Neither competing outline covers da hong pao or milk oolong.
 
-A1: 10
+A1: 63
 A2: 13
 A3: 2,254
 A4: 1,568
 A5: 484
-A6: 40,280
+A6: 51,020
 """
 
 
@@ -728,7 +728,7 @@ def test_content_brief_oracle_matches_the_task_file_and_an_independent_recomputa
     by_id = _by_id(task)
     targets = [by_id[name]["programmatic"]["near"] for name in (
         "q1_already_won", "q2_eligible_count", "q3_topic_winnable", "q4_runner_up_winnable", "q5_primary_winnable", "q6_won_volume")]
-    assert targets == answers == [10, 13, 2254, 1568, 484, 40280]
+    assert targets == answers == [63, 13, 2254, 1568, 484, 51020]
     ref = task_facts_seo.brief_oracle()
     assert (ref["target_topic"], ref["runner_up_topic"], ref["primary_keyword"]) == (target, runner_up, keywords[0]["keyword"]) == (
         "oolong tea", "matcha", "what is oolong tea")
@@ -779,7 +779,9 @@ def test_content_brief_traps_are_in_the_data():
     assert by_keyword["oolong vs black tea"]["current_rank"] == "21" and winnable(by_keyword["oolong vs black tea"]) == 590 * 11
     assert by_keyword["da hong pao"]["difficulty"] == "45" and by_keyword["da hong pao"] in keywords
     assert by_keyword["oolong tea side effects"]["difficulty"] == "46" and not eligible(by_keyword["oolong tea side effects"])
-    assert len(rows) == 149
+    assert len(rows) == 455 and len({row['keyword'] for row in rows}) == 455
+    # The topics around the edges stay far from the two that decide: no near-tie for second place either.
+    assert by_topic.most_common(3)[2][1] < 0.8 * by_topic[runner_up]
 
 
 def test_content_brief_reference_passes_every_check_and_careless_readings_score_zero():
@@ -804,24 +806,26 @@ def test_content_brief_reference_passes_every_check_and_careless_readings_score_
     # Matcha, picked on eligible searches: the topic, its keywords and its sums are all wrong.
     matcha = (block.replace("Target topic: oolong tea", "Target topic: matcha")
               .replace("Primary keyword: what is oolong tea", "Primary keyword: matcha benefits")
-              + _answer_block([10, 9, "27,290", "24,660", "8,100", "40,280"]))
+              + _answer_block([63, 9, "27,290", "24,660", "8,100", "51,020"]))
     zeroed = _zeroed(_results("seo-content-brief", matcha))
     assert {"target_topic_named", "primary_keyword_named", "q3_topic_winnable", "q4_runner_up_winnable",
             "q5_primary_winnable"} <= zeroed
     assert not critical_tripped(matcha)  # the trap is not invention
     # Matcha on winnable clicks with the clicks already got left in (11% for every eligible keyword).
-    flat = block.replace("oolong tea", "matcha", 1) + _answer_block([10, 9, "3,002", "2,713", 891, "40,280"])
+    flat = block.replace("oolong tea", "matcha", 1) + _answer_block([63, 9, "3,002", "2,713", 891, "51,020"])
     assert {"target_topic_named", "q3_topic_winnable", "q4_runner_up_winnable"} <= _zeroed(_results("seo-content-brief", flat))
     # The right topic, with the primary keyword picked by searches: the keyword with the most searches.
     by_searches = (BRIEF.replace("Primary keyword: what is oolong tea", "Primary keyword: oolong tea benefits")
                    .replace("oolong tea benefits; how to brew", "what is oolong tea; how to brew").replace("A5: 484", "A5: 330"))
     assert {"primary_keyword_named", "secondary_keywords_right", "q5_primary_winnable"} <= _zeroed(_results("seo-content-brief", by_searches))
     # "Better than 3" read strictly: the three keywords at rank 3 are left out of the already won.
-    strict = BRIEF.replace("A1: 10", "A1: 7")
+    strict_count = sum(1 for row in won if row["current_rank"] != "3")
+    assert len(won) - strict_count >= 3
+    strict = BRIEF.replace("A1: 63", f"A1: {strict_count}")
     assert "q1_already_won" in _zeroed(_results("seo-content-brief", strict))
     # A URL that is not one of the site's pages, and a figure no reading of the export gives.
     assert "internal_links_real" in _failed(_results("seo-content-brief", BRIEF.replace("/products/tieguanyin", "/blog/what-is-oolong-tea")))
-    assert critical_tripped(BRIEF.replace("A6: 40,280", "A6: 120,000"))
+    assert critical_tripped(BRIEF.replace("A6: 51,020", "A6: 120,000"))
 
 
 def test_nothing_supplied_names_the_topic_to_pick():

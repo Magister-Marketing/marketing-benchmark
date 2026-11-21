@@ -1,150 +1,456 @@
 keyword,topic,monthly_searches,difficulty,intent,current_rank,ranking_url
-assam vs darjeeling,black tea,260,19,informational,6,/collections/black-tea
-how to make kombucha,kombucha,110,59,commercial,4,/blog/kombucha-basics
-what is pu erh tea,pu erh tea,2400,41,informational,,
-how to make chai concentrate,chai,1300,33,informational,,
-glass teapot,teaware,260,64,informational,6,/collections/teaware
-tieguanyin,oolong tea,2400,39,informational,3,/products/tieguanyin
-green tea benefits,green tea,12100,71,informational,,
-chamomile tea benefits,herbal tea for sleep,5400,66,informational,,
-how to make loose leaf tea,tea for beginners,110,57,informational,9,/blog/tea-for-beginners
-oolong vs green tea,oolong tea,1600,31,informational,,
-how much loose leaf tea per cup,tea for beginners,880,65,informational,12,/blog/tea-for-beginners
-tea cups,teaware,320,19,commercial,6,/collections/teaware
-lavender tea,herbal tea for sleep,1900,39,informational,15,/collections/herbal
-kombucha vinegar,kombucha,880,18,informational,4,/blog/kombucha-basics
-best green tea,green tea,14800,62,commercial,2,/guides/best-green-tea
-jun kombucha,kombucha,880,35,informational,12,/blog/kombucha-basics
-earl grey tea benefits,earl grey,90,45,informational,4,/blog/earl-grey-guide
-what is oolong tea,oolong tea,4400,38,informational,,
-black tea with milk,black tea,210,21,informational,12,/collections/black-tea
-what is chai,chai,4400,44,informational,,
-lapsang souchong,black tea,480,38,commercial,4,/collections/black-tea
-is chai tea caffeinated,chai,1000,26,informational,,
-black tea caffeine,black tea,210,23,commercial,4,/collections/black-tea
-does chamomile tea make you sleepy,herbal tea for sleep,1600,30,informational,,
-rooibos tea benefits,rooibos,2900,51,informational,,
-yixing teapot,teaware,260,19,transactional,,
-oolong tea for digestion,oolong tea,480,29,informational,20,/blog/tea-and-digestion
-matcha caffeine,matcha,2900,30,informational,2,/blog/tea-caffeine-chart
-earl grey cream,earl grey,210,43,transactional,6,/blog/earl-grey-guide
-sencha vs gyokuro,green tea,880,33,informational,,
-best matcha,matcha,6600,55,commercial,,
-pu erh caffeine,pu erh tea,480,26,informational,18,/blog/tea-caffeine-chart
-chai latte,chai,6600,52,informational,,
-cold brew green tea,cold brew tea,1000,31,informational,9,/blog/how-to-cold-brew-tea
-sweet tea recipe,iced tea,6600,56,informational,,
-how to taste tea,tea for beginners,480,61,transactional,6,/blog/tea-for-beginners
-how to make matcha,matcha,5400,40,informational,4,/blog/matcha-guide
-best tea for sleep,herbal tea for sleep,8100,58,commercial,,
-ripe vs raw pu erh,pu erh tea,590,34,informational,,
-best tea infuser,teaware,590,28,transactional,,
-bergamot tea,earl grey,170,43,informational,25,/blog/earl-grey-guide
-best tea tins,tea storage,880,37,commercial,,
-tea for anxiety,herbal tea for sleep,2400,43,informational,,
-matcha for weight loss,matcha,1900,41,informational,8,/blog/matcha-guide
-is kombucha good for you,kombucha,170,68,commercial,25,/blog/kombucha-basics
-ceremonial vs culinary matcha,matcha,1900,33,informational,9,/blog/matcha-guide
-how to make iced tea,iced tea,8100,51,informational,,
-oolong tea taste,oolong tea,1300,25,informational,8,/collections/oolong
-earl grey vs english breakfast,earl grey,880,48,commercial,,
-is matcha good for you,matcha,2400,38,informational,4,/blog/matcha-guide
 kombucha scoby,kombucha,880,42,informational,,
-earl grey caffeine,earl grey,590,39,informational,6,/blog/earl-grey-guide
-masala chai spices,chai,1600,36,informational,13,/collections/chai
-how to store loose leaf tea,tea storage,1900,23,informational,1,/blog/how-to-store-loose-leaf-tea
-loose leaf vs tea bags,tea for beginners,260,17,informational,,
-herbal tea before bed,herbal tea for sleep,720,21,informational,,
-how to brew oolong tea,oolong tea,2900,28,informational,,
-can you freeze tea leaves,tea storage,390,14,informational,,
-black tea benefits,black tea,880,54,informational,,
-oolong tea temperature,oolong tea,720,19,informational,,
-buy oolong tea,oolong tea,1600,50,transactional,,
-earl grey latte,earl grey,590,24,informational,9,/blog/earl-grey-guide
-best earl grey,earl grey,320,44,transactional,6,/blog/earl-grey-guide
-red vs green rooibos,rooibos,390,27,informational,,
-how to brew green tea,green tea,2900,41,informational,3,/blog/how-to-brew-green-tea
-chai vs dirty chai,chai,1000,22,informational,,
-how to brew white tea,white tea,720,24,informational,4,/collections/white-tea
-tea starter kit,tea for beginners,480,68,informational,9,/blog/tea-for-beginners
-green tea for weight loss,green tea,3600,52,informational,,
-kombucha alcohol content,kombucha,480,57,transactional,6,/blog/kombucha-basics
-what is earl grey,earl grey,90,52,transactional,,
-tea sampler,tea gifts,2900,45,transactional,22,/collections/samplers
-how to brew pu erh,pu erh tea,880,29,informational,,
-matcha latte recipe,matcha,6600,61,informational,,
-green tea caffeine,green tea,6600,38,informational,1,/blog/green-tea-caffeine
-rooibos latte,rooibos,720,33,informational,11,/collections/herbal
-what is white tea,white tea,2900,39,informational,,
-how much matcha per cup,matcha,1000,21,informational,10,/blog/matcha-guide
-does green tea have caffeine,green tea,2400,31,informational,4,/blog/green-tea-caffeine
-tea gift set,tea gifts,5400,59,transactional,,
-lady grey tea,earl grey,320,64,commercial,17,/blog/earl-grey-guide
-cold brew tea caffeine,cold brew tea,720,24,informational,12,/blog/how-to-cold-brew-tea
-tea kettle with thermometer,teaware,170,36,commercial,12,/collections/teaware
-cold brew tea vs iced tea,cold brew tea,880,45,informational,,
-japanese green tea brands,green tea,1000,44,commercial,,
-does tea expire,tea storage,2400,35,informational,2,/blog/does-tea-expire
-kombucha flavors,kombucha,590,12,commercial,6,/blog/kombucha-basics
-how to host a tea tasting,tea gifts,590,18,informational,,
-white tea vs green tea,white tea,880,30,informational,,
-is oolong tea good for weight loss,oolong tea,2400,47,informational,,
-best iced tea bags,iced tea,1300,40,commercial,,
-valerian root tea,herbal tea for sleep,2900,47,informational,,
-gongfu brewing oolong,oolong tea,390,26,informational,,
-tea storage containers,tea storage,1300,42,transactional,,
-gifts for tea lovers,tea gifts,4400,53,commercial,,
-tea steeping times,tea for beginners,880,41,commercial,6,/blog/tea-for-beginners
-da hong pao,oolong tea,1900,45,informational,,
-can you cold brew tea bags,cold brew tea,590,17,informational,5,/blog/how-to-cold-brew-tea
-best black tea,black tea,880,28,informational,25,/collections/black-tea
-what is a gaiwan,teaware,720,17,informational,6,/collections/teaware
-cold brew tea maker,cold brew tea,2400,48,transactional,,
-how to cold brew tea,cold brew tea,3600,28,informational,3,/blog/how-to-cold-brew-tea
-oolong tea benefits,oolong tea,6600,42,informational,5,/collections/oolong
-oolong tea caffeine,oolong tea,1900,33,informational,14,/blog/tea-caffeine-chart
-iced tea concentrate,iced tea,720,29,informational,,
-matcha storage,matcha,590,18,informational,,
-english breakfast tea,black tea,880,20,informational,,
-best oolong tea,oolong tea,2900,40,commercial,,
-cast iron teapot,teaware,170,47,informational,4,/collections/teaware
-ceremonial grade matcha,matcha,4400,57,commercial,,
-how to whisk matcha,matcha,1600,27,informational,7,/blog/matcha-guide
-milk oolong,oolong tea,1000,36,informational,,
-loose leaf green tea,green tea,2400,55,transactional,11,/collections/green-tea
-is sun tea safe,iced tea,880,20,informational,1,/blog/sun-tea-safety
-oolong vs black tea,oolong tea,590,24,informational,21,/blog/tea-caffeine-chart
-matcha vs coffee,matcha,4400,35,informational,6,/blog/matcha-guide
-green tea vs black tea,green tea,1900,36,informational,6,/blog/how-to-brew-green-tea
-loose leaf black tea,black tea,170,37,informational,9,/collections/black-tea
-pu erh tea benefits,pu erh tea,1900,48,informational,,
-passionflower tea,herbal tea for sleep,880,28,informational,,
-what is a tea infuser,tea for beginners,140,25,informational,9,/blog/tea-for-beginners
-rooibos caffeine,rooibos,880,22,informational,,
-how to use a gaiwan,teaware,260,55,informational,6,/collections/teaware
-green tea temperature,green tea,1300,29,informational,,
+genmaicha latte,genmaicha,170,65,informational,,
+is yerba mate good for you,yerba mate,480,10,informational,,
+buy decaf tea,decaf tea,390,48,transactional,18,/collections/decaf-tea
+black tea with milk,black tea,210,21,informational,12,/collections/black-tea
+earl grey vs english breakfast,earl grey,880,48,commercial,,
+assam tea before bed,assam tea,210,61,informational,9,/collections/assam-tea
+organic genmaicha,genmaicha,390,60,commercial,,
+bubble tea vs green tea,bubble tea,70,68,informational,,
+loose leaf darjeeling tea,darjeeling tea,210,37,transactional,,
+how to make loose leaf tea,tea for beginners,110,57,informational,9,/blog/tea-for-beginners
+oolong tea for digestion,oolong tea,480,29,informational,20,/blog/tea-and-digestion
 tea advent calendar,tea gifts,1900,41,commercial,,
-matcha benefits,matcha,8100,44,informational,5,/blog/matcha-guide
-caffeine free tea,herbal tea for sleep,3600,49,commercial,,
-best chai tea,chai,2400,50,commercial,,
-flash brewed iced tea,iced tea,390,31,informational,6,/blog/sun-tea-safety
-chai tea recipe,chai,9900,57,informational,,
-how many times can you steep oolong,oolong tea,880,22,informational,,
-how to clean a teapot,teaware,210,56,commercial,,
-cold brew tea ratio,cold brew tea,1900,19,informational,2,/blog/how-to-cold-brew-tea
-tea vs coffee caffeine,tea for beginners,210,46,transactional,17,/blog/tea-for-beginners
-white tea benefits,white tea,3600,53,informational,,
-silver needle tea,white tea,1000,35,informational,,
-iced tea without sugar,iced tea,590,27,informational,,
-white tea caffeine,white tea,1300,28,informational,9,/blog/tea-caffeine-chart
-kombucha starter kit,kombucha,590,28,informational,6,/blog/kombucha-basics
-how to brew black tea,black tea,320,34,informational,,
-how long does loose leaf tea last,tea storage,1000,25,informational,4,/blog/does-tea-expire
-oolong tea side effects,oolong tea,1000,46,informational,,
-how long to cold brew tea,cold brew tea,1600,22,informational,7,/blog/how-to-cold-brew-tea
-does cold brew tea go bad,cold brew tea,480,15,informational,10,/blog/how-to-cold-brew-tea
-matcha powder,matcha,12100,66,transactional,,
+bubble tea latte,bubble tea,210,11,informational,9,/collections/bubble-tea
+english breakfast tea,black tea,880,20,informational,,
+yerba mate before bed,yerba mate,390,45,informational,1,/collections/yerba-mate
+loose leaf genmaicha,genmaicha,390,14,transactional,,
+green tea temperature,green tea,1300,29,informational,,
+what does assam tea taste like,assam tea,480,60,informational,,
+best bubble tea,bubble tea,320,66,commercial,,
+rooibos latte,rooibos,720,33,informational,11,/collections/herbal
+hojicha taste,hojicha,320,20,informational,1,/collections/hojicha
+assam tea bags,assam tea,260,14,transactional,,
+loose leaf hojicha,hojicha,90,47,transactional,,
+organic nettle tea,nettle tea,70,41,commercial,18,/collections/nettle-tea
+tea storage containers,tea storage,1300,42,transactional,,
+is ginger tea good for you,ginger tea,480,25,informational,,
 kombucha second fermentation,kombucha,590,60,informational,12,/blog/kombucha-basics
-types of tea,tea for beginners,480,33,informational,12,/blog/tea-for-beginners
-what is rooibos tea,rooibos,2400,37,informational,,
+best black tea,black tea,880,28,informational,25,/collections/black-tea
+earl grey latte,earl grey,590,24,informational,9,/blog/earl-grey-guide
+what is pu erh tea,pu erh tea,2400,41,informational,,
+rose tea temperature,rose tea,50,34,informational,7,/collections/rose-tea
+hojicha caffeine,hojicha,170,16,informational,3,/collections/hojicha
+loose leaf butterfly pea tea,butterfly pea tea,170,23,transactional,9,/collections/butterfly-pea-tea
+turmeric tea bags,turmeric tea,110,20,transactional,9,/collections/turmeric-tea
+best tea for sleep,herbal tea for sleep,8100,58,commercial,,
+organic butterfly pea tea,butterfly pea tea,480,20,commercial,,
+buy darjeeling tea,darjeeling tea,210,33,transactional,2,/collections/darjeeling-tea
+how to make peppermint tea,peppermint tea,140,31,informational,24,/collections/peppermint-tea
+milk oolong,oolong tea,1000,36,informational,,
+best decaf tea,decaf tea,320,43,commercial,3,/collections/decaf-tea
+best ginger tea,ginger tea,50,59,commercial,,
+can you cold brew tea bags,cold brew tea,590,17,informational,5,/blog/how-to-cold-brew-tea
+butterfly pea tea bags,butterfly pea tea,480,54,transactional,24,/collections/butterfly-pea-tea
+yerba mate temperature,yerba mate,110,67,informational,9,/collections/yerba-mate
+turmeric tea taste,turmeric tea,90,20,informational,7,/collections/turmeric-tea
+how to brew hibiscus tea,hibiscus tea,210,37,informational,2,/collections/hibiscus-tea
+organic turmeric tea,turmeric tea,170,65,commercial,13,/collections/turmeric-tea
+jasmine tea recipe,jasmine tea,320,14,informational,,
+hibiscus tea caffeine,hibiscus tea,480,65,informational,,
+nettle tea caffeine,nettle tea,110,33,informational,,
+buy jasmine tea,jasmine tea,170,16,transactional,,
+ripe vs raw pu erh,pu erh tea,590,34,informational,,
+what does darjeeling tea taste like,darjeeling tea,140,67,informational,13,/collections/darjeeling-tea
+how to clean a teapot,teaware,210,56,commercial,,
+jasmine tea side effects,jasmine tea,90,31,informational,3,/collections/jasmine-tea
+buy barley tea,barley tea,70,53,transactional,,
+how long does loose leaf tea last,tea storage,1000,25,informational,4,/blog/does-tea-expire
+how to brew decaf tea,decaf tea,260,28,informational,,
+how many times can you steep oolong,oolong tea,880,22,informational,,
+lemongrass tea before bed,lemongrass tea,260,65,informational,,
+how to brew black tea,black tea,320,34,informational,,
+best butterfly pea tea,butterfly pea tea,260,55,commercial,13,/collections/butterfly-pea-tea
+rooibos caffeine,rooibos,880,22,informational,,
+yerba mate caffeine,yerba mate,170,25,informational,,
+how to make yerba mate,yerba mate,110,24,informational,2,/collections/yerba-mate
+is rose tea good for you,rose tea,260,32,informational,18,/collections/rose-tea
+rose tea benefits,rose tea,110,69,informational,,
+gifts for tea lovers,tea gifts,4400,53,commercial,,
+how to host a tea tasting,tea gifts,590,18,informational,,
+decaf tea caffeine,decaf tea,320,68,informational,9,/collections/decaf-tea
+tea for anxiety,herbal tea for sleep,2400,43,informational,,
+green tea for weight loss,green tea,3600,52,informational,,
+nettle tea temperature,nettle tea,50,12,informational,,
+matcha for weight loss,matcha,1900,41,informational,8,/blog/matcha-guide
+how to make bubble tea,bubble tea,140,25,informational,3,/collections/bubble-tea
+bubble tea recipe,bubble tea,140,38,informational,7,/collections/bubble-tea
+how to make kombucha,kombucha,110,59,commercial,4,/blog/kombucha-basics
+turmeric tea latte,turmeric tea,70,22,informational,1,/collections/turmeric-tea
+decaf tea before bed,decaf tea,170,31,informational,,
+how much loose leaf tea per cup,tea for beginners,880,65,informational,12,/blog/tea-for-beginners
+best chai tea,chai,2400,50,commercial,,
+turmeric tea vs green tea,turmeric tea,70,45,informational,3,/collections/turmeric-tea
+ginger tea vs green tea,ginger tea,140,60,informational,,
+herbal tea before bed,herbal tea for sleep,720,21,informational,,
+is barley tea good for you,barley tea,210,69,informational,2,/collections/barley-tea
+best oolong tea,oolong tea,2900,40,commercial,,
+butterfly pea tea latte,butterfly pea tea,70,25,informational,1,/collections/butterfly-pea-tea
+bubble tea bags,bubble tea,320,21,transactional,,
+rose tea before bed,rose tea,210,13,informational,,
+how to make matcha,matcha,5400,40,informational,4,/blog/matcha-guide
+buy bubble tea,bubble tea,260,33,transactional,18,/collections/bubble-tea
+barley tea vs green tea,barley tea,140,59,informational,13,/collections/barley-tea
+cast iron teapot,teaware,170,47,informational,4,/collections/teaware
+hojicha side effects,hojicha,110,38,informational,,
+turmeric tea caffeine,turmeric tea,210,19,informational,,
+assam tea benefits,assam tea,210,49,informational,7,/collections/assam-tea
+buy yerba mate,yerba mate,210,52,transactional,1,/collections/yerba-mate
+darjeeling tea latte,darjeeling tea,110,18,informational,1,/collections/darjeeling-tea
+what is oolong tea,oolong tea,4400,38,informational,,
+assam tea side effects,assam tea,390,49,informational,4,/collections/assam-tea
+nettle tea benefits,nettle tea,50,44,informational,9,/collections/nettle-tea
+is darjeeling tea good for you,darjeeling tea,90,20,informational,13,/collections/darjeeling-tea
+loose leaf vs tea bags,tea for beginners,260,17,informational,,
+white tea benefits,white tea,3600,53,informational,,
+what does nettle tea taste like,nettle tea,70,41,informational,4,/collections/nettle-tea
+buy assam tea,assam tea,210,62,transactional,13,/collections/assam-tea
+ceremonial grade matcha,matcha,4400,57,commercial,,
+hojicha temperature,hojicha,260,19,informational,24,/collections/hojicha
+best matcha,matcha,6600,55,commercial,,
+hojicha latte,hojicha,110,44,informational,,
+butterfly pea tea taste,butterfly pea tea,170,40,informational,9,/collections/butterfly-pea-tea
+glass teapot,teaware,260,64,informational,6,/collections/teaware
+best jasmine tea,jasmine tea,480,39,commercial,2,/collections/jasmine-tea
+assam tea recipe,assam tea,320,24,informational,,
+how much matcha per cup,matcha,1000,21,informational,10,/blog/matcha-guide
+loose leaf green tea,green tea,2400,55,transactional,11,/collections/green-tea
+lemongrass tea recipe,lemongrass tea,320,49,informational,2,/collections/lemongrass-tea
+barley tea latte,barley tea,90,29,informational,4,/collections/barley-tea
+butterfly pea tea caffeine,butterfly pea tea,50,58,informational,4,/collections/butterfly-pea-tea
+how to brew green tea,green tea,2900,41,informational,3,/blog/how-to-brew-green-tea
+what does hojicha taste like,hojicha,210,28,informational,,
+cold brew green tea,cold brew tea,1000,31,informational,9,/blog/how-to-cold-brew-tea
+genmaicha recipe,genmaicha,110,54,informational,,
+what does decaf tea taste like,decaf tea,480,59,informational,13,/collections/decaf-tea
+how to make barley tea,barley tea,90,69,informational,24,/collections/barley-tea
+best peppermint tea,peppermint tea,90,34,commercial,1,/collections/peppermint-tea
+bubble tea side effects,bubble tea,390,49,informational,4,/collections/bubble-tea
+lemongrass tea benefits,lemongrass tea,170,48,informational,,
+how to make darjeeling tea,darjeeling tea,110,47,informational,,
+earl grey caffeine,earl grey,590,39,informational,6,/blog/earl-grey-guide
+assam vs darjeeling,black tea,260,19,informational,6,/collections/black-tea
+does tea expire,tea storage,2400,35,informational,2,/blog/does-tea-expire
+barley tea side effects,barley tea,390,70,informational,,
+jasmine tea vs green tea,jasmine tea,480,66,informational,3,/collections/jasmine-tea
+buy ginger tea,ginger tea,320,39,transactional,9,/collections/ginger-tea
+oolong tea benefits,oolong tea,6600,42,informational,5,/collections/oolong
+hibiscus tea latte,hibiscus tea,50,23,informational,3,/collections/hibiscus-tea
+organic hojicha,hojicha,170,13,commercial,,
+iced tea concentrate,iced tea,720,29,informational,,
+nettle tea taste,nettle tea,210,67,informational,9,/collections/nettle-tea
 best tea for cold brew,cold brew tea,1300,34,commercial,,
+masala chai spices,chai,1600,36,informational,13,/collections/chai
+how to brew white tea,white tea,720,24,informational,4,/collections/white-tea
+is assam tea good for you,assam tea,210,30,informational,3,/collections/assam-tea
+turmeric tea benefits,turmeric tea,90,69,informational,1,/collections/turmeric-tea
+jun kombucha,kombucha,880,35,informational,12,/blog/kombucha-basics
+yerba mate latte,yerba mate,170,27,informational,7,/collections/yerba-mate
+buy genmaicha,genmaicha,260,68,transactional,2,/collections/genmaicha
+organic assam tea,assam tea,110,34,commercial,2,/collections/assam-tea
+ginger tea latte,ginger tea,70,61,informational,1,/collections/ginger-tea
+decaf tea vs green tea,decaf tea,210,12,informational,24,/collections/decaf-tea
+loose leaf hibiscus tea,hibiscus tea,70,36,transactional,2,/collections/hibiscus-tea
+jasmine tea latte,jasmine tea,90,12,informational,2,/collections/jasmine-tea
+best tea tins,tea storage,880,37,commercial,,
+butterfly pea tea benefits,butterfly pea tea,480,63,informational,,
+best green tea,green tea,14800,62,commercial,2,/guides/best-green-tea
+how to brew oolong tea,oolong tea,2900,28,informational,,
+best assam tea,assam tea,140,60,commercial,13,/collections/assam-tea
+ginger tea bags,ginger tea,70,31,transactional,13,/collections/ginger-tea
+darjeeling tea vs green tea,darjeeling tea,50,45,informational,,
+matcha vs coffee,matcha,4400,35,informational,6,/blog/matcha-guide
+best iced tea bags,iced tea,1300,40,commercial,,
+sencha vs gyokuro,green tea,880,33,informational,,
+buy rose tea,rose tea,90,33,transactional,7,/collections/rose-tea
+loose leaf turmeric tea,turmeric tea,320,50,transactional,9,/collections/turmeric-tea
+organic jasmine tea,jasmine tea,260,52,commercial,7,/collections/jasmine-tea
+hojicha before bed,hojicha,480,41,informational,,
+jasmine tea taste,jasmine tea,170,35,informational,7,/collections/jasmine-tea
+buy nettle tea,nettle tea,390,59,transactional,9,/collections/nettle-tea
+what is rooibos tea,rooibos,2400,37,informational,,
+buy oolong tea,oolong tea,1600,50,transactional,,
+how to use a gaiwan,teaware,260,55,informational,6,/collections/teaware
+hibiscus tea recipe,hibiscus tea,50,37,informational,4,/collections/hibiscus-tea
+peppermint tea side effects,peppermint tea,50,65,informational,3,/collections/peppermint-tea
+best darjeeling tea,darjeeling tea,170,62,commercial,,
+barley tea before bed,barley tea,140,14,informational,13,/collections/barley-tea
+darjeeling tea before bed,darjeeling tea,390,22,informational,9,/collections/darjeeling-tea
+how to make lemongrass tea,lemongrass tea,260,70,informational,18,/collections/lemongrass-tea
+lapsang souchong,black tea,480,38,commercial,4,/collections/black-tea
+can you freeze tea leaves,tea storage,390,14,informational,,
+how to brew turmeric tea,turmeric tea,50,25,informational,,
+best turmeric tea,turmeric tea,210,38,commercial,,
+how to make chai concentrate,chai,1300,33,informational,,
+tea starter kit,tea for beginners,480,68,informational,9,/blog/tea-for-beginners
+rose tea bags,rose tea,390,19,transactional,,
+darjeeling tea side effects,darjeeling tea,390,48,informational,9,/collections/darjeeling-tea
+da hong pao,oolong tea,1900,45,informational,,
+caffeine free tea,herbal tea for sleep,3600,49,commercial,,
+darjeeling tea bags,darjeeling tea,140,38,transactional,24,/collections/darjeeling-tea
+jasmine tea caffeine,jasmine tea,320,24,informational,,
+passionflower tea,herbal tea for sleep,880,28,informational,,
+is sun tea safe,iced tea,880,20,informational,1,/blog/sun-tea-safety
+does green tea have caffeine,green tea,2400,31,informational,4,/blog/green-tea-caffeine
+organic ginger tea,ginger tea,140,14,commercial,4,/collections/ginger-tea
+lemongrass tea taste,lemongrass tea,170,30,informational,2,/collections/lemongrass-tea
+is jasmine tea good for you,jasmine tea,260,30,informational,1,/collections/jasmine-tea
+what does rose tea taste like,rose tea,70,28,informational,9,/collections/rose-tea
+yixing teapot,teaware,260,19,transactional,,
+assam tea vs green tea,assam tea,390,53,informational,1,/collections/assam-tea
+cold brew tea ratio,cold brew tea,1900,19,informational,2,/blog/how-to-cold-brew-tea
+jasmine tea before bed,jasmine tea,210,29,informational,,
+hibiscus tea before bed,hibiscus tea,110,59,informational,,
+ginger tea side effects,ginger tea,70,14,informational,,
+darjeeling tea benefits,darjeeling tea,90,40,informational,1,/collections/darjeeling-tea
+lady grey tea,earl grey,320,64,commercial,17,/blog/earl-grey-guide
+is genmaicha good for you,genmaicha,320,32,informational,,
+loose leaf nettle tea,nettle tea,140,62,transactional,7,/collections/nettle-tea
+decaf tea latte,decaf tea,260,53,informational,,
+matcha storage,matcha,590,18,informational,,
+is chai tea caffeinated,chai,1000,26,informational,,
+oolong vs black tea,oolong tea,590,24,informational,21,/blog/tea-caffeine-chart
+barley tea bags,barley tea,90,59,transactional,,
+hojicha bags,hojicha,70,55,transactional,9,/collections/hojicha
+rose tea vs green tea,rose tea,390,36,informational,18,/collections/rose-tea
+yerba mate benefits,yerba mate,210,64,informational,4,/collections/yerba-mate
+how to make assam tea,assam tea,140,42,informational,,
+turmeric tea side effects,turmeric tea,170,24,informational,1,/collections/turmeric-tea
+bubble tea caffeine,bubble tea,110,47,informational,4,/collections/bubble-tea
+organic peppermint tea,peppermint tea,110,54,commercial,7,/collections/peppermint-tea
+tea sampler,tea gifts,2900,45,transactional,22,/collections/samplers
+barley tea recipe,barley tea,170,37,informational,4,/collections/barley-tea
+how to brew hojicha,hojicha,390,49,informational,4,/collections/hojicha
+matcha latte recipe,matcha,6600,61,informational,,
+genmaicha bags,genmaicha,390,22,transactional,,
+is bubble tea good for you,bubble tea,110,69,informational,13,/collections/bubble-tea
+yerba mate taste,yerba mate,320,63,informational,,
+best rose tea,rose tea,390,27,commercial,,
+flash brewed iced tea,iced tea,390,31,informational,6,/blog/sun-tea-safety
+barley tea benefits,barley tea,50,66,informational,,
+black tea benefits,black tea,880,54,informational,,
+green tea benefits,green tea,12100,71,informational,,
+how to make butterfly pea tea,butterfly pea tea,140,27,informational,,
+organic bubble tea,bubble tea,140,61,commercial,7,/collections/bubble-tea
+ceremonial vs culinary matcha,matcha,1900,33,informational,9,/blog/matcha-guide
+what does barley tea taste like,barley tea,170,16,informational,7,/collections/barley-tea
+barley tea caffeine,barley tea,260,11,informational,9,/collections/barley-tea
+organic darjeeling tea,darjeeling tea,140,29,commercial,7,/collections/darjeeling-tea
+turmeric tea recipe,turmeric tea,480,30,informational,,
+matcha powder,matcha,12100,66,transactional,,
+red vs green rooibos,rooibos,390,27,informational,,
+how to make hibiscus tea,hibiscus tea,140,61,informational,,
+rose tea side effects,rose tea,50,65,informational,2,/collections/rose-tea
+nettle tea bags,nettle tea,480,37,transactional,13,/collections/nettle-tea
+lemongrass tea side effects,lemongrass tea,170,43,informational,,
+lemongrass tea caffeine,lemongrass tea,480,41,informational,13,/collections/lemongrass-tea
+organic yerba mate,yerba mate,210,19,commercial,3,/collections/yerba-mate
+peppermint tea latte,peppermint tea,50,67,informational,,
+green tea vs black tea,green tea,1900,36,informational,6,/blog/how-to-brew-green-tea
+loose leaf rose tea,rose tea,70,33,transactional,,
+what does lemongrass tea taste like,lemongrass tea,210,18,informational,,
+assam tea caffeine,assam tea,70,19,informational,3,/collections/assam-tea
+buy hibiscus tea,hibiscus tea,260,43,transactional,,
+how to brew ginger tea,ginger tea,320,43,informational,18,/collections/ginger-tea
+chai latte,chai,6600,52,informational,,
+kombucha flavors,kombucha,590,12,commercial,6,/blog/kombucha-basics
+rose tea caffeine,rose tea,390,69,informational,2,/collections/rose-tea
+how to brew rose tea,rose tea,480,54,informational,,
+how to brew bubble tea,bubble tea,260,43,informational,18,/collections/bubble-tea
+matcha caffeine,matcha,2900,30,informational,2,/blog/tea-caffeine-chart
+assam tea temperature,assam tea,170,52,informational,,
+loose leaf barley tea,barley tea,50,34,transactional,,
+yerba mate bags,yerba mate,390,25,transactional,24,/collections/yerba-mate
+how long to cold brew tea,cold brew tea,1600,22,informational,7,/blog/how-to-cold-brew-tea
+peppermint tea vs green tea,peppermint tea,110,60,informational,1,/collections/peppermint-tea
+does cold brew tea go bad,cold brew tea,480,15,informational,10,/blog/how-to-cold-brew-tea
+is nettle tea good for you,nettle tea,260,63,informational,13,/collections/nettle-tea
+lemongrass tea temperature,lemongrass tea,140,44,informational,18,/collections/lemongrass-tea
+how to make ginger tea,ginger tea,90,55,informational,24,/collections/ginger-tea
+loose leaf decaf tea,decaf tea,170,38,transactional,3,/collections/decaf-tea
+turmeric tea temperature,turmeric tea,170,43,informational,13,/collections/turmeric-tea
+earl grey cream,earl grey,210,43,transactional,6,/blog/earl-grey-guide
+loose leaf black tea,black tea,170,37,informational,9,/collections/black-tea
+turmeric tea before bed,turmeric tea,90,45,informational,,
+what is a gaiwan,teaware,720,17,informational,6,/collections/teaware
+tea steeping times,tea for beginners,880,41,commercial,6,/blog/tea-for-beginners
+is turmeric tea good for you,turmeric tea,140,11,informational,,
+what does hibiscus tea taste like,hibiscus tea,140,14,informational,18,/collections/hibiscus-tea
+how to make decaf tea,decaf tea,110,35,informational,7,/collections/decaf-tea
+assam tea latte,assam tea,390,65,informational,,
+genmaicha temperature,genmaicha,390,29,informational,3,/collections/genmaicha
+how to make rose tea,rose tea,260,50,informational,,
+peppermint tea benefits,peppermint tea,110,10,informational,,
+chai vs dirty chai,chai,1000,22,informational,,
+pu erh tea benefits,pu erh tea,1900,48,informational,,
+best barley tea,barley tea,140,56,commercial,1,/collections/barley-tea
+buy hojicha,hojicha,110,46,transactional,24,/collections/hojicha
+lemongrass tea bags,lemongrass tea,260,26,transactional,,
+oolong tea caffeine,oolong tea,1900,33,informational,14,/blog/tea-caffeine-chart
+loose leaf peppermint tea,peppermint tea,140,70,transactional,13,/collections/peppermint-tea
+cold brew tea vs iced tea,cold brew tea,880,45,informational,,
+hibiscus tea taste,hibiscus tea,90,10,informational,,
+best nettle tea,nettle tea,480,67,commercial,13,/collections/nettle-tea
+how to make turmeric tea,turmeric tea,110,27,informational,,
+how to brew peppermint tea,peppermint tea,480,26,informational,13,/collections/peppermint-tea
+decaf tea temperature,decaf tea,70,11,informational,4,/collections/decaf-tea
+decaf tea bags,decaf tea,170,12,transactional,18,/collections/decaf-tea
+bubble tea before bed,bubble tea,110,32,informational,18,/collections/bubble-tea
+what does turmeric tea taste like,turmeric tea,90,57,informational,,
+darjeeling tea recipe,darjeeling tea,50,13,informational,,
+how to make genmaicha,genmaicha,140,60,informational,24,/collections/genmaicha
+rooibos tea benefits,rooibos,2900,51,informational,,
+organic lemongrass tea,lemongrass tea,170,42,commercial,,
+tea vs coffee caffeine,tea for beginners,210,46,transactional,17,/blog/tea-for-beginners
+peppermint tea bags,peppermint tea,110,27,transactional,13,/collections/peppermint-tea
+nettle tea side effects,nettle tea,170,23,informational,7,/collections/nettle-tea
+iced tea without sugar,iced tea,590,27,informational,,
+hojicha vs green tea,hojicha,320,40,informational,,
+how to brew darjeeling tea,darjeeling tea,110,12,informational,7,/collections/darjeeling-tea
+buy butterfly pea tea,butterfly pea tea,50,61,transactional,,
+chamomile tea benefits,herbal tea for sleep,5400,66,informational,,
+oolong tea taste,oolong tea,1300,25,informational,8,/collections/oolong
+types of tea,tea for beginners,480,33,informational,12,/blog/tea-for-beginners
+bubble tea taste,bubble tea,140,67,informational,24,/collections/bubble-tea
+ginger tea temperature,ginger tea,210,39,informational,24,/collections/ginger-tea
+lavender tea,herbal tea for sleep,1900,39,informational,15,/collections/herbal
+barley tea temperature,barley tea,480,59,informational,,
+how to cold brew tea,cold brew tea,3600,28,informational,3,/blog/how-to-cold-brew-tea
+rose tea recipe,rose tea,90,22,informational,,
+what does genmaicha taste like,genmaicha,260,60,informational,13,/collections/genmaicha
+organic rose tea,rose tea,260,41,commercial,13,/collections/rose-tea
+kombucha alcohol content,kombucha,480,57,transactional,6,/blog/kombucha-basics
+valerian root tea,herbal tea for sleep,2900,47,informational,,
+loose leaf assam tea,assam tea,50,32,transactional,13,/collections/assam-tea
+genmaicha benefits,genmaicha,390,48,informational,24,/collections/genmaicha
+nettle tea before bed,nettle tea,320,68,informational,18,/collections/nettle-tea
+best genmaicha,genmaicha,70,10,commercial,13,/collections/genmaicha
+barley tea taste,barley tea,90,52,informational,7,/collections/barley-tea
+how to make jasmine tea,jasmine tea,480,68,informational,3,/collections/jasmine-tea
+decaf tea side effects,decaf tea,390,53,informational,18,/collections/decaf-tea
+earl grey tea benefits,earl grey,90,45,informational,4,/blog/earl-grey-guide
+sweet tea recipe,iced tea,6600,56,informational,,
+genmaicha vs green tea,genmaicha,110,33,informational,,
+hibiscus tea benefits,hibiscus tea,50,69,informational,7,/collections/hibiscus-tea
+decaf tea taste,decaf tea,90,56,informational,,
+ginger tea recipe,ginger tea,210,26,informational,,
+nettle tea vs green tea,nettle tea,390,56,informational,13,/collections/nettle-tea
+ginger tea taste,ginger tea,390,57,informational,,
+darjeeling tea temperature,darjeeling tea,110,32,informational,4,/collections/darjeeling-tea
+organic barley tea,barley tea,170,65,commercial,18,/collections/barley-tea
+how to brew yerba mate,yerba mate,90,35,informational,,
+jasmine tea benefits,jasmine tea,260,39,informational,,
+loose leaf ginger tea,ginger tea,170,62,transactional,2,/collections/ginger-tea
+oolong tea temperature,oolong tea,720,19,informational,,
+how to whisk matcha,matcha,1600,27,informational,7,/blog/matcha-guide
+gongfu brewing oolong,oolong tea,390,26,informational,,
+how to brew barley tea,barley tea,260,54,informational,3,/collections/barley-tea
+butterfly pea tea side effects,butterfly pea tea,390,45,informational,2,/collections/butterfly-pea-tea
+how to make iced tea,iced tea,8100,51,informational,,
+white tea caffeine,white tea,1300,28,informational,9,/blog/tea-caffeine-chart
+bergamot tea,earl grey,170,43,informational,25,/blog/earl-grey-guide
+ginger tea before bed,ginger tea,320,37,informational,,
+is oolong tea good for weight loss,oolong tea,2400,47,informational,,
+best tea infuser,teaware,590,28,transactional,,
+best yerba mate,yerba mate,320,13,commercial,,
+hojicha benefits,hojicha,110,64,informational,,
+genmaicha side effects,genmaicha,50,55,informational,,
+best hibiscus tea,hibiscus tea,480,64,commercial,13,/collections/hibiscus-tea
+what does bubble tea taste like,bubble tea,140,44,informational,,
+what does ginger tea taste like,ginger tea,170,37,informational,4,/collections/ginger-tea
+yerba mate recipe,yerba mate,140,12,informational,24,/collections/yerba-mate
+is lemongrass tea good for you,lemongrass tea,110,47,informational,,
+what does butterfly pea tea taste like,butterfly pea tea,90,54,informational,,
+tea gift set,tea gifts,5400,59,transactional,,
+how to taste tea,tea for beginners,480,61,transactional,6,/blog/tea-for-beginners
+butterfly pea tea recipe,butterfly pea tea,320,48,informational,7,/collections/butterfly-pea-tea
+organic decaf tea,decaf tea,140,18,commercial,,
+what is earl grey,earl grey,90,52,transactional,,
+what does yerba mate taste like,yerba mate,210,33,informational,7,/collections/yerba-mate
+bubble tea temperature,bubble tea,90,32,informational,3,/collections/bubble-tea
+peppermint tea taste,peppermint tea,70,16,informational,18,/collections/peppermint-tea
+assam tea taste,assam tea,140,36,informational,24,/collections/assam-tea
+how to brew nettle tea,nettle tea,390,14,informational,,
+how to brew jasmine tea,jasmine tea,320,61,informational,4,/collections/jasmine-tea
+best hojicha,hojicha,140,15,commercial,1,/collections/hojicha
+peppermint tea before bed,peppermint tea,480,28,informational,,
+what does jasmine tea taste like,jasmine tea,260,62,informational,2,/collections/jasmine-tea
+yerba mate vs green tea,yerba mate,390,55,informational,,
+butterfly pea tea before bed,butterfly pea tea,140,28,informational,13,/collections/butterfly-pea-tea
+loose leaf jasmine tea,jasmine tea,320,52,transactional,13,/collections/jasmine-tea
+butterfly pea tea vs green tea,butterfly pea tea,70,51,informational,24,/collections/butterfly-pea-tea
+what is chai,chai,4400,44,informational,,
+matcha benefits,matcha,8100,44,informational,5,/blog/matcha-guide
+peppermint tea temperature,peppermint tea,170,11,informational,7,/collections/peppermint-tea
+how to brew assam tea,assam tea,90,36,informational,7,/collections/assam-tea
+chai tea recipe,chai,9900,57,informational,,
+how to make hojicha,hojicha,140,28,informational,2,/collections/hojicha
+butterfly pea tea temperature,butterfly pea tea,50,52,informational,9,/collections/butterfly-pea-tea
+decaf tea benefits,decaf tea,50,37,informational,7,/collections/decaf-tea
+cold brew tea caffeine,cold brew tea,720,24,informational,12,/blog/how-to-cold-brew-tea
+jasmine tea bags,jasmine tea,480,54,transactional,4,/collections/jasmine-tea
+hojicha recipe,hojicha,110,23,informational,24,/collections/hojicha
+darjeeling tea caffeine,darjeeling tea,110,36,informational,9,/collections/darjeeling-tea
+hibiscus tea vs green tea,hibiscus tea,210,48,informational,24,/collections/hibiscus-tea
+oolong vs green tea,oolong tea,1600,31,informational,,
+tieguanyin,oolong tea,2400,39,informational,3,/products/tieguanyin
+peppermint tea recipe,peppermint tea,260,64,informational,,
+best earl grey,earl grey,320,44,transactional,6,/blog/earl-grey-guide
+is kombucha good for you,kombucha,170,68,commercial,25,/blog/kombucha-basics
+green tea caffeine,green tea,6600,38,informational,1,/blog/green-tea-caffeine
+loose leaf lemongrass tea,lemongrass tea,170,11,transactional,,
+kombucha starter kit,kombucha,590,28,informational,6,/blog/kombucha-basics
+is butterfly pea tea good for you,butterfly pea tea,320,21,informational,,
+japanese green tea brands,green tea,1000,44,commercial,,
+yerba mate side effects,yerba mate,170,40,informational,,
+buy peppermint tea,peppermint tea,90,47,transactional,4,/collections/peppermint-tea
+how to store loose leaf tea,tea storage,1900,23,informational,1,/blog/how-to-store-loose-leaf-tea
+how to brew pu erh,pu erh tea,880,29,informational,,
+loose leaf yerba mate,yerba mate,70,34,transactional,4,/collections/yerba-mate
+ginger tea benefits,ginger tea,480,12,informational,3,/collections/ginger-tea
+genmaicha caffeine,genmaicha,320,15,informational,,
+bubble tea benefits,bubble tea,170,60,informational,18,/collections/bubble-tea
+nettle tea recipe,nettle tea,480,56,informational,24,/collections/nettle-tea
+does chamomile tea make you sleepy,herbal tea for sleep,1600,30,informational,,
+tea kettle with thermometer,teaware,170,36,commercial,12,/collections/teaware
+how to brew lemongrass tea,lemongrass tea,140,21,informational,7,/collections/lemongrass-tea
+pu erh caffeine,pu erh tea,480,26,informational,18,/blog/tea-caffeine-chart
+genmaicha taste,genmaicha,260,41,informational,1,/collections/genmaicha
+tea cups,teaware,320,19,commercial,6,/collections/teaware
+what does peppermint tea taste like,peppermint tea,70,26,informational,,
+hibiscus tea side effects,hibiscus tea,390,56,informational,,
+what is a tea infuser,tea for beginners,140,25,informational,9,/blog/tea-for-beginners
+oolong tea side effects,oolong tea,1000,46,informational,,
+buy turmeric tea,turmeric tea,260,22,transactional,4,/collections/turmeric-tea
+rose tea latte,rose tea,50,57,informational,,
+what is white tea,white tea,2900,39,informational,,
+how to brew butterfly pea tea,butterfly pea tea,260,12,informational,24,/collections/butterfly-pea-tea
+hibiscus tea bags,hibiscus tea,480,15,transactional,18,/collections/hibiscus-tea
+organic hibiscus tea,hibiscus tea,320,51,commercial,24,/collections/hibiscus-tea
+is hibiscus tea good for you,hibiscus tea,170,47,informational,18,/collections/hibiscus-tea
+hibiscus tea temperature,hibiscus tea,260,58,informational,,
+best lemongrass tea,lemongrass tea,50,61,commercial,,
+genmaicha before bed,genmaicha,260,25,informational,13,/collections/genmaicha
+lemongrass tea vs green tea,lemongrass tea,90,45,informational,13,/collections/lemongrass-tea
+lemongrass tea latte,lemongrass tea,210,24,informational,,
+darjeeling tea taste,darjeeling tea,90,69,informational,,
+decaf tea recipe,decaf tea,260,25,informational,18,/collections/decaf-tea
+ginger tea caffeine,ginger tea,140,54,informational,9,/collections/ginger-tea
+kombucha vinegar,kombucha,880,18,informational,4,/blog/kombucha-basics
+is matcha good for you,matcha,2400,38,informational,4,/blog/matcha-guide
+is peppermint tea good for you,peppermint tea,390,22,informational,,
+silver needle tea,white tea,1000,35,informational,,
+buy lemongrass tea,lemongrass tea,260,20,transactional,9,/collections/lemongrass-tea
+how to make nettle tea,nettle tea,320,18,informational,2,/collections/nettle-tea
+black tea caffeine,black tea,210,23,commercial,4,/collections/black-tea
+peppermint tea caffeine,peppermint tea,320,32,informational,,
+loose leaf bubble tea,bubble tea,50,69,transactional,7,/collections/bubble-tea
+cold brew tea maker,cold brew tea,2400,48,transactional,,
+how to brew genmaicha,genmaicha,50,51,informational,,
+is decaf tea good for you,decaf tea,210,24,informational,13,/collections/decaf-tea
+is hojicha good for you,hojicha,70,33,informational,1,/collections/hojicha
+nettle tea latte,nettle tea,480,45,informational,,
+jasmine tea temperature,jasmine tea,170,58,informational,,
+white tea vs green tea,white tea,880,30,informational,,
+rose tea taste,rose tea,260,16,informational,,

@@ -26,6 +26,23 @@ Fernhollow Tea sells loose-leaf tea and brewing gear online. Site: https://www.f
 | /collections/samplers | Category | Tea sampler boxes |
 | /collections/teaware | Category | Teapots, gaiwans and infusers |
 | /products/tieguanyin | Product | Tieguanyin oolong, 50 g tin |
+| /collections/yerba-mate | Category | Yerba mate |
+| /collections/hibiscus-tea | Category | Hibiscus tea |
+| /collections/jasmine-tea | Category | Jasmine tea |
+| /collections/darjeeling-tea | Category | Darjeeling tea |
+| /collections/assam-tea | Category | Assam tea |
+| /collections/genmaicha | Category | Genmaicha |
+| /collections/hojicha | Category | Hojicha |
+| /collections/barley-tea | Category | Barley tea |
+| /collections/turmeric-tea | Category | Turmeric tea |
+| /collections/ginger-tea | Category | Ginger tea |
+| /collections/peppermint-tea | Category | Peppermint tea |
+| /collections/bubble-tea | Category | Bubble tea |
+| /collections/decaf-tea | Category | Decaf tea |
+| /collections/lemongrass-tea | Category | Lemongrass tea |
+| /collections/nettle-tea | Category | Nettle tea |
+| /collections/butterfly-pea-tea | Category | Butterfly pea tea |
+| /collections/rose-tea | Category | Rose tea |
 
 Notes from the content lead:
 - New articles are written for readers who want to learn something, not for shoppers comparing products; buying guides and category pages already cover those.
