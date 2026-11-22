@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Board: `eval_runner/board.json` names the open board, seven areas of
+  marketing with five tasks each (35 of the 45 development tasks), the four
+  tasks held back, and the ten open tasks left out with why (fully right on
+  every recorded attempt, a forecast that cannot be scored yet, or a second
+  task of a kind already on the board). `--split board` runs it in that
+  order; `load_board` refuses a file where a task is listed twice, missing,
+  held back and open at once, or left out without a reason.
 - Tasks: `policy-casebook` (development split, experimental area): 40
   proposed marketing actions ruled allowed, allowed with a named condition
   or not allowed, each with the one clause that decides it, under a 30 KB

@@ -54,6 +54,7 @@ REPO_ROOT = EVAL_RUNNER_DIR.parent
 # A task set that cannot live in this repository (one whose answers are a
 # brand's real numbers, say) is read from wherever this names instead.
 TASKS_DIR = Path(os.environ.get("MARKETING_BENCH_TASKS_DIR") or EVAL_RUNNER_DIR / "tasks")
+BOARD_PATH = EVAL_RUNNER_DIR / "board.json"
 MODELS_FILE = EVAL_RUNNER_DIR / "models.json"
 RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
@@ -75,6 +76,10 @@ JUDGE_DEFAULT = "claude-sonnet-5"
 RUN_CONCURRENCY = 4
 RUBRIC_SECTIONS = ("completion", "skill_adherence", "best_practices")
 TASK_SPLITS = ("development", "holdout")
+# What `--split` takes: every task, one split, or the open board (board.json).
+TASK_SETS = ("all",) + TASK_SPLITS + ("board",)
+BOARD_AREAS = 7
+BOARD_TASKS_PER_AREA = 5
 # Anthropic: end_turn / stop_sequence; OpenAI Responses: completed;
 # chat-completions (OpenRouter): stop.
 NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed", "stop")
@@ -956,6 +961,49 @@ def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
     return selected
 
 
+def load_board(tasks: dict, path: Path | None = None) -> dict:
+    """The open board (board.json): seven areas of five open tasks, the tasks
+    held back, and the open tasks left out with why. Every task file is in
+    exactly one of the three, or this raises."""
+    path = path or BOARD_PATH
+    board = json.loads(Path(path).read_text())
+    areas = board.get("areas") or []
+    if len(areas) != BOARD_AREAS:
+        raise ValueError(f"{path.name}: the board has seven areas, found {len(areas)}")
+    on: list[str] = []
+    for area in areas:
+        if len(area.get("tasks") or []) != BOARD_TASKS_PER_AREA:
+            raise ValueError(f"{path.name}: {area.get('id')} must hold five tasks")
+        on.extend(area["tasks"])
+    held = list(board.get("held_back") or [])
+    left_out = list(board.get("left_out") or [])
+    out = [row.get("id") for row in left_out]
+    listed = on + held + out
+    twice = sorted({task_id for task_id in listed if listed.count(task_id) > 1})
+    if twice:
+        raise ValueError(f"{path.name}: listed more than once: {', '.join(twice)}")
+    unknown = sorted(task_id for task_id in listed if task_id not in tasks)
+    if unknown:
+        raise ValueError(f"{path.name}: no task file for {', '.join(unknown)}")
+    private = sorted(task_id for task_id in on + out if tasks[task_id]["split"] != "development")
+    if private:
+        raise ValueError(f"{path.name}: {', '.join(private)} are held back (split holdout) and cannot be open")
+    if sorted(held) != sorted(task_id for task_id, task in tasks.items() if task["split"] == "holdout"):
+        raise ValueError(f"{path.name}: held_back must be exactly the holdout tasks")
+    missing = sorted(set(tasks) - set(listed))
+    if missing:
+        raise ValueError(f"{path.name}: neither on the board, held back nor left out: {', '.join(missing)}")
+    silent = sorted(row["id"] for row in left_out if len(str(row.get("why") or "").strip()) < 30)
+    if silent:
+        raise ValueError(f"{path.name}: each task left out says why: {', '.join(silent)}")
+    return board
+
+
+def board_task_ids(board: dict) -> list[str]:
+    """The board's 35 tasks, area by area, in the board's order."""
+    return [task_id for area in board["areas"] for task_id in area["tasks"]]
+
+
 def _select_tasks(
     raw: str | None, split: str, tasks: dict, harness: str = HARNESS_ID
 ) -> list[str]:
@@ -979,8 +1027,10 @@ def _select_tasks(
     }
     if split == "all":
         return list(runnable)
+    if split == "board":
+        return [task_id for task_id in board_task_ids(load_board(tasks)) if task_id in runnable]
     if split not in TASK_SPLITS:
-        raise SystemExit(f"unknown task split {split!r}; known: all, {', '.join(TASK_SPLITS)}")
+        raise SystemExit(f"unknown task split {split!r}; known: {', '.join(TASK_SETS)}")
     selected = [task_id for task_id, task in runnable.items() if task["split"] == split]
     if not selected:
         raise SystemExit(f"no tasks found in split {split!r}")
@@ -5003,8 +5053,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     run_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     run_parser.add_argument(
-        "--split", choices=("all",) + TASK_SPLITS, default="all",
-        help="run all tasks or one task split (ignored when --tasks is set)",
+        "--split", choices=TASK_SETS, default="all",
+        help="run all tasks, one task split, or the open board of 35 (ignored when --tasks is set)",
     )
     run_parser.add_argument(
         "--repetitions", type=int, default=REPETITIONS_DEFAULT,
@@ -5073,8 +5123,8 @@ def main(argv: list[str] | None = None) -> int:
     eval_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     eval_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     eval_parser.add_argument(
-        "--split", choices=("all",) + TASK_SPLITS, default="all",
-        help="run all tasks or one task split (ignored when --tasks is set)",
+        "--split", choices=TASK_SETS, default="all",
+        help="run all tasks, one task split, or the open board of 35 (ignored when --tasks is set)",
     )
     eval_parser.add_argument(
         "--repetitions", type=int, default=REPETITIONS_DEFAULT,
