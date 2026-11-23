@@ -564,8 +564,9 @@ def generate(
             exc.receipt = _merge_ceiling_retry_receipts(result, exc.receipt)
             raise
         result = _merge_ceiling_retry_receipts(result, parse_response(provider, payload))
-    latency = time.monotonic() - started
-
+    # On the receipt before the empty-completion error too: a call the model
+    # spent its whole output allowance on took that long, and is timed.
+    result["latency_seconds"] = round(time.monotonic() - started, 2)
     result["ceiling_retried"] = ceiling_retried
     if retry_empty_completion and not result["text"].strip():
         raise ProviderError(
@@ -574,13 +575,7 @@ def generate(
             f"ceiling_retried={ceiling_retried})",
             receipt=result, failure_kind="empty_completion",
         )
-    result.update(
-        {
-            "provider": provider,
-            "model": model,
-            "latency_seconds": round(latency, 2),
-        }
-    )
+    result.update({"provider": provider, "model": model})
     return result
 
 

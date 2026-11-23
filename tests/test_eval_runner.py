@@ -2926,11 +2926,16 @@ def test_a_failed_decoy_turn_fails_the_attempt_and_the_task_prompt_is_never_sent
     if strict:
         args = _run_args(models="gemini-3.8-flash-high", strict_attempts=True,
                          request_timeout_seconds=75., stop_after_cost_usd=5.)
-    assert bench.cmd_run(args) == 1
+    # A decoy turn the model spent its whole output allowance on is the
+    # model's miss (mark T), not a run error; every other failure is one.
+    cut_off = failure == "cut-off"
+    assert bench.cmd_run(args) == (0 if cut_off else 1)
     assert len(calls) == 1 and isinstance(calls[0]["prompt"], str)
     run_dir = next(tmp_path.iterdir())
     (attempt,) = bench._read_jsonl(run_dir / "attempts.jsonl")
     assert attempt["error"].startswith("decoy turn: ")
+    assert bench.run_error(attempt) is not cut_off
+    assert bench.attempt_mark(attempt, None) == ("T" if cut_off else "E")
     assert attempt["dispatched"] is True
     assert "response_path" not in attempt and "input_tokens" not in attempt
     model_id = args.models

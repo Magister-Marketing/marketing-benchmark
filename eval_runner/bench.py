@@ -83,6 +83,12 @@ BOARD_TASKS_PER_AREA = 5
 # Anthropic: end_turn / stop_sequence; OpenAI Responses: completed;
 # chat-completions (OpenRouter): stop.
 NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed", "stop")
+# The model spent its whole output allowance: Anthropic's stop reason, and the
+# Responses API's (OpenRouter's `length` is parsed to it).
+OUTPUT_LIMIT_FINISH_REASONS = ("max_tokens", "incomplete:max_output_tokens")
+# How the run step words a call that completed with no text, and a decoy
+# task's earlier turn that stopped early. Any other error is a run error.
+OUTPUT_LIMIT_ERRORS = ("returned an empty completion", "did not finish normally")
 FIXTURE_ROOTS = (EVAL_RUNNER_DIR / "fixtures", REPO_ROOT / "evals/fixtures/public")
 SKILL_ROOTS = (REPO_ROOT / "evals/fixtures/public/skills",)
 
@@ -118,6 +124,39 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
         return own
     earlier = decoy_cost_usd(attempt, spec)
     return None if own is None or earlier is None else own + earlier
+
+
+def output_limit_reached(attempt: dict | None) -> bool:
+    """The provider call completed and the model spent its whole output
+    allowance, with or without partial text. That is a failed attempt by the
+    model (mark T, never right, its cost and time counted), not a run error,
+    and `retry` leaves it alone. An empty reply is recorded with the
+    provider's empty-completion error, as runs made before this rule recorded
+    it too; a decoy task's earlier turn that ran out, with that turn's finish
+    reason. A transport failure, a provider error, a refused request or an
+    untrusted route stays a run error."""
+    if not attempt:
+        return False
+    error = attempt.get("error")
+    decoy = isinstance(error, str) and error.startswith("decoy turn: ")
+    reason_key = "decoy_finish_reason" if decoy else "finish_reason"
+    if attempt.get(reason_key) not in OUTPUT_LIMIT_FINISH_REASONS:
+        return False
+    return error is None or any(marker in str(error) for marker in OUTPUT_LIMIT_ERRORS)
+
+
+def run_error(attempt: dict | None) -> bool:
+    """The attempt was lost to the run, not answered or missed by the model."""
+    return bool(attempt) and "error" in attempt and not output_limit_reached(attempt)
+
+
+def attempt_cost_unknown(attempt: dict, cost: float | None) -> bool:
+    """Whether an attempt's cost is not known in full. The run step flags
+    every failed call, but a model that ran out of output completed its
+    call: its receipt is whole, so only a missing cost leaves it unknown."""
+    if output_limit_reached(attempt):
+        return cost is None
+    return bool(attempt.get("cost_unknown")) or cost is None
 
 
 def _had_decoy_turn(attempt: dict) -> bool:
@@ -759,8 +798,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                 raise
             record.update(getattr(exc, "receipt", {}))
             record["error"] = str(exc) if isinstance(exc, providers.ProviderError) else type(exc).__name__
-            record.update(dispatched=True, cost_unknown=True)
-            print(f"  FAIL {task_id} / {model_id} r{rep}: {exc}")
+            # A model that ran out of output completed its call: the receipt is whole.
+            limited = output_limit_reached(record)
+            record["dispatched"] = True
+            record["cost_unknown"] = not limited or attempt_cost_usd(record, spec) is None
+            print(f"  {'OUT OF OUTPUT' if limited else 'FAIL'} {task_id} / {model_id} r{rep}: {exc}")
             return record
         response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
@@ -768,11 +810,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         record["response_path"] = f"responses/{response_name}"
         record["dispatched"] = True
         if strict:
+            if not (run_dir / record["response_path"]).read_text().strip():
+                record["error"] = "provider returned an empty completion; no retry dispatched"
+            # An untrusted route is a run error whatever came back on it.
             route_error = _strict_receipt_error(result, spec["model"])
             if route_error:
                 record["error"] = route_error
-            if not (run_dir / record["response_path"]).read_text().strip():
-                record["error"] = "provider returned an empty completion; no retry dispatched"
             record["cost_unknown"] = attempt_cost_usd(record, spec) is None
         print(f"  done {task_id} / {model_id} r{rep} ({record['latency_seconds']}s)")
         return record
@@ -800,7 +843,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     record = one((model_id, task_id, rep))
                     # attempt_cost_usd already has a decoy task's earlier turn.
                     spent += attempt_cost_usd(record, models[model_id]) or 0.0
-                    if record.get("error") or record.get("cost_unknown"):
+                    if run_error(record) or record.get("cost_unknown"):
                         halted = "previous attempt failed or has unknown cost"
                     elif stop_after_cost is not None and spent >= stop_after_cost:
                         halted = "observed spend threshold reached"
@@ -813,7 +856,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             records = list(pool.map(one, jobs))
 
         _write_jsonl(run_dir / "attempts.jsonl", records)
-    errors = sum(1 for r in records if "error" in r)
+    errors = sum(1 for r in records if run_error(r))
     print(f"Completed {len(records) - errors}/{len(records)} attempts "
           f"({errors} errors). Next: python3 -m eval_runner.bench grade --run {run_dir}")
     return 0 if errors == 0 else 1
@@ -839,7 +882,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
 
     Uses the run's recorded prompts, model settings, and configuration so the
     retried attempt is the same experiment; the record keeps a `retried` flag
-    for provenance. Successful attempts are never re-run.
+    for provenance. Successful attempts are never re-run, nor are attempts
+    whose model spent its whole output allowance (`output_limit_reached`):
+    that is the model's miss, not a run error.
     """
     if getattr(args, "env_file", None):
         _load_env_file(args.env_file)
@@ -854,7 +899,7 @@ def cmd_retry(args: argparse.Namespace) -> int:
             f"directly ({HARNESS_ID}), so rerun its errored attempts with that harness"
         )
     attempts = _read_jsonl(run_dir / "attempts.jsonl")
-    errored = [record for record in attempts if "error" in record]
+    errored = [record for record in attempts if run_error(record)]
     if not errored:
         print("No errored attempts to retry.")
         return 0
@@ -903,11 +948,16 @@ def cmd_retry(args: argparse.Namespace) -> int:
                 conversation = _decoy_conversation(decoy_prompt, reply, prompt)
             result = providers.generate(spec["model"], conversation, ceiling, **request)
         except providers.ProviderError as exc:
+            # The new call's receipt, so a retry the model ran out of output
+            # on is recorded as that, with what it cost and took.
+            record.update(exc.receipt)
             record["error"] = str(exc)
             print(f"  FAIL {record['task_id']} / {record['model_id']} "
                   f"r{record['repetition']}: {exc}")
             continue
         record.pop("error", None)
+        # The failed call's flag; the answer's receipt is whole.
+        record.pop("cost_unknown", None)
         response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
         record.update(result)
@@ -916,7 +966,7 @@ def cmd_retry(args: argparse.Namespace) -> int:
         print(f"  done {record['task_id']} / {record['model_id']} "
               f"r{record['repetition']} ({record['latency_seconds']}s)")
     _write_jsonl(run_dir / "attempts.jsonl", attempts)
-    remaining = sum(1 for record in attempts if "error" in record)
+    remaining = sum(1 for record in attempts if run_error(record))
     affected = ",".join(sorted({record["task_id"] for record in errored}))
     print(f"Retry complete: {len(errored) - remaining} recovered, "
           f"{remaining} still errored. Regrade affected tasks with: "
@@ -2672,15 +2722,22 @@ def _judgment_passes(judgment: dict) -> bool:
 
 
 def attempt_verdicts(attempts: list, judgments: list, human: list) -> dict:
-    """(task, model, rep) -> {pass, source}. Human > judge > run-error."""
+    """(task, model, rep) -> {pass, source}. Human > judge > run-error or
+    output-limit. A model that spent its whole output allowance failed: no
+    judgment is needed for it, and none makes it right."""
     verdicts = {}
+    limited = set()
     for attempt in attempts:
         key = (attempt["task_id"], attempt["model_id"], attempt["repetition"])
-        if "error" in attempt:
+        if run_error(attempt):
             verdicts[key] = {"pass": False, "source": "run-error"}
+        elif output_limit_reached(attempt):
+            limited.add(key)
+            verdicts[key] = {"pass": False, "source": "output-limit"}
     for judgment in judgments:
         key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
-        verdicts[key] = {"pass": _judgment_passes(judgment), "source": "judge"}
+        verdicts[key] = {"pass": _judgment_passes(judgment) and key not in limited,
+                         "source": "judge"}
     for verdict in human:
         key = (verdict["task_id"], verdict["model_id"], verdict["repetition"])
         verdicts[key] = {"pass": verdict["human_pass"], "source": "human"}
@@ -2695,11 +2752,13 @@ def all_pass(task_id: str, model_id: str, repetitions: int, verdicts: dict) -> b
 def attempt_mark(
     attempt: dict | None, verdict: dict | None, judgment: dict | None = None
 ) -> str:
-    """One grid letter: E run error, T truncated/abnormal finish, P pass,
-    A failed but said so (the judge's `self_report` is `blocked`), F fail."""
-    if attempt is not None and "error" in attempt:
+    """One grid letter: E run error, T truncated/abnormal finish (the model
+    spent its whole output allowance, with or without text), P pass, A
+    failed but said so (the judge's `self_report` is `blocked`), F fail."""
+    if run_error(attempt):
         return "E"
-    if attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS:
+    if output_limit_reached(attempt) or (
+            attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS):
         return "T"
     if (verdict or {}).get("pass"):
         return "P"
@@ -2715,7 +2774,7 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
     counts make partial historical evidence visible in report.json and let the
     Markdown formatter flag it when necessary.
     """
-    completed = [attempt for attempt in attempts if "error" not in attempt]
+    completed = [attempt for attempt in attempts if not run_error(attempt)]
     rows = [attempt for attempt in attempts if attempt.get("dispatched") is not False]
     latencies = [
         latency for latency in map(attempt_latency_seconds, rows) if latency is not None
@@ -2744,7 +2803,7 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
         # Kept for report.json compatibility. This means provider-successful
         # candidate responses, not judge-completed or rubric-passing attempts.
         "completed_attempts": len(completed),
-        "cost_unknown_attempts": sum(bool(row.get("cost_unknown")) or cost is None
+        "cost_unknown_attempts": sum(attempt_cost_unknown(row, cost)
                                      for row, cost in zip(rows, costs)),
         "latency_observations": len(latencies),
         "mean_latency_seconds": (
@@ -3685,12 +3744,15 @@ def submission_records(
                         "pass": bool((verdict or {}).get("pass")),
                         "verdict_source": (verdict or {}).get("source", "missing"),
                         "finish_reason": (attempt or {}).get("finish_reason"),
-                        "provider_error": bool(attempt and "error" in attempt),
+                        "provider_error": run_error(attempt),
+                        # The model spent its whole output allowance: a
+                        # miss, "ran out of output" rather than "wrong".
+                        "output_limit_reached": output_limit_reached(attempt),
                         "output_tokens": (attempt or {}).get("output_tokens"),
                         "latency_seconds": attempt_latency_seconds(attempt or {}),
                         "cost_usd": round(cost, 6) if cost is not None else None,
                         **decoy_share,
-                        "cost_unknown": bool((attempt or {}).get("cost_unknown")) or cost is None,
+                        "cost_unknown": attempt_cost_unknown(attempt or {}, cost),
                         "response_path": safe_response_path,
                         "response": response,
                         "judge_completed": (
@@ -4192,6 +4254,11 @@ def _render_report_html(
                 f'{len(run["criteria"])} criteria</span></div>',
             ]
             failed = [criterion for criterion in run["criteria"] if not criterion["pass"]]
+            if run.get("output_limit_reached"):
+                html.append(
+                    '<p class="criterion fail">The model spent its whole output '
+                    "allowance before finishing; the attempt counts as failed.</p>"
+                )
             if run["provider_error"]:
                 html.append(
                     '<p class="criterion fail">The provider call failed; no '
@@ -4709,6 +4776,9 @@ def cmd_report(args: argparse.Namespace) -> int:
                     lines.append(
                         f"Verdict source: {run['verdict_source']}; not yet human verified."
                     )
+                if run.get("output_limit_reached"):
+                    lines += ["", "The model spent its whole output allowance before "
+                              "finishing; the attempt counts as failed."]
                 if run["provider_error"]:
                     lines += ["", "Provider call failed; no candidate response was recorded."]
                 elif run["judge_error"]:

@@ -70,11 +70,14 @@ def load_arm(label: str, run_dir: Path, only: list[str] | None = None) -> dict:
         for submission in report["submissions"]
         if submission["model_id"] == model_id
     }
-    answered = [attempt for attempt in attempts if "error" not in attempt]
     runs_passed = {task: sum(1 for run in runs[task] if run.get("pass")) for task in tasks}
     # Cost and time per attempt as the report prices them, which counts a
     # decoy task's earlier turn; the attempts' own fields leave it out.
     task_runs = [run for task in tasks for run in runs[task]]
+    # Lost to a run error as the report classifies it: a model that spent
+    # its whole output allowance answered (and missed), it did not error.
+    lost = {(task, run["repetition"]) for task in tasks for run in runs[task] if run.get("provider_error")}
+    answered = [attempt for attempt in attempts if (attempt["task_id"], attempt["repetition"]) not in lost]
     answered_runs = [run for run in task_runs if not run.get("provider_error")]
     whole = only is None
     return {
