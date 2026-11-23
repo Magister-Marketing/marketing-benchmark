@@ -5,6 +5,7 @@ import base64
 import hashlib
 from html import unescape
 import json
+from pathlib import Path
 import re
 
 import pytest
@@ -47,12 +48,14 @@ def test_report_brand_assets_are_embedded_and_valid():
 
 def test_tasks_load_and_validate():
     tasks = bench.load_tasks()
-    assert len(tasks) == 27
-    assert sum(task["split"] == "development" for task in tasks.values()) == 23
+    assert len(tasks) == 49
+    assert sum(task["split"] == "development" for task in tasks.values()) == 45
     assert sum(task["split"] == "holdout" for task in tasks.values()) == 4
-    # One task needs a harness that can send a prior turn; the direct arms never see it.
-    assert [t for t in tasks if not bench.task_supports_harness(tasks[t], bench.HARNESS_ID)] == [
-        "ads-ledger-analysis-decoy"
+    # Every task runs on the direct arms. The decoy task needs a harness that
+    # can send a prior turn, which a Claude Code session cannot.
+    assert all(bench.task_supports_harness(t, bench.HARNESS_ID) for t in tasks.values())
+    assert [t for t in tasks if not bench.task_supports_harness(tasks[t], "claude-code")] == [
+        "ads-ledger-analysis-decoy", "brief-amendment"
     ]
     for task in tasks.values():
         assert task["prompt_version"] >= 1
@@ -105,6 +108,35 @@ def test_parse_judge_json_variants():
         bench.parse_judge_json("not json at all")
     with pytest.raises(ValueError):
         bench.parse_judge_json('{"criteria": "wrong shape"}')
+
+
+def test_a_verdict_whose_evidence_quotes_copy_with_quotes_in_it_still_parses():
+    """Run 20261120-215543-fcd79b09: both graded launch-trafficking replies
+    failed to parse four times running, at the same column. The judge had
+    quoted a CSV cell, quotes and all, inside its evidence string."""
+    raw = (
+        '{"completed": true, "self_report": "complete", "criteria": ['
+        '{"id": "a", "pass": false, "evidence": "The row reads "Offer ends Mar 31, 2027. New accounts only." twice."},\n'
+        ' {"id": "b", "pass": true, "evidence": "Two lines:\nthe second says "ok" } and stops."}]}'
+    )
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(raw)
+    verdict = bench.parse_judge_json(raw)
+    assert [(c["id"], c["pass"]) for c in verdict["criteria"]] == [("a", False), ("b", True)]
+    assert verdict["criteria"][0]["evidence"] == (
+        'The row reads "Offer ends Mar 31, 2027. New accounts only." twice.'
+    )
+    assert verdict["criteria"][1]["evidence"] == 'Two lines: the second says "ok" } and stops.'
+    # A verdict that was valid is returned as it was, escaped quotes included.
+    valid = {"completed": True, "criteria": [{"id": "a", "pass": True, "evidence": 'says "x"'}]}
+    assert bench.parse_judge_json(json.dumps(valid)) == valid
+    # What cannot be made a verdict still fails, and fast on a long input.
+    import time
+    started = time.perf_counter()
+    for hostile in ('{"evidence": "' + '"' * 50_000, '"evidence":' * 5_000, '{"evidence": "' + 'a" } ' * 9_000):
+        with pytest.raises((ValueError, json.JSONDecodeError)):
+            bench.parse_judge_json(hostile)
+    assert time.perf_counter() - started < 3
 
 
 @pytest.mark.parametrize("payload", [
@@ -582,29 +614,33 @@ def test_html_complete_requires_exactly_one_root_document():
 
 def test_task_split_selection():
     tasks = bench.load_tasks()
-    assert len(bench._select_tasks(None, "development", tasks)) == 22
+    assert len(bench._select_tasks(None, "development", tasks)) == 45
     assert len(bench._select_tasks(None, "holdout", tasks)) == 4
-    assert len(bench._select_tasks(None, "all", tasks)) == 26
+    assert len(bench._select_tasks(None, "all", tasks)) == 49
     assert bench._select_tasks("headline", "holdout", tasks) == ["headline"]
     with pytest.raises(SystemExit, match="unknown task split"):
         bench._select_tasks(None, "mystery", tasks)
 
 
-def test_harness_only_tasks_are_excluded_from_direct_arms_and_refused_by_name():
-    """The direct-API runner inlines fixtures into one prompt, so a decoy task
-    would silently become the plain ledger task there. It never appears in a
-    split or `all` selection and is refused, not skipped, when named."""
+def test_the_decoy_task_runs_wherever_a_prior_turn_can_be_sent_and_nowhere_else():
+    """The direct arms and Magister both send the decoy as an earlier turn,
+    so all 33 development tasks are shared. A Claude Code session cannot, so
+    there it is left out of a split and refused, not skipped, when named."""
+    assert bench.PRIOR_TURN_HARNESSES == ("direct-api", "magister-agent")
     tasks = bench.load_tasks()
-    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "all", tasks)
-    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(None, "development", tasks)
-    with pytest.raises(SystemExit, match="not runnable on the direct-api harness"):
-        bench._select_tasks("headline,ads-ledger-analysis-decoy", "all", tasks)
-    # The Magister bridge's harness id lists it alongside the rest.
-    agent = bench._select_tasks(None, "development", tasks, harness="magister-agent")
-    assert "ads-ledger-analysis-decoy" in agent and len(agent) == 23
-    assert bench._select_tasks(
-        "ads-ledger-analysis-decoy", "all", tasks, harness="magister-agent"
-    ) == ["ads-ledger-analysis-decoy"]
+    for harness in bench.PRIOR_TURN_HARNESSES:
+        development = bench._select_tasks(None, "development", tasks, harness=harness)
+        assert "ads-ledger-analysis-decoy" in development and len(development) == 45
+        assert bench._select_tasks(
+            "ads-ledger-analysis-decoy", "all", tasks, harness=harness
+        ) == ["ads-ledger-analysis-decoy"]
+    assert "ads-ledger-analysis-decoy" not in bench._select_tasks(
+        None, "all", tasks, harness="claude-code"
+    )
+    with pytest.raises(SystemExit, match="not runnable on the claude-code harness"):
+        bench._select_tasks(
+            "headline,ads-ledger-analysis-decoy", "all", tasks, harness="claude-code"
+        )
 
 
 def test_labeled_artifact_paths_preserve_default(tmp_path):
@@ -698,6 +734,52 @@ def test_build_request_openai_responses_api():
     # tokens count against max_output_tokens, so a default cap can starve
     # the visible answer. The Anthropic default still applies (required).
     assert "max_output_tokens" not in body
+
+
+CONVERSATION = [
+    {"role": "user", "content": "Here is last week's export, for reference."},
+    {"role": "assistant", "content": "Noted; I will keep it for reference."},
+    {"role": "user", "content": "Now the review, from this export."},
+]
+
+
+def test_a_conversation_goes_on_the_wire_as_plain_text_turns_for_every_provider():
+    """A prior turn is the earlier user message and the model's own reply as
+    a plain assistant text message, in each provider's message list; a
+    string prompt is sent exactly as before."""
+    for spec, key in (("anthropic/claude-sonnet-5", "messages"),
+                      ("openrouter/google/gemini-3.8-flash", "messages"),
+                      ("openai/gpt-5.6-sol", "input")):
+        _, _, body = providers.build_request(spec, CONVERSATION, 100, False, "k")
+        assert body[key] == CONVERSATION, spec
+        assert body[key] is not CONVERSATION
+    # Settings apply to a conversation exactly as to one prompt.
+    _, _, single = providers.build_request(
+        "anthropic/claude-opus-5-5", "hi", 100, True, "k",
+        settings={"reasoning_effort": "high", "max_output_tokens": 64000})
+    _, _, multi = providers.build_request(
+        "anthropic/claude-opus-5-5", CONVERSATION, 100, True, "k",
+        settings={"reasoning_effort": "high", "max_output_tokens": 64000})
+    assert {k: v for k, v in multi.items() if k != "messages"} == {
+        k: v for k, v in single.items() if k != "messages"}
+    _, _, body = providers.build_request("openai/gpt-5.6-sol", "hi", 100, False, "k")
+    assert body["input"] == "hi"
+    _, _, body = providers.build_request("anthropic/claude-sonnet-5", "hi", 100, False, "k")
+    assert body["messages"] == [{"role": "user", "content": "hi"}]
+
+
+@pytest.mark.parametrize("conversation", [
+    [],
+    CONVERSATION[:2],  # ends on the model's turn
+    CONVERSATION[1:],  # starts on the model's turn
+    [CONVERSATION[0], CONVERSATION[0]],  # two user turns in a row
+    [CONVERSATION[0], {"role": "assistant", "content": "  "}, CONVERSATION[2]],
+    [CONVERSATION[0], {"role": "system", "content": "x"}, CONVERSATION[2]],
+    [{"role": "user", "content": ["a block"]}],
+])
+def test_a_malformed_conversation_is_refused_before_any_request(conversation):
+    with pytest.raises(providers.ProviderError, match="conversation"):
+        providers.build_request("anthropic/claude-sonnet-5", conversation, 100, False, "k")
 
 
 def test_split_model_spec_preserves_openrouter_upstream_slug():
@@ -1186,6 +1268,76 @@ def test_ceiling_retry_covers_anthropic_default_cap(monkeypatch):
     assert result["ceiling_retried"] is True
 
 
+def _empty_anthropic_then_answer(calls):
+    def fake_post(url, headers, body, provider):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"content": [{"type": "thinking", "thinking": "…"}],
+                    "usage": {"input_tokens": 1, "output_tokens": body["max_tokens"]},
+                    "stop_reason": "max_tokens"}
+        return {"content": [{"type": "text", "text": "recovered"}],
+                "usage": {"input_tokens": 1, "output_tokens": 900}, "stop_reason": "end_turn"}
+    return fake_post
+
+
+def test_ceiling_retry_never_asks_past_the_models_maximum(monkeypatch):
+    # Claude Opus 5.5 at medium asks for 65,536; doubled that is 131,072,
+    # above the model's 128,000, and the retry call would be rejected.
+    spec = bench.load_models()["claude-opus-5-5-medium"]
+    assert spec["max_output_tokens"] == 65536 and spec["model_max_output_tokens"] == 128000
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+    monkeypatch.setattr(providers, "_post_json_with_retries", _empty_anthropic_then_answer(calls))
+    result = providers.generate(spec["model"], "hi", bench.MAX_OUTPUT_TOKENS,
+                                settings=bench._candidate_settings(spec))
+    assert [c["max_tokens"] for c in calls] == [65536, 128000]
+    assert all("model_max_output_tokens" not in c for c in calls)   # a runner setting, never sent
+    assert calls[1]["output_config"] == {"effort": "medium"}
+    assert result["text"] == "recovered" and result["ceiling_retried"] is True
+
+
+@pytest.mark.parametrize("spec, settings", [
+    ("anthropic/claude-opus-5-5", {"max_output_tokens": 128000, "model_max_output_tokens": 128000}),
+    ("openrouter/google/gemini-3.8-flash", {"max_output_tokens": 65536, "model_max_output_tokens": 65536}),
+    ("openai/gpt-6.2-sol", {"max_output_tokens": 128000, "model_max_output_tokens": 128000}),
+])
+def test_a_cap_already_at_the_models_maximum_is_not_retried(monkeypatch, spec, settings):
+    # Doubling cannot raise it, so a second call would only repeat the first
+    # and be recorded as the retry: the truncation is recorded in one call.
+    for key in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.setenv(key, "test-key")
+    calls = []
+    empty = {"anthropic": {"content": [], "usage": {}, "stop_reason": "max_tokens"},
+             "openrouter": {"choices": [{"message": {"content": ""}, "finish_reason": "length"}], "usage": {}},
+             "openai": {"output": [], "usage": {}, "status": "incomplete",
+                        "incomplete_details": {"reason": "max_output_tokens"}}}[spec.split("/")[0]]
+    monkeypatch.setattr(providers, "_post_json_with_retries", lambda url, headers, body, provider: calls.append(body) or empty)
+    with pytest.raises(providers.ProviderError, match="ceiling_retried=False"):
+        providers.generate(spec, "hi", 16000, settings=settings)
+    assert len(calls) == 1
+
+
+def test_the_models_maximum_is_validated_and_entries_without_it_keep_doubling(monkeypatch):
+    for bad in (0, -1, "lots", 1.5, True):
+        with pytest.raises(providers.ProviderError, match="invalid model_max_output_tokens"):
+            providers.build_request("anthropic/claude-opus-5-5", "hi", 1, False, "k",
+                                    settings={"model_max_output_tokens": bad})
+    with pytest.raises(providers.ProviderError, match="above the model's maximum"):
+        providers.build_request("anthropic/claude-opus-5-5", "hi", 1, False, "k",
+                                settings={"max_output_tokens": 131072, "model_max_output_tokens": 128000})
+    # Without the field, the cap still doubles as before.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    calls = []
+    monkeypatch.setattr(providers, "_post_json_with_retries", _empty_anthropic_then_answer(calls))
+    providers.generate("anthropic/claude-opus-5-5", "hi", 16000, settings={"max_output_tokens": 65536})
+    assert [c["max_tokens"] for c in calls] == [65536, 131072]
+    # A maximum short of the doubled cap but above the cap raises it as far as it goes.
+    calls.clear()
+    providers.generate("anthropic/claude-opus-5-5", "hi", 16000,
+                       settings={"max_output_tokens": 100000, "model_max_output_tokens": 128000})
+    assert [c["max_tokens"] for c in calls] == [100000, 128000]
+
+
 def test_uncapped_truncation_never_retries(monkeypatch):
     # With no explicit cap the request is bounded only by the model's own
     # maximum; doubling cannot help, so the failure is recorded honestly
@@ -1260,6 +1412,30 @@ def test_retry_reruns_only_errored_attempts(tmp_path, monkeypatch):
     assert "retried" not in updated[0]  # successful attempts are untouched
 
 
+def test_retry_sends_each_model_the_ceiling_its_run_recorded(tmp_path, monkeypatch):
+    """A run whose models have different ceilings records no single
+    `max_output_tokens`; the retry must still send each model the one its
+    attempt ran with, never null."""
+    run_dir = _retry_fixture(tmp_path)
+    meta = json.loads((run_dir / "run.json").read_text())
+    meta["max_output_tokens"] = None
+    meta["max_output_tokens_by_model"] = {"m": 16000, "other": 65536}
+    (run_dir / "run.json").write_text(json.dumps(meta))
+    ceilings = []
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None):
+        ceilings.append(max_output_tokens)
+        return {"text": "recovered answer", "input_tokens": 10,
+                "output_tokens": 20, "tool_calls": {}, "web_search_calls": 0,
+                "finish_reason": "end_turn", "ceiling_retried": False,
+                "provider": "anthropic", "model": "x", "latency_seconds": 1.0}
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    assert bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True)) == 0
+    assert ceilings == [16000]
+
+
 def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
     run_dir = _retry_fixture(tmp_path)
     (run_dir / "prompts" / "t.md").write_text("a different prompt")
@@ -1268,6 +1444,40 @@ def test_retry_refuses_a_changed_prompt(tmp_path, monkeypatch):
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
     )
     with pytest.raises(SystemExit, match="prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+
+
+@pytest.mark.parametrize("harness", ["claude-code", "magister-agent"])
+def test_retry_refuses_a_run_another_harness_made(tmp_path, monkeypatch, harness):
+    """retry calls the model directly; an agent run's errored attempt filled
+    that way would be a direct answer inside an agent's results."""
+    run_dir = _retry_fixture(tmp_path)
+    meta = json.loads((run_dir / "run.json").read_text())
+    (run_dir / "run.json").write_text(json.dumps({**meta, "harness": harness}))
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match=f"made by the {harness} harness"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+
+
+def test_retry_checks_every_recorded_prompt_before_the_first_paid_call(tmp_path, monkeypatch):
+    """A changed prompt on a later errored attempt must stop the retry before
+    an earlier one is re-paid and then left unrecorded."""
+    run_dir = _retry_fixture(tmp_path)
+    (run_dir / "prompts" / "u.md").write_text("a prompt edited after the run")
+    with (run_dir / "attempts.jsonl").open("a") as handle:
+        handle.write(json.dumps({
+            "task_id": "u", "model_id": "m", "repetition": 1,
+            "prompt_sha256": hashlib.sha256(b"the prompt the run sent").hexdigest(),
+            "error": "provider exploded",
+        }) + "\n")
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    with pytest.raises(SystemExit, match="recorded prompt for u"):
         bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
@@ -2394,7 +2604,7 @@ def test_decoy_task_is_its_parent_plus_a_prior_turn():
     tasks = bench.load_tasks()
     decoy, parent = tasks["ads-ledger-analysis-decoy"], tasks["ads-ledger-analysis"]
     assert decoy["derived_from"] == "ads-ledger-analysis"
-    assert decoy["harnesses"] == ["magister-agent"]
+    assert decoy["harnesses"] == ["direct-api", "magister-agent"]
     for key in ("prompt", "answers", "fixtures", "skills"):
         assert decoy[key] == parent[key]
     parent_ids = {c["id"] for s in bench.RUBRIC_SECTIONS for c in parent["rubric"][s]}
@@ -2473,18 +2683,20 @@ def test_decoy_export_reproduces_and_every_answer_falls_outside_the_zero_band():
         assert error >= tolerance["zero"], criterion_id
 
 
-def test_task_validation_rejects_a_decoy_the_direct_arm_could_see_or_that_earns_credit(tmp_path):
+def test_task_validation_rejects_a_decoy_a_listed_harness_cannot_deliver_or_that_earns_credit(tmp_path):
     tasks = bench.load_tasks()
     task = json.loads(json.dumps(tasks["ads-ledger-analysis-decoy"]))
     path = tmp_path / "ads-ledger-analysis-decoy.json"
 
     naked = dict(task)
     del naked["harnesses"]
-    with pytest.raises(ValueError, match="'direct-api' cannot"):
+    with pytest.raises(ValueError, match="a decoy task must list its harnesses"):
         bench._validate_task(naked, path)
-    exposed = dict(task, harnesses=["magister-agent", "direct-api"])
-    with pytest.raises(ValueError, match="'direct-api' cannot"):
-        bench._validate_task(exposed, path)
+    for listed in (["claude-code"], ["direct-api", "magister-agent", "claude-code"]):
+        with pytest.raises(ValueError, match="'claude-code' cannot send a prior turn"):
+            bench._validate_task(dict(task, harnesses=listed), path)
+    for listed in (["direct-api", "magister-agent"], ["direct-api"], ["magister-agent"]):
+        bench._validate_task(dict(task, harnesses=listed), path)
 
     inline = dict(task, fixtures=task["fixtures"] + [task["decoy"]["fixture"]])
     with pytest.raises(ValueError, match="must not also be a supplied fixture"):
@@ -2542,6 +2754,431 @@ def test_a_derived_task_cannot_drift_from_its_parent():
     chained["ads-ledger-analysis"]["derived_from"] = "headline"
     with pytest.raises(ValueError, match="not itself derived"):
         bench._validate_derived_tasks(chained)
+
+
+def test_validate_passes_on_the_shipped_tasks(capsys):
+    assert bench.cmd_validate(argparse.Namespace()) == 0
+    assert "OK: 49 tasks" in capsys.readouterr().out
+
+
+# --- the direct harness's decoy turn ----------------------------------------
+
+DECOY_TASK = "ads-ledger-analysis-decoy"
+DECOY_REPLY = "Noted. I will keep the preliminary export for reference."
+
+
+def _receipt(text: str, **changes) -> dict:
+    return {"text": text, "provider": "anthropic", "model": "claude-haiku-4-5",
+            "input_tokens": 1000, "output_tokens": 1000, "tool_calls": {},
+            "web_search_calls": 0, "finish_reason": "end_turn",
+            "ceiling_retried": False, "latency_seconds": 5.0, **changes}
+
+
+def _openrouter_receipt(text: str, **changes) -> dict:
+    return _receipt(text, **{
+        "provider": "openrouter", "model": "google/gemini-3.8-flash",
+        "resolved_model": "google/gemini-3.8-flash",
+        "resolved_provider": "Google Vertex", "response_id": "gen-test",
+        "provider_cost_usd": .01, "finish_reason": "stop", **changes})
+
+
+def _stub_provider(monkeypatch, *, decoy=None, task=None, receipt=_receipt):
+    """Record every call. The decoy turn (its earlier message, sent alone)
+    answers DECOY_REPLY and any other call "the submission", unless `decoy` /
+    `task` give the receipt to return or the exception to raise."""
+    calls = []
+    decoy_message = bench.load_tasks()[DECOY_TASK]["decoy"]["message"]
+
+    def fake_generate(model_spec, prompt, max_output_tokens, web_search=False,
+                      settings=None, **options):
+        calls.append({"spec": model_spec, "prompt": prompt, "max": max_output_tokens,
+                      "web_search": web_search, "settings": settings, "options": options})
+        is_decoy = isinstance(prompt, str) and prompt.startswith(decoy_message)
+        outcome = decoy if is_decoy else task
+        if isinstance(outcome, Exception):
+            raise outcome
+        if outcome is not None:
+            return dict(outcome)
+        if is_decoy:
+            return receipt(DECOY_REPLY, input_tokens=100, output_tokens=50, latency_seconds=2.0)
+        return receipt("the submission")
+
+    monkeypatch.setattr(bench.providers, "generate", fake_generate)
+    return calls
+
+
+def _run_args(**changes) -> argparse.Namespace:
+    values = dict(models="claude-haiku-4-5", tasks=DECOY_TASK, repetitions=1,
+                  no_skills=False, tools=False, yes=True)
+    return argparse.Namespace(**{**values, **changes})
+
+
+def test_the_direct_harness_sends_a_decoy_task_as_two_calls_and_every_other_task_as_one(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args(tasks=f"headline,{DECOY_TASK}", tools=True)) == 0
+    assert "About to make 3 paid model calls" in capsys.readouterr().out
+    tasks = bench.load_tasks()
+    decoy_prompt = bench.assemble_decoy_prompt(tasks[DECOY_TASK])
+    single = [c for c in calls if c["prompt"] == bench.assemble_prompt(tasks["headline"], True)]
+    first = [c for c in calls if c["prompt"] == decoy_prompt]
+    second = [c for c in calls if isinstance(c["prompt"], list)]
+    assert len(calls) == 3 and len(single) == len(first) == len(second) == 1
+    # Call 2 is the conversation so far: the earlier message, the model's own
+    # reply to it as plain text, then the task prompt exactly as one call has it.
+    assert second[0]["prompt"] == [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": DECOY_REPLY},
+        {"role": "user", "content": bench.assemble_prompt(tasks[DECOY_TASK], True)},
+    ]
+    # Same model, ceiling, settings, tools and options on both turns as on a
+    # single call.
+    same = ("spec", "max", "web_search", "settings", "options")
+    assert ({k: first[0][k] for k in same} == {k: second[0][k] for k in same}
+            == {k: single[0][k] for k in same})
+    assert first[0]["web_search"] is True
+    responses = next(tmp_path.iterdir()) / "responses"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.md").read_text() == "the submission"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md").read_text() == DECOY_REPLY
+    assert not (responses / "headline--claude-haiku-4-5--r1.decoy.md").exists()
+
+
+def test_the_decoy_conversation_reaches_the_wire_through_the_real_provider_path(
+        tmp_path, monkeypatch):
+    """Stubbed at the HTTP layer, so the real generate and build_request
+    carry the model's first reply into the second request body."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only")
+    bodies = []
+
+    def fake_post(url, headers, body, provider, **options):
+        bodies.append(body)
+        text = DECOY_REPLY if len(bodies) == 1 else "the submission"
+        return {"content": [{"type": "text", "text": text}], "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 5}}
+
+    monkeypatch.setattr(providers, "_post_json_with_retries", fake_post)
+    assert bench.cmd_run(_run_args(models="claude-opus-5-5-medium")) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    first, second = bodies
+    assert first["messages"] == [{"role": "user", "content": bench.assemble_decoy_prompt(task)}]
+    assert second["messages"] == [
+        {"role": "user", "content": bench.assemble_decoy_prompt(task)},
+        {"role": "assistant", "content": DECOY_REPLY},
+        {"role": "user", "content": bench.assemble_prompt(task, include_skills=True)},
+    ]
+    assert {k: v for k, v in first.items() if k != "messages"} == {
+        k: v for k, v in second.items() if k != "messages"}
+
+
+@pytest.mark.parametrize("no_skills", [False, True])
+def test_a_decoy_task_carries_the_skills_only_where_the_single_call_path_puts_them(
+        tmp_path, monkeypatch, no_skills):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args(no_skills=no_skills)) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    task_prompt = bench.assemble_prompt(task, include_skills=not no_skills)
+    decoy_prompt = bench.assemble_decoy_prompt(task)
+    assert ("Skill guidance you should follow" in task_prompt) is not no_skills
+    first, second = calls
+    assert first["prompt"] == decoy_prompt
+    assert "Skill guidance you should follow" not in decoy_prompt
+    assert second["prompt"][-1] == {"role": "user", "content": task_prompt}
+    assert "Skill guidance you should follow" not in second["prompt"][0]["content"]
+
+    run_dir = next(tmp_path.iterdir())
+    assert (run_dir / "prompts" / f"{DECOY_TASK}.md").read_text() == task_prompt
+    assert (run_dir / "prompts" / f"{DECOY_TASK}.decoy.md").read_text() == decoy_prompt
+    meta = json.loads((run_dir / "run.json").read_text())
+    assert meta["task_manifest"][DECOY_TASK]["decoy"] is True
+    attempts = bench._read_jsonl(run_dir / "attempts.jsonl")
+    # prompt_sha256 covers the task prompt only, as for every task, so the
+    # grade step's hash rule finds it; the earlier message has its own hash.
+    assert attempts[0]["prompt_sha256"] == hashlib.sha256(task_prompt.encode()).hexdigest()
+    assert attempts[0]["decoy_prompt_sha256"] == hashlib.sha256(decoy_prompt.encode()).hexdigest()
+    assert bench._resolve_recorded_prompt(run_dir, task, meta, attempts) == (task_prompt, 1)
+    recorded = bench._load_task_snapshots(run_dir)[DECOY_TASK]
+    assert bench._resolve_recorded_prompt(
+        run_dir, recorded, meta, attempts, require_known_version=False
+    ) == (task_prompt, 1)
+
+
+@pytest.mark.parametrize("failure", [
+    "provider-error", "refusal", "cut-off", "strict-empty", "strict-wrong-model",
+])
+def test_a_failed_decoy_turn_fails_the_attempt_and_the_task_prompt_is_never_sent(
+        tmp_path, monkeypatch, failure):
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    strict = failure.startswith("strict")
+    decoy = {
+        "provider-error": providers.ProviderError(
+            "anthropic call failed (HTTP 529: overloaded)",
+            receipt={"input_tokens": 7, "output_tokens": 0}),
+        "refusal": _receipt("I can't help with that.", finish_reason="refusal"),
+        "cut-off": _receipt("Noted, I will", finish_reason="max_tokens"),
+        "strict-empty": _openrouter_receipt(""),
+        "strict-wrong-model": _openrouter_receipt(DECOY_REPLY, resolved_model="another-model"),
+    }[failure]
+    calls = _stub_provider(monkeypatch, decoy=decoy)
+    args = _run_args()
+    if strict:
+        args = _run_args(models="gemini-3.8-flash-high", strict_attempts=True,
+                         request_timeout_seconds=75., stop_after_cost_usd=5.)
+    # A decoy turn the model spent its whole output allowance on is the
+    # model's miss (mark T), not a run error; every other failure is one.
+    cut_off = failure == "cut-off"
+    assert bench.cmd_run(args) == (0 if cut_off else 1)
+    assert len(calls) == 1 and isinstance(calls[0]["prompt"], str)
+    run_dir = next(tmp_path.iterdir())
+    (attempt,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert attempt["error"].startswith("decoy turn: ")
+    assert bench.run_error(attempt) is not cut_off
+    assert bench.attempt_mark(attempt, None) == ("T" if cut_off else "E")
+    assert attempt["dispatched"] is True
+    assert "response_path" not in attempt and "input_tokens" not in attempt
+    model_id = args.models
+    assert not (run_dir / "responses" / f"{DECOY_TASK}--{model_id}--r1.md").exists()
+    if failure == "provider-error":
+        assert "HTTP 529" in attempt["error"]
+        assert attempt["decoy_input_tokens"] == 7
+        assert attempt["cost_unknown"] is True
+    else:
+        assert attempt["decoy_sent"] is True
+        assert attempt["cost_unknown"] is False
+    if strict:
+        assert calls[0]["options"]["retry_empty_completion"] is False
+        assert calls[0]["options"]["retry_transport"] is False
+        assert attempt["decoy_provider_cost_usd"] == .01
+    expected = {"refusal": "finish_reason='refusal'", "cut-off": "finish_reason='max_tokens'",
+                "strict-empty": "empty completion",
+                "strict-wrong-model": "model does not match"}.get(failure)
+    if expected:
+        assert expected in attempt["error"]
+
+
+def test_a_direct_decoy_attempt_reports_both_turns_cost_and_time_and_the_split(
+        tmp_path, monkeypatch):
+    """The earlier turn's receipt is kept apart under decoy_*, like the
+    Magister bridge's; the task as given is both messages, so its reported
+    cost and time are both turns, and the earlier turn's share is shown."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    _stub_provider(monkeypatch)
+    assert bench.cmd_run(_run_args()) == 0
+    run_dir = next(tmp_path.iterdir())
+    (attempt,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert {key: attempt[key] for key in attempt if key.startswith("decoy_")} == {
+        "decoy_prompt_sha256": attempt["decoy_prompt_sha256"],
+        "decoy_sent": True,
+        "decoy_response_path": f"responses/{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md",
+        "decoy_reply_chars": len(DECOY_REPLY),
+        "decoy_latency_seconds": 2.0,
+        "decoy_input_tokens": 100,
+        "decoy_output_tokens": 50,
+        "decoy_tool_calls": {},
+        "decoy_web_search_calls": 0,
+        "decoy_finish_reason": "end_turn",
+        "decoy_ceiling_retried": False,
+    }
+    assert (attempt["input_tokens"], attempt["output_tokens"], attempt["latency_seconds"]) == (
+        1000, 1000, 5.0)
+    spec = bench.load_models()["claude-haiku-4-5"]
+    task_turn, earlier_turn = 0.006, (100 * 1 + 50 * 5) / 1e6
+    assert bench.decoy_cost_usd(attempt, spec) == pytest.approx(earlier_turn)
+    assert bench.attempt_cost_usd(attempt, spec) == pytest.approx(task_turn + earlier_turn)
+    assert bench.decoy_latency_seconds(attempt) == 2.0
+    assert bench.attempt_latency_seconds(attempt) == 7.0
+
+    (run_dir / "judgments.jsonl").write_text(json.dumps({
+        "task_id": DECOY_TASK, "model_id": "claude-haiku-4-5", "repetition": 1,
+        "judge_model": "claude-sonnet-5", "completed": True,
+        "criteria": [{"id": "q1_blended_cpa", "pass": True, "evidence": "x"}],
+    }) + "\n")
+    assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
+    summary = json.loads((run_dir / "report.json").read_text())
+    model = summary["models"]["claude-haiku-4-5"]
+    assert model["candidate_cost_usd"] == round(bench.attempt_cost_usd(attempt, spec), 4)
+    assert model["average_task_time_seconds"] == 7.0
+    assert model["decoy_cost_usd"] == round(earlier_turn, 4)
+    (submission,) = summary["submissions"]
+    assert submission["metrics"]["candidate_cost_usd"] == round(task_turn + earlier_turn, 6)
+    assert submission["metrics"]["average_latency_seconds"] == 7.0
+    assert submission["metrics"]["decoy_cost_usd"] == round(earlier_turn, 6)
+    assert submission["metrics"]["average_decoy_latency_seconds"] == 2.0
+    (run,) = submission["runs"]
+    assert (run["cost_usd"], run["latency_seconds"]) == (round(task_turn + earlier_turn, 6), 7.0)
+    assert (run["decoy_cost_usd"], run["decoy_latency_seconds"]) == (round(earlier_turn, 6), 2.0)
+    assert submission["assembled_prompt"] == (run_dir / "prompts" / f"{DECOY_TASK}.md").read_text()
+    markdown = (run_dir / "report.md").read_text()
+    assert "7.0s latency (2.0s of it the earlier message)" in markdown
+    assert "of it the earlier message) ·" in markdown
+
+
+def _bridge_run(tmp_path) -> Path:
+    """A Magister bridge run, shaped as the bridge writes it: a decoy attempt
+    (its latency_seconds already has the decoy turn subtracted, and the turn's
+    cost is decoy_gateway_provider_cost_usd) and a plain one."""
+    run_dir = tmp_path / "bridge"
+    (run_dir / "responses").mkdir(parents=True)
+    pricing = {"input_per_mtok": 2.0, "output_per_mtok": 10.0}
+    (run_dir / "run.json").write_text(json.dumps({
+        "run_id": "bridge", "created_at": "x", "harness": "magister-agent",
+        "models": {"m": {"model": "magister/x", "pricing": pricing}},
+        "tasks": [DECOY_TASK, "headline"], "repetitions": 1, "skills_included": False,
+        "tools_enabled": True, "max_output_tokens": None,
+    }))
+    attempts = [
+        {"task_id": DECOY_TASK, "model_id": "m", "repetition": 1, "prompt_sha256": "h",
+         "decoy_prompt_sha256": "d", "decoy_sent": True, "finish_reason": None,
+         "latency_seconds": 80.22, "decoy_latency_seconds": 21.52,
+         "gateway_provider_cost_usd": 0.3419, "decoy_gateway_provider_cost_usd": 0.1703,
+         "input_tokens": 413078, "output_tokens": 2892,
+         "decoy_input_tokens": 126590, "decoy_output_tokens": 38, "decoy_llm_calls": 2,
+         "response_path": f"responses/{DECOY_TASK}--m--r1.md"},
+        {"task_id": "headline", "model_id": "m", "repetition": 1, "prompt_sha256": "h",
+         "finish_reason": None, "latency_seconds": 10.0, "gateway_provider_cost_usd": 0.1,
+         "input_tokens": 1000, "output_tokens": 100,
+         "response_path": "responses/headline--m--r1.md"},
+    ]
+    (run_dir / "attempts.jsonl").write_text("".join(json.dumps(a) + "\n" for a in attempts))
+    (run_dir / "judgments.jsonl").write_text("".join(json.dumps({
+        "task_id": task, "model_id": "m", "repetition": 1, "judge_model": "claude-sonnet-5",
+        "completed": True, "criteria": [{"id": criterion, "pass": True, "evidence": "x"}],
+    }) + "\n" for task, criterion in ((DECOY_TASK, "q1_blended_cpa"), ("headline", "five_options"))))
+    for task in (DECOY_TASK, "headline"):
+        (run_dir / "responses" / f"{task}--m--r1.md").write_text("answer")
+    return run_dir
+
+
+def test_a_bridge_decoy_attempt_reports_both_turns_and_a_plain_one_is_unchanged(tmp_path):
+    run_dir = _bridge_run(tmp_path)
+    assert bench.cmd_report(argparse.Namespace(run=str(run_dir))) == 0
+    summary = json.loads((run_dir / "report.json").read_text())
+    by_task = {sub["task_id"]: sub for sub in summary["submissions"]}
+    decoy = by_task[DECOY_TASK]["metrics"]
+    # The bridge subtracted the decoy turn's 21.52 s from latency_seconds, so
+    # adding it back is the whole attempt; its gateway cost is the turn's.
+    assert decoy["candidate_cost_usd"] == round(0.3419 + 0.1703, 6)
+    assert decoy["average_latency_seconds"] == round(80.22 + 21.52, 1)
+    assert decoy["decoy_cost_usd"] == 0.1703
+    assert decoy["average_decoy_latency_seconds"] == 21.5
+    assert by_task["headline"]["metrics"] == {
+        "planned_runs": 1, "output_token_observations": 1, "total_output_tokens": 100,
+        "cost_observations": 1, "candidate_cost_usd": 0.1,
+        "latency_observations": 1, "average_latency_seconds": 10.0,
+    }
+    assert "decoy_cost_usd" not in by_task["headline"]["runs"][0]
+    model = summary["models"]["m"]
+    assert model["candidate_cost_usd"] == round(0.3419 + 0.1703 + 0.1, 4)
+    assert model["average_task_time_seconds"] == round((80.22 + 21.52 + 10.0) / 2, 1)
+    assert model["decoy_cost_usd"] == 0.1703
+    assert model["candidate_cost_complete"] is True
+
+
+def test_a_decoy_turn_with_no_cost_or_time_recorded_makes_that_part_unknown_not_zero():
+    spec = {"pricing": {"input_per_mtok": 2.0, "output_per_mtok": 10.0}}
+    plain = {"gateway_provider_cost_usd": 0.34, "latency_seconds": 80.0}
+    # No earlier turn: exactly the task turn's figures, as before.
+    assert bench.attempt_cost_usd(plain, spec) == 0.34
+    assert bench.attempt_latency_seconds(plain) == 80.0
+    assert bench.decoy_cost_usd(plain, spec) == 0.0
+    assert bench.decoy_latency_seconds(plain) == 0.0
+    missing = {**plain, "decoy_prompt_sha256": "d", "decoy_sent": True}
+    assert bench.decoy_cost_usd(missing, spec) is None
+    assert bench.attempt_cost_usd(missing, spec) is None
+    assert bench.decoy_latency_seconds(missing) is None
+    assert bench.attempt_latency_seconds(missing) is None
+    # A recorded gateway cost of 0 is "not recorded", as for the task turn:
+    # the rate card prices the turn's tokens.
+    priced = {**missing, "decoy_gateway_provider_cost_usd": 0.0,
+              "decoy_input_tokens": 1_000_000, "decoy_output_tokens": 0}
+    assert bench.decoy_cost_usd(priced, spec) == 2.0
+    assert bench.attempt_cost_usd(priced, spec) == pytest.approx(2.34)
+    # A planned cell never dispatched cost nothing, decoy task or not.
+    assert bench.attempt_cost_usd({"dispatched": False, "decoy_prompt_sha256": "d"}, spec) == 0.0
+
+
+def test_the_strict_spend_guard_counts_what_the_decoy_turn_cost(tmp_path, monkeypatch):
+    """The guard stops on money spent, so it adds the earlier turn: here the
+    task turn alone (0.01) is under the 0.015 threshold, both turns are not."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch, receipt=_openrouter_receipt)
+    args = _run_args(models="gemini-3.8-flash-high", tasks=f"{DECOY_TASK},headline",
+                     strict_attempts=True, request_timeout_seconds=75.,
+                     stop_after_cost_usd=.015)
+    assert bench.cmd_run(args) == 1
+    assert len(calls) == 2
+    assert all(call["options"] == {"request_timeout_seconds": 75., "retry_transport": False,
+                                   "retry_empty_completion": False} for call in calls)
+    rows = bench._read_jsonl(next(tmp_path.iterdir()) / "attempts.jsonl")
+    assert "error" not in rows[0] and rows[0]["cost_unknown"] is False
+    assert rows[0]["provider_cost_usd"] == rows[0]["decoy_provider_cost_usd"] == .01
+    assert rows[1]["error"] == "not dispatched: observed spend threshold reached"
+
+
+def test_the_strict_spend_guard_counts_the_decoy_turn_once(tmp_path, monkeypatch):
+    """0.025 lies between both turns counted once (0.02) and the decoy turn
+    counted twice (0.03): the next task is dispatched only when it is once."""
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    calls = _stub_provider(monkeypatch, receipt=_openrouter_receipt)
+    args = _run_args(models="gemini-3.8-flash-high", tasks=f"{DECOY_TASK},headline,ad-creatives",
+                     strict_attempts=True, request_timeout_seconds=75.,
+                     stop_after_cost_usd=.025)
+    assert bench.cmd_run(args) == 1
+    assert len(calls) == 3
+    rows = bench._read_jsonl(next(tmp_path.iterdir()) / "attempts.jsonl")
+    assert "error" not in rows[0] and "error" not in rows[1]
+    assert rows[2]["error"] == "not dispatched: observed spend threshold reached"
+
+
+def _errored_decoy_run(tmp_path, monkeypatch) -> Path:
+    monkeypatch.setattr(bench, "RESULTS_DIR", tmp_path)
+    _stub_provider(monkeypatch, task=providers.ProviderError("anthropic call failed (HTTP 529)"))
+    assert bench.cmd_run(_run_args()) == 1
+    return next(tmp_path.iterdir())
+
+
+def test_retry_replays_both_turns_of_an_errored_decoy_attempt(tmp_path, monkeypatch):
+    run_dir = _errored_decoy_run(tmp_path, monkeypatch)
+    (before,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert before["error"] == "anthropic call failed (HTTP 529)"
+    assert before["decoy_sent"] is True  # the first turn had answered
+
+    calls = _stub_provider(monkeypatch, decoy=_receipt("Got it, for reference only.",
+                                                        input_tokens=90, output_tokens=40,
+                                                        latency_seconds=1.5))
+    assert bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True)) == 0
+    task = bench.load_tasks()[DECOY_TASK]
+    decoy_prompt = bench.assemble_decoy_prompt(task)
+    assert [call["prompt"] for call in calls] == [decoy_prompt, [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": "Got it, for reference only."},
+        {"role": "user", "content": bench.assemble_prompt(task, include_skills=True)},
+    ]]
+    (after,) = bench._read_jsonl(run_dir / "attempts.jsonl")
+    assert "error" not in after and after["retried"] is True
+    assert (after["decoy_input_tokens"], after["decoy_latency_seconds"]) == (90, 1.5)
+    assert after["decoy_prompt_sha256"] == before["decoy_prompt_sha256"]
+    responses = run_dir / "responses"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.md").read_text() == "the submission"
+    assert (responses / f"{DECOY_TASK}--claude-haiku-4-5--r1.decoy.md").read_text() == (
+        "Got it, for reference only.")
+
+
+def test_retry_refuses_a_decoy_attempt_whose_earlier_message_changed(tmp_path, monkeypatch):
+    run_dir = _errored_decoy_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        bench.providers, "generate",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call")),
+    )
+    decoy_path = run_dir / "prompts" / f"{DECOY_TASK}.decoy.md"
+    decoy_path.write_text("a different earlier message")
+    with pytest.raises(SystemExit, match="decoy_prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
+    decoy_path.unlink()
+    with pytest.raises(SystemExit, match="decoy_prompt_sha256"):
+        bench.cmd_retry(argparse.Namespace(run=str(run_dir), yes=True))
 
 
 # --- scoring rules from the 2026-09-01 blank-deliverable probe -------------
@@ -2919,3 +3556,11 @@ def test_model_behavior_counts_tools_guardrails_and_false_confidence():
     assert empty["tool_calls_per_attempt"] is None and empty["false_confidence_rate"] is None
     assert bench._false_confidence_cell(stats) == "1/2 failed (50%)"
     assert bench._false_confidence_cell(empty) == "n/a"
+    # A missed forecast is not unfinished work presented as finished: the
+    # task of every counted failure here is a forecast, so none counts.
+    failed_tasks = frozenset(j["task_id"] for j in judgments if not verdicts.get(
+        (j["task_id"], j["model_id"], j["repetition"]), {}).get("pass"))
+    forecast = bench.model_behavior("m", attempts, judgments, verdicts, failed_tasks)
+    assert forecast["failed"] == 0 and forecast["false_confidence_rate"] is None
+    assert forecast["self_report_observations"] == stats["self_report_observations"]
+    assert forecast["abstained"] == stats["abstained"]

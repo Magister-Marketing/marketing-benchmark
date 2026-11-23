@@ -115,6 +115,17 @@ def test_dry_run_prints_the_estimate_and_spends_nothing(site, tmp_path, monkeypa
     assert "eval.py gpt-6.1-sol-high --tools --tasks alpha,beta --repetitions 3 --judge claude-sonnet-5-5 -y" in out
 
 
+def test_the_estimate_scales_a_decoy_attempts_cost_over_both_turns_tokens(tmp_path):
+    """The report's cost of a decoy task's attempt is both turns, so the
+    price ratio that scales it weighs both turns' tokens."""
+    run = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high"))
+    rows = [json.loads(line) for line in (run / "attempts.jsonl").read_text().splitlines()]
+    rows[0].update(decoy_prompt_sha256="d", decoy_input_tokens=500, decoy_output_tokens=10)
+    (run / "attempts.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    est = bm.estimate(run, {"input_per_mtok": 1.0, "output_per_mtok": 5.0}, TASKS, 1)
+    assert (est["input_tokens"], est["output_tokens"]) == (2500, 410)
+
+
 def test_without_the_confirmation_word_nothing_runs(site, tmp_path, monkeypatch):
     like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high"))
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("ran without confirm=SPEND"))

@@ -1,0 +1,35 @@
+{
+  "id": "test-plan-sizing",
+  "title": "Sizing and scheduling a backlog of A/B tests",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/test-plan-sizing/testing_rules.md",
+    "eval_runner/fixtures/test-plan-sizing/sites.csv",
+    "eval_runner/fixtures/test-plan-sizing/test_backlog.csv",
+    "eval_runner/fixtures/test-plan-sizing/traffic_by_page.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ab-testing/SKILL.md"
+  ],
+  "prompt": "Quillfeather Coffee Roasters sells coffee subscriptions through twelve country storefronts, and its growth team has 150 A/B tests proposed for the next testing calendar. The growth lead wants a calendar the team can follow: how large each test must be, how long it needs, when it starts, and which tests are rejected. You are supplied the team's experimentation rules, the storefronts' settings, the test backlog and eight weeks of traffic by page. Follow the rules exactly. Every figure you use must come from the supplied files.\n\nStart with a short note for the growth lead: how many tests run, how many are rejected as too long and how many have no slot, and what the team should do about each kind of rejection. Then deliver the calendar as one file. Put it under a line with its file name, as CSV with exactly the header shown: one row per test in the backlog, in any order, no totals row, and nothing inside the file but its rows.\n\n### test_calendar.csv\ntest_id,page_weekly_users,sample_size_per_variant,weeks_needed,start_week,status\n\n- `page_weekly_users`: the weekly users of the test's page under the rules, rounded to a whole user.\n- `sample_size_per_variant`: n under the rules.\n- `weeks_needed`: the weeks the test needs.\n- `start_week`: the week the test starts, or 0 if it does not run.\n- `status`: `run`, `too long` (it needs more than four weeks) or `no slot` (it cannot be placed in the calendar).\n\nWrite numbers without thousands separators inside the file. This is an internal plan. Fetch nothing external and do not invent benchmarks.",
+  "rubric": {
+    "completion": [
+      {"id": "calendar_rows", "check": "test_calendar.csv has exactly one row for each of the backlog's 150 tests and no row for any other test id. Full credit for none missing, repeated or unknown; zero credit at 5 or more.", "programmatic": {"fact": "sizing_row_accounting_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "summary_for_the_lead", "check": "The note before the file gives the number of tests that run, that are too long and that have no slot, and each number matches the plan's own file (the measured facts sizing_file_run_count, sizing_file_too_long_count and sizing_file_no_slot_count). It says what each kind of rejection means for the team: a too-long test has to be made smaller or dropped, and a test with no slot waits for a later calendar. A missing number, a number the file contradicts, or no word on what to do fails. Whether the file is right is checked separately."},
+      {"id": "sized_plain", "check": "Each of the 42 tests with none of the backlog's traps (a storefront counting users, a page with no outage week, a relative lift, all of its page's traffic) has a row in which its page weekly users (within half a user), its sample size per variant (within 0.2%) and its weeks needed are right. Full credit for none wrong or missing; zero credit at 5 or more.", "programmatic": {"fact": "sizing_wrong_plain_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}}
+    ],
+    "skill_adherence": [
+      {"id": "sized_sessions_sites", "check": "Each of the 40 tests on storefronts whose analytics counts sessions has a row in which its page weekly users (within half a user), its sample size per variant (within 0.2%) and its weeks needed are right, with the sessions turned into users at the storefront's own users per session. Full credit for none wrong or missing; zero credit at 5 or more.", "programmatic": {"fact": "sizing_wrong_sessions_site_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "sized_outage_pages", "check": "Each of the 20 tests on a page with a tracking-outage week has a row in which its page weekly users (within half a user), its sample size per variant (within 0.2%) and its weeks needed are right, with the outage weeks left out of the page's mean. Full credit for none wrong or missing; zero credit at 5 or more.", "programmatic": {"fact": "sizing_wrong_outage_page_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "sized_points_lifts", "check": "Each of the 26 tests whose expected lift is in percentage points has a row in which its page weekly users (within half a user), its sample size per variant (within 0.2%) and its weeks needed are right, with the lift added to the baseline as points. Full credit for none wrong or missing; zero credit at 5 or more.", "programmatic": {"fact": "sizing_wrong_points_lift_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "sized_part_traffic", "check": "Each of the 22 tests that run on half of their page's users has a row in which its page weekly users (within half a user), its sample size per variant (within 0.2%) and its weeks needed are right, with the weeks counted on that share of the traffic. Full credit for none wrong or missing; zero credit at 5 or more.", "programmatic": {"fact": "sizing_wrong_part_traffic_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 5}}},
+      {"id": "no_invented_data", "negative": true, "check": "Every figure the plan presents is derivable from the supplied files under the stated rules. No benchmark, conversion rate, traffic figure or expected lift from outside the files is used or stated as if it were data."}
+    ],
+    "best_practices": [
+      {"id": "status_every_test", "check": "Every test's status is right under the rules: run, too long (needs more than four weeks) or no slot (no start week satisfies the calendar's limits). Full credit only for none wrong or missing.", "programmatic": {"fact": "sizing_status_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "start_every_test", "check": "Every test's start week is right under the rules (0 for a test that does not run): placed in priority order over every storefront, around each storefront's freeze week, one test at a time on a page, no more tests at once than the storefront allows, and ending by week 12. Full credit only for none wrong or missing.", "programmatic": {"fact": "sizing_start_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}}
+    ]
+  }
+}

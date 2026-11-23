@@ -1,0 +1,259 @@
+{
+  "id": "launch-trafficking",
+  "title": "Launch brief to trafficking sheet",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "launch-trafficking",
+  "fixtures": [
+    "eval_runner/fixtures/launch-trafficking/launch_brief.md",
+    "eval_runner/fixtures/launch-trafficking/platform_specs.md",
+    "eval_runner/fixtures/launch-trafficking/tracking_standard.md",
+    "eval_runner/fixtures/launch-trafficking/landing_pages.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ad-creative/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Fernhollow is launching Fernhollow Shifts to restaurants, clinics and retail on Meta, Google Search, LinkedIn and email. Turn the supplied launch brief into a trafficking-ready package. Follow the supplied platform specs and tracking standard exactly, link the pages in the supplied landing_pages.csv as the standard says, and state only facts from the brief.\n\nDeliver three files in your reply. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### budget.csv\nchannel,week,amount\nOne row per paid channel and week. `channel` is meta, google or linkedin; `week` is 1 to 4; `amount` is in dollars and cents.\n\n### assets.csv\nasset_id,channel,placement,audience,variant,field,text\nOne row per text field of every asset. `channel`, `placement` and `field` are written exactly as the platform specs write them; `audience` is restaurants, clinics or retail; `variant` is A or B; `text` is the copy exactly as it will be trafficked.\n\n### trafficking.csv\nasset_id,final_url\nOne row per asset, with its final URL built as the tracking standard says.\n\nEvery asset id is built as the tracking standard says, and assets.csv and trafficking.csv carry the same ids.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of assets>\nA2: <number of text fields in assets.csv>\nA3: <total of the amounts in budget.csv, in dollars>\n\nThis is a plan for review. Create nothing in any ad account and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "three_files",
+        "check": "All three files (budget.csv, assets.csv, trafficking.csv) are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_asset_present",
+        "check": "Every one of the 36 assets has rows in assets.csv under the id the standard gives it, and no other id appears. Full credit for none missing or invented; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_asset_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "every_field_present",
+        "check": "Every asset has each field its placement lists in the platform specs, with text, and no field the specs do not list: 114 text fields in all. Full credit for none missing or extra; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_field_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_asset_count",
+        "check": "A1 states how many assets the specs call for. Full credit for the exact figure; zero credit 4 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 36,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "a2_field_count",
+        "check": "A2 states how many text fields the assets hold in all. Full credit for the exact figure; zero credit 12 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 114,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 12
+          }
+        }
+      },
+      {
+        "id": "a3_budget_total",
+        "check": "A3 states the total of the media budget, which leaves out the creative production fee. Full credit within $1; zero credit $3,500 or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 76500.0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 1,
+            "zero": 3500
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "budget_rows_right",
+        "check": "budget.csv gives each paid channel in each week the amount the brief's four budget steps produce, to the cent, and has no other row (email and the production fee get none). Full credit for none of the 12 rows wrong, missing or extra; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_budget_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "trafficking_rows_right",
+        "check": "trafficking.csv has a row for every one of the 36 assets and none for anything else. Full credit for none missing or extra; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_trafficking_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "urls_built_to_standard",
+        "check": "Every final URL is the standard's: the right landing page, and exactly the standard's parameters with the standard's values (the launch month is the month the flight starts; only Google Search carries utm_term), in any order. Full credit for none wrong or missing; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_url_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "fallback_page_used",
+        "check": "Every clinics asset links the fallback page the standard names, because the clinics page is not live; none links the draft page. Full credit for none of the 12 wrong or missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_fallback_page_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "asset_ids_in_format",
+        "check": "Every asset id is written exactly as the standard builds it, in capitals and hyphens, and in assets.csv it is the id of the channel, placement, audience and variant its own row names. An asset missing from either file counts as wrong there. Full credit for none wrong; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_asset_id_format_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "asset_ids_unique",
+        "check": "No asset id is given twice in trafficking.csv, and no field of an asset is given twice in assets.csv. An asset missing from either file counts as an error there. Full credit for none repeated or missing; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_duplicate_asset_id_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "within_limits",
+        "check": "Every one of the 114 text fields is present and within its own character limit from the platform specs. Full credit for none missing or over; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_field_over_limit_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "required_strings_present",
+        "check": "Every field carries what the platform specs say it must contain: the brand name, the promo code, the legal line, the offer or the expiry date, 84 strings in all. Full credit for none missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_required_string_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "no_banned_claims_or_wrong_codes",
+        "check": "No copy makes a banned claim, carries the expired or an invented promo code, or carries any code in a Google Search ad. Full credit for none; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_copy_violation_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "every_asset_names_its_audience",
+        "check": "Every one of the 36 assets names its own audience's problem keyword or proof point, worded as the brief words it. Full credit for none missing; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_audience_message_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "no_copy_reused_across_audiences",
+        "check": "No field holds the same text, word for word, as the same field of the same placement for another audience, and none is left empty. Full credit for none; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_reused_copy_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "copy_differs_by_audience",
+        "check": "Judge the assets.csv rows only. The copy for restaurants, clinics and retail differs in substance: each audience's assets speak to its own situation, problem and proof, not one sentence with the audience's name or keyword swapped in. It fails if most placements use the same template across audiences, or if assets.csv is missing."
+      }
+    ]
+  }
+}

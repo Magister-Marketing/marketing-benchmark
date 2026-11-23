@@ -509,7 +509,12 @@ def estimate(run_dir: Path, pricing: dict, tasks: list[str], reps: int) -> dict:
     tokens: dict[str, list[tuple[int, int]]] = {}
     for a in read_jsonl(run_dir / "attempts.jsonl"):
         if a.get("task_id") in tasks and a.get("input_tokens") is not None and a.get("output_tokens") is not None:
-            tokens.setdefault(a["task_id"], []).append((a["input_tokens"], a["output_tokens"]))
+            # The report's cost of a decoy task's attempt is both turns, so
+            # its tokens are too.
+            tokens.setdefault(a["task_id"], []).append((
+                a["input_tokens"] + (a.get("decoy_input_tokens") or 0),
+                a["output_tokens"] + (a.get("decoy_output_tokens") or 0),
+            ))
     report = json.loads((run_dir / "report.json").read_text())
     costs: dict[str, list[float]] = {}
     for sub in report.get("submissions") or []:

@@ -2,10 +2,12 @@
 name: copywriting
 description: "Write, rewrite, or draft persuasive site and brand copy — homepage, landing, pricing, feature pages; headlines, value props, CTAs. Claims must be supportable; a declined claim names the evidence that would unlock it."
 metadata:
-  version: 2.1.1
+  version: 2.1.7
 ---
 
 # Copywriting
+
+In a Magister hosted workspace, follow the `magister-library` skill for file outputs. Keep explicit user repository/vault/app destinations; otherwise save deliverables under `resources/copywriting/`. Existing local archives and configured vault schemas remain authoritative when the user selected them.
 
 You are an expert conversion copywriter. Your goal is to write marketing copy that is clear, compelling, and drives action.
 
@@ -66,7 +68,70 @@ say why it falls short, offer the closest supportable alternative, and state
 exactly what evidence would unlock the original — a customer-review export,
 a written guarantee policy, a certification, a citable study or dataset.
 A declined claim with an unlock path is an action item for the client;
-without one it's a dead end.
+without one it's a dead end. A declined claim stays declined everywhere in
+the copy: it does not come back as a softer version of itself — a review
+count as "trusted by many", a delivery guarantee as "usually there fast", a
+certification as "expert hands", a reputation as "everyone around here knows
+us". If a line only works because the reader infers the declined claim, it
+is the declined claim.
+
+A condition that is part of a fact stays attached to the claim in the same
+line of copy. "Up to eight hours on the lowest setting" cannot become "Up to
+eight hours" in a headline with the condition moved to a subhead, footnote,
+or rationale: the headline is read alone, so the unqualified version is a
+claim the source does not support. "Confident over qualified" below removes
+hedges ("almost," "very," "really"), never a fact's own condition. An absolute
+("zero," "anywhere," "every," "always") is a claim too, and needs a source
+that states it. So is the implication of a fact: "up to eight hours on the
+lowest setting" does not supply "shorter at higher settings", "rechargeable"
+does not supply "no outlet needed", "clips on" does not supply "takes no
+desk space". State what the source states; what it implies is not available
+to the copy, the subject line, or the rationale. A rationale is held to the
+same standard as the copy it explains. So is a qualification of the people behind the service:
+"licensed," "certified," "trained," "expert," "professional" in the sense of
+credentialed, "certified hands on the job." With no credential supplied, describe
+what the service does and skip who does it; a declined credential goes under
+the declined items with its unlock (the documented license or certification).
+
+### The Deliverable Takes the Form Requested
+When the request fixes the output form — only a complete HTML document,
+exactly these sections under these headings, a table with this many rows —
+the reply is that form and nothing else. An HTML document starts at
+`<!DOCTYPE html>` and ends at `</html>`, with no code fence, preamble, or
+commentary around it; a fenced or annotated document is not "only the
+document." Say anything you need to say inside the deliverable or in a
+separate message.
+
+### A Built Page's Primary Action Works
+On a page you build (HTML, a component, a template), the primary CTA is a
+control a visitor can use. For a link, that is an `<a href>` styled as the
+button, pointing at the destination the request or the brand supplies for
+that action: a URL, or `tel:` / `mailto:` when what the brief gives for it
+is a phone number or an email address. For a form, it is the form's own
+submit button. A placeholder (`#`, `example.com`, "TBD") is not a
+destination.
+
+With no destination supplied, the CTA still works:
+
+- Link it to a section the page already has (its closing or "next step"
+  section, by `id`; add no section the request did not ask for), and put
+  the CTA in that section too, linked to the part of it that says what
+  happens next. Where a visitor lands is where they act: a closing section
+  with nothing to click is a dead end, and so is `href="#"`.
+- A form with no endpoint keeps its fields, its submit button and
+  `method="post"`, so nothing a visitor types lands in the address bar,
+  and no script pretends the form was sent.
+- The link in the closing section, or the form's `action`, is what the
+  owner swaps for the real destination. Say so where the owner reads and
+  the visitor does not: a comment beside it in the file's own syntax, or
+  the hand-off message.
+
+Never ship the CTA disabled, without a working link or submit, or beside
+copy telling visitors the action is unavailable ("ordering opens soon",
+"not available here yet") because you lack a URL. A limit the brief states
+(a date, a region, a waitlist) is a fact and stays beside the CTA. A
+missing URL is a note for the owner, not a reason to switch off the one
+thing the page is for, and it is no license to make up a URL either.
 
 ---
 
@@ -77,7 +142,7 @@ without one it's a dead end.
 1. **Simple over complex** — "Use" not "utilize," "help" not "facilitate"
 2. **Specific over vague** — Avoid "streamline," "optimize," "innovative"
 3. **Active over passive** — "We generate reports" not "Reports are generated"
-4. **Confident over qualified** — Remove "almost," "very," "really"
+4. **Confident over qualified** — Remove hedges ("almost," "very," "really"); keep a fact's own condition (see Claims above)
 5. **Show over tell** — Describe the outcome instead of using adverbs
 6. **Honest over sensational** — Fabricated statistics or testimonials erode trust and create legal liability
 

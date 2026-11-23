@@ -1,0 +1,270 @@
+{
+  "id": "lifecycle-program",
+  "title": "Build a lifecycle email programme from a customer export",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "lifecycle-program",
+  "fixtures": [
+    "eval_runner/fixtures/lifecycle-program/lifecycle_policy.md",
+    "eval_runner/fixtures/lifecycle-program/customers.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/emails/SKILL.md",
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Wrenlow Tea Club posts a tin of loose-leaf tea to its members each month. Its lifecycle lead wants the lifecycle email programme built from the supplied customer export, following the supplied lifecycle policy exactly. Today is the date the policy states.\n\nDeliver five files in your reply. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes. Write customers by their id as it is in the export (C105), and segments, reasons and timezones by the codes the policy and the export use.\n\n### suppressed.csv\ncustomer_id,reason\nEvery customer the policy suppresses, with the reason code from section 1 of the policy.\n\n### segments.csv\ncustomer_id,segment\nEvery customer who is not suppressed, with their segment. Held-out customers are listed here too, with the segment they keep.\n\n### holdout.csv\ncustomer_id\nEvery customer in the holdout.\n\n### flow.csv\nsegment,step,day,subject,preheader,offer_code\nOne row per email of the programme: every step of every segment's flow, numbered from 1. `day` is the day of the flow the email is sent on. `offer_code` is empty except on the email the policy gives an offer, where it is that offer's code.\n\n### schedule.csv\nsegment,step,timezone,local_send_time\nOne row for each segment, step and timezone in which at least one customer receives that step, and no other rows. `local_send_time` is when the email arrives by the customer's clock, as HH:MM on the 24-hour clock.\n\nEvery customer in the export appears exactly once, in suppressed.csv or in segments.csv, and no customer appears who is not in the export.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of customers suppressed>\nA2: <number of customers in the holdout>\nA3: <number of emails the programme sends in its first full run>\n\nThis is a plan for review. Send nothing, change nothing in any email platform and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "five_files",
+        "check": "All five files (suppressed.csv, segments.csv, holdout.csv, flow.csv, schedule.csv) are in the reply, each under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_customer_once",
+        "check": "Every one of the export's 300 customers appears exactly once across suppressed.csv and segments.csv, and no customer appears who is not in the export. Full credit for none missing, repeated or invented; zero credit at 15 or more.",
+        "programmatic": {
+          "fact": "workflow_customer_accounting_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 15
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_suppressed_count",
+        "check": "A1 states how many customers the policy suppresses. Full credit for the exact figure; zero credit 8 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 81,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "a2_holdout_count",
+        "check": "A2 states how many customers the policy holds out. Full credit for the exact figure; zero credit 3 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 15,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "a3_email_total",
+        "check": "A3 states how many emails the programme sends in its first full run: every step each customer who is neither suppressed nor held out receives, gift-plan cap applied. Full credit for the exact figure; zero credit 36 or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 717,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 36
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "suppression_exact",
+        "check": "The customers suppressed are exactly the ones section 1 of the policy suppresses: none emailed who should be suppressed, none suppressed who may be emailed. Full credit for no difference; zero credit at 15 or more.",
+        "programmatic": {
+          "fact": "workflow_suppression_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 15
+          }
+        }
+      },
+      {
+        "id": "suppression_reasons",
+        "check": "Every suppressed customer carries the code of the first section 1 reason that applies to them. Full credit for none wrong or missing; zero credit at 8 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_reason_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 8
+          }
+        }
+      },
+      {
+        "id": "segments_right",
+        "check": "Every customer who is not suppressed is in the segment section 2 gives them. Full credit for none wrong or missing; zero credit at 15 or more.",
+        "programmatic": {
+          "fact": "workflow_wrong_segment_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 15
+          }
+        }
+      },
+      {
+        "id": "holdout_right",
+        "check": "holdout.csv holds exactly the customers section 3 holds out. Full credit for none missing or extra; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_holdout_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "flow_steps_right",
+        "check": "flow.csv has exactly one row for every step of every segment's flow, with the number of emails section 4 gives each segment, and no other rows. Full credit for none missing, repeated or extra; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_flow_step_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "flow_days_right",
+        "check": "Each flow's first and last emails fall on the days section 4 gives, and every email is at least 4 days after the one before it. Full credit for no wrong day or short gap; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_flow_day_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "offers_right",
+        "check": "offer_code carries the right code on the last email of the prospect and lapsed flows and is empty on every other email. Full credit for none wrong; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_offer_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "schedule_rows_right",
+        "check": "schedule.csv has one row for each segment, step and timezone in which at least one customer receives that step (suppression, holdout and the gift-plan cap applied), and no other rows. Full credit for none missing, repeated or extra; zero credit at 12 or more.",
+        "programmatic": {
+          "fact": "workflow_schedule_row_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 12
+          }
+        }
+      },
+      {
+        "id": "send_times_right",
+        "check": "Every schedule row the programme needs has the local time section 5 gives it: the release time, moved by the timezone's offset, and held to 08:00 when it lands in quiet hours. Full credit for none wrong or missing; zero credit at 12 or more.",
+        "programmatic": {
+          "fact": "workflow_schedule_time_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 12
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "copy_within_limits",
+        "check": "Every subject is present and at most 50 characters, and every preheader present and at most 90. Full credit for none missing or over; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_copy_limit_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "copy_says_what_it_must",
+        "check": "Every email has its segment's phrase in its subject or preheader, and each offer email states its offer in the policy's exact words. Full credit for none missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_copy_required_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "copy_says_nothing_it_must_not",
+        "check": "No subject or preheader uses a forbidden word or an exclamation mark, an email without an offer has no % sign and names no code, and an offer email states no other percentage or code. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_copy_violation_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "subjects_unique",
+        "check": "No two emails in the programme share a subject, whatever the case, and every email has one. Full credit for none repeated or missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_repeated_subject_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "copy_written_for_segment_and_step",
+        "check": "Judge the flow.csv rows only. The subjects and preheaders are written for their segment and their step: a welcome series reads as one, a win-back as one, a VIP email as one, and the steps of a flow move from one message to the next. Across segments they differ in substance, not one line with the segment's name or phrase swapped in. It fails if most rows are the same template, or if flow.csv is missing."
+      }
+    ]
+  }
+}

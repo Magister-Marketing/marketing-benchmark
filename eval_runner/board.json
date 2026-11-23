@@ -1,0 +1,130 @@
+{
+ "note": "The open board: seven areas of marketing, five tasks each. `--split board` runs these, in this order. `held_back` are the private tasks (split holdout). `left_out` are open tasks that stay in the repo, runnable by id, but are not on the board, each with why. Every task file is in exactly one of the three; tests/test_board.py stops the build otherwise.",
+ "areas": [
+  {
+   "id": "copywriting",
+   "title": "Copywriting",
+   "tasks": [
+    "headline",
+    "source-conflict-repair",
+    "price-change-rollout",
+    "launch-copy-pack",
+    "claims-check"
+   ]
+  },
+  {
+   "id": "paid-ads",
+   "title": "Paid ads",
+   "tasks": [
+    "ad-creatives",
+    "search-account-build",
+    "search-terms-negatives",
+    "launch-trafficking",
+    "channel-budget-allocation"
+   ]
+  },
+  {
+   "id": "seo-content",
+   "title": "SEO and content",
+   "tasks": [
+    "blog-post",
+    "seo-content-brief",
+    "seo-technical-triage",
+    "seo-redirect-map",
+    "seo-titles-meta"
+   ]
+  },
+  {
+   "id": "email-lifecycle",
+   "title": "Email and lifecycle",
+   "tasks": [
+    "email-flow-repair",
+    "lifecycle-reengagement",
+    "outbound-sequence",
+    "email-compliance-crosscheck",
+    "email-send-calendar"
+   ]
+  },
+  {
+   "id": "conversion",
+   "title": "Landing pages and conversion",
+   "tasks": [
+    "landing-page",
+    "landing-page-repair",
+    "ab-test-readout",
+    "funnel-dropoff",
+    "test-plan-sizing"
+   ]
+  },
+  {
+   "id": "analytics",
+   "title": "Analytics and measurement",
+   "tasks": [
+    "ad-performance-analysis",
+    "ads-ledger-analysis",
+    "attribution-sensitivity",
+    "tracking-audit",
+    "shopify-meta-capi"
+   ]
+  },
+  {
+   "id": "strategy",
+   "title": "Strategy and planning",
+   "tasks": [
+    "marketing-plan",
+    "budget-reconciliation-trap",
+    "launch-timeline",
+    "policy-casebook",
+    "brief-amendment"
+   ]
+  }
+ ],
+ "held_back": [
+  "launch-capacity-trap",
+  "platform-limits-gauntlet",
+  "rate-card-reconciliation",
+  "unsupportable-claims-brief"
+ ],
+ "left_out": [
+  {
+   "id": "headline-forecast",
+   "why": "A forecast of real tests: it cannot be scored like the rest until the results are known, so it belongs to a forecast track of its own."
+  },
+  {
+   "id": "headline-forecast-unpublished",
+   "why": "A forecast of real tests: it cannot be scored like the rest until the results are known, so it belongs to a forecast track of its own."
+  },
+  {
+   "id": "catalog-descriptions",
+   "why": "Fully right on every recorded attempt (GPT-6.2 Sol three times with and without skills, Gemini 4 Neon, Claude Opus 5.5), 2026-11-21: it separates nobody."
+  },
+  {
+   "id": "competitor-comparison",
+   "why": "Fully right on every recorded attempt (GPT-6.2 Sol three times with and without skills, Gemini 4 Neon, Claude Opus 5.5), 2026-11-21: it separates nobody."
+  },
+  {
+   "id": "factorial-ad-test",
+   "why": "Fully right in all nine cells of the first-attempt pilot (three models, three setups), 2026-11-20: it separates nobody."
+  },
+  {
+   "id": "lifecycle-program",
+   "why": "Fully right in all nine cells of the first-attempt pilot (three models, three setups), 2026-11-20: it separates nobody."
+  },
+  {
+   "id": "monthly-report-reconcile",
+   "why": "Fully right in eight of the nine cells of the first-attempt pilot, 2026-11-20; three harder analytics tasks cover the same ground."
+  },
+  {
+   "id": "analytics-source-conflict",
+   "why": "Fully right in seven of the nine cells of the first-attempt pilot, 2026-11-20; attribution-sensitivity and tracking-audit cover source conflicts harder."
+  },
+  {
+   "id": "ads-ledger-analysis-decoy",
+   "why": "A variant of ads-ledger-analysis that only two harnesses can deliver, so it is not a task every setup shares; the plain version is on the board."
+  },
+  {
+   "id": "launch-workflow-chain",
+   "why": "A third launch build in kind: launch-trafficking and search-account-build are on the board, and each area holds five."
+  }
+ ]
+}

@@ -1,4 +1,9 @@
-"""The six data tasks added in November 2026: fixtures, oracles, traps and parsing.
+"""Five data tasks added in November 2026: fixtures, oracles, traps and parsing.
+
+The sixth, ab-test-readout, was hardened on 2026-11-20 (prompt version 4) and is
+tested in tests/test_tasks_conversion.py. The parser tests below were written
+against its version-3 answer block and read that version of the task
+(tests/data/ab-test-readout-v3.json).
 
 What is pinned here, for every task:
 
@@ -23,7 +28,6 @@ import importlib.util
 import io
 import json
 import re
-import statistics
 from decimal import Decimal
 
 import pytest
@@ -33,7 +37,6 @@ from eval_runner import bench, reference_facts, task_references
 NEW_TASKS = {
     "seo-technical-triage": "development",
     "search-terms-negatives": "development",
-    "ab-test-readout": "development",
     # Drafted as holdout tasks. Their recorded answers were read, and one rubric was changed
     # because of them, so by the repository's rule they are development tasks.
     "seo-content-brief": "development",
@@ -47,8 +50,7 @@ HOLDOUT = {"launch-capacity-trap", "platform-limits-gauntlet", "rate-card-reconc
 VERSIONS = {
     "seo-technical-triage": (3, 3),
     "search-terms-negatives": (3, 4),
-    "ab-test-readout": (3, 4),
-    "seo-content-brief": (3, 4),
+    "seo-content-brief": (4, 5),
     "lifecycle-reengagement": (2, 2),
     "monthly-report-reconcile": (2, 3),
 }
@@ -56,9 +58,9 @@ VERSIONS = {
 # band or an oracle list has to be made there and here.
 BANDS = {
     "seo-content-brief": {
-        "q1_already_ranking": ("absolute", 0, 3), "q2_qualifying_count": ("absolute", 0, 3),
-        "q3_topic_volume": ("relative", 0.005, 0.25), "q4_primary_volume": ("relative", 0.005, 0.25),
-        "q5_ranking_volume": ("relative", 0.005, 0.25),
+        "q1_already_won": ("absolute", 0, 3), "q2_eligible_count": ("absolute", 0, 3),
+        "q3_topic_winnable": ("relative", 0.005, 0.25), "q4_runner_up_winnable": ("relative", 0.005, 0.25),
+        "q5_primary_winnable": ("relative", 0.005, 0.25), "q6_won_volume": ("relative", 0.005, 0.25),
     },
     "seo-technical-triage": {
         "q1_broken_linked": ("absolute", 0, 3), "q2_redirect_chains": ("absolute", 0, 3),
@@ -74,12 +76,6 @@ BANDS = {
         "q3_lapsed_buyers": ("absolute", 0, 6), "q4_lapsed_non_buyers": ("absolute", 0, 6),
         "q5_long_dormant": ("absolute", 0, 5),
     },
-    "ab-test-readout": {
-        "q1_control_visitors": ("relative", 0.001, 0.1), "q2_variant_visitors": ("relative", 0.001, 0.1),
-        "q3_control_rate": ("absolute", 0.02, 0.5), "q4_variant_rate": ("absolute", 0.02, 0.5),
-        "q5_relative_lift": ("absolute", 0.15, 3.0), "q6_srm_chi_square": ("relative", 0.02, 0.3),
-        "q7_p_value": ("absolute", 0.015, 0.1),
-    },
     "monthly-report-reconcile": {
         "q1_ad_spend": ("relative", 0.005, 0.1), "q2_real_orders": ("absolute", 0, 8),
         "q3_net_revenue": ("relative", 0.005, 0.03), "q4_duplicate_rows": ("absolute", 0, 8),
@@ -87,11 +83,10 @@ BANDS = {
     },
 }
 ORACLE = {
-    "seo-content-brief": ["q5_ranking_volume"],
+    "seo-content-brief": ["q6_won_volume"],
     "seo-technical-triage": ["q6_sessions_at_risk"],
     "search-terms-negatives": ["q1_zero_conversion_spend"],
     "lifecycle-reengagement": ["q1_mailable"],
-    "ab-test-readout": ["q1_control_visitors", "q2_variant_visitors"],
     "monthly-report-reconcile": ["q1_ad_spend", "q6_platform_conversions"],
 }
 FIXTURES = bench.REPO_ROOT / "eval_runner" / "fixtures"
@@ -129,8 +124,8 @@ def _reference(task_id: str) -> dict:
     return bench.judge_source_reference(task, bench.assemble_prompt(task, False))
 
 
-def _results(task_id: str, response: str) -> dict:
-    task = bench.load_tasks()[task_id]
+def _results(task_id: str | dict, response: str) -> dict:
+    task = task_id if isinstance(task_id, dict) else bench.load_tasks()[task_id]
     return bench.programmatic_results(task, bench.measured_facts(task, response))
 
 
@@ -146,9 +141,9 @@ def _zeroed(results: dict) -> set[str]:
     return {criterion_id for criterion_id, result in results.items() if result["score"] == 0}
 
 
-def _critical_tripped(task_id: str, response: str) -> bool:
+def _critical_tripped(task_id: str | dict, response: str) -> bool:
     """Whether the oracle alone fails the task's critical criterion."""
-    task = bench.load_tasks()[task_id]
+    task = task_id if isinstance(task_id, dict) else bench.load_tasks()[task_id]
     critical = next(iter(bench.critical_criterion_ids(task)))
     programmatic = list(bench.programmatic_results(task, bench.measured_facts(task, response)).values())
     judged = [{"id": critical, "pass": True, "score": 1.0, "evidence": "the judge saw nothing wrong"}]
@@ -234,16 +229,14 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
 
     for task_id, old, new, restorable in (
         ("monthly-report-reconcile", '"zero": 0.03', '"zero": 0.06', True),                    # a tolerance
-        ("ab-test-readout", '"near": 0.209', '"near": 0.219', True),                           # a target
-        ("seo-content-brief", '"fails_if_zero": ["q5_ranking_volume"]', '"fails_if_zero": ["q3_topic_volume"]', True),
+        ("monthly-report-reconcile", '"near": 3.14', '"near": 3.24', True),                   # a target
+        ("seo-content-brief", '"fails_if_zero": ["q6_won_volume"]', '"fails_if_zero": ["q3_topic_winnable"]', True),
         ("lifecycle-reengagement", '"single_number": true', '"single_number": false', True),
-        ("ab-test-readout", "variant B has 5,400 visitors against control's 6,900", "variant B has 5,400 visitors against control's 6,800", True),
         ("search-terms-negatives", "('sablewood', 'sablewood blinds' and 'sablewood blinds reviews')", "('sablewood' and 'sablewood blinds')", True),
         ("seo-technical-triage", "duplicate titles, bad canonicals, broken linked pages", "bad canonicals, duplicate titles, broken linked pages", True),
         ("lifecycle-reengagement", "valid for 14 days, offered", "valid for 10 days, offered", True),
         ("search-terms-negatives", "All 5 promote candidates", "All 4 promote candidates", True),
         ("search-terms-negatives", '"kind": "absolute", "full": 0.5, "zero": 400', '"kind": "relative", "full": 0.02, "zero": 0.25', True),
-        ("ab-test-readout", "(11,750), is derived from the results", "(18,000), is derived from the results", True),
         ("seo-content-brief", "zero credit beyond 25% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", "zero credit beyond 50% off.\", \"programmatic\": {\"fact\": \"answer_q3\"", True),
         # What sync cannot rewrite stays reported: a definition, a dropped flag.
         ("seo-content-brief", "a difficulty of 45 or lower", "a difficulty of 50 or lower", False),
@@ -271,10 +264,11 @@ def test_check_reports_drift_in_numbers_wording_and_flags_and_survives_reformatt
 
 AB_BLOCK = "A1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209"
 AB_ANSWERS = [12480.0, 11020.0, 6.0, 6.4, 6.6, 90.7, 0.209]
+AB_V3 = json.loads((bench.REPO_ROOT / "tests" / "data" / "ab-test-readout-v3.json").read_text())
 
 
 def _ab(response: str) -> list:
-    facts = bench.measured_facts(bench.load_tasks()["ab-test-readout"], response)
+    facts = bench.measured_facts(AB_V3, response)
     return [facts[f"answer_q{index}"] for index in range(1, 8)]
 
 
@@ -317,7 +311,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
                  "\nA1: sum of 8 rows", "\n\n- A1: 8 weekly rows per variant",
                  "\nA7: one-sided it would be 0.104"):  # the last label again, straight after the block
         assert _ab("Readout.\n\n" + AB_BLOCK + note) == AB_ANSWERS, note
-        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + note), note
+        assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + note), note
     # A labelled line before the block does not shadow it either.
     assert _ab("A1: the two totals are 8 rows each.\n\nReadout.\n\n" + AB_BLOCK) == AB_ANSWERS
     # Method notes that repeat every label, as recorded responses write them, lose to a
@@ -328,7 +322,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     ])
     assert _ab("Method:\n" + notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
     assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes) == AB_ANSWERS
-    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
+    assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + notes)
     # A notes list can also carry exactly one number on every line, so every line reads
     # as a number. The block's lines are the number alone; the notes' lines are not.
     one_number_notes = "\n".join([
@@ -340,7 +334,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
     assert _ab(one_number_notes) == [8.0, 8.0, 2.0, 2.0, 1.0, 1.0, 1.26]           # alone, the notes are all there is to read
     assert _ab("Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
     assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + AB_BLOCK) == AB_ANSWERS
-    assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes)
+    assert not _critical_tripped(AB_V3, "Readout.\n\n" + AB_BLOCK + "\n\nMethod:\n" + one_number_notes)
     # Symbols around the number leave it alone; a unit word does not.
     decorated = "A1: **12,480**\nA2: `11,020`\nA3: ~6.00%\nA4: 6.40 %\nA5: +6.6%\nA6: ≈ 90.7\nA7: (0.209)"
     assert _ab("Readout.\n\n" + decorated + "\n\nMethod:\n" + one_number_notes) == AB_ANSWERS
@@ -353,7 +347,7 @@ def test_the_answer_block_is_the_last_full_run_of_answer_lines():
         assert _ab("Readout.\n\n" + flawed) == expected, unreadable
         assert _ab("Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes) == expected, unreadable
         assert _ab("Method:\n" + one_number_notes + "\n\nAnswers:\n\n" + flawed) == expected, unreadable
-        assert not _critical_tripped("ab-test-readout", "Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes)
+        assert not _critical_tripped(AB_V3, "Readout.\n\n" + flawed + "\n\nMethod:\n" + one_number_notes)
     # A word on a line or two does not unmake a block either.
     worded = AB_BLOCK.replace("A1: 12,480", "A1: 12,480 visitors").replace("A2: 11,020", "A2: 11,020 visitors")
     assert _ab(worded) == AB_ANSWERS
@@ -433,7 +427,7 @@ def test_a_final_block_that_marks_its_corrected_line_is_the_block():
     readout = ("Readout.\n\nFirst pass:\n\nA1: 12,480\nA2: 11,020\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.104\n\n"
                "The p-value above is one-sided; the plan's test is two-sided. Answer block:\n\n"
                "A1: 12,480 visitors\nA2: 11,020 visitors\nA3: 6.00%\nA4: 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209\n")
-    assert _ab(readout) == AB_ANSWERS and not _failed(_results("ab-test-readout", readout))
+    assert _ab(readout) == AB_ANSWERS and not _failed(_results(AB_V3, readout))
 
     triage = ("Triage.\n\nA1: 7\nA2: 9\nA3: 4\nA4: 6\nA5: 4\nA6: 8,865\n\n"
               "On re-checking the redirects, four of those are single hops, not chains. Final answers:\n\n"
@@ -449,16 +443,16 @@ def test_a_format_slip_is_absence_not_invention():
     assert not _critical_tripped("seo-technical-triage", slip)
     working = ("A1: 5,580 + 6,900 = 12,480\nA2: 5,620 + 5,400 = 11,020\nA3: 749 / 12,480 = 6.00%\n"
                "A4: 705 / 11,020 = 6.40%\nA5: 6.6%\nA6: 90.7\nA7: 0.209")
-    assert not _critical_tripped("ab-test-readout", working)
+    assert not _critical_tripped(AB_V3, working)
     # Rates given as fractions are a unit slip: wrong, but not invented data.
     fractions = "A1: 12,480\nA2: 11,020\nA3: 0.0600\nA4: 0.0640\nA5: 0.066\nA6: 90.7\nA7: 0.209"
-    assert {"q3_control_rate", "q4_variant_rate", "q5_relative_lift"} == _failed(_results("ab-test-readout", fractions))
-    assert not _critical_tripped("ab-test-readout", fractions)
+    assert {"q3_control_rate", "q4_variant_rate", "q5_relative_lift"} == _failed(_results(AB_V3, fractions))
+    assert not _critical_tripped(AB_V3, fractions)
     # A lift with the wrong sign is a wrong lift, however the minus is typed.
     for minus in ("-", "−", "–"):
-        assert "q5_relative_lift" in _zeroed(_results("ab-test-readout", AB_BLOCK.replace("A5: 6.6%", f"A5: {minus}6.6%")))
+        assert "q5_relative_lift" in _zeroed(_results(AB_V3, AB_BLOCK.replace("A5: 6.6%", f"A5: {minus}6.6%")))
     # A single clear figure that no reading of the data supports still trips it.
-    assert _critical_tripped("ab-test-readout", AB_BLOCK.replace("12,480", "20,000"))
+    assert _critical_tripped(AB_V3, AB_BLOCK.replace("12,480", "20,000"))
 
 
 def test_tasks_without_the_flag_parse_answers_as_before():
@@ -482,7 +476,7 @@ def test_the_judge_gets_reference_totals_computed_from_the_recorded_prompt():
         task = tasks[task_id]
         for include_skills in (True, False):
             reference = bench.judge_source_reference(task, bench.assemble_prompt(task, include_skills))
-            assert reference["version"] == task_references.VERSION == 3
+            assert reference["version"] == task_references.VERSION == 4
             assert reference["answers"] == _targets(task), task_id
         prompt = bench.assemble_prompt(task, True)
         assert set(task_references.supplied_sources(prompt)) == {path.rsplit("/", 1)[1] for path in task["fixtures"]}
@@ -527,7 +521,7 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
     args = argparse.Namespace(run=str(run_dir), judge="claude-sonnet-5", current_rubric=True, label=None, tasks=None)
     assert bench.cmd_grade(args) == 0
     grading = json.loads((run_dir / "grading.json").read_text())
-    assert grading["task_reference_version"] == task_references.VERSION == 3
+    assert grading["task_reference_version"] == task_references.VERSION == 4
     assert grading["source_reference_version"] == reference_facts.VERSION
     # The judge was shown the reference: both redirecting URLs of each chain, 38 inlinks.
     (judge_prompt,) = judge_prompts
@@ -538,105 +532,8 @@ def test_grading_shows_the_judge_the_reference_and_records_its_version(tmp_path,
 
 # ------------------------------------------------------------------ seo-content-brief
 
-def _seo():
-    rows = _table("seo-brief/keyword_export.csv")
-    ranking = sorted((row for row in rows if row["current_rank"] and int(row["current_rank"]) <= 10),
-                     key=lambda row: int(row["current_rank"]))
-    ranked = {row["keyword"] for row in ranking}
-    by_topic = collections.defaultdict(list)
-    for row in rows:
-        if row["intent"] == "informational" and int(row["difficulty"]) <= 45 and row["keyword"] not in ranked:
-            by_topic[row["topic"]].append(row)
-    volumes = {topic: sum(int(row["monthly_searches"]) for row in group) for topic, group in by_topic.items()}
-    target = max(volumes, key=volumes.get)
-    qualifying = sorted(by_topic[target], key=lambda row: -int(row["monthly_searches"]))
-    return rows, ranking, volumes, target, qualifying
-
-
-def test_seo_content_brief_oracle_and_trap():
-    task = bench.load_tasks()["seo-content-brief"]
-    rows, ranking, volumes, target, qualifying = _seo()
-    answers = [len(ranking), len(qualifying), volumes[target], int(qualifying[0]["monthly_searches"]),
-               sum(int(row["monthly_searches"]) for row in ranking)]
-    assert target == "cold brew tea"
-    assert list(_targets(task).values()) == answers == [6, 7, 10290, 3600, 28080]
-    raw = collections.Counter()
-    for row in rows:
-        raw[row["topic"]] += int(row["monthly_searches"])
-    # The trap: the topic with the most raw search volume is not the target,
-    # and its head term is a buying-intent keyword an existing page ranks for.
-    assert raw.most_common(1)[0][0] == "green tea"
-    head = max(rows, key=lambda row: int(row["monthly_searches"]))
-    assert (head["keyword"], head["intent"], head["current_rank"]) == ("best green tea", "commercial", "4")
-    assert sorted(volumes.values())[-2] < 0.75 * volumes[target]  # no near-tie for the target
-    assert not _failed(_results("seo-content-brief", _answer_block(answers)))
-    green = [row for row in rows if row["topic"] == "green tea"]
-    careless = _answer_block([6, len(green), raw["green tea"], int(head["monthly_searches"]), answers[4]])
-    assert {"q3_topic_volume", "q4_primary_volume"} <= _zeroed(_results("seo-content-brief", careless))
-    assert not _critical_tripped("seo-content-brief", careless)  # the trap is not invention
-    # A row sits exactly on each threshold the definitions use, and one just past it,
-    # placed where reading the threshold wrongly changes an answer.
-    by_keyword = {row["keyword"]: row for row in rows}
-    assert by_keyword["cold brew tea vs iced tea"]["difficulty"] == "45" and by_keyword["cold brew tea vs iced tea"] in qualifying
-    assert (by_keyword["what is oolong tea"]["difficulty"], by_keyword["what is oolong tea"]["intent"]) == ("46", "informational")
-    assert by_keyword["does cold brew tea go bad"]["current_rank"] == "10" and by_keyword["does cold brew tea go bad"] in ranking
-    assert by_keyword["loose leaf green tea"]["current_rank"] == "11"
-    strict = _answer_block([5, 7, 9890, 3600, 27600])  # "better than 10" and "lower than 45" read strictly
-    assert {"q1_already_ranking", "q3_topic_volume", "q5_ranking_volume"} <= _failed(_results("seo-content-brief", strict))
-
-
-def test_seo_reference_and_the_wording_that_quotes_it():
-    task = bench.load_tasks()["seo-content-brief"]
-    rows, ranking, volumes, target, qualifying = _seo()
-    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
-    section = outlines.split("## Topic: cold brew tea")[1].split("## Topic:")[0].lower()
-    # A qualifying keyword neither outline touches: none of its own words is in them.
-    own_words = {"cold brew tea ratio": ["ratio"], "how long to cold brew tea": ["long"], "cold brew green tea": ["green"],
-                 "cold brew tea vs iced tea": ["iced"], "cold brew tea caffeine": ["caffeine"],
-                 "can you cold brew tea bags": ["bag"], "how to cold brew tea": []}
-    assert set(own_words) == {row["keyword"] for row in qualifying}
-    gaps = [row["keyword"] for row in qualifying
-            if own_words[row["keyword"]] and not any(word in section for word in own_words[row["keyword"]])]
-    reference = _reference("seo-content-brief")
-    assert {key: reference[key] for key in reference if key not in ("version", "answers")} == {
-        "target_topic": "cold brew tea",
-        "primary_keyword": "how to cold brew tea",
-        "qualifying_keywords_in_target_topic": [
-            {"keyword": row["keyword"], "monthly_searches": int(row["monthly_searches"]),
-             "difficulty": int(row["difficulty"])} for row in qualifying],
-        "qualifying_keywords_neither_competing_outline_covers": gaps,
-        "qualifying_volume_by_topic": dict(sorted(volumes.items(), key=lambda item: -item[1])),
-        "keywords_already_ranking_top_10": [
-            {"keyword": row["keyword"], "rank": int(row["current_rank"]), "url": row["ranking_url"]} for row in ranking],
-        "existing_page_urls": sorted(re.findall(r"(?m)^\| (/\S+) \|", (FIXTURES / "seo-brief/existing_pages.md").read_text())),
-    }
-    assert gaps == ["cold brew tea caffeine", "can you cold brew tea bags"]
-    assert all(row["ranking_url"] in reference["existing_page_urls"] for row in rows if row["ranking_url"])
-    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
-    assert "targets the cold brew tea topic" in wording["target_topic_named"]
-    assert "'how to cold brew tea'" in wording["primary_keyword_named"]
-    assert ("(how to store loose leaf tea, best green tea, matcha caffeine, green tea caffeine, does tea expire, "
-            "does cold brew tea go bad)") in wording["existing_rankings_respected"]
-    assert "'cold brew tea ratio' and 'how long to cold brew tea'" in wording["outline_covers_demand"]
-    assert "('cold brew tea caffeine' or 'can you cold brew tea bags')" in wording["competitor_gap_grounded"]
-    # A slug proposed for the article being briefed is not an existing page, so it is not held to the page list.
-    assert wording["internal_links_real"].endswith(
-        "any URL that is not in the list, fails; a URL or slug the brief proposes for the new article itself is exempt.")
-
-
-def test_nothing_supplied_names_the_topic_to_pick():
-    """The fixtures used to: an outlines file titled for the target topic, and
-    a note saying the blog had no article on it yet."""
-    task = bench.load_tasks()["seo-content-brief"]
-    outlines = (FIXTURES / "seo-brief/competitor_outlines.md").read_text()
-    pages = (FIXTURES / "seo-brief/existing_pages.md").read_text()
-    assert re.findall(r"(?m)^## Topic: (.+)$", outlines) == ["green tea", "cold brew tea", "matcha"]
-    assert "cold" not in outlines.split("## Topic:")[0].lower()        # the title and the introduction
-    notes = pages.split("Notes from the content lead:")[1].lower()
-    assert "cold" not in notes and "no article" not in notes
-    assert "cold brew" not in task["prompt"].lower()
-    assert "outlines of competing articles for three topics the team is considering" in task["prompt"]
-    assert "neither competing outline for its topic does" in task["prompt"]
+# Its oracle, traps and the wording that quotes its data are tested in tests/test_tasks_seo.py,
+# with the other SEO tasks of the 35-task board.
 
 
 # --------------------------------------------------------------- seo-technical-triage
@@ -997,105 +894,6 @@ def test_lifecycle_reference_and_the_policy_the_rubric_quotes():
         assert in_policy in policy and in_check in wording[criterion_id], criterion_id
     assert "which has exactly three emails" in task["prompt"]
     assert "one for lapsed buyers and one for lapsed non-buyers" in task["prompt"]
-
-
-# -------------------------------------------------------------------- ab-test-readout
-
-def _ab_totals():
-    rows = _table("ab-test/experiment_results.csv")
-    totals = collections.defaultdict(lambda: collections.Counter())
-    for row in rows:
-        for field in ("visitors", "signups", "paid_conversions"):
-            totals[row["variant"]][field] += int(row[field])
-            totals[row["variant"], row["device"]][field] += int(row[field])
-    return rows, totals
-
-
-def _ab_p(totals, field: str) -> float:
-    control, variant = totals["control"], totals["variant_b"]
-    n1, n2 = control["visitors"], variant["visitors"]
-    pooled = (control[field] + variant[field]) / (n1 + n2)
-    z = (variant[field] / n2 - control[field] / n1) / (pooled * (1 - pooled) * (1 / n1 + 1 / n2)) ** 0.5
-    return 2 * (1 - statistics.NormalDist().cdf(abs(z)))
-
-
-def test_ab_test_readout_oracle_and_trap():
-    task = bench.load_tasks()["ab-test-readout"]
-    rows, totals = _ab_totals()
-    control, variant = totals["control"], totals["variant_b"]
-    rate_control = control["signups"] / control["visitors"] * 100
-    rate_variant = variant["signups"] / variant["visitors"] * 100
-    half = (control["visitors"] + variant["visitors"]) / 2
-    chi = sum((arm["visitors"] - half) ** 2 / half for arm in (control, variant))
-    answers = [control["visitors"], variant["visitors"], round(rate_control, 2), round(rate_variant, 2),
-               round((rate_variant / rate_control - 1) * 100, 1), round(chi, 1), round(_ab_p(totals, "signups"), 3)]
-    assert list(_targets(task).values()) == pytest.approx(answers)
-    assert answers == [12480, 11020, 6.0, 6.4, 6.6, 90.7, 0.209]
-    # The traps: read early, a split no 50/50 assignment produces, the gap on
-    # mobile only, and a secondary metric that just clears 5%.
-    secondary_p = _ab_p(totals, "paid_conversions")
-    assert max(control["visitors"], variant["visitors"]) < 18000
-    assert answers[6] > 0.05 > secondary_p > 0.04
-    assert not _failed(_results("ab-test-readout", _answer_block(
-        ["12,480", "11,020", f"{answers[2]:.2f}%", f"{answers[3]:.2f}%", f"{answers[4]}%", answers[5], answers[6]])))
-    # A continuity-corrected test (0.219) is inside the full-credit band; a one-sided one is not.
-    block = [12480, 11020, 6.0, 6.4, 6.6, 90.7]
-    assert "q7_p_value" not in _failed(_results("ab-test-readout", _answer_block(block + [0.219])))
-    assert "q7_p_value" in _zeroed(_results("ab-test-readout", _answer_block(block + [0.104])))
-    # Careless: the lift in percentage points and the secondary metric's p-value.
-    careless = _answer_block(["12,480", "11,020", "6.00%", "6.40%", "0.4%", answers[5], round(secondary_p, 3)])
-    assert {"q5_relative_lift", "q7_p_value"} == _zeroed(_results("ab-test-readout", careless))
-    assert not _critical_tripped("ab-test-readout", careless)
-
-
-def test_ab_reference_and_the_wording_that_quotes_it():
-    task = bench.load_tasks()["ab-test-readout"]
-    rows, totals = _ab_totals()
-    reference = _reference("ab-test-readout")
-    assert {key: reference[key] for key in reference if key not in ("version", "answers", "interpretation")} == {
-        "totals": {variant: dict(totals[variant]) for variant in ("control", "variant_b")},
-        "by_device": {device: {variant: dict(totals[variant, device]) for variant in ("control", "variant_b")}
-                      for device in ("desktop", "mobile")},
-        "weeks": 4,
-        # Half of the visitors the test received: what each variant is compared with in the sample-ratio check.
-        "expected_visitors_per_variant_under_the_planned_50_50_split":
-            sum(int(row["visitors"]) for row in rows) // 2,
-        "secondary_metric_p_value": round(_ab_p(totals, "paid_conversions"), 3),
-    }
-    assert reference["expected_visitors_per_variant_under_the_planned_50_50_split"] == 11750
-    assert sum(int(row["visitors"]) for row in rows) == 23500
-    assert reference["by_device"]["mobile"] == {
-        "control": {"visitors": 6900, "signups": 347, "paid_conversions": 66},
-        "variant_b": {"visitors": 5400, "signups": 283, "paid_conversions": 67}}
-    assert reference["by_device"]["desktop"]["control"]["visitors"] == 5580
-    assert reference["by_device"]["desktop"]["variant_b"]["visitors"] == 5620
-    assert reference["secondary_metric_p_value"] == 0.049
-    # The plan's numbers and the checks that quote them come from the same constants.
-    plan = (FIXTURES / "ab-test/test_plan.md").read_text()
-    wording = {criterion_id: criterion["check"] for criterion_id, criterion in _by_id(task).items()}
-    assert "18,000 visitors per variant (two-sided test, 5% significance" in plan and "not a decision metric" in plan
-    assert "the 18,000 visitors the plan required" in wording["stop_rule_respected"]
-    assert "at the plan's 5% level" in wording["not_significant_stated"]
-    assert "(12,480 control against 11,020 variant B)" in wording["srm_flagged"]
-    assert ("the mobile rows, where variant B has 5,400 visitors against control's 6,900 (desktop is balanced, "
-            "5,620 against 5,580). Naming mobile is enough") in wording["imbalance_located"]
-    # The prompt's own definition speaks of "the 50/50 split the plan called for", so a readout that
-    # gives the count that split expects is not misquoting the plan, whose sample size is 18,000.
-    assert "with the 50/50 split the plan called for" in task["prompt"]
-    assert ("half of the visitors the two variants received (11,750), is derived from the results: stating it, also as "
-            "what the planned split called for, is not an invented figure") in wording["no_invented_data"]
-    assert "every figure about the plan matches the test plan" in wording["no_invented_data"]
-    assert "It is not the sample size the plan required of each variant." in reference["interpretation"]
-
-
-def test_the_ab_prompt_asks_for_the_work_without_pointing_at_the_traps():
-    prompt = bench.load_tasks()["ab-test-readout"]["prompt"]
-    for hint in ("which device", "which week", "split of visitors between the variants is not", "mobile"):
-        assert hint not in prompt, hint
-    assert "whether the test can be trusted and why" in prompt                                # srm_flagged
-    assert "point to the rows of the results that show it" in prompt                         # imbalance_located
-    assert "a clear recommendation with the next step" in prompt                             # next_step_concrete
-    assert "from the supplied files" in prompt                                               # the plan is citable
 
 
 # ------------------------------------------------------------- monthly-report-reconcile

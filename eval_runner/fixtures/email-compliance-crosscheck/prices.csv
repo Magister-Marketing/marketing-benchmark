@@ -1,0 +1,26 @@
+price_id,sku,product,region,price,effective_from,effective_to
+R01,OS-101,Oat Milk Cleanser,US,$24.00,2027-01-01,2027-12-31
+R02,OS-101,Oat Milk Cleanser,UK,£20.00,2027-01-01,2027-12-31
+R03,OS-101,Oat Milk Cleanser,EU,€22.00,2027-01-01,2027-12-31
+R04,OS-101,Oat Milk Cleanser,CA,$31.00,2027-01-01,2027-12-31
+R05,OS-114,Cloudberry Barrier Cream,US,$46.00,2027-01-01,2027-02-14
+R06,OS-114,Cloudberry Barrier Cream,US,$50.00,2027-02-15,2027-12-31
+R07,OS-114,Cloudberry Barrier Cream,UK,£38.00,2027-01-01,2027-12-31
+R08,OS-114,Cloudberry Barrier Cream,EU,€42.00,2027-01-01,2027-12-31
+R09,OS-114,Cloudberry Barrier Cream,CA,$58.00,2027-01-01,2027-02-23
+R10,OS-114,Cloudberry Barrier Cream,CA,$63.00,2027-02-24,2027-12-31
+R11,OS-120,Rosehip Night Oil,US,$38.00,2027-01-01,2027-12-31
+R12,OS-120,Rosehip Night Oil,UK,£32.00,2027-01-01,2027-12-31
+R13,OS-120,Rosehip Night Oil,EU,€35.00,2027-01-01,2027-02-18
+R14,OS-120,Rosehip Night Oil,EU,€38.00,2027-02-19,2027-12-31
+R15,OS-120,Rosehip Night Oil,CA,$48.00,2027-01-01,2027-12-31
+R16,TM-201,Cedar and Fig Candle,US,$34.00,2027-01-01,2027-02-13
+R17,TM-201,Cedar and Fig Candle,US,$37.00,2027-02-14,2027-12-31
+R18,TM-201,Cedar and Fig Candle,UK,£28.00,2027-01-01,2027-12-31
+R19,TM-201,Cedar and Fig Candle,EU,€31.00,2027-01-01,2027-12-31
+R20,TM-201,Cedar and Fig Candle,CA,$44.00,2027-01-01,2027-12-31
+R21,TM-210,Linen Room Spray,US,$22.00,2027-01-01,2027-03-01
+R22,TM-210,Linen Room Spray,US,$24.00,2027-03-02,2027-12-31
+R23,TM-210,Linen Room Spray,UK,£18.00,2027-01-01,2027-12-31
+R24,TM-210,Linen Room Spray,EU,€20.00,2027-01-01,2027-12-31
+R25,TM-210,Linen Room Spray,CA,$28.00,2027-01-01,2027-12-31

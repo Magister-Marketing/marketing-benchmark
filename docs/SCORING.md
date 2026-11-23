@@ -70,7 +70,7 @@ the numbers.
 The report also shows **false confidence** — the share of failed attempts the
 model presented as complete — and marks a failed attempt that said it was
 blocked with `A` in the run grid instead of `F`. Neither changes the
-pass/fail headline: a blocked task is still a failed task.
+pass/fail headline: a blocked task is still a failed task. Forecast tasks are left out of it: a reply with every pick made is complete, and a pick that turned out wrong is a miss, not unfinished work.
 
 ## What happens with repeat runs
 

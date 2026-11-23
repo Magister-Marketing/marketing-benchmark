@@ -1,0 +1,261 @@
+{
+  "id": "price-change-rollout",
+  "title": "Roll a price change through 14 assets",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "workflow": "price-change-rollout",
+  "fixtures": [
+    "eval_runner/fixtures/price-change-rollout/change_brief.md",
+    "eval_runner/fixtures/price-change-rollout/assets.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
+  ],
+  "answers": {
+    "count": 3,
+    "single_number": true
+  },
+  "prompt": "Kestrelwick changes its prices on March 1, 2027. Update the 14 assets in the supplied assets.md to the supplied change_brief.md: change everything the brief changes and nothing else, keep every ad and the banner within its limits, and put the brief's notice and its sentence for existing customers exactly where the brief says.\n\nReturn every one of the 14 assets in full, whether or not it changed. Put each one under a line with its file name, asset-01.md to asset-14.md, in order, with the asset's text inside a code fence, exactly as it should read after the change: nothing left out, and no heading or note of your own inside the fence.\n\n### asset-01.md\n```\n<the full text of asset-01 after the change>\n```\n\nAfter the 14 assets, give one CSV file under a line with its file name, with exactly this header and one row per asset:\n\n### change_log.csv\nasset_id,changed,what\n\n`asset_id` is asset-01 to asset-14. `changed` is yes if you changed the asset's text and no if you returned it as it was. `what` says in a few words what you changed, and is empty when nothing changed. If a value contains a comma, put the value in double quotes.\n\nEnd your reply with this answer block, one line per answer: the label, a colon and the number alone.\n\nA1: <number of assets you changed>\nA2: <number of amounts of money in the 14 assets that now show a different figure>\nA3: <the new yearly price of the renamed plan, in dollars>\n\nThis is copy for review. Publish nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "all_assets_returned",
+        "check": "All 14 assets (asset-01.md to asset-14.md) are in the reply, each under a line with its file name. Full credit for none missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_missing_asset_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "change_log_right",
+        "check": "change_log.csv has one row for each of the 14 assets, and each row's changed flag matches both what the reply did to that asset and what the brief requires of it. Full credit for no row missing, repeated, unreadable or wrong; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_change_log_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "answer_block",
+        "check": "The reply ends with the answer block and all 3 labeled answers A1-A3 are present, each on its own line with the number alone.",
+        "programmatic": {
+          "fact": "answer_count",
+          "equals": 3
+        }
+      },
+      {
+        "id": "a1_assets_changed",
+        "check": "A1 states how many of the 14 assets the brief changes. Full credit for the exact figure; zero credit 3 or more off.",
+        "programmatic": {
+          "fact": "answer_q1",
+          "near": 11,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "a2_amounts_changed",
+        "check": "A2 states how many amounts of money in the 14 assets show a different figure after the change, not counting the price the sentence for existing customers keeps. Full credit for the exact figure; zero credit 6 or more off.",
+        "programmatic": {
+          "fact": "answer_q2",
+          "near": 29,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 6
+          }
+        }
+      },
+      {
+        "id": "a3_renamed_yearly_price",
+        "check": "A3 states the renamed plan's new yearly price in dollars. Full credit for the exact figure; zero credit 10% or more off.",
+        "programmatic": {
+          "fact": "answer_q3",
+          "near": 590,
+          "tolerance": {
+            "kind": "relative",
+            "full": 0,
+            "zero": 0.1
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "old_prices_gone",
+        "check": "No old price, yearly price, saving or difference is left in any asset the brief changes, apart from the one old price the sentence for existing customers keeps. Full credit for none left; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_old_price_left_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "new_prices_exact",
+        "check": "Every new price, yearly price, saving and difference is the brief's figure, written exactly as the brief writes it ($59/month, $1,190/year, a saving as an amount alone; /mo and /yr in the ads and the banner only), and no amount appears that the brief does not give. Full credit for none wrong, missing or extra; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_new_price_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "plan_renamed",
+        "check": "The plan is called Growth everywhere it was called Studio, and Studio is gone as the plan's name. Full credit for no mention left or lost; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_plan_name_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "trial_updated",
+        "check": "Every statement of the trial's length says 30 days in the brief's form (30 days, 30-day), and none of the old length (14 days, 14-day, two weeks) is left. Full credit for none left or lost; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_trial_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "existing_customers_keep_their_price",
+        "check": "asset-05 carries the brief's sentence for existing customers word for word, once, with the old price it keeps, and no other asset carries it. Full credit for that; zero credit otherwise.",
+        "programmatic": {
+          "fact": "workflow_grandfather_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 1
+          }
+        }
+      },
+      {
+        "id": "lookalikes_left_alone",
+        "check": "What only looks like the change is left as it was: the 49 integrations (not a price), StudioSync, the address kestrelwick.example/plans/studio, and studio and studios in lower case. Full credit for none changed or lost; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_lookalike_changed_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "unchanged_assets_identical",
+        "check": "The 3 assets with nothing the brief changes come back character for character as they were, apart from line endings and trailing spaces. Full credit for none altered or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "workflow_unchanged_asset_altered_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "notice_where_required",
+        "check": "The pricing page section, the FAQ, the sales one-pager and the help article each end with the brief's notice, as a paragraph of its own after everything else; the notice at the top, in the middle or run onto another paragraph is not where it is required. Full credit for none without it in its place; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "workflow_notice_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "notice_word_for_word",
+        "check": "In each of those four assets the notice is the brief's sentence word for word, exactly once, with no reworded version of it. Full credit for none reworded or repeated; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "workflow_notice_not_verbatim_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "notice_nowhere_else",
+        "check": "No email, ad or the banner carries the notice, word for word or reworded. Full credit for none; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "workflow_notice_misplaced_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "within_limits",
+        "check": "Every ad's Headline is present and at most 40 characters, every Body at most 125, and the banner's Text at most 90. Full credit for none missing or over; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_limit_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "nothing_else_changed",
+        "check": "In every asset the brief changes, each sentence with nothing to change is still there word for word, and each changed sentence keeps every word around the change. Full credit for none reworded, dropped or shortened; zero credit at 6 or more.",
+        "programmatic": {
+          "fact": "workflow_collateral_change_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 6
+          }
+        }
+      },
+      {
+        "id": "reads_naturally",
+        "check": "Judge only the assets the brief changes. Every rewritten sentence reads naturally, with no find-and-replace artefact: no doubled or orphaned words (\"$59/month a month\"), no comparison the new figures break, no sentence whose words no longer agree with its new price, name or trial (an article that no longer fits, a figure that no longer adds up), and no heading or subject line left half-changed. It fails if any changed asset has such an artefact, or if the assets are missing."
+      }
+    ]
+  }
+}

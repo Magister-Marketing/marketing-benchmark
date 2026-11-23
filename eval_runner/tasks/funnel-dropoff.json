@@ -1,0 +1,44 @@
+{
+  "id": "funnel-dropoff",
+  "title": "Diagnosing a checkout funnel drop",
+  "split": "development",
+  "prompt_version": 2,
+  "rubric_version": 2,
+  "fixtures": [
+    "eval_runner/fixtures/funnel-dropoff/analysis_rules.md",
+    "eval_runner/fixtures/funnel-dropoff/funnel_daily.csv",
+    "eval_runner/fixtures/funnel-dropoff/release_log.md",
+    "eval_runner/fixtures/funnel-dropoff/suspected_causes.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/cro/SKILL.md",
+    "evals/fixtures/public/skills/analytics/SKILL.md"
+  ],
+  "answers": {
+    "count": 4,
+    "single_number": true
+  },
+  "prompt": "Bramblecote Home's checkout conversion fell in the second half of March 2026, and the head of e-commerce wants a diagnosis before Monday's trading meeting. You are supplied the analytics team's funnel analysis rules, four weeks of the checkout funnel by day, device, browser and step, the release and change log, and the suspected causes collected in the incident thread. Follow the rules exactly. Every figure you use must come from the supplied files.\n\nStart with a short diagnosis for the head of e-commerce: what broke, where and from which day, what it cost, and what to fix first. Then deliver two files. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. Write numbers without thousands separators inside the files.\n\n### segment_diagnosis.csv\nsegment,shipping_before,shipping_after,payment_before,payment_after,order_before,order_after,verdict,broken_step,break_day,orders_lost\n\n- One row for every segment the rules count, written `device / browser` as in the export.\n- `shipping_before` to `order_after`: each step's rate before and after the break, as a percentage to one decimal.\n- `verdict`: `broken`, `recovered` or `normal`. `broken_step`: `shipping`, `payment`, `order`, or `none`. `break_day`: the day of March 2026 its break began, or 0. `orders_lost`: its orders lost, or 0.\n\n### causes.csv\ncause,ruled_out\n\n- One row for each suspected cause, C1 to C13: `yes` if the data rules it out, `no` if it does not.\n\nEnd with an answer block in exactly this format, one line per answer. Each line is the label, a colon, and the number alone: no words, no working and no second number. A currency sign and a percent sign are fine. Use a comma as the thousands separator, if you use one.\n\nA1: <conversion rate before the break, as a percentage to two decimals>\nA2: <conversion rate after the break, as a percentage to two decimals>\nA3: <the store's orders lost>\nA4: <the store's revenue lost, in dollars>\n\nThis is an internal diagnosis. Fetch nothing external and do not invent benchmarks.",
+  "rubric": {
+    "completion": [
+      {"id": "answer_block_complete", "check": "The response ends with the required answer block and all 4 labeled answers A1-A4 are present, each on its own line with the number alone.", "programmatic": {"fact": "answer_count", "equals": 4}},
+      {"id": "q1_rate_before", "check": "A1 states the store's conversion rate before the break, every segment, with the double-fired rows halved and the automated segment-days left out; full credit within 0.02, zero credit 0.1 or more off.", "programmatic": {"fact": "answer_q1", "near": 33.17, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.1}}},
+      {"id": "q2_rate_after", "check": "A2 states the store's conversion rate after the break, every segment, with the double-fired rows halved first and the automated segment-days then left out; full credit within 0.02, zero credit 0.1 or more off.", "programmatic": {"fact": "answer_q2", "near": 29.11, "tolerance": {"kind": "absolute", "full": 0.02, "zero": 0.1}}},
+      {"id": "loss_total", "check": "A3 and A4 state the store's orders and revenue lost, the sum over both broken segments, each from its own break; orders full credit within 2 and zero credit 3 or more off, revenue full credit within $144 and zero credit $216 or more off, and both must be in full credit.", "programmatic": [{"fact": "answer_q3", "near": 1230, "tolerance": {"kind": "absolute", "full": 2, "zero": 3}}, {"fact": "answer_q4", "near": 88560.0, "tolerance": {"kind": "absolute", "full": 144, "zero": 216}}]},
+      {"id": "segment_rows", "check": "segment_diagnosis.csv has one row for each of the ten segments the rules count and no other row (the automated crawler is not a segment the rules count). Full credit only for none missing or extra.", "programmatic": {"fact": "funnel_segment_accounting_error_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}}
+    ],
+    "skill_adherence": [
+      {"id": "rates_before", "check": "In every row of segment_diagnosis.csv, the three step rates before the store's break date are right to one decimal (within 0.05), with the double-fired rows halved. Full credit only for all 30 right.", "programmatic": {"fact": "funnel_rates_before_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "rates_after", "check": "In every row of segment_diagnosis.csv, the three step rates after the store's break date are right to one decimal (within 0.05), with all three double-firings halved. Full credit only for all 30 right.", "programmatic": {"fact": "funnel_rates_after_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "segment_verdicts", "check": "In every row of segment_diagnosis.csv, the verdict, the broken step and the break day are right: two segments broke (each at its own step, from its own day), three fell below their range and recovered, and five stayed normal. Full credit only for all ten rows right.", "programmatic": {"fact": "funnel_verdict_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "segment_orders_lost", "check": "In every row of segment_diagnosis.csv, orders lost are right within 2: each broken segment's from its own break by the rules' formula, and 0 for every other segment. Full credit only for all ten rows right.", "programmatic": {"fact": "funnel_orders_lost_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "no_invented_data", "negative": true, "check": "Every figure the diagnosis presents as a result is derivable from the supplied files under the stated rules. No industry benchmark, forecast, or figure from outside the files is stated as if it were data."}
+    ],
+    "best_practices": [
+      {"id": "causes_consistent", "check": "causes.csv says `no` for the two causes the data is consistent with, C3 (the payment form on mobile Safari, 16 March) and C10 (the shipping-rate panel on tablets, 18 March). Full credit only for both right.", "programmatic": {"fact": "funnel_causes_consistent_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "causes_look_alikes", "check": "causes.csv says `yes` for each of the nine look-alike causes the data rules out: C2, C4, C6, C7, C8, C9, C11, C12 and C13 (a change two days before the break, dips inside the range, steps that fell below it and recovered, the double-fired Safari rows, and the second break pinned on the first release). Full credit only for all nine right.", "programmatic": {"fact": "funnel_causes_look_alike_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "causes_plain", "check": "causes.csv says `yes` for C1 and C5, which name a shipping step no segment broke on their dates. Full credit only for both right.", "programmatic": {"fact": "funnel_causes_plain_wrong_count", "near": 0, "tolerance": {"kind": "absolute", "full": 0, "zero": 1}}},
+      {"id": "first_action_on_the_causes", "check": "The diagnosis names both breaks and puts the larger first: the first fix is aimed at release 5.8.0's payment form on mobile Safari (rolling it back, switching it off for that segment, or fixing it), and the second at the shipping-rate panel on tablet Chrome. No fix, a fix aimed at a cause the data rules out, or the tablet Chrome break blamed on release 5.8.0 fails."}
+    ]
+  }
+}

@@ -4,18 +4,32 @@ These SKILL.md files are **verbatim, unmodified copies** from
 [marketingskills](https://github.com/coreyhaines31/marketingskills) — the
 open marketing skill pack written by Corey Haines, co-founder of Magister —
 vendored via Magister's production fork
-([elliot-ylambda/marketingskills](https://github.com/elliot-ylambda/marketingskills))
-at commit `1982ce1b1206e24b0c291d3f4dc9535108505aba`, the same pin that ships
-on every Magister agent machine.
+([Magister-Marketing/marketingskills](https://github.com/Magister-Marketing/marketingskills))
+at commit `2c38021374f4871eca784b1525be742d7ac08aa1` (pack version 2.8.23,
+2026-11-20), the pin Magister's agent machines ran that day. The copies before
+this one were made on 2026-08-31 at `1982ce1b1206e24b0c291d3f4dc9535108505aba`
+(pack version 2.8.16); a run made before the refresh used those, and a
+"with skills" run is only comparable with a Magister run when both used the
+same pack.
+
+Each file's own version is in its frontmatter. At this pin:
 
 | Benchmark path | Upstream path | Version |
 |---|---|---|
-| `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.8.2 |
-| `analytics/SKILL.md` | `skills/analytics/SKILL.md` | see frontmatter |
-| `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.0.1 |
-| `cro/SKILL.md` | `skills/cro/SKILL.md` | see frontmatter |
-| `emails/SKILL.md` | `skills/emails/SKILL.md` | see frontmatter |
-| `site-architecture/SKILL.md` | `skills/site-architecture/SKILL.md` | see frontmatter |
+| `ab-testing/SKILL.md` | `skills/ab-testing/SKILL.md` | 2.0.2 |
+| `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.9.4 |
+| `ads/SKILL.md` | `skills/ads/SKILL.md` | 2.2.1 |
+| `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
+| `competitor-profiling/SKILL.md` | `skills/competitor-profiling/SKILL.md` | 2.0.1 |
+| `content-strategy/SKILL.md` | `skills/content-strategy/SKILL.md` | 2.0.1 |
+| `copy-editing/SKILL.md` | `skills/copy-editing/SKILL.md` | 2.0.0 |
+| `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
+| `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
+| `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |
+| `influencer-marketing/SKILL.md` | `skills/influencer-marketing/SKILL.md` | 1.4.3 |
+| `launch/SKILL.md` | `skills/launch/SKILL.md` | 2.0.1 |
+| `seo-audit/SKILL.md` | `skills/seo-audit/SKILL.md` | 2.0.0 |
+| `site-architecture/SKILL.md` | `skills/site-architecture/SKILL.md` | 2.0.0 |
 
 How they reach the model: `assemble_prompt` in `eval_runner/bench.py` appends
 each task's listed skill files to the prompt as plain-text blocks under
@@ -27,7 +41,8 @@ skill sensibly with only the supplied fixtures is part of what the benchmark
 measures.
 
 To refresh: copy the files from the fork checkout unchanged and update the
-pinned commit above. Do not edit the skill bodies — a benchmark-local edit
+pinned commit and the versions above. Refresh before any run whose "with
+skills" numbers will sit beside a Magister run. Do not edit the skill bodies — a benchmark-local edit
 breaks the claim that the skills arm tests the shipped skill pack. Before the
 2026-08-25 runs these paths held ~500-byte benchmark-written distillations;
 runs recorded before then used that older guidance (each run directory

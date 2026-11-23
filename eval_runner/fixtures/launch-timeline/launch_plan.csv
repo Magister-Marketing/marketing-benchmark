@@ -1,0 +1,97 @@
+task_id,task,owner,duration,duration_unit,depends_on,optional,not_before,deliverable
+T01,Launch brief and positioning,Ana,4,working days,,no,,"One-page brief: audience, promise, price band, launch goals"
+T02,Pricing and margin sign-off,Ana,2,working days,T01,no,,Retail and online prices signed off with finance
+T03,Messaging framework,Ben,4,working days,T01,no,,"Headline promise, three proof points, tone notes"
+T04,Product photography shoot,Cleo,2,working days,T01,no,2027-03-10,"Studio shoot: hero, lifestyle and detail shots"
+T05,Packaging artwork,Cleo,5,working days,T03,no,,"Front, back and side panels for the box"
+T06,Packaging copy and legal lines,Ben,2,working days,T03,no,,"Panel copy, care instructions, compliance lines"
+T07,Brand film script,Ben,3,working days,T03,yes,,Script and shot list for a 60-second brand film
+T08,Landing page wireframes,Dev,3,working days,T03,no,,Wireframes for the waitlist and product pages
+T09,Key visuals for ads,Cleo,4,working days,T03 T04,no,,Three key visuals that every ad and page builds on
+T10,Customer research readout,Hana,3,working days,T01,no,,Findings from twelve customer interviews
+T11,Sales deck outline,Ivo,2,working days,T03,no,,Storyline and slide list for the retail sales deck
+T12,Media list and outreach plan,Esme,3,working days,T03,no,,Forty target titles and the outreach order
+T13,Waitlist page copy,Ben,2,working days,T03,no,,Copy for the waitlist page and its form
+T14,Waitlist page build,Dev,3,working days,T08 T13,no,,Live waitlist page with the signup form
+T15,Waitlist email sequence,Gia,3,working days,T13,no,,Three nurture emails for waitlist signups
+T16,Search keyword plan,Finn,3,working days,T03,no,,"Keyword list, match types and negatives"
+T17,Audience build for paid social,Finn,2,working days,T10,no,,Lookalike and interest audiences
+T18,Influencer shortlist,Esme,4,working days,T10,no,,Twenty creators with reach and fit notes
+T19,Packaging dielines and print files,Cleo,3,working days,T05 T06,no,,Print-ready files on the printer's dielines
+T20,Creative review: packaging and key visuals,Ana,1,working days,T09 T19,no,,Sign-off that releases the print files
+T21,Packaging print run,Printer,12,calendar days,T20,no,,Printed and folded boxes
+T22,Freight to the warehouse,Freight,9,calendar days,T21,no,,Boxes delivered to the warehouse
+T23,Product page copy,Ben,3,working days,T02 T03,no,,Product page copy with prices
+T24,Product page design,Cleo,3,working days,T09 T23,no,,Desktop and mobile designs of the product page
+T25,Product page build,Dev,5,working days,T14 T24,no,,Built product page on staging
+T26,Checkout and pricing configuration,Dev,2,working days,T02 T25,no,,"Prices, bundles and discount rules in checkout"
+T27,Product page translation,Lingua,8,calendar days,T23,no,,German and French product page copy
+T28,EU site localisation,Dev,3,working days,T25 T27,no,,Translated product pages live on the EU store
+T29,Press release,Ben,2,working days,T23,no,,Release text with quotes and price
+T30,Retail sell sheet,Cleo,2,working days,T23,no,,Two-page sell sheet for buyers
+T31,Sell sheet print,Printer,4,calendar days,T30,no,,Printed sell sheets for the trade show
+T32,Press kit,Esme,3,working days,T04 T29,no,,"Release, photos and fact sheet in one kit"
+T33,Retail partner list and terms,Hana,4,working days,T02,no,,Target retailers and trade terms
+T34,Partner co-marketing agreements,Hana,5,working days,T33,no,,Signed co-marketing terms with three retailers
+T35,Partner training webinar,Hana,1,working days,T30 T34,no,2027-05-12,Live product training for retail staff
+T36,Ad creative: static set,Cleo,4,working days,T09 T23,no,,Twelve static ads in four sizes
+T37,Ad creative: video cutdowns,Cleo,6,working days,T36,no,,"Six, fifteen and thirty-second cutdowns"
+T38,Launch lookbook,Cleo,4,working days,T24,yes,,Twenty-page lookbook for press and partners
+T39,Email templates,Cleo,2,working days,T36,no,,Launch email templates in the brand system
+T40,Launch email copy,Ben,3,working days,T23,no,,Copy for the three launch emails
+T41,Launch email build,Gia,3,working days,T39 T40,no,,Launch emails built and tested in the email platform
+T42,SMS launch flow,Gia,2,working days,T40,yes,,Two SMS messages for opted-in subscribers
+T43,Customer service FAQ,Gia,2,working days,T23,no,,Answers to the twenty likeliest questions
+T44,Help centre articles,Ben,3,working days,T23,no,,"Set-up, care and returns articles"
+T45,Trade show booth graphics,Cleo,3,working days,T36,no,,"Back wall, counter and banner artwork"
+T46,Booth graphics print,Printer,5,calendar days,T45,no,,Printed booth graphics
+T47,Trade show,Hana,2,working days,T31 T46+3,no,2027-05-18,Two days on the stand at the housewares show
+T48,Search campaigns build,Finn,3,working days,T16 T25,no,,"Search campaigns built, paused"
+T49,Paid social campaigns build,Finn,4,working days,T17 T25 T36,no,,"Paid social campaigns built, paused"
+T50,Video campaigns build,Finn,2,working days,T37,yes,,"Video campaigns built, paused"
+T51,Tracking plan and tags,Dev,3,working days,T25,no,,"Events, tags and conversion goals"
+T52,Product quiz,Dev,4,working days,T25,yes,,Five-question quiz that recommends a size
+T53,Influencer outreach,Esme,4,working days,T18 T32,no,,Offers sent and confirmed with creators
+T54,Influencer seeding kits,Esme,2,working days,T22+3 T53,no,,Kits packed and sent from warehouse stock
+T55,Analytics QA,Dev,2,working days,T48 T49 T51,no,,Every conversion event checked end to end
+T56,Review program setup,Esme,2,working days,T26,no,,Post-purchase review requests switched on
+T57,Launch blog post,Ben,2,working days,T29,yes,,Founder's post on why the product exists
+T58,Sales battlecards,Ivo,3,working days,T11 T23,yes,,Battlecards against the three closest rivals
+T59,Sales deck,Ivo,4,working days,T11 T36,no,,Finished retail sales deck
+T60,Sales team training,Ivo,1,working days,T26 T59,no,,Training session for the sales team
+T61,Press outreach under embargo,Esme,4,working days,T32,no,2027-05-10,Embargoed briefings with target titles
+T62,Retail partner deck,Ana,4,working days,T30 T33,yes,,Deck for retail partners' buying teams
+T63,Launch plan sign-off,Ana,1,working days,T26 T34,no,,Final launch plan agreed with retail partners
+T64,Marketplace listing,Ivo,3,working days,T04 T23,no,,Listing copy and images for the marketplace
+T65,Marketplace listing translation,Lingua,6,calendar days,T64,no,,German and French marketplace listings
+T66,Partner newsletter feature,Hana,2,working days,T35,no,,Feature in the retail partners' newsletter
+T67,Warehouse stock check,Ivo,1,working days,T22+3,no,,Received boxes counted and released for sale
+T68,Social launch posts,Cleo,2,working days,T36,no,,Launch-week posts for every channel
+T69,Social posts scheduling,Finn,1,working days,T29 T68,no,,Posts scheduled in the social tool
+T70,Site performance pass,Dev,3,working days,T55,no,,Page speed fixes on the product pages
+T71,Site QA and checkout test,Dev,2,working days,T26 T28 T70,no,,Full purchase tested on every store
+T72,Launch email QA,Gia,1,working days,T41 T71,no,,Launch emails checked against the live site
+T73,Paid media launch QA,Finn,1,working days,T48 T49 T55,no,,"Campaigns checked, budgets loaded"
+T74,Unboxing video,Cleo,3,working days,T67,yes,,Unboxing video shot with warehouse stock
+T75,Customer service training,Gia,1,working days,T43 T44,no,,Support team trained on the FAQ and articles
+T76,Press day coordination,Esme,1,working days,T61,no,,Interview slots and samples for launch day
+T77,Final creative review,Ana,1,working days,T37 T45 T68,no,,Last look at every launch asset
+T78,EU press release adaptation,Ben,2,working days,T29,no,,"Release adapted for EU titles: prices in euros, EU stockists"
+T79,EU media list,Jules,2,working days,T12,no,,Twenty EU titles and their embargo contacts
+T80,Influencer content approvals,Jules,2,working days,T53,no,,Creator drafts checked against the brief
+T81,Retail staff incentive scheme,Ivo,2,working days,T34,no,,Sales incentive for retail floor staff
+T82,Retail order forecast,Ivo,2,working days,T34 T67,no,,First-month order forecast by retailer
+T83,Retail replenishment plan,Ivo,2,working days,T82,no,,Reorder points and weekly replenishment
+T84,Search ad copy variants,Finn,2,working days,T23 T48,no,,Four headline sets for each ad group
+T85,Remarketing audiences,Dev,1,working days,T51,no,,Site-visitor audiences from the new tags
+T86,Launch budget pacing sheet,Finn,1,working days,T84 T85,no,,Daily budgets and pacing alerts
+T87,Customer review seeding,Jules,2,working days,T54,yes,,Early reviews from seeded creators
+T88,Packaging insert card,Ben,1,working days,T06,no,,Welcome card copy for inside the box
+T89,Partner FAQ for retail staff,Ben,2,working days,T44,no,,Short FAQ for retail floor staff
+T90,Launch-day social monitoring,Ben,1,working days,T69,no,,Listening streams and escalation rota
+T91,EU press briefings,Jules,3,working days,T78 T79,no,2027-05-17,Briefings with EU titles under the same embargo
+T92,Investor update,Ana,1,working days,T63,yes,,Launch note for investors
+T93,Launch-day press call list,Jules,1,working days,T61 T91,no,,Who calls which title on launch morning
+T94,Go/no-go review,Ana,1,working days,T07 T38 T42 T47 T50 T52 T54 T56 T57 T58 T60 T62 T63 T65 T66 T67 T69 T71 T72 T73 T74 T75 T76 T77 T80 T81 T83 T86 T87 T88 T89 T90 T92 T93,no,,Launch decision with every owner
+T95,Launch-day war room setup,Dev,1,working days,T94,no,,"Dashboards, alerts and rota for launch day"
+T96,Launch day,Ana,1,working days,T94 T95,no,,The product goes on sale

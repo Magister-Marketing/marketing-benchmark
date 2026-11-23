@@ -1,0 +1,13 @@
+channel,description,field_channel,licence
+search,"Google Ads search, non-brand keywords",no,no
+linkedin,LinkedIn Ads sponsored content to the target-account list,no,no
+meta,Meta prospecting and retargeting,no,no
+programmatic,Programmatic display through the demand-side platform,no,no
+video,Online video and connected TV,no,no
+syndication,Content syndication of the clinic benchmark report through a publisher network,no,no
+review_sites,Paid profiles and lead programs on software review marketplaces,no,no
+podcasts,Sponsorships on physiotherapy and practice-management podcasts,no,yes
+webinars,Regional webinar series run with partner clinics,yes,yes
+events,Trade-show and conference booths,yes,no
+abm,Account-based direct mail and gifting to target clinics,yes,yes
+partners,Co-marketing with referral partners: equipment suppliers and training providers,no,no

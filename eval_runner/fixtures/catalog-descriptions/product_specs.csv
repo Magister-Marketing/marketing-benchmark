@@ -1,0 +1,61 @@
+sku,name,category,material,width_cm,depth_cm,height_cm,weight_kg,colour,certificate_ids,warranty_years,made_in,features,price_usd
+WF-1101,Linden Desk 100,desk,solid white oak,100,55,75,19,natural oak,FSC-C104211,,Portugal,one shallow drawer; oiled finish,549
+WF-1102,Linden Desk 120,desk,solid white oak,120,60,75,24,natural oak,FSC-C104211,,Portugal,two cable ports; one shallow drawer; oiled finish,649
+WF-1103,Linden Desk 140,desk,solid white oak,140,60,75,,natural oak,FSC-C104211,,Portugal,two cable ports; one shallow drawer; oiled finish,729
+WF-1104,Linden Desk 160,desk,solid white oak,160,70,75,33,natural oak,FSC-C087654,7,Lithuania,two cable ports; two shallow drawers; oiled finish,849
+WF-1105,"Linden Desk 140, Walnut",desk,solid walnut,140,60,75,26,walnut,FSC-C112233,,Portugal,two cable ports; one shallow drawer; oiled finish,899
+WF-1201,Hale Bookcase 60,bookcase,solid white oak,60,35,180,29,natural oak,,,Lithuania,five fixed shelves; wall anchor included,599
+WF-1202,Hale Bookcase 90,bookcase,solid white oak,90,35,180,41,natural oak,,,Lithuania,five fixed shelves; wall anchor included,899
+WF-1203,"Hale Bookcase 90, Low",bookcase,solid white oak,90,35,110,27,natural oak,,,Lithuania,three fixed shelves; wall anchor included,649
+WF-1204,"Hale Bookcase 90, Ash",bookcase,solid ash,90,35,180,38,natural ash,FSC-C104211,,Lithuania,five fixed shelves; wall anchor included,849
+WF-1205,"Hale Bookcase 60, Low",bookcase,solid white oak,60,35,110,,natural oak,,2,,three fixed shelves; wall anchor included,449
+WF-1301,"Tove Side Table, Low",side table,solid ash,40,40,45,5,natural ash,FSC-C104211,,,round top; tapered legs,189
+WF-1302,"Tove Side Table, Tall",side table,solid ash,40,40,55,5,natural ash,FSC-C104211,,,round top; tapered legs,209
+WF-1303,"Tove Side Table, Square",side table,solid ash,40,40,45,6,natural ash,FSC-C099001,,Poland,square top; tapered legs,199
+WF-1304,"Tove Side Table, Walnut",side table,solid walnut,40,40,45,5,walnut,FSC-C112233,,,round top; tapered legs,249
+WF-1305,Tove Nesting Tables,side table,solid ash,50,40,50,9,natural ash,FSC-C104211,5,Poland,two tables that nest; round tops; tapered legs,329
+WF-1401,"Ferro Floor Lamp, Brass",floor lamp,brushed brass,30,30,152,6,brass,,,Poland,linen drum shade; foot switch,289
+WF-1402,"Ferro Floor Lamp, Black",floor lamp,powder-coated steel,30,30,152,6,black,,,Poland,linen drum shade; foot switch,259
+WF-1403,"Ferro Floor Lamp, White",floor lamp,powder-coated steel,30,30,152,6,white,,,Poland,cotton drum shade; foot switch,259
+WF-1404,"Ferro Table Lamp, Brass",table lamp,brushed brass,25,25,48,2,brass,,,Poland,linen drum shade; inline switch,149
+WF-1405,"Ferro Table Lamp, Black",table lamp,powder-coated steel,25,25,48,,black,,,,linen drum shade; inline switch,129
+WF-1501,"Ivo Dining Chair, Walnut",dining chair,solid walnut,46,52,80,6,walnut,FSC-C112233,,Vietnam,curved backrest; sold singly,239
+WF-1502,"Ivo Dining Chair, Oak",dining chair,solid white oak,46,52,80,6,natural oak,FSC-C087654,,Vietnam,curved backrest; sold singly,229
+WF-1503,"Ivo Dining Chair, Linen Seat",dining chair,solid walnut with linen seat,46,52,80,7,walnut and oat,FSC-C112233; OT-21.HIN.77045,,Vietnam,curved backrest; removable seat pad; sold singly,279
+WF-1504,"Ivo Dining Chair, Wool Seat",dining chair,solid walnut with wool seat,46,52,80,7,walnut and charcoal,FSC-C112233,,Vietnam,curved backrest; removable seat pad; sold singly,289
+WF-1505,Ivo Armchair,armchair,solid walnut with linen seat,58,55,80,9,walnut and oat,FSC-C112233; OT-19.HIN.12201,5,Vietnam,curved backrest; armrests; removable seat pad,389
+WF-1601,"Marlow Sofa, Two-Seat",sofa,beech frame with recycled polyester upholstery,170,92,84,46,slate grey,GG-5531,,Portugal,removable seat covers; two back cushions,1490
+WF-1602,"Marlow Sofa, Three-Seat",sofa,beech frame with recycled polyester upholstery,210,92,84,58,slate grey,GG-5531,,Portugal,removable seat covers; three back cushions,1890
+WF-1603,"Marlow Sofa, Three-Seat, Wool",sofa,beech frame with wool upholstery,210,92,84,60,moss green,GG-4120,,Portugal,removable seat covers; three back cushions,2190
+WF-1604,Marlow Corner Sofa,sofa,beech frame with recycled polyester upholstery,260,190,84,,slate grey,GG-5531,,,removable seat covers; four back cushions; chaise on the left or the right,2690
+WF-1605,Marlow Armchair,armchair,beech frame with wool upholstery,90,88,84,24,moss green,GG-5531,,Portugal,removable seat cushion; one back cushion,849
+WF-1701,"Wren Cushion, Organic Cotton",cushion,organic cotton,50,50,15,1,oat,GOTS-CU-8811,,India,zip closure; washable cover; feather insert,49
+WF-1702,"Wren Cushion, Linen",cushion,linen,50,50,15,1,rust,OT-21.HIN.77045,,India,zip closure; washable cover; feather insert,59
+WF-1703,"Wren Cushion, Wool",cushion,wool,50,50,15,1,charcoal,OT-19.HIN.12201,,India,zip closure; feather insert,69
+WF-1704,"Wren Lumbar Cushion, Linen",cushion,linen,60,40,12,1,rust,OT-21.HIN.77045,,India,zip closure; washable cover; feather insert,55
+WF-1705,"Wren Cushion, Velvet",cushion,recycled polyester velvet,50,50,15,1,teal,,1,,zip closure; feather insert,65
+WF-1801,Juno Sideboard 160,sideboard,walnut veneer on MDF,160,45,75,52,walnut,,,Poland,four push-to-open doors; adjustable shelves,1150
+WF-1802,Juno Sideboard 200,sideboard,walnut veneer on MDF,200,45,75,64,walnut,,,Poland,five push-to-open doors; adjustable shelves,1390
+WF-1803,"Juno Sideboard 160, Oak",sideboard,oak veneer on MDF,160,45,75,50,natural oak,,,Poland,four push-to-open doors; adjustable shelves,1090
+WF-1804,Juno Media Unit 120,media unit,walnut veneer on MDF,120,40,50,31,walnut,,,Poland,two push-to-open doors; cable outlet,690
+WF-1805,Juno Media Unit 180,media unit,walnut veneer on MDF,180,40,50,43,walnut,,5,Poland,three push-to-open doors; cable outlet,890
+WF-1901,Elm Wall Shelf 80,wall shelf,solid elm,80,20,4,,natural elm,,,Lithuania,hidden brackets; screws included,99
+WF-1902,Elm Wall Shelf 120,wall shelf,solid elm,120,20,4,4,natural elm,,,Lithuania,hidden brackets; screws included,139
+WF-1903,Birch Wall Shelf 80,wall shelf,birch plywood,80,20,4,2,natural birch,FSC-C104211,,Lithuania,hidden brackets; screws included,79
+WF-1904,Birch Wall Shelf 120,wall shelf,birch plywood,120,20,4,3,natural birch,FSC-C099001,,Lithuania,hidden brackets; screws included,109
+WF-1905,Ash Wall Shelf 80,wall shelf,solid ash,80,20,4,2,natural ash,FSC-C104211,,,hidden brackets; screws included,119
+WF-2001,"Tern Bed Frame, Double",bed frame,solid white oak,148,208,95,52,natural oak,,,Portugal,slatted base; low headboard,1290
+WF-2002,"Tern Bed Frame, Queen",bed frame,solid white oak,168,218,95,,natural oak,,,Portugal,slatted base; low headboard,1490
+WF-2003,"Tern Bed Frame, King",bed frame,solid white oak,198,218,95,71,natural oak,,,Portugal,slatted base; low headboard; centre support leg,1790
+WF-2004,"Tern Bed Frame, Queen, Walnut",bed frame,solid walnut,168,218,95,64,walnut,FSC-C112233,,Portugal,slatted base; low headboard,1990
+WF-2005,"Tern Headboard, Queen",headboard,solid white oak,168,8,95,18,natural oak,,,,wall-mounted; fixings included,590
+WF-2101,"Brae Basket, Small",storage basket,woven seagrass,30,30,30,1,natural,,,Vietnam,two handles; folds flat when empty,39
+WF-2102,"Brae Basket, Medium",storage basket,woven seagrass,40,40,45,,natural,,,Vietnam,two handles; open top; folds flat when empty,59
+WF-2103,"Brae Basket, Large",storage basket,woven seagrass,50,50,55,2,natural,,,Vietnam,two handles; open top; folds flat when empty,79
+WF-2104,"Brae Basket, Medium, Hyacinth",storage basket,woven water hyacinth,40,40,45,2,natural,,,Vietnam,two handles; lid,69
+WF-2105,Brae Hamper,laundry hamper,woven water hyacinth with cotton liner,45,35,60,2,natural,,2,Vietnam,removable cotton liner; lid,119
+WF-2201,"Cove Planter, Small",planter,terracotta,20,20,18,1,terracotta,,,,drainage hole; saucer included; unglazed finish,25
+WF-2202,"Cove Planter, Medium",planter,terracotta,30,30,28,,terracotta,,,,drainage hole; saucer included; unglazed finish,47
+WF-2203,"Cove Planter, Large",planter,terracotta,40,40,36,6,terracotta,,,Portugal,drainage hole; saucer included; unglazed finish,79
+WF-2204,"Cove Planter, Glazed",planter,glazed stoneware,30,30,28,4,sage,,,Portugal,drainage hole; glazed inside and out,69
+WF-2205,"Cove Planter, Concrete",planter,concrete,40,40,36,14,grey,,,,drainage hole; sealed finish,89

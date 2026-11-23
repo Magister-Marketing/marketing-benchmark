@@ -4,6 +4,7 @@
   "split": "development",
   "derived_from": "ads-ledger-analysis",
   "harnesses": [
+    "direct-api",
     "magister-agent"
   ],
   "prompt_version": 1,

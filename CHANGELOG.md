@@ -2,6 +2,455 @@
 
 ## Unreleased
 
+- Board: `eval_runner/board.json` names the open board, seven areas of
+  marketing with five tasks each (35 of the 45 development tasks), the four
+  tasks held back, and the ten open tasks left out with why (fully right on
+  every recorded attempt, a forecast that cannot be scored yet, or a second
+  task of a kind already on the board). `--split board` runs it in that
+  order; `load_board` refuses a file where a task is listed twice, missing,
+  held back and open at once, or left out without a reason.
+- Tasks: `policy-casebook` (development split, experimental area): 40
+  proposed marketing actions ruled allowed, allowed with a named condition
+  or not allowed, each with the one clause that decides it, under a 30 KB
+  brand and promotions policy for a fictional sports nutrition brand: 16
+  definitions, rules and exceptions across six Parts, exceptions to
+  exceptions, a six-step procedure for deciding (change log in force,
+  definitions, exceptions, strictest ruling, Part 2 on a tie, a default), a
+  change log of eight dated entries (one approved but not yet in force) and
+  three schedules. It isolates judgement against a long rulebook with no
+  arithmetic: the cases fall in nine groups by what decides them, and each
+  group is one check, scored per case on the ruling, the condition and the
+  clause together. The rules are kept as a machine-readable copy beside the
+  oracle (`task_facts_experiments.CASEBOOK_CLAUSES`, `CHANGE_LOG`), and a
+  test applies the policy's procedure to it with code of its own to prove
+  each case has exactly one deciding clause. All 10 checks are a program's.
+  The `influencer-marketing` skill is vendored unchanged at `2c38021`.
+- Tasks: `brief-amendment` (development split, experimental area): the
+  signed-off launch brief and its product sheet arrive one turn earlier,
+  "for reference, the request follows", through the existing `decoy`
+  mechanism (the brief is the earlier message, the sheet its fixture); the
+  request is the client's amendment of six changes (launch date, a withdrawn
+  product, two price changes, a new market with its budget, a withdrawn
+  claim). The reply is a note and three files (plan, emails, ads) for three
+  markets. It isolates applying a change everywhere it reaches and nowhere
+  else: three knock-ons the amendment does not mention (the bundle the
+  withdrawn kettle belongs to, the item each launch email features, a teaser
+  moved off a UK holiday) and a look-alike (a price that starts after
+  launch). `decoy.answers` holds what the brief-alone plan scores on each of
+  the 12 banded checks; no change to the mechanism or its validation was
+  needed. 16 of its 17 checks are a program's. Lists `harnesses`
+  (`direct-api`, `magister-agent`).
+- Tasks: `launch-workflow-chain` (development split, experimental area): a
+  paid social launch built as six dependent deliverables in one reply, from a
+  build brief, a 22-segment audience table and a 20-product catalogue: the
+  segments six ordered rules choose (8), the campaigns and ad groups a naming
+  convention builds (8 and 30), one ad per ad group under character limits
+  with only its own product's facts, a tracked URL per ad group built from
+  the names, daily budgets shared by segment size, and a pre-launch count.
+  It isolates consistency along the chain: the files after the structure are
+  checked against the reply's own structure (a name, product or count that
+  drifts between files fails that file's agreement check, and only that),
+  and the structure and segments against the oracle. 13 of its 14 checks are
+  a program's. Oracle and reader in the new `eval_runner/task_facts_experiments.py`,
+  hooked into `bench.measured_facts`; generator beside the fixtures; tests in
+  `tests/test_tasks_experiments.py`.
+- Report: a decoy task's cost and time include its earlier turn, for every
+  harness, since the task as given is both messages. They were the task
+  turn's alone, so the published cost and time of `ads-ledger-analysis-decoy`
+  understated what it took (in three Magister runs of 2026-11-20/21 the
+  earlier turn was a third to a half of the cost). `attempt_cost_usd` and the
+  new `attempt_latency_seconds` add the `decoy_*` cost and latency (the
+  bridge's `latency_seconds` has the turn subtracted, so the sum is the whole
+  attempt), and everything published reads them: each run, the metrics, the
+  per-model totals, `compare-arms` (which now reads the report's per-run
+  figures, not the attempts') and `bench-model`'s estimate (which also weighs
+  both turns' tokens). The share is shown as `decoy_cost_usd` and
+  `decoy_latency_seconds`. A turn with no recorded cost or time makes the
+  total unknown, never lower. Other tasks are unchanged.
+- Tasks: `competitor-comparison` version 2 (prompt and rubric 2). Version 1 (6
+  companies, 12 attributes, 7.9 KB) was passed outright by a strong model
+  with no tools or skills. Version 2 reads ten pricing pages (30 KB), each
+  with a plan table, footnotes, a feature list, a security section, an FAQ
+  and a dated changelog, into a table of 20 attributes (200 cells, 63 with a
+  trap) and judges nine draft claims, each against several companies' cells
+  and each turning on one trap. A claim is supportable only if it holds
+  whatever a `not stated` cell really is. The oracle parses the pages and
+  applies the brief's precedence (changelog, then FAQ, then table, then the
+  rest); the test holds the table written out by hand, checks every trap is
+  on its page, and recomputes the verdicts with its own logic. 17 of 18
+  checks are a program's, one per trap group and one per claim.
+- Tasks: `launch-timeline` version 2 (prompt and rubric 2). Version 1 (24
+  tasks, one calendar) was passed outright by a strong model with no tools
+  or skills. Version 2 schedules 96 tasks: ten people in London and Boston
+  with different holidays, two part-timers, two absences, three suppliers
+  working in calendar days, lead times in calendar days on some dependencies
+  and five outside start dates, and a plan history of superseded estimates.
+  Every task's start, finish and slack is checked (288 values), with the
+  launch date, the critical path, whether the target holds and the smallest
+  cut; 11 of 12 checks are a program's. The oracle schedules by longest path
+  and a backward pass over each owner's calendar and tries every set of
+  optional tasks; the test schedules again day by day and finds every slack
+  by delaying each task.
+- Tasks: `channel-budget-allocation` version 2 (prompt and rubric 2). Version
+  1 (six channels, 4.7 KB) was passed outright by a strong model with no tools
+  or skills, so the task is now a quarter split across 12 channels, 3 regions
+  and 3 months from 416 forecast blocks (32 KB of fixtures): regional
+  minimums and maximums, monthly pacing, a field-marketing limit per region
+  and month, contracted blocks, three licences priced by how many months a
+  channel is live, a syndication vendor forecast given as cumulative leads,
+  and a forecast range and Q1 actuals that play no part. Every one of the 108
+  cells is checked, with the licences, 25 binding verdicts and eight figures;
+  16 of 17 checks are a program's. The oracle tries every licence pattern and
+  takes blocks greedily within each, which is exact because the other limits
+  are nested (a laminar matroid); the test proves the answer with an exact
+  dynamic programme that assumes nothing of the kind, shows it is the only
+  best split, and checks the oracle against brute force on small instances.
+- Tasks: `launch-timeline` (development split, strategy area): schedule a
+  24-task product launch under written rules (working days, three holidays,
+  dependencies, owners who take their tasks one at a time in ID order, two
+  not-before dates), then give the launch date, the critical path, the slack
+  of three named tasks, whether the promised date holds and the smallest set
+  of optional tasks to cut to make it. The oracle schedules the plan as a
+  longest path and tries every set of optional tasks; the test schedules it
+  again day by day and measures slack by delaying each task. 13 of its 14
+  checks are a program's. The `launch` skill is vendored unchanged at
+  `2c38021`.
+- Tasks: `competitor-comparison` (development split, strategy area): a
+  comparison table of 12 attributes for Tallyhour and five fictional
+  competitors, read from six saved pricing pages under a brief's rules, and a
+  verdict on five draft claims. Every cell is checked: the oracle reads each
+  one out of its page through a declared source (a plan-table cell, a
+  sentence, an FAQ answer that overrides the table, or a term the page never
+  uses) and applies the monthly-basis and `not stated` rules. 13 of its 14
+  checks are a program's, one per trap group and one per claim. The
+  `competitor-profiling` skill is vendored unchanged at `2c38021`.
+- Tasks: `channel-budget-allocation` (development split, strategy area): split
+  a $128,000 quarter across six channels in whole $5,000 blocks from
+  diminishing-returns forecasts, under a lead cap the account executives set
+  on two channels, a monthly licence held all quarter, a 4-block minimum
+  order and a contracted commitment. Two CSV files and five labeled figures;
+  13 of its 14 checks are a program's, against the one best split the oracle
+  finds by trying every split (`eval_runner/task_facts_strategy.py`, hooked
+  into `measured_facts`). Its fixtures are written by
+  `scripts/gen_tasks_strategy.py`. The `ads` skill is vendored unchanged at
+  the same marketingskills pin (`2c38021`) for its "with skills" arm.
+- Tasks: `seo-content-brief` hardened (prompt 4, rubric 5; same id). Every
+  setup passed all 15 checks of rubric 4. The choice of topic is now a
+  computation across a 455-keyword export: winnable clicks are a keyword's
+  searches times the click-through rate of third place less the rate at its
+  current rank (a table in the prompt), keywords already ranking third or
+  better and keywords of the wrong intent or above the difficulty limit are
+  removed, and the topic with the most winnable clicks wins. The topic with
+  the most searches, the most eligible searches, and the most clicks when the
+  clicks a ranking keyword already gets are left in is matcha every time; the
+  target is oolong tea, whose biggest keyword ranks fifth and so is not the
+  primary. Six labeled figures (A1-A6) and six labeled lines (topic, primary
+  and four secondary keywords, working title, meta description, internal
+  links) are checked by program: 12 of the 16 checks. Skills are now
+  `content-strategy` (vendored unchanged from `2c38021`) and
+  `site-architecture`. `task_references.VERSION` is 4, since the judge's
+  reference for this task changed; its data tests moved from
+  `tests/test_more_tasks.py` to `tests/test_tasks_seo.py`.
+- Tasks: `blog-post` hardened (prompt 3, rubric 4; same id). Every direct
+  setup passed all nine checks of rubric 3. The facts now come from a dated
+  `sources.md` in which later sources replace four figures of earlier ones,
+  each earlier source listed after the one that replaces it: the service
+  menu's price ($89 to $95, and the prompt no longer states it), the 2024 tip
+  sheet's filter interval, and the interim call summary's count and shares.
+  The post must use at least three figures from the sources and state no
+  price, percentage, number of calls or span of time or distance that is not
+  a current one, link exactly the eight pages a written rule picks from a
+  139-page `site_map.csv` (live, tagged furnace, most sessions, a tie at
+  eighth place broken by URL; redirects, noindex pages, a dead page, a page
+  tagged furnace-parts and furnace URLs tagged otherwise all have more
+  sessions), with each page's keyword as the link text, and link its call to
+  action to the booking page with the current price in the link text. 11 of
+  the 14 checks are a program's (`eval_runner/task_facts_seo.py`). The Brightline brand fixtures
+  stay for the tasks that still use them; the archived version 1 prompt is
+  dropped, since rubric 4 cannot grade it.
+- Tasks: `seo-titles-meta` (development split): a title and a meta
+  description for each of the 99 indexed pages of a 113-page inventory, under
+  written rules, as `titles_meta.csv`, with three labeled counts. All 16
+  checks are a program's: limits, suffixes, keywords, prices, attributes,
+  counts and duplicates, page by page. The trap is the keyword rule: when
+  pages share a primary keyword the one with the most clicks keeps it (ties
+  by page type, then id) and the others target their secondary keyword
+  without the one they gave up: 14 pages concede, among size variants, a
+  three-way tie and a guide that out-clicks its category; four noindex pages
+  with more clicks take no part, and "dog bed" is not "dog beds".
+  Out-of-stock products carry a price in the inventory that may not be shown.
+- Tasks: `seo-redirect-map` (development split): a shop moving platform on the
+  same domain. A 327-URL crawl of the old site, the new site's URL list and
+  ten migration rules in order in; a `redirects.csv` of 301s and 410s and four
+  labeled counts out. All 15 checks are a program's, counted row by row
+  against an oracle that reads only the fixtures
+  (`eval_runner/task_facts_seo.py`, hooked into `bench.measured_facts`; the
+  fixtures come from `scripts/gen_tasks_seo.py`). The traps: retired products
+  whose slug a successor with another SKU took, colour and size pages the
+  new site folds into one product page, old redirects and the new site's own
+  redirects to follow to a live page, parameter URLs with
+  backlinks, 404s with inlinks but no backlinks, slugs with a number in front
+  that is not a `YYYY-MM-` date, and retired products with no signal at all.
+  Vendors `seo-audit` unchanged from marketingskills `2c38021` for its "with
+  skills" arm.
+- Tasks: `funnel-dropoff` version 2 (prompt 2, rubric 2). Version 1 was run:
+  a strong model passed all 16 checks twice in about a minute, because 17
+  summary figures needed no row-level care. Version 2 asks for two files,
+  checked row by row: `segment_diagnosis.csv` (each of ten segments' six step
+  rates before and after the store's break date, a verdict, the broken step,
+  the break day and its orders lost) and `causes.csv` (a ruling on each of 13
+  causes), plus four store figures. A second, smaller real break (tablet
+  Chrome's shipping step from 18 March, the new shipping-rate panel) must not
+  be pinned on the first release. The double-firings now interact with the
+  breaks and the crawler: the order window covers the first break's day
+  (left doubled, the break seems to start two days late), a new shipping
+  window hits Chrome and the crawler (left doubled, tablet Chrome's break
+  moves and three crawler days pass the automated rule, which is now judged
+  after the halving), and the Safari payment window still fakes two breaks at
+  the end. More look-alikes: a two-day dip on Samsung Internet, dips inside
+  the range on Firefox, and a cause that blames the second break on 5.8.0.
+  Row checks are all-or-nothing, so any wrong segment or cause fails its
+  check; each careless reading zeroes exactly what it touches. 12 of its 14
+  checks are a program's; 49 KB of sources, 1,154 rows.
+- Tasks: `ab-test-readout` prompt version 5 (rubric 5 unchanged). The prompt now
+  says every answer-block figure is read as the plan reads its results (the
+  analysis window, the visits the plan counts), and defines a lift (B's rate
+  ÷ control's − 1) and a pooled rate (signups and visitors summed over both
+  devices first). Version 4 left the pooled lift's scope to the plan, whose QA
+  rule covers the plan's own metrics, so counting the QA visits in A3 could be
+  argued (55.8% against 11.7%). The mobile and device-weighted lifts had one
+  reading each and do not change. The targets are the same, so version 4's
+  prompt is archived in `rubric_compatible_prompts` and its runs still grade.
+- Tasks: `ab-test-readout` hardened (prompt version 4, rubric version 5; the
+  id is kept, as the 35-task board plan asks). Every setup passed all 17
+  checks of version 3. The fixtures are now 616 daily rows by device and
+  traffic source over 28 days (32 KB) and a plan with written decision rules:
+  mobile is split 70/30 by design, so the pooled lift (+11.7%) is up while
+  variant B is down on desktop (-1.7%) and mobile (-6.9%); the first week's
+  lift (+15.7%) fades, and the plan leaves that week out of every figure; a
+  cache problem in days 1-3 fails the sample-ratio check over 28 days but not
+  over the window; QA visits forced into variant B (source `internal`, one
+  row a day per device) must come out, or the split fails and every lift
+  moves; the billing-ticket guardrail is breached over the window (+27.5%,
+  limit 20%) and not over 28 days. Eleven banded figures, the last the number of the decision rule that
+  decides (rule 3, do not ship). 12 of its 15 checks are a program's.
+  `no_invented_data` is no longer critical: every figure it guarded is a
+  banded check now, and the visitor counts it named carry the burn-in trap.
+  The skills are `ab-testing` and `analytics`. Runs of version 3 cannot be
+  regraded against this rubric (`--current-rubric` refuses a changed
+  prompt). The task moved out of `scripts/gen_more_tasks.py` and
+  `task_references.py` (whose `VERSION` is now 4) into
+  `task_facts_conversion.py` and `fixtures/ab-test/generate.py`; the parser
+  tests in `tests/test_more_tasks.py` read the version-3 task from
+  `tests/data/ab-test-readout-v3.json`, the block they were written against.
+- Tasks: `funnel-dropoff` (development split): a four-week checkout funnel
+  by day, device, browser and step over ten segments (1,131 rows, 47 KB of
+  sources), the analytics team's rules, a release log and ten suspected
+  causes in; the day and place of the break, the conversion rate before and
+  after, the orders and revenue lost and a ruling on each cause out, as 17
+  labeled figures. Two double-firings must be halved first (every order row
+  on 10-12 March; the Safari payment rows on the last three days, which left
+  doubled make desktop and tablet Safari seem to break at the end of the
+  export) and a crawler left out. Look-alikes: dips inside the normal range
+  in four segments, a day and a four-day run below it that recover, and a
+  change two days before the break. 14 of its 16 checks are a program's.
+  Same layout as `test-plan-sizing`.
+- Tasks: `test-plan-sizing` (development split): a 150-test backlog across
+  twelve country storefronts, their settings, eight weeks of traffic for 72
+  pages (576 rows, 36 KB of sources in all) and the team's experimentation
+  rules in; a calendar file out, `test_calendar.csv`, with each test's page
+  weekly users, sample size per variant, weeks, start week and status (run,
+  too long, no slot), every row checked by program, and a short note for the
+  growth lead. Traps spread through the data, one kind per test: 40 tests on
+  storefronts that count sessions (each with its own users per session), 20
+  on pages with a tracking-outage week to leave out, 26 lifts in percentage
+  points, 22 tests on half their page's traffic; weeks round up; each
+  storefront has its own freeze week and limit on tests at once, and one
+  priority order runs over all of them (101 run, 33 too long, 16 no slot).
+  Wrong rows are counted by kind of test (zero credit at 5), status and start
+  week over every test (zero credit at 1), so each careless reading zeroes
+  its own count and the two it cascades into. 8 of its 10 checks are a
+  program's; `task_facts_conversion.facts_for` reads the file and is called
+  from `bench.measured_facts`. The fixtures' generator sits beside them
+  (`eval_runner/fixtures/test-plan-sizing/generate.py`), the oracle is in
+  `eval_runner/task_facts_conversion.py`, which `task_references` now
+  consults for the judge's reference, and `tests/test_tasks_conversion.py`
+  recomputes every target. Vendors `ab-testing/SKILL.md` unchanged from
+  marketingskills `2c38021` (2.0.2) for the "with skills" arm.
+- Tasks: `email-compliance-crosscheck` (development split) replaces
+  `email-compliance-audit`, which a strong model passed 13 of 13 in its first
+  trial: each of its violations could be seen by reading one email against
+  one rule. The new task has 150 scheduled emails of two brands in four
+  regions, a sending policy with seven codes, and six more exports
+  (audiences with consent and last-activity dates, a sender map, registered
+  addresses, a promotions calendar, a date-effective price sheet, DNS
+  records). Most verdicts need sources joined on the email's own send date,
+  and one rule makes emails depend on each other (an email of a series
+  fails because of two earlier ones to the same audience). Each failing
+  verdict names the code and the id of the row that proves it, and the
+  program checks both. 13 of its 14 checks are a program's. The fixtures
+  change, so by the versioning rule it is a new id; the old task file and
+  fixtures are removed (run folders keep their own snapshots).
+- Tasks: `email-send-calendar` rubric version 2 (prompt unchanged). Its
+  frequency.csv is read line by line: a line counts when it holds a
+  subscriber id and a count and nothing else, however it is separated
+  (comma, colon, space, tab, a Markdown table, bullets, quotes), with or
+  without the header and whatever the header calls its columns. The first
+  trial failed the three counting checks; the policy's wording for who
+  receives a campaign (joined and paused dates both "that day or earlier")
+  and for what A3 adds up was reread and has one reading, so it is
+  unchanged.
+- Tasks: `email-compliance-audit` (development split): the 150 live emails
+  of a skincare brand before a platform move (110 marketing, 40
+  transactional), a sending policy with six violation codes, a consent table
+  of 17 audiences and the DNS records of seven sending domains in; a verdict
+  per email, a fix per code and three labeled counts out. 116 violations sit
+  in 87 emails, and every rule has look-alikes that pass. 12 of its 13
+  checks are a program's: one per code over all 150 rows (zero credit at 3
+  wrong) and exact counts. It lives in `eval_runner/task_facts_email.py`
+  beside `email-send-calendar`, generated from counted features so that
+  every trap occurs at least three times; `tests/test_tasks_email.py` reads
+  the four fixture files with its own parser, recomputes every verdict and
+  figure, and shows that each of 22 tempting misreadings of the policy
+  changes at least three emails and scores zero on its code's check, with
+  no check left at part credit.
+- Tasks: `email-send-calendar` (development split): a 12-campaign plan, an
+  800-subscriber export (six overlapping segments, join dates, pauses) and a
+  calendar policy in; each campaign's send date, audience size and reason,
+  every subscriber's February email count, and five labeled figures out. 12
+  of its 13 checks are a program's, and every one of the 800 subscriber rows
+  is checked. Audience sizes and counts are checked against the reply's own
+  calendar, so a wrong date is charged once, to the dates. Its fixtures,
+  oracle and checker live in `eval_runner/task_facts_email.py`
+  (`python3 -m eval_runner.task_facts_email --check`), which
+  `bench.measured_facts` calls; `tests/test_tasks_email.py` recomputes every
+  pinned figure from the fixture files with its own scheduler and shows that
+  a reply built from each of ten tempting wrong readings (campaigns taken by
+  date, calendar weeks, only the days before, the cap per segment,
+  unsubscribed people counted, clear days between teaser and launch, join
+  dates or pauses ignored, a pause read as the whole month, a moved
+  campaign's audience taken on its requested date) scores zero on every
+  check it touches and full on the rest.
+- Tasks: the copy tasks (`launch-copy-pack`, `catalog-descriptions`,
+  `claims-check`) read a CSV file whole when it groups its rows with blank
+  lines or splits them over fenced blocks with only blank lines between. A
+  trial reply to `launch-copy-pack` wrote copy_pack.csv without a fence and
+  with a blank line between products, every id as the placements file builds
+  it; the reader stopped at the first blank line, read 18 rows of 72, and 13
+  checks failed together. Read whole, that reply has no error on any program
+  check. A blank line still ends a file when the next line with text is not
+  one of its rows. The id scheme in the brief was already exact and is
+  unchanged. Each task's rubric_version moves to 2; prompts are unchanged.
+- Tasks: workflow task `claims-check` (development split): six product
+  pages making 150 numbered claims, and the sources (lab results with a
+  superseded June round, an owner survey by group and country, price history,
+  offers with dates, a policy, an awards list) in; a verdict per claim and the
+  six pages rewritten out. Traps run through every page: a retest whose June
+  row disagrees with the final one, one country's survey figure, a sibling
+  model's figure, a price or offer not in force on the day, a discontinued
+  model that is lighter, a shortlist read as an award, a retailer-only
+  model's returns and shipping, review counts near a respondent count, and
+  conditions the rewrite must keep. Each kept or corrected claim is checked
+  where it stands, between the claim number before it and its own. 13 of its
+  14 checks are a program's. Vendors `copy-editing` (2.0.0) unchanged from
+  marketingskills `2c38021`, the pin of the other skill files, for its "with
+  skills" arm.
+- Tasks: workflow task `catalog-descriptions` (development split): a 60-row
+  product table in twelve families of near-identical variants, a certificate
+  register, a warranty policy by category and last season's descriptions in;
+  60 descriptions out, each with a fixed spec line, the warranty its row or
+  its category gives, only the standards whose certificates count on the
+  publish date, nothing for a blank weight or country, and no fact borrowed
+  from a sibling or kept from stale copy. 11 of its 12 checks are a
+  program's.
+- Tasks: workflow task `launch-copy-pack` (development split): a launch
+  brief, a 133-row claims register, an engineering spec sheet, last year's
+  launch copy, voice rules and a placements table in; 72 assets for four
+  products out. Every figure and claim phrase must come from a register row
+  usable for the asset's product and channel, prices carry the product's own
+  offer date, an SMS limit counts the opt-out line and falls to 70
+  characters for one non-plain character, and no two of a product's
+  headlines open alike. 14 of its 15 checks are a program's. The three copy
+  tasks share `eval_runner/task_facts_copy.py` (documents, reference replies
+  and checkers); each has a thin interface module in `eval_runner/workflows/`.
+- Runner: the direct setups now run `ads-ledger-analysis-decoy`, so all 30
+  development tasks are shared by the model alone, the model with the skills
+  and Magister. A decoy task is one conversation of two calls to the same
+  model with the same settings: call 1 sends only the look-alike message
+  (`assemble_decoy_prompt`), call 2 sends that message, the model's own reply
+  as plain text, and the task prompt as a single call has it (skills only on
+  the "with skills" arm). Only call 2 is graded. A call 1 that fails, is
+  empty, refused or cut off fails the attempt; the task is never sent alone.
+  Call 1's tokens, cost and time are recorded under `decoy_*`, like the
+  Magister bridge's decoy turn, and count in the task's cost and time (see
+  the Report entry above). `retry` replays both calls. Validation now names the harnesses that can send a prior turn
+  (`PRIOR_TURN_HARNESSES`: `direct-api`, `magister-agent`), and the task lists
+  both. Its prompt, rubric, fixtures and versions are unchanged. Providers
+  accept a text conversation (Anthropic and OpenRouter `messages`, OpenAI
+  Responses `input`); a single prompt goes on the wire as before.
+- Runner: `retry` refuses a run another harness made (`claude-code`,
+  `magister-agent`). It calls the model directly, so it filled an agent
+  run's errored attempts with direct-API answers.
+- Runner: `retry` sends each model the output ceiling its run recorded
+  (`max_output_tokens_by_model`). A run whose models have different ceilings
+  records no single `max_output_tokens`, and its retries sent Anthropic and
+  OpenRouter models without a cap of their own `max_tokens: null`.
+- Runner: `retry` checks every errored attempt's recorded prompt before it
+  asks to proceed or makes a call. It checked each one just before its own
+  call, so a changed prompt on a later attempt stopped the retry after the
+  earlier ones were paid for again, and their new results were not saved.
+- Skills: the six skill files the "with skills" arm pastes into a prompt are
+  refreshed, unchanged, to marketingskills 2.8.23 (commit `2c38021`,
+  2026-11-20). They were copies from 2026-08-31 (2.8.16), three months behind
+  the pack Magister's machines run, so a "with skills" run and a Magister run
+  were not using the same skills. `copywriting`, `analytics`, `emails` and
+  `ad-creative` changed; `cro` and `site-architecture` did not. Runs made
+  before this used the older copies (each run folder keeps the prompts it
+  sent).
+- Runner: the ceiling retry (one call with the output cap doubled, after an
+  empty reply cut off at the cap) never asks for more than a candidate's new
+  optional `model_max_output_tokens`, and makes no call when the cap is
+  already there. `claude-opus-5-5-medium` (65,536, doubled to 131,072 past
+  the model's 128,000, so the retry was rejected) now retries at 128,000;
+  `gemini-3.8-flash-high` is at its 65,536 maximum and records the
+  truncation in one call. Entries without the field double as before.
+- Tasks: workflow task `price-change-rollout` (development split): a price
+  change, a plan rename and a longer trial rolled through 14 assets, where
+  everything the brief changes must change and nothing else may. Adds a
+  reader for named non-CSV files to the workflow tools.
+- Tasks: workflow task `outbound-sequence` (development split): a 200-lead
+  list, an outbound standard and a facts sheet in; exclusions with reasons,
+  assignments by segment and country group, and 30 emails across 10
+  sequences out, with merge fields allowed only where every lead has a
+  value.
+- Tasks: workflow task `launch-trafficking` (development split): a launch
+  brief, platform specs, a tracking standard and a landing-page list in; a
+  budget by channel and week, 114 text fields across 36 assets and a tracked
+  URL for each asset out.
+- Tasks: workflow task `lifecycle-program` (development split): a 300-customer
+  export and a written policy in; suppression with reasons, segments, the
+  holdout, 24 emails and a send-time schedule out. A program counts every
+  customer, flow step, send time and copy rule against the reference its
+  module computes.
+- Tasks: two **forecast tasks**, `headline-forecast` and
+  `headline-forecast-unpublished` (development split). Each is 100 pairs of
+  headlines from real tests in the Upworthy Research Archive (CC BY 4.0;
+  `eval_runner/fixtures/headline-forecast/NOTICE.md`,
+  `scripts/build_headline_pairs.py`): pick the headline that got the higher
+  click rate and say how sure. A program counts the picks that match the
+  record (a coin flip scores nothing, nine in ten passes) and scores the
+  stated confidence by its Brier score. The second set holds only
+  headlines that were not the ones published, as a control for a model
+  recognising a headline that spread.
+- Tasks: the first **workflow task**, `search-account-build` (development
+  split). A workflow task asks for several dependent deliverables as small
+  CSV files inside one reply and is graded by program against a reference its
+  own module computes (`eval_runner/workflows/`); a task file names its
+  module with `"workflow"`. The files it supplies are generated by that
+  module (`scripts/gen_workflow_tasks.py --write|--check`), so the standard
+  the candidate reads and the rules the checker applies are the same
+  constants. Every count measures work against the reference: a file left
+  out is that many errors, and a blank reply earns nothing.
 - Tasks: six closed-book tasks in kinds of marketing work the set lacked,
   all in the development split: `seo-technical-triage`,
   `search-terms-negatives`, `ab-test-readout`, `seo-content-brief`,

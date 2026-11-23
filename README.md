@@ -13,27 +13,33 @@
 ## Latest results
 
 Live board: **https://marketingbenchmark.ai** — every run, every answer, and
-every judge verdict, criterion by criterion. The three-configuration run of
-August 31, 2026: the same model (GPT-5.6 Sol, high reasoning effort), the
-same 20 tasks, one attempt each — what changes is everything around the
-model:
+every judge verdict, criterion by criterion. The board of November 23, 2026:
+three models at medium reasoning effort, the same 35 tasks (`--split board`),
+one attempt each, in three setups. The number is tasks fully right: a task
+counts only when the answer met every requirement in its brief.
 
-| Configuration | Pass@1 | Answer cost | Avg. task time |
+| Model | Model only | + Marketing Skills | Inside Magister |
 |---|---:|---:|---:|
-| **Magister agent** (full harness) | **16/20 (80%)** | $23.10 | 104.8s |
-| Plain model + web search | 14/20 (70%) | $5.11 | 123.3s |
-| Model + marketingskills in the prompt | 14/20 (70%) | $5.71 | 95.4s |
+| GPT-6.2 Sol | 19/35 | 24/35 | 32/35 |
+| Claude Opus 5.5 | 20/35 | 26/35 | 32/35 |
+| Gemini 4 Neon | 25/35 | 25/35 | 33/35 |
 
-Each task is worth one point: an answer that passes 7 of 8 checks still
-fails that task. Cost covers the answering side only, priced at provider
-list rates; for the Magister configuration that is every LLM call of the
-agent's working turn, not just the final answer. One attempt per task; a
-same-day identical-input repeat has moved individual scores by up to 3
-tasks, so read small gaps as within noise. These judge verdicts have not
-been human-verified yet. The diagnostic 0-100 score behind each cell drops
-any check an empty answer already satisfies and counts a must-not check only
-once something positive passed, so a blank or content-free reply scores
-zero (a 2026-09-01 probe found ten checks worth up to 17 points otherwise).
+What to hold in mind when reading it:
+
+- "Model only" and "+ Marketing Skills" are one API call with no tools. The
+  Magister agent works a full multi-step turn with tools (it runs code and
+  opens skills), so that column is the model, the skills and the harness
+  together, not the model alone.
+- One attempt per task. Single tasks flip between attempts, so read a gap of
+  a few tasks as within noise. The stricter figure, right on every one of
+  three attempts, has not been run for this board.
+- The Magister runs were made on test lanes, not production, with a harness
+  that starts every attempt from a clean brand: an attempt that saw anything
+  from an earlier attempt is recorded as an error, never a score.
+- On two tasks Gemini 4 Neon spent its whole output allowance before
+  answering, in both direct setups. Those attempts count as failed.
+- These judge verdicts have not been human-verified. How an answer becomes a
+  pass or a fail is in [How it is scored](docs/SCORING.md).
 
 ### The skills arm uses Magister's real skill pack
 
@@ -52,7 +58,7 @@ the exact pin: [`evals/fixtures/public/skills/README.md`](evals/fixtures/public/
 |---|---|
 | **1. [Tasks](docs/TASKS.md)** | What the models are asked to do and the difference between development and holdout tasks. |
 | **2. [How it is scored](docs/SCORING.md)** | How an answer becomes a pass or fail, how repeats work, and what the efficiency numbers mean. |
-| **3. [Scored examples](docs/SCORED_EXAMPLES.md)** | Real answers from the run above, what the judge noticed, and why each example passed or failed. |
+| **3. [Scored examples](docs/SCORED_EXAMPLES.md)** | Real answers from the run of August 31, 2026, what the judge noticed, and why each example passed or failed. |
 
 ## What this benchmark does
 
@@ -127,7 +133,7 @@ which sets the tasks and the judge, and Python 3.11 or newer (`PYTHON=.venv/bin/
 # 1. See the plan and the cost estimate; spends nothing
 make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web dry_run=1
 
-# 2. Run it: one call per task with the skills in the prompt, 3 attempts each
+# 2. Run it: one call per task (two for the decoy task) with the skills in the prompt, 3 attempts each
 make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web \
     env_file=.env.local confirm=SPEND
 
@@ -187,6 +193,7 @@ its single-call numbers beside the Magister run.
 | `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
 | `--split development` | Run tasks used for improving and checking the benchmark. |
 | `--split holdout` | Run the tasks kept out of tuning. [docs/TASKS.md](docs/TASKS.md) records which of them have had results read. |
+| `--split board` | Run the open board: seven areas of marketing, five tasks each, as listed in [eval_runner/board.json](eval_runner/board.json) with the tasks left out and why. |
 | `--repetitions 3` | Ask for three answers per model and task. All three must pass. The default is one. |
 | `--no-skills` | Leave the marketingskills guidance out of the prompt (see the skills provenance note above). |
 | `--tools` | Allow the answering model to use provider-hosted web search. |

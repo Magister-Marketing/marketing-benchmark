@@ -42,16 +42,19 @@ from pathlib import Path
 if __package__ in (None, ""):  # allow `python3 eval_runner/bench.py` as well as -m
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from eval_runner import (  # type: ignore
-        brand_assets, providers, reference_facts, response_facts, task_references,
+        brand_assets, providers, reference_facts, response_facts, task_facts_conversion, task_references, workflows,
     )
+    from eval_runner import task_facts_strategy  # type: ignore
 else:
-    from . import brand_assets, providers, reference_facts, response_facts, task_references
+    from . import brand_assets, providers, reference_facts, response_facts, task_facts_conversion, task_references, workflows
+    from . import task_facts_strategy
 
 EVAL_RUNNER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVAL_RUNNER_DIR.parent
 # A task set that cannot live in this repository (one whose answers are a
 # brand's real numbers, say) is read from wherever this names instead.
 TASKS_DIR = Path(os.environ.get("MARKETING_BENCH_TASKS_DIR") or EVAL_RUNNER_DIR / "tasks")
+BOARD_PATH = EVAL_RUNNER_DIR / "board.json"
 MODELS_FILE = EVAL_RUNNER_DIR / "models.json"
 RESULTS_DIR = EVAL_RUNNER_DIR / "results"
 
@@ -62,15 +65,30 @@ HARNESS_ID = "direct-api"
 # without skill files; nothing follows it.
 AGENT_HARNESSES = ("claude-code", "magister-agent")
 AGENT_TASK_MARKER = "\n\nTask:\n"
+# Harnesses that can send a decoy task's earlier message as a turn of its own
+# before the task: this runner, as the first call of a two-call conversation,
+# and the Magister bridge, as a chat turn in the task's session. A Claude Code
+# session takes one prompt.
+PRIOR_TURN_HARNESSES = (HARNESS_ID, "magister-agent")
 MAX_OUTPUT_TOKENS = 16000  # uniform across models (reasoning tokens count
                            # against it on the OpenAI Responses API); recorded in run.json
 JUDGE_DEFAULT = "claude-sonnet-5"
 RUN_CONCURRENCY = 4
 RUBRIC_SECTIONS = ("completion", "skill_adherence", "best_practices")
 TASK_SPLITS = ("development", "holdout")
+# What `--split` takes: every task, one split, or the open board (board.json).
+TASK_SETS = ("all",) + TASK_SPLITS + ("board",)
+BOARD_AREAS = 7
+BOARD_TASKS_PER_AREA = 5
 # Anthropic: end_turn / stop_sequence; OpenAI Responses: completed;
 # chat-completions (OpenRouter): stop.
 NORMAL_FINISH_REASONS = (None, "end_turn", "stop_sequence", "completed", "stop")
+# The model spent its whole output allowance: Anthropic's stop reason, and the
+# Responses API's (OpenRouter's `length` is parsed to it).
+OUTPUT_LIMIT_FINISH_REASONS = ("max_tokens", "incomplete:max_output_tokens")
+# How the run step words a call that completed with no text, and a decoy
+# task's earlier turn that stopped early. Any other error is a run error.
+OUTPUT_LIMIT_ERRORS = ("returned an empty completion", "did not finish normally")
 FIXTURE_ROOTS = (EVAL_RUNNER_DIR / "fixtures", REPO_ROOT / "evals/fixtures/public")
 SKILL_ROOTS = (REPO_ROOT / "evals/fixtures/public/skills",)
 
@@ -96,10 +114,61 @@ def _candidate_settings(spec: dict) -> dict:
 
 
 def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
+    """What an attempt cost: its task turn, plus a decoy task's earlier turn
+    (`decoy_cost_usd`), since the task as given is both messages. None when
+    either part is unknown. Every published cost goes through here."""
     if attempt.get("dispatched") is False:
         return 0.0
+    own = _turn_cost_usd(attempt, spec)
+    if not _had_decoy_turn(attempt):
+        return own
+    earlier = decoy_cost_usd(attempt, spec)
+    return None if own is None or earlier is None else own + earlier
+
+
+def output_limit_reached(attempt: dict | None) -> bool:
+    """The provider call completed and the model spent its whole output
+    allowance, with or without partial text. That is a failed attempt by the
+    model (mark T, never right, its cost and time counted), not a run error,
+    and `retry` leaves it alone. An empty reply is recorded with the
+    provider's empty-completion error, as runs made before this rule recorded
+    it too; a decoy task's earlier turn that ran out, with that turn's finish
+    reason. A transport failure, a provider error, a refused request or an
+    untrusted route stays a run error."""
+    if not attempt:
+        return False
+    error = attempt.get("error")
+    decoy = isinstance(error, str) and error.startswith("decoy turn: ")
+    reason_key = "decoy_finish_reason" if decoy else "finish_reason"
+    if attempt.get(reason_key) not in OUTPUT_LIMIT_FINISH_REASONS:
+        return False
+    return error is None or any(marker in str(error) for marker in OUTPUT_LIMIT_ERRORS)
+
+
+def run_error(attempt: dict | None) -> bool:
+    """The attempt was lost to the run, not answered or missed by the model."""
+    return bool(attempt) and "error" in attempt and not output_limit_reached(attempt)
+
+
+def attempt_cost_unknown(attempt: dict, cost: float | None) -> bool:
+    """Whether an attempt's cost is not known in full. The run step flags
+    every failed call, but a model that ran out of output completed its
+    call: its receipt is whole, so only a missing cost leaves it unknown."""
+    if output_limit_reached(attempt):
+        return cost is None
+    return bool(attempt.get("cost_unknown")) or cost is None
+
+
+def _had_decoy_turn(attempt: dict) -> bool:
+    # Both harnesses record the earlier message's hash before sending it.
+    return "decoy_prompt_sha256" in attempt or "decoy_sent" in attempt
+
+
+def _turn_cost_usd(receipt: dict, spec: dict) -> float | None:
+    """One turn's cost: its recorded provider cost, else the candidate's rate
+    card over its tokens, else None."""
     for key in ("gateway_provider_cost_usd", "provider_cost_usd"):
-        recorded = attempt.get(key)
+        recorded = receipt.get(key)
         # Zero is indistinguishable from "not recorded": no candidate runs
         # on a free endpoint, so 0 falls through to the token estimate.
         if (
@@ -111,19 +180,58 @@ def attempt_cost_usd(attempt: dict, spec: dict) -> float | None:
     pricing = spec.get("pricing")
     if not pricing:
         return None
-    input_tokens = attempt.get("input_tokens")
-    output_tokens = attempt.get("output_tokens")
-    if (
-        not isinstance(input_tokens, (int, float))
-        or isinstance(input_tokens, bool)
-        or not isinstance(output_tokens, (int, float))
-        or isinstance(output_tokens, bool)
-    ):
+    input_tokens = receipt.get("input_tokens")
+    output_tokens = receipt.get("output_tokens")
+    if not _is_number(input_tokens) or not _is_number(output_tokens):
         return None
     return (
         input_tokens * pricing["input_per_mtok"]
         + output_tokens * pricing["output_per_mtok"]
     ) / 1_000_000
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def decoy_cost_usd(attempt: dict, spec: dict) -> float | None:
+    """A decoy task's earlier turn's share of `attempt_cost_usd`, from its
+    `decoy_*` receipt: the Magister bridge's `decoy_gateway_provider_cost_usd`,
+    this runner's `decoy_provider_cost_usd` (OpenRouter), else the rate card
+    over `decoy_input_tokens`/`decoy_output_tokens`. 0.0 for an attempt with
+    no earlier turn; None when the turn's cost was not recorded."""
+    if not _had_decoy_turn(attempt):
+        return 0.0
+    return _turn_cost_usd({
+        "gateway_provider_cost_usd": attempt.get("decoy_gateway_provider_cost_usd"),
+        "provider_cost_usd": attempt.get("decoy_provider_cost_usd"),
+        "input_tokens": attempt.get("decoy_input_tokens"),
+        "output_tokens": attempt.get("decoy_output_tokens"),
+    }, spec)
+
+
+def attempt_latency_seconds(attempt: dict) -> float | None:
+    """How long an attempt took: its task turn, plus a decoy task's earlier
+    turn. Neither harness's `latency_seconds` includes that turn (the Magister
+    bridge subtracts it; this runner's is call 2's), so the sum is the whole
+    attempt. None when either part is missing. Every published time goes
+    through here."""
+    own = attempt.get("latency_seconds")
+    if not _is_number(own):
+        return None
+    if not _had_decoy_turn(attempt):
+        return own
+    earlier = decoy_latency_seconds(attempt)
+    return None if earlier is None else round(own + earlier, 2)
+
+
+def decoy_latency_seconds(attempt: dict) -> float | None:
+    """A decoy task's earlier turn's share of `attempt_latency_seconds`; 0.0
+    for an attempt with no earlier turn, None when its time was not recorded."""
+    if not _had_decoy_turn(attempt):
+        return 0.0
+    earlier = attempt.get("decoy_latency_seconds")
+    return earlier if _is_number(earlier) else None
 
 
 def load_tasks() -> dict:
@@ -175,8 +283,8 @@ def _validate_derived_tasks(tasks: dict) -> None:
 
 def task_supports_harness(task: dict, harness_id: str) -> bool:
     """Absent `harnesses` means every harness. A task lists them only when its
-    input cannot be delivered by all of them — a decoy task needs a harness
-    that can send a prior turn into the same session."""
+    input cannot be delivered by all of them — a decoy task needs one of
+    PRIOR_TURN_HARNESSES."""
     harnesses = task.get("harnesses")
     return harnesses is None or harness_id in harnesses
 
@@ -286,6 +394,14 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
         raise ValueError(f"{path.name}: answers needs a positive integer count")
     if answers is not None and not isinstance(answers.get("single_number", False), bool):
         raise ValueError(f"{path.name}: answers.single_number must be a boolean")
+    if not isinstance(task.get("forecast", False), bool):
+        raise ValueError(f"{path.name}: forecast must be a boolean")
+    workflow = task.get("workflow")
+    if workflow is not None and workflow not in workflows.MODULES:
+        raise ValueError(
+            f"{path.name}: workflow {workflow!r} is not one of "
+            f"{', '.join(sorted(workflows.MODULES))}"
+        )
     harnesses = task.get("harnesses")
     if harnesses is not None and (
         not isinstance(harnesses, list)
@@ -319,14 +435,20 @@ def _validate_task(task: dict, path: Path, *, validate_paths: bool = True) -> No
             raise ValueError(
                 f"{path.name}: the decoy fixture must not also be a supplied fixture"
             )
-        # The direct-API runner inlines every fixture into one prompt; it has
-        # no prior turn to hide a decoy in, so a decoy task must say which
-        # harnesses can deliver it — and this one is never among them.
-        if harnesses is None or HARNESS_ID in harnesses:
+        # Inlined into the task prompt the decoy would change the task, so a
+        # decoy task runs only where its message can go in a turn of its own.
+        if harnesses is None:
             raise ValueError(
-                f"{path.name}: a decoy task must list the harnesses that can "
-                f"send a prior turn, and {HARNESS_ID!r} cannot"
+                f"{path.name}: a decoy task must list its harnesses, each one "
+                f"that can send a prior turn ({', '.join(PRIOR_TURN_HARNESSES)})"
             )
+        for harness in harnesses:
+            if harness not in PRIOR_TURN_HARNESSES:
+                raise ValueError(
+                    f"{path.name}: a decoy task lists {harness!r}, and "
+                    f"{harness!r} cannot send a prior turn (only "
+                    f"{', '.join(PRIOR_TURN_HARNESSES)} can)"
+                )
     seen: set[str] = set()
     for section in RUBRIC_SECTIONS:
         criteria = task["rubric"].get(section)
@@ -430,8 +552,8 @@ def assemble_decoy_prompt(task: dict) -> str | None:
     source` heading `assemble_prompt` uses, so a harness that saves pastes to
     files infers the same file name for both and only that turn's own note
     tells them apart. Never part of the task prompt itself — `assemble_prompt`
-    ignores `decoy` — which is why a harness that cannot send a prior turn is
-    kept off the task by `harnesses`."""
+    ignores `decoy`. This runner sends it alone as the first of two calls
+    (`_decoy_turn`); the Magister bridge sends it as an earlier chat turn."""
     decoy = task.get("decoy")
     if not decoy:
         return None
@@ -449,6 +571,87 @@ def _prompt_candidate(task: dict, prompt_text: str, include_skills: bool) -> str
 
 
 # ------------------------------------------------------------------ run
+
+def _strict_receipt_error(result: dict, model_spec: str) -> str | None:
+    """Why a strict attempt cannot trust this call's route receipt, if it
+    cannot. OpenRouter must return the requested model, a provider inside the
+    candidate's allowlist, and a response id."""
+    provider, requested_model = providers.split_model_spec(model_spec)
+    if provider != "openrouter":
+        return None
+    error = None
+    if result.get("resolved_model") != requested_model:
+        error = "provider-returned model does not match the requested model"
+    if not result.get("resolved_provider") or not result.get("response_id"):
+        error = "provider-returned route receipt is incomplete"
+    policy = providers.OPENROUTER_MODEL_POLICIES.get(requested_model, {})
+    allowed = set().union(*(providers.OPENROUTER_PROVIDER_LABELS.get(slug, set())
+                            for slug in policy.get("providers", [])))
+    if result.get("resolved_provider") not in allowed:
+        error = "provider-returned route is outside the allowed policy"
+    return error
+
+
+def _decoy_receipt(receipt: dict) -> dict:
+    """A decoy turn's receipt under `decoy_*`, kept apart from the task turn's
+    own fields; its provider and model are the task turn's."""
+    return {
+        f"decoy_{key}": value for key, value in receipt.items()
+        if key not in ("text", "provider", "model")
+    }
+
+
+def _decoy_turn(
+    run_dir: Path, response_stem: str, model_spec: str, decoy_prompt: str,
+    max_output_tokens: int, *, web_search: bool, settings: dict, strict: bool,
+    **options,
+) -> tuple[str, dict, str | None]:
+    """Call 1 of a decoy task: its earlier message, alone, to the same model
+    with the same ceiling, settings, tools and options as any call. Returns
+    the reply, its `decoy_*` receipt (the reply is saved beside the task's
+    response as `<stem>.decoy.md`), and why the attempt must fail without a
+    second call, if it must: the reply is empty, did not finish normally (a
+    refusal, a cut-off), or, in strict mode, came back on an untrusted route.
+    A provider failure raises ProviderError with its receipt under `decoy_*`.
+    The task prompt is never sent on its own in place of the conversation."""
+    try:
+        result = providers.generate(
+            model_spec, decoy_prompt, max_output_tokens,
+            web_search=web_search, settings=settings, **options,
+        )
+    except providers.ProviderError as exc:
+        raise providers.ProviderError(
+            f"decoy turn: {exc}", receipt=_decoy_receipt(exc.receipt),
+            failure_kind=exc.failure_kind, status_code=exc.status_code,
+        ) from None
+    reply = result["text"]
+    reply_path = f"responses/{response_stem}.decoy.md"
+    (run_dir / reply_path).write_text(reply)
+    receipt = {
+        "decoy_sent": True,
+        "decoy_response_path": reply_path,
+        "decoy_reply_chars": len(reply),
+        **_decoy_receipt(result),
+    }
+    problem = None
+    if not reply.strip():
+        problem = "provider returned an empty completion"
+    elif result.get("finish_reason") not in NORMAL_FINISH_REASONS:
+        problem = f"the reply did not finish normally (finish_reason={result.get('finish_reason')!r})"
+    elif strict:
+        problem = _strict_receipt_error(result, model_spec)
+    return reply, receipt, problem and f"decoy turn: {problem}; the task prompt was not sent"
+
+
+def _decoy_conversation(decoy_prompt: str, reply: str, prompt: str) -> list[dict]:
+    """Call 2 of a decoy task: the earlier message, the model's own reply to
+    it as plain text, then the task prompt exactly as a single call sends it."""
+    return [
+        {"role": "user", "content": decoy_prompt},
+        {"role": "assistant", "content": reply},
+        {"role": "user", "content": prompt},
+    ]
+
 
 def cmd_run(args: argparse.Namespace) -> int:
     if getattr(args, "env_file", None):
@@ -481,10 +684,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         for task_id in selected_tasks
         for rep in range(1, repetitions + 1)
     ]
+    # A decoy task's attempt is two calls: its earlier message, then the task.
+    decoy_jobs = sum(1 for _, task_id, _ in jobs if tasks[task_id].get("decoy"))
     print(
-        f"About to make {len(jobs)} paid model calls "
-        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs, "
-        f"harness {HARNESS_ID}, "
+        f"About to make {len(jobs) + decoy_jobs} paid model calls "
+        f"({len(selected_models)} models x {len(selected_tasks)} tasks x {repetitions} runs"
+        + (f", {decoy_jobs} of them decoy-task attempts of two calls" if decoy_jobs else "")
+        + f", harness {HARNESS_ID}, "
         f"skills {'ON' if include_skills else 'OFF'}, "
         f"tools {'ON (web search)' if tools_enabled else 'OFF'})."
     )
@@ -508,6 +714,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     for task_id in selected_tasks:
         prompt_text = assemble_prompt(tasks[task_id], include_skills)
         (run_dir / "prompts" / f"{task_id}.md").write_text(prompt_text)
+        decoy_prompt = assemble_decoy_prompt(tasks[task_id])
+        if decoy_prompt is not None:  # the bridge saves it under the same name
+            (run_dir / "prompts" / f"{task_id}.decoy.md").write_text(decoy_prompt)
         (run_dir / "tasks" / f"{task_id}.json").write_text(
             json.dumps(tasks[task_id], indent=2) + "\n"
         )
@@ -523,6 +732,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "prompt_version": tasks[task_id]["prompt_version"],
                 "rubric_version": tasks[task_id]["rubric_version"],
                 "rubric_sha256": _rubric_sha256(tasks[task_id]),
+                **({"decoy": True} if tasks[task_id].get("decoy") else {}),
             }
             for task_id in selected_tasks
         },
@@ -546,7 +756,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     def one(job: tuple[str, str, int]) -> dict:
         model_id, task_id, rep = job
         task = tasks[task_id]
+        spec = models[model_id]
         prompt = assemble_prompt(task, include_skills)
+        decoy_prompt = assemble_decoy_prompt(task)
+        response_stem = f"{task_id}--{model_id}--r{rep}"
         record = {
             "run_id": run_id,
             "harness": HARNESS_ID,
@@ -555,46 +768,55 @@ def cmd_run(args: argparse.Namespace) -> int:
             "repetition": rep,
             "skills_included": include_skills,
             "tools_enabled": tools_enabled,
+            # The task prompt only, as for every task; a decoy task's earlier
+            # message is covered by its own hash.
             "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         }
+        if decoy_prompt is not None:
+            record["decoy_prompt_sha256"] = hashlib.sha256(decoy_prompt.encode()).hexdigest()
         try:
             options = {"request_timeout_seconds": request_timeout}
             if strict:
                 options.update(retry_transport=False, retry_empty_completion=False)
-            result = providers.generate(
-                models[model_id]["model"], prompt, MAX_OUTPUT_TOKENS,
-                web_search=tools_enabled,
-                settings=_candidate_settings(models[model_id]),
-                **options,
-            )
+            request = dict(web_search=tools_enabled, settings=_candidate_settings(spec), **options)
+            conversation: str | list[dict] = prompt
+            if decoy_prompt is not None:
+                reply, receipt, problem = _decoy_turn(
+                    run_dir, response_stem, spec["model"], decoy_prompt,
+                    MAX_OUTPUT_TOKENS, strict=strict, **request,
+                )
+                record.update(receipt)
+                if problem:
+                    record.update(error=problem, dispatched=True,
+                                  cost_unknown=decoy_cost_usd(record, spec) is None)
+                    print(f"  FAIL {task_id} / {model_id} r{rep}: {problem}")
+                    return record
+                conversation = _decoy_conversation(decoy_prompt, reply, prompt)
+            result = providers.generate(spec["model"], conversation, MAX_OUTPUT_TOKENS, **request)
         except Exception as exc:
             if not strict and not isinstance(exc, providers.ProviderError):
                 raise
             record.update(getattr(exc, "receipt", {}))
             record["error"] = str(exc) if isinstance(exc, providers.ProviderError) else type(exc).__name__
-            record.update(dispatched=True, cost_unknown=True)
-            print(f"  FAIL {task_id} / {model_id} r{rep}: {exc}")
+            # A model that ran out of output completed its call: the receipt is whole.
+            limited = output_limit_reached(record)
+            record["dispatched"] = True
+            record["cost_unknown"] = not limited or attempt_cost_usd(record, spec) is None
+            print(f"  {'OUT OF OUTPUT' if limited else 'FAIL'} {task_id} / {model_id} r{rep}: {exc}")
             return record
-        response_name = f"{task_id}--{model_id}--r{rep}.md"
+        response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
         record.update(result)
         record["response_path"] = f"responses/{response_name}"
         record["dispatched"] = True
         if strict:
-            provider, requested_model = providers.split_model_spec(models[model_id]["model"])
-            if provider == "openrouter" and result.get("resolved_model") != requested_model:
-                record["error"] = "provider-returned model does not match the requested model"
-            if provider == "openrouter" and (not result.get("resolved_provider") or not result.get("response_id")):
-                record["error"] = "provider-returned route receipt is incomplete"
-            if provider == "openrouter":
-                policy = providers.OPENROUTER_MODEL_POLICIES.get(requested_model, {})
-                allowed = set().union(*(providers.OPENROUTER_PROVIDER_LABELS.get(slug, set())
-                                        for slug in policy.get("providers", [])))
-                if result.get("resolved_provider") not in allowed:
-                    record["error"] = "provider-returned route is outside the allowed policy"
             if not (run_dir / record["response_path"]).read_text().strip():
                 record["error"] = "provider returned an empty completion; no retry dispatched"
-            record["cost_unknown"] = attempt_cost_usd(record, models[model_id]) is None
+            # An untrusted route is a run error whatever came back on it.
+            route_error = _strict_receipt_error(result, spec["model"])
+            if route_error:
+                record["error"] = route_error
+            record["cost_unknown"] = attempt_cost_usd(record, spec) is None
         print(f"  done {task_id} / {model_id} r{rep} ({record['latency_seconds']}s)")
         return record
 
@@ -619,8 +841,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                         dispatches.flush()
                         os.fsync(dispatches.fileno())
                     record = one((model_id, task_id, rep))
+                    # attempt_cost_usd already has a decoy task's earlier turn.
                     spent += attempt_cost_usd(record, models[model_id]) or 0.0
-                    if record.get("error") or record.get("cost_unknown"):
+                    if run_error(record) or record.get("cost_unknown"):
                         halted = "previous attempt failed or has unknown cost"
                     elif stop_after_cost is not None and spent >= stop_after_cost:
                         halted = "observed spend threshold reached"
@@ -633,7 +856,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             records = list(pool.map(one, jobs))
 
         _write_jsonl(run_dir / "attempts.jsonl", records)
-    errors = sum(1 for r in records if "error" in r)
+    errors = sum(1 for r in records if run_error(r))
     print(f"Completed {len(records) - errors}/{len(records)} attempts "
           f"({errors} errors). Next: python3 -m eval_runner.bench grade --run {run_dir}")
     return 0 if errors == 0 else 1
@@ -659,7 +882,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
 
     Uses the run's recorded prompts, model settings, and configuration so the
     retried attempt is the same experiment; the record keeps a `retried` flag
-    for provenance. Successful attempts are never re-run.
+    for provenance. Successful attempts are never re-run, nor are attempts
+    whose model spent its whole output allowance (`output_limit_reached`):
+    that is the model's miss, not a run error.
     """
     if getattr(args, "env_file", None):
         _load_env_file(args.env_file)
@@ -667,13 +892,24 @@ def cmd_retry(args: argparse.Namespace) -> int:
     run_meta = json.loads((run_dir / "run.json").read_text())
     if run_meta.get("generation_policy", {}).get("strict_attempts"):
         raise SystemExit("strict runs cannot be retried in place; create a new run")
+    harness = run_meta.get("harness", HARNESS_ID)
+    if harness != HARNESS_ID:
+        raise SystemExit(
+            f"this run was made by the {harness} harness; retry calls the model "
+            f"directly ({HARNESS_ID}), so rerun its errored attempts with that harness"
+        )
     attempts = _read_jsonl(run_dir / "attempts.jsonl")
-    errored = [record for record in attempts if "error" in record]
+    errored = [record for record in attempts if run_error(record)]
     if not errored:
         print("No errored attempts to retry.")
         return 0
     models = run_meta["models"]
-    print(f"About to retry {len(errored)} errored paid model call(s) "
+    # Every recorded prompt is checked before the first paid call: a refusal
+    # part-way would leave the attempts already re-paid unrecorded.
+    prompts = [_recorded_retry_prompt(run_dir, record) for record in errored]
+    calls = sum(1 if decoy_prompt is None else 2 for _prompt, decoy_prompt in prompts)
+    print(f"About to retry {len(errored)} errored attempt(s), {calls} paid model "
+          f"call(s) (a decoy task's attempt replays both of its turns), "
           f"from run {run_meta['run_id']}:")
     for record in errored:
         print(f"  {record['task_id']} / {record['model_id']} "
@@ -683,32 +919,46 @@ def cmd_retry(args: argparse.Namespace) -> int:
         if answer != "RETRY":
             print("Aborted; nothing was called.")
             return 1
-    for record in errored:
-        prompt = (run_dir / "prompts" / f"{record['task_id']}.md").read_text()
-        recorded_sha = record.get("prompt_sha256")
-        current_sha = hashlib.sha256(prompt.encode()).hexdigest()
-        if recorded_sha and recorded_sha != current_sha:
-            raise SystemExit(
-                f"recorded prompt for {record['task_id']} no longer matches its "
-                "attempt's prompt_sha256; refusing to retry a different experiment"
-            )
+    for record, (prompt, decoy_prompt) in zip(errored, prompts):
         spec = models[record["model_id"]]
+        # The run-wide value is null when the models' ceilings differ; each
+        # model's own is what its attempt ran with.
+        ceiling = (
+            (run_meta.get("max_output_tokens_by_model") or {}).get(record["model_id"])
+            or run_meta.get("max_output_tokens")
+            or MAX_OUTPUT_TOKENS
+        )
+        request = dict(web_search=run_meta["tools_enabled"], settings=_candidate_settings(spec))
+        response_stem = f"{record['task_id']}--{record['model_id']}--r{record['repetition']}"
         try:
-            result = providers.generate(
-                spec["model"], prompt, run_meta["max_output_tokens"],
-                web_search=run_meta["tools_enabled"],
-                settings=_candidate_settings(spec),
-            )
+            conversation: str | list[dict] = prompt
+            if decoy_prompt is not None:
+                # Both turns are replayed: the old reply belongs to the failed
+                # attempt, and its receipt is replaced, never mixed in.
+                for key in [key for key in record if key.startswith("decoy_")]:
+                    if key != "decoy_prompt_sha256":
+                        del record[key]
+                reply, receipt, problem = _decoy_turn(
+                    run_dir, response_stem, spec["model"], decoy_prompt, ceiling,
+                    strict=False, **request,
+                )
+                record.update(receipt)
+                if problem:
+                    raise providers.ProviderError(problem)
+                conversation = _decoy_conversation(decoy_prompt, reply, prompt)
+            result = providers.generate(spec["model"], conversation, ceiling, **request)
         except providers.ProviderError as exc:
+            # The new call's receipt, so a retry the model ran out of output
+            # on is recorded as that, with what it cost and took.
+            record.update(exc.receipt)
             record["error"] = str(exc)
             print(f"  FAIL {record['task_id']} / {record['model_id']} "
                   f"r{record['repetition']}: {exc}")
             continue
         record.pop("error", None)
-        response_name = (
-            f"{record['task_id']}--{record['model_id']}"
-            f"--r{record['repetition']}.md"
-        )
+        # The failed call's flag; the answer's receipt is whole.
+        record.pop("cost_unknown", None)
+        response_name = f"{response_stem}.md"
         (run_dir / "responses" / response_name).write_text(result.pop("text"))
         record.update(result)
         record["response_path"] = f"responses/{response_name}"
@@ -716,12 +966,37 @@ def cmd_retry(args: argparse.Namespace) -> int:
         print(f"  done {record['task_id']} / {record['model_id']} "
               f"r{record['repetition']} ({record['latency_seconds']}s)")
     _write_jsonl(run_dir / "attempts.jsonl", attempts)
-    remaining = sum(1 for record in attempts if "error" in record)
+    remaining = sum(1 for record in attempts if run_error(record))
     affected = ",".join(sorted({record["task_id"] for record in errored}))
     print(f"Retry complete: {len(errored) - remaining} recovered, "
           f"{remaining} still errored. Regrade affected tasks with: "
           f"python3 -m eval_runner.bench grade --run {run_dir} --tasks {affected}")
     return 0 if remaining == 0 else 1
+
+
+def _recorded_retry_prompt(run_dir: Path, record: dict) -> tuple[str, str | None]:
+    """The task prompt and, for a decoy task, the earlier message the
+    attempt sent, each checked against the hash its attempt recorded."""
+    prompts = run_dir / "prompts"
+    prompt = (prompts / f"{record['task_id']}.md").read_text()
+    recorded_sha = record.get("prompt_sha256")
+    if recorded_sha and recorded_sha != hashlib.sha256(prompt.encode()).hexdigest():
+        raise SystemExit(
+            f"recorded prompt for {record['task_id']} no longer matches its "
+            "attempt's prompt_sha256; refusing to retry a different experiment"
+        )
+    decoy_path = prompts / f"{record['task_id']}.decoy.md"
+    decoy_sha = record.get("decoy_prompt_sha256")
+    if decoy_sha is None and not decoy_path.exists():
+        return prompt, None
+    decoy_prompt = decoy_path.read_text() if decoy_path.is_file() else None
+    if decoy_prompt is None or decoy_sha != hashlib.sha256(decoy_prompt.encode()).hexdigest():
+        raise SystemExit(
+            f"recorded earlier message for {record['task_id']} is missing or no "
+            "longer matches its attempt's decoy_prompt_sha256; refusing to retry "
+            "a different experiment"
+        )
+    return prompt, decoy_prompt
 
 
 def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
@@ -734,6 +1009,49 @@ def _select(raw: str | None, catalog: dict, kind: str) -> list[str]:
     if unknown:
         raise SystemExit(f"unknown {kind}(s): {', '.join(unknown)}; known: {', '.join(catalog)}")
     return selected
+
+
+def load_board(tasks: dict, path: Path | None = None) -> dict:
+    """The open board (board.json): seven areas of five open tasks, the tasks
+    held back, and the open tasks left out with why. Every task file is in
+    exactly one of the three, or this raises."""
+    path = path or BOARD_PATH
+    board = json.loads(Path(path).read_text())
+    areas = board.get("areas") or []
+    if len(areas) != BOARD_AREAS:
+        raise ValueError(f"{path.name}: the board has seven areas, found {len(areas)}")
+    on: list[str] = []
+    for area in areas:
+        if len(area.get("tasks") or []) != BOARD_TASKS_PER_AREA:
+            raise ValueError(f"{path.name}: {area.get('id')} must hold five tasks")
+        on.extend(area["tasks"])
+    held = list(board.get("held_back") or [])
+    left_out = list(board.get("left_out") or [])
+    out = [row.get("id") for row in left_out]
+    listed = on + held + out
+    twice = sorted({task_id for task_id in listed if listed.count(task_id) > 1})
+    if twice:
+        raise ValueError(f"{path.name}: listed more than once: {', '.join(twice)}")
+    unknown = sorted(task_id for task_id in listed if task_id not in tasks)
+    if unknown:
+        raise ValueError(f"{path.name}: no task file for {', '.join(unknown)}")
+    private = sorted(task_id for task_id in on + out if tasks[task_id]["split"] != "development")
+    if private:
+        raise ValueError(f"{path.name}: {', '.join(private)} are held back (split holdout) and cannot be open")
+    if sorted(held) != sorted(task_id for task_id, task in tasks.items() if task["split"] == "holdout"):
+        raise ValueError(f"{path.name}: held_back must be exactly the holdout tasks")
+    missing = sorted(set(tasks) - set(listed))
+    if missing:
+        raise ValueError(f"{path.name}: neither on the board, held back nor left out: {', '.join(missing)}")
+    silent = sorted(row["id"] for row in left_out if len(str(row.get("why") or "").strip()) < 30)
+    if silent:
+        raise ValueError(f"{path.name}: each task left out says why: {', '.join(silent)}")
+    return board
+
+
+def board_task_ids(board: dict) -> list[str]:
+    """The board's 35 tasks, area by area, in the board's order."""
+    return [task_id for area in board["areas"] for task_id in area["tasks"]]
 
 
 def _select_tasks(
@@ -759,8 +1077,10 @@ def _select_tasks(
     }
     if split == "all":
         return list(runnable)
+    if split == "board":
+        return [task_id for task_id in board_task_ids(load_board(tasks)) if task_id in runnable]
     if split not in TASK_SPLITS:
-        raise SystemExit(f"unknown task split {split!r}; known: all, {', '.join(TASK_SPLITS)}")
+        raise SystemExit(f"unknown task split {split!r}; known: {', '.join(TASK_SETS)}")
     selected = [task_id for task_id, task in runnable.items() if task["split"] == split]
     if not selected:
         raise SystemExit(f"no tasks found in split {split!r}")
@@ -1529,6 +1849,21 @@ def measured_facts(task: dict | None, response_text: str | None = None) -> dict:
         facts.update(_platform_gauntlet_facts(response_text))
     elif task_id == "unsupportable-claims-brief":
         facts.update(_unsupportable_claims_facts(response_text))
+    # A workflow task's own checker: counts of what the reply got wrong
+    # against the task's reference (eval_runner/workflows).
+    facts.update(workflows.facts_for(task, response_text))
+    facts.update(task_facts_strategy.facts_for(task, response_text))
+    # The SEO tasks of the 35-task board check their files and links by program.
+    from eval_runner import task_facts_seo
+    facts.update(task_facts_seo.facts_for(task, response_text))
+    # A conversion task's own checker: counts of what the reply's file got wrong.
+    facts.update(task_facts_conversion.facts_for(task, response_text))
+    # The email tasks' own checker (eval_runner/task_facts_email.py).
+    from eval_runner import task_facts_email
+    facts.update(task_facts_email.facts_for(task, response_text))
+    # The experimental tasks' own checker (eval_runner/task_facts_experiments.py).
+    from eval_runner import task_facts_experiments
+    facts.update(task_facts_experiments.facts_for(task, response_text))
     return facts
 
 
@@ -1836,6 +2171,54 @@ def apply_scoring_rules(
     return adjusted
 
 
+# A verdict longer than this is not repaired: it is not a verdict.
+_MAX_REPAIRED_VERDICT_CHARS = 60_000
+
+
+def _escape_evidence_quotes(text: str) -> str:
+    """A verdict whose `evidence` strings quote the response with bare double
+    quotes in them, made into JSON again.
+
+    `evidence` is the judge's one free-text field, and a judge quoting copy
+    that itself has double quotes in it (a CSV cell, a headline in quotes)
+    writes them unescaped: the whole verdict then fails to parse, the same
+    way on every retry. Each evidence value is taken to run from its opening
+    quote to the last quote that is followed by the object's closing brace,
+    before the next criterion; the bare quotes and line breaks inside are
+    escaped. Nothing else is touched, so `pass` is still the judge's own.
+    Plain string scanning: the text is a model's output."""
+    if len(text) > _MAX_REPAIRED_VERDICT_CHARS:
+        return text
+    out: list[str] = []
+    pos = 0
+    key = '"evidence"'
+    while True:
+        at = text.find(key, pos)
+        if at < 0:
+            break
+        colon = text.find(":", at + len(key))
+        start = text.find('"', colon + 1) if colon >= 0 else -1
+        if start < 0:
+            break
+        following = text.find('"id"', start)
+        limit = following if following >= 0 else len(text)
+        end = -1
+        quote = text.rfind('"', start + 1, limit)
+        while quote > start:
+            if text[quote + 1:limit].lstrip().startswith("}"):
+                end = quote
+                break
+            quote = text.rfind('"', start + 1, quote)
+        if end < 0:
+            break
+        value = text[start + 1:end]
+        value = re.sub(r'(?<!\\)"', r'\\"', value).replace("\r", " ").replace("\n", " ")
+        out += [text[pos:start + 1], value]
+        pos = end
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def parse_judge_json(raw: str) -> dict:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
@@ -1845,7 +2228,10 @@ def parse_judge_json(raw: str) -> dict:
         start, end = text.find("{"), text.rfind("}")
         if start >= 0 and end > start:
             text = text[start : end + 1]
-    verdict = json.loads(text)
+    try:
+        verdict = json.loads(text)
+    except json.JSONDecodeError:
+        verdict = json.loads(_escape_evidence_quotes(text))
     if not isinstance(verdict, dict):
         raise ValueError("judge JSON root must be an object")
     if not isinstance(verdict.get("completed"), bool):
@@ -2336,15 +2722,22 @@ def _judgment_passes(judgment: dict) -> bool:
 
 
 def attempt_verdicts(attempts: list, judgments: list, human: list) -> dict:
-    """(task, model, rep) -> {pass, source}. Human > judge > run-error."""
+    """(task, model, rep) -> {pass, source}. Human > judge > run-error or
+    output-limit. A model that spent its whole output allowance failed: no
+    judgment is needed for it, and none makes it right."""
     verdicts = {}
+    limited = set()
     for attempt in attempts:
         key = (attempt["task_id"], attempt["model_id"], attempt["repetition"])
-        if "error" in attempt:
+        if run_error(attempt):
             verdicts[key] = {"pass": False, "source": "run-error"}
+        elif output_limit_reached(attempt):
+            limited.add(key)
+            verdicts[key] = {"pass": False, "source": "output-limit"}
     for judgment in judgments:
         key = (judgment["task_id"], judgment["model_id"], judgment["repetition"])
-        verdicts[key] = {"pass": _judgment_passes(judgment), "source": "judge"}
+        verdicts[key] = {"pass": _judgment_passes(judgment) and key not in limited,
+                         "source": "judge"}
     for verdict in human:
         key = (verdict["task_id"], verdict["model_id"], verdict["repetition"])
         verdicts[key] = {"pass": verdict["human_pass"], "source": "human"}
@@ -2359,11 +2752,13 @@ def all_pass(task_id: str, model_id: str, repetitions: int, verdicts: dict) -> b
 def attempt_mark(
     attempt: dict | None, verdict: dict | None, judgment: dict | None = None
 ) -> str:
-    """One grid letter: E run error, T truncated/abnormal finish, P pass,
-    A failed but said so (the judge's `self_report` is `blocked`), F fail."""
-    if attempt is not None and "error" in attempt:
+    """One grid letter: E run error, T truncated/abnormal finish (the model
+    spent its whole output allowance, with or without text), P pass, A
+    failed but said so (the judge's `self_report` is `blocked`), F fail."""
+    if run_error(attempt):
         return "E"
-    if attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS:
+    if output_limit_reached(attempt) or (
+            attempt is not None and attempt.get("finish_reason") not in NORMAL_FINISH_REASONS):
         return "T"
     if (verdict or {}).get("pass"):
         return "P"
@@ -2379,13 +2774,10 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
     counts make partial historical evidence visible in report.json and let the
     Markdown formatter flag it when necessary.
     """
-    completed = [attempt for attempt in attempts if "error" not in attempt]
+    completed = [attempt for attempt in attempts if not run_error(attempt)]
     rows = [attempt for attempt in attempts if attempt.get("dispatched") is not False]
     latencies = [
-        attempt["latency_seconds"]
-        for attempt in rows
-        if isinstance(attempt.get("latency_seconds"), (int, float))
-        and not isinstance(attempt["latency_seconds"], bool)
+        latency for latency in map(attempt_latency_seconds, rows) if latency is not None
     ]
     output_tokens = [
         attempt["output_tokens"]
@@ -2395,12 +2787,23 @@ def attempt_efficiency(attempts: list, spec: dict | None = None) -> dict:
     ]
     costs = [attempt_cost_usd(attempt, spec or {}) for attempt in rows]
     known_costs = [cost for cost in costs if cost is not None]
+    # A decoy task's earlier turns, already inside cost_usd, shown apart.
+    decoy_rows = [attempt for attempt in rows if _had_decoy_turn(attempt)]
+    decoy_costs = [
+        cost for cost in (decoy_cost_usd(attempt, spec or {}) for attempt in decoy_rows)
+        if cost is not None
+    ]
+    decoy_share = (
+        {"decoy_cost_usd": round(sum(decoy_costs), 4) if decoy_costs else None}
+        if decoy_rows else {}
+    )
 
     return {
+        **decoy_share,
         # Kept for report.json compatibility. This means provider-successful
         # candidate responses, not judge-completed or rubric-passing attempts.
         "completed_attempts": len(completed),
-        "cost_unknown_attempts": sum(bool(row.get("cost_unknown")) or cost is None
+        "cost_unknown_attempts": sum(attempt_cost_unknown(row, cost)
                                      for row, cost in zip(rows, costs)),
         "latency_observations": len(latencies),
         "mean_latency_seconds": (
@@ -2440,7 +2843,8 @@ def _count_field(rows: list[dict], key: str) -> tuple[int, int]:
 
 
 def model_behavior(
-    model_id: str, attempts: list, judgments: list, verdicts: dict
+    model_id: str, attempts: list, judgments: list, verdicts: dict,
+    forecast_tasks: frozenset[str] = frozenset(),
 ) -> dict:
     """How a model worked and how it described its work, per attempt.
 
@@ -2451,6 +2855,11 @@ def model_behavior(
     the deliverable as complete. Abstentions are attempts the judge marked
     `blocked`. Judgments recorded before `self_report` existed are counted in
     `self_report_observations` only when they carry the field.
+
+    A forecast task (`"forecast": true` in its file) is left out of false
+    confidence: its reply is complete when every pick is made, and a pick
+    that turned out wrong is a miss the candidate could not have known, not
+    an unfinished deliverable presented as finished.
     """
     rows = [
         a for a in attempts
@@ -2478,6 +2887,8 @@ def model_behavior(
             continue
         reported += 1
         abstained += self_report == "blocked"
+        if judgment["task_id"] in forecast_tasks:
+            continue
         if not verdicts.get(key, {}).get("pass"):
             failed += 1
             confident_failures += self_report == "complete"
@@ -3222,7 +3633,7 @@ def _submission_metrics(runs: list[dict]) -> dict:
     output_tokens = observations("output_tokens")
     costs = observations("cost_usd")
     latencies = observations("latency_seconds")
-    return {
+    metrics = {
         "planned_runs": len(runs),
         "output_token_observations": len(output_tokens),
         "total_output_tokens": sum(output_tokens) if output_tokens else None,
@@ -3233,6 +3644,25 @@ def _submission_metrics(runs: list[dict]) -> dict:
             round(sum(latencies) / len(latencies), 1) if latencies else None
         ),
     }
+    if any("decoy_cost_usd" in run for run in runs):
+        # A decoy task's earlier turn, already inside the two figures above.
+        decoy_costs = observations("decoy_cost_usd")
+        decoy_latencies = observations("decoy_latency_seconds")
+        metrics["decoy_cost_usd"] = round(sum(decoy_costs), 6) if decoy_costs else None
+        metrics["average_decoy_latency_seconds"] = (
+            round(sum(decoy_latencies) / len(decoy_latencies), 1) if decoy_latencies else None
+        )
+    return metrics
+
+
+def _earlier_turn_note(run: dict, share_key: str, total_key: str) -> str:
+    """` ($X of it the earlier message)` for a decoy task's run whose total
+    and earlier-turn share are both known, else nothing."""
+    share, total = run.get(share_key), run.get(total_key)
+    if not _is_number(share) or not _is_number(total):
+        return ""
+    shown = f"${share:.4f}" if share_key == "decoy_cost_usd" else f"{share:.1f}s"
+    return f" ({shown} of it the earlier message)"
 
 
 def submission_records(
@@ -3296,6 +3726,17 @@ def submission_records(
                         for criterion in judgment.get("criteria", [])
                     ]
                 cost = attempt_cost_usd(attempt or {}, models_meta[model_id])
+                # A decoy task's earlier turn is inside cost and latency; its
+                # share is shown beside them.
+                decoy_share = {}
+                if attempt and _had_decoy_turn(attempt):
+                    decoy_cost = decoy_cost_usd(attempt, models_meta[model_id])
+                    decoy_share = {
+                        "decoy_cost_usd": (
+                            round(decoy_cost, 6) if decoy_cost is not None else None
+                        ),
+                        "decoy_latency_seconds": decoy_latency_seconds(attempt),
+                    }
                 runs.append(
                     {
                         "repetition": repetition,
@@ -3303,11 +3744,15 @@ def submission_records(
                         "pass": bool((verdict or {}).get("pass")),
                         "verdict_source": (verdict or {}).get("source", "missing"),
                         "finish_reason": (attempt or {}).get("finish_reason"),
-                        "provider_error": bool(attempt and "error" in attempt),
+                        "provider_error": run_error(attempt),
+                        # The model spent its whole output allowance: a
+                        # miss, "ran out of output" rather than "wrong".
+                        "output_limit_reached": output_limit_reached(attempt),
                         "output_tokens": (attempt or {}).get("output_tokens"),
-                        "latency_seconds": (attempt or {}).get("latency_seconds"),
+                        "latency_seconds": attempt_latency_seconds(attempt or {}),
                         "cost_usd": round(cost, 6) if cost is not None else None,
-                        "cost_unknown": bool((attempt or {}).get("cost_unknown")) or cost is None,
+                        **decoy_share,
+                        "cost_unknown": attempt_cost_unknown(attempt or {}, cost),
                         "response_path": safe_response_path,
                         "response": response,
                         "judge_completed": (
@@ -3562,7 +4007,8 @@ def _render_report_html(
             '<h2 class="section-title" id="behavior-title">Behavior</h2>',
             '<p class="section-note">How each model worked and how it described its '
             'work. Guardrail events are approval-gated or denied action attempts. '
-            'False confidence is the share of failed attempts presented as complete; '
+            'False confidence is the share of failed attempts presented as complete '
+            '(forecast tasks are left out: a missed forecast is not unfinished work); '
             'an <code>A</code> run mark is a failed attempt that said it was blocked.</p>',
             '</div><div class="table-shell"><table class="submission-results-table">',
             '<thead><tr><th>Model</th><th>Tool calls<small class="metric-sub">per attempt</small></th>',
@@ -3759,6 +4205,9 @@ def _render_report_html(
                 if run["cost_usd"] is not None
                 else "n/a"
             )
+            cost_label = "Candidate cost" + _earlier_turn_note(run, "decoy_cost_usd", "cost_usd")
+            latency_label = "Latency" + _earlier_turn_note(
+                run, "decoy_latency_seconds", "latency_seconds")
             human_verdict = run["human_verdict"]
             if human_verdict:
                 note = human_verdict["note"] or "No note recorded."
@@ -3777,9 +4226,9 @@ def _render_report_html(
                 f'<div class="metric-tile"><strong>{h(output_tokens)}</strong>'
                 '<span>Output tokens</span></div>',
                 f'<div class="metric-tile"><strong>{h(cost)}</strong>'
-                '<span>Candidate cost</span></div>',
+                f'<span>{h(cost_label)}</span></div>',
                 f'<div class="metric-tile"><strong>{h(latency)}</strong>'
-                '<span>Latency</span></div></div>',
+                f'<span>{h(latency_label)}</span></div></div>',
                 f'<p class="verification">{verification}</p>',
             ]
             if run["response"] is not None:
@@ -3805,6 +4254,11 @@ def _render_report_html(
                 f'{len(run["criteria"])} criteria</span></div>',
             ]
             failed = [criterion for criterion in run["criteria"] if not criterion["pass"]]
+            if run.get("output_limit_reached"):
+                html.append(
+                    '<p class="criterion fail">The model spent its whole output '
+                    "allowance before finishing; the attempt counts as failed.</p>"
+                )
             if run["provider_error"]:
                 html.append(
                     '<p class="criterion fail">The provider call failed; no '
@@ -4045,8 +4499,12 @@ def cmd_report(args: argparse.Namespace) -> int:
     efficiency = model_efficiency(
         model_ids, attempts, judgments, models_meta, section_of
     )
+    # Like `negative`, `forecast` is an annotation read from the current task files.
+    forecast_tasks = frozenset(
+        task_id for task_id, task in current_tasks.items() if task.get("forecast")
+    )
     behavior = {
-        model_id: model_behavior(model_id, attempts, judgments, verdicts)
+        model_id: model_behavior(model_id, attempts, judgments, verdicts, forecast_tasks)
         for model_id in model_ids
     }
     session_isolation = run_meta.get("session_isolation")
@@ -4174,8 +4632,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "How each model worked and how it described its work. Guardrail events "
         "are approval-gated or denied action attempts. False confidence is the "
-        "share of failed attempts the model presented as complete; `A` in the "
-        "run marks is a failed attempt that said it was blocked.",
+        "share of failed attempts the model presented as complete (forecast "
+        "tasks are left out: a missed forecast is not unfinished work); `A` in "
+        "the run marks is a failed attempt that said it was blocked.",
         "",
         "| Model | Tool calls / attempt | Tool errors | Guardrail events | "
         "False confidence | Abstained |",
@@ -4299,6 +4758,8 @@ def cmd_report(args: argparse.Namespace) -> int:
                     if run["cost_usd"] is not None
                     else "candidate cost n/a"
                 )
+                cost += _earlier_turn_note(run, "decoy_cost_usd", "cost_usd")
+                latency += _earlier_turn_note(run, "decoy_latency_seconds", "latency_seconds")
                 if run.get("cost_unknown"):
                     cost += " (lower bound; billing incomplete)"
                 lines += [
@@ -4315,6 +4776,9 @@ def cmd_report(args: argparse.Namespace) -> int:
                     lines.append(
                         f"Verdict source: {run['verdict_source']}; not yet human verified."
                     )
+                if run.get("output_limit_reached"):
+                    lines += ["", "The model spent its whole output allowance before "
+                              "finishing; the attempt counts as failed."]
                 if run["provider_error"]:
                     lines += ["", "Provider call failed; no candidate response was recorded."]
                 elif run["judge_error"]:
@@ -4393,6 +4857,9 @@ def cmd_report(args: argparse.Namespace) -> int:
                 "completed_responses": efficiency[model_id]["completed_attempts"],
                 "total_output_tokens": efficiency[model_id]["total_output_tokens"],
                 "candidate_cost_usd": efficiency[model_id]["cost_usd"],
+                # The share of it that was decoy tasks' earlier turns.
+                **({"decoy_cost_usd": efficiency[model_id]["decoy_cost_usd"]}
+                   if "decoy_cost_usd" in efficiency[model_id] else {}),
                 "candidate_cost_complete": not efficiency[model_id]["cost_unknown_attempts"],
                 "cost_unknown_attempts": efficiency[model_id]["cost_unknown_attempts"],
                 "average_task_time_seconds": efficiency[model_id][
@@ -4656,8 +5123,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     run_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     run_parser.add_argument(
-        "--split", choices=("all",) + TASK_SPLITS, default="all",
-        help="run all tasks or one task split (ignored when --tasks is set)",
+        "--split", choices=TASK_SETS, default="all",
+        help="run all tasks, one task split, or the open board of 35 (ignored when --tasks is set)",
     )
     run_parser.add_argument(
         "--repetitions", type=int, default=REPETITIONS_DEFAULT,
@@ -4726,8 +5193,8 @@ def main(argv: list[str] | None = None) -> int:
     eval_parser.add_argument("--models", help="comma-separated ids from eval_runner/models.json")
     eval_parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     eval_parser.add_argument(
-        "--split", choices=("all",) + TASK_SPLITS, default="all",
-        help="run all tasks or one task split (ignored when --tasks is set)",
+        "--split", choices=TASK_SETS, default="all",
+        help="run all tasks, one task split, or the open board of 35 (ignored when --tasks is set)",
     )
     eval_parser.add_argument(
         "--repetitions", type=int, default=REPETITIONS_DEFAULT,

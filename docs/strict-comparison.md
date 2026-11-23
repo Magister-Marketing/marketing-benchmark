@@ -1,8 +1,10 @@
 # Fresh single-model comparison
 
 Use the existing 20 direct-compatible tasks and a fixed evaluator for the
-first refreshed comparison. The decoy task requires a prior turn and stays out
-of this set. Previously inspected tasks, including those still labelled
+first refreshed comparison. The decoy task, which needs a prior turn, was not
+in that set; the direct runner now sends that turn (two calls in one
+conversation), so the commands below, which name no `--tasks`, include it.
+Previously inspected tasks, including those still labelled
 `holdout` in historical manifests, are development evidence here.
 
 Each condition receives the same assignment and source facts. Compare the

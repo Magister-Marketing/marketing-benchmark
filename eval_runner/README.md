@@ -25,6 +25,37 @@ point for direct-model marketing quality.
 - Provider errors and judge failures count as failed runs.
 - Temperature is never sent. Anthropic and OpenRouter get an output ceiling;
   OpenAI is uncapped unless a candidate explicitly opts into a ceiling.
+  An empty reply cut off at a ceiling is retried once with the ceiling
+  doubled, but never past a candidate's `model_max_output_tokens` (the
+  model's own per-request maximum, never sent; optional in `models.json`,
+  and its `max_output_tokens` may not exceed it). A ceiling already at that
+  maximum is not retried.
+- A `decoy` task is one conversation of two calls, to the same model with
+  the same ceiling, settings and tools. Call 1 sends only the earlier message
+  (`assemble_decoy_prompt`, saved as `prompts/<task>.decoy.md`; no task
+  prompt, rubric or skills). Call 2 sends that message, the model's own reply
+  as a plain assistant text turn (saved as `responses/<…>.decoy.md`), and
+  the task prompt exactly as a single call has it, skill text included only
+  when the arm includes it. Only call 2's reply is graded. A call 1 that
+  fails, comes back empty, or does not finish normally (a refusal, a cut-off)
+  fails the attempt like a failed call; the task prompt is then never sent
+  on its own. Call 1's receipt is kept under `decoy_*` on the attempt
+  (`decoy_input_tokens`, `decoy_output_tokens`, `decoy_latency_seconds`,
+  `decoy_provider_cost_usd` when OpenRouter reports one, and the rest of its
+  receipt), and `decoy_prompt_sha256` covers its prompt while
+  `prompt_sha256` stays the task prompt's. `retry` replays both calls.
+- The task as given is both messages, so the report counts a decoy task's
+  earlier turn in that task's cost and time, for this runner's attempts and
+  the Magister bridge's alike (`attempt_cost_usd`,
+  `attempt_latency_seconds`). Neither harness's `latency_seconds` includes
+  that turn (the bridge subtracts it), so adding `decoy_latency_seconds` is
+  the whole attempt; its cost is `decoy_gateway_provider_cost_usd` (bridge),
+  `decoy_provider_cost_usd`, or the rate card over its tokens. The share
+  stays visible: `decoy_cost_usd` and `decoy_latency_seconds` on each run,
+  `decoy_cost_usd` and `average_decoy_latency_seconds` in its metrics, and
+  `decoy_cost_usd` per model. A turn whose cost or time was not recorded
+  makes the total unknown, never lower. Output tokens are the task turn's.
+  `--stop-after-cost-usd` counts both turns once.
 - Two independent arm toggles, both recorded in evidence:
   - **Skills**: guidance from `evals/fixtures/public/skills/` is in the
     prompt by default. Each task explicitly lists its skill files, whose full
@@ -152,15 +183,22 @@ rather than inline:
   not list `direct-api`, and refuses it by name rather than running a
   degraded version.
 - `decoy` — `{fixture, message, answers}`: a look-alike source the harness
-  sends as its own chat turn *before* the task prompt (`assemble_decoy_prompt`
+  sends as its own turn *before* the task prompt (`assemble_decoy_prompt`
   builds that turn: the message, then the export under the same
   `## Supplied source: <name>` heading the real fixture gets, so a harness
-  that saves pastes to files names both alike). `assemble_prompt` ignores it,
-  which is why a decoy task must list `harnesses` and never `direct-api`:
-  inlined into one prompt, the decoy would change the task. `answers` maps
+  that saves pastes to files names both alike). `assemble_prompt` ignores it:
+  inlined into the task prompt, the decoy would change the task. So a decoy
+  task must list `harnesses`, each one that can send a prior turn
+  (`PRIOR_TURN_HARNESSES`: `direct-api` and `magister-agent`; a Claude Code
+  session cannot). `direct-api` runs it as one conversation of two calls,
+  described under Protocol. `answers` maps
   every banded check to the value the decoy yields; `bench validate` proves
   each scores 0 against the real target, so computing from the wrong file
-  fails on oracle evidence.
+  fails on oracle evidence. The earlier turn need not be a look-alike to
+  ignore: in `brief-amendment` it is the signed-off brief and its product
+  sheet, which the task cannot be done without, and `answers` holds what the
+  plan built from that brief alone scores on each banded check, so a reply
+  that ignores the amendment fails on oracle evidence too.
 - `derived_from` — the parent task this one duplicates. Prompt, answers,
   fixtures, and skills must be identical and every parent criterion must
   appear unchanged; the derived task may only add (a decoy, a criterion).
@@ -172,7 +210,7 @@ rather than inline:
 | Split | Task | What it probes |
 |---|---|---|
 | development | `headline` | grounded, distinct launch positioning |
-| development | `blog-post` | long-form search intent and safety triage |
+| development | `blog-post` | long-form search intent and safety triage; current figures from dated sources (four superseded), eight internal links a written rule picks from a 139-page site map, checked by program |
 | development | `ad-creatives` | operational creative hypotheses |
 | development | `ad-performance-analysis` | oracle math, missing-data denominator integrity, bounded decisions |
 | development | `marketing-plan` | budget, sequencing, and mature activation cohorts |
@@ -190,14 +228,30 @@ rather than inline:
 | holdout | `rate-card-reconciliation` | cross-fixture invoice audit with distractor rates and three planted errors |
 | holdout | `unsupportable-claims-brief` | partial refusal: deliver the brief, decline the four unsupportable claims |
 | development | `ads-ledger-analysis` | 784-row daily ledger: five oracle figures, refund-adjusted method, planted wasted spend, oracle-backed `no_invented_data` |
-| development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; harness-only (`harnesses`), `derived_from` the ledger task |
+| development | `ads-ledger-analysis-decoy` | the same ledger with a look-alike preliminary export planted one turn earlier; runs on `direct-api` (two calls) and `magister-agent`, not `claude-code` (`harnesses`), `derived_from` the ledger task |
 | development | `tracking-audit` | 12 planted UTM/GTM/consent defects across four artifacts, with conforming decoys that must not be flagged |
 | development | `seo-technical-triage` | 165-URL crawl: six banded figures across five issue types, with correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) that must not be flagged |
+| development | `seo-redirect-map` | a 327-URL platform move: a redirect file from ten rules in order (SKU matching, old and new-site redirects followed to a live page, parameter URLs and unchanged pages left out, retired products with no signal gone), checked row by row by program |
+| development | `seo-titles-meta` | titles and meta descriptions for 99 indexed pages under written rules: limits, suffixes, prices only in stock, and a keyword shared by several pages kept by one, checked page by page by program |
 | development | `search-terms-negatives` | 123 search terms across seven campaigns: negatives by theme, with a brand search and two converting terms a blunt rule would block |
 | development | `ab-test-readout` | a test read early, with a sample-ratio mismatch on one device and a secondary metric that just clears 5%; seven banded figures |
+| development | `seo-content-brief` | choosing the target topic from a 455-keyword export by winnable clicks (a click-through table, already-won keywords removed), when the topic with the most searches, or the most eligible searches, is another; prompt 4 (drafted as a holdout; development since its recorded answers were read) |
+| development | `ab-test-readout` | 616 daily rows by device and source and a plan with written decision rules: the pooled lift is up while both devices are down (a device mix the plan set), the first week's lift fades, QA visits forced into variant B must come out, the planned 70/30 mobile split is not a mismatch, and a guardrail breaches over the analysis window only; eleven banded figures (hardened on 2026-11-20: prompt version 4, rubric version 5) |
 | development | `seo-content-brief` | choosing the target topic from a keyword export when the highest-volume term has the wrong intent and already ranks (drafted as a holdout; development since its recorded answers were read) |
 | development | `lifecycle-reengagement` | audience counts from a 260-row subscriber export; people without consent who have ordered must stay out (drafted as a holdout; development since its recorded answers were read) |
 | development | `monthly-report-reconcile` | three exports that disagree (double-fired events, refunds, test orders, platform over-claiming); six banded figures (drafted as a holdout; development since its recorded answers were read) |
+| development | `search-account-build` | a workflow task: five dependent files for a new search account from a 208-keyword export and a seven-step account standard; 18 of its 19 checks are a program's, counted against a reference its own module computes |
+| development | `lifecycle-program` | a workflow task: five agreeing files for a lifecycle email programme from a 300-customer export and a written policy (suppression, segments, holdout, flows, send times by timezone, copy rules); 19 of its 20 checks are a program's |
+| development | `launch-trafficking` | a workflow task: a launch brief, platform specs and a tracking standard in; a budget, 114 text fields across 36 assets and 36 tracked URLs out; 18 of its 19 checks are a program's |
+| development | `outbound-sequence` | a workflow task: a 200-lead list, an outbound standard and product facts in; exclusions with reasons, segment and country-group assignments and 30 emails across 10 sequences out; 21 of its 22 checks are a program's |
+| development | `price-change-rollout` | a workflow task: a change brief and 14 assets in; every asset returned in full, changed exactly as the brief says, with a change log; 18 of its 19 checks are a program's |
+| development | `test-plan-sizing` | a 150-test backlog across twelve storefronts sized by a stated formula and put on one calendar with a four-week limit, per-storefront freeze weeks and limits on tests at once, and a priority order; sessions to turn into users, outage weeks to leave out, lifts in points, half-traffic tests; a 150-row calendar file checked row by row |
+| development | `funnel-dropoff` | a 1,154-row daily checkout funnel over ten segments, a release log and 13 suspected causes: two real breaks, three double-firings that move or fake breaks, a crawler judged after the halving, look-alike dips and recoveries; a per-segment diagnosis and a ruling per cause, checked row by row, and four store figures (version 2) |
+| development | `funnel-dropoff` | a 1,131-row daily checkout funnel over ten segments, a release log and ten suspected causes: one segment's step breaks, two double-firings and a crawler to remove by stated rules, look-alike dips and recoveries; 17 labeled figures |
+| development | `brief-amendment` | an experiment in applying a change everywhere and nowhere else: the signed-off brief and product sheet one turn earlier (as a `decoy` turn), then the client's six amendments; three knock-ons the amendment does not mention and one price change that by the brief's rule does not apply; runs on `direct-api` (two calls) and `magister-agent` |
+| development | `policy-casebook` | an experiment in judgement against a long rulebook, with no arithmetic: 40 proposed actions ruled allowed, allowed with a named condition or not allowed under a 30 KB policy with definitions, exceptions to exceptions, a precedence procedure and a dated change log, each ruling and its deciding clause checked by program against a machine-readable copy of the rules |
+| development | `launch-workflow-chain` | an experiment in consistency along a chain: six dependent deliverables (segments, 8 campaigns and 30 ad groups, ads, tracked URLs, budgets, a pre-launch count), each later file checked against the reply's own earlier ones by `task_facts_experiments.py` |
+| development | `headline-forecast`, `headline-forecast-unpublished` | 100 pairs of headlines each from real tests with a clear winner (Upworthy Research Archive, CC BY 4.0): pick the one that got the higher click rate and say how sure; graded on picks right (a coin flip scores nothing, nine in ten passes) and on the Brier score of the stated confidence |
 
 The ad-performance CSV has planted, exactly computable findings
 (creative fatigue on Broad, frequency saturation on Retargeting, a
@@ -235,6 +289,16 @@ every figure of the judge's reference from the committed fixtures with
 separate code, and it writes out the bands and the oracle lists again, so a
 band changed in the generator and synced into a task file still fails until
 it is changed in the test as well.
+
+`ab-test-readout` left that pair when it was hardened on 2026-11-20. It and the
+conversion tasks added that day (`funnel-dropoff`, `test-plan-sizing`) keep
+their oracle in `task_facts_conversion.py`, which `task_references` consults
+for the judge's reference, their generator beside their fixtures
+(`fixtures/<folder>/generate.py`, which refuses data whose planted effects did
+not come out as designed), and their tests in `tests/test_tasks_conversion.py`,
+which recompute every target with code of their own. `test-plan-sizing`'s
+deliverable is a file, read by `task_facts_conversion.facts_for` (called from
+`bench.measured_facts`), which counts its wrong rows by the kind of test.
 
 Three rules these tasks follow, each learned from a review:
 
@@ -343,10 +407,10 @@ generates the response, so results remain comparable:
 
 | Harness | Generator | Status |
 |---|---|---|
-| `direct-api` | Raw model API call (`skills` x `tools` arms) | available |
+| `direct-api` | Raw model API call (`skills` x `tools` arms); two calls in one conversation for a `decoy` task | available |
 | `claude-code` | Headless Claude Code: stock tools, optionally a skills plugin and MCP servers (`eval_runner/claude_code.py`) | available |
 | Other coding agents | Codex CLI | planned; adapt from `evals/runner/adapters/` |
-| `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; the only harness that runs `decoy` tasks |
+| `magister-agent` | Real product path (the bridge in the Magister monorepo) | available; sends a `decoy` task's earlier message as a chat turn of its own |
 
 Rules that keep the ladder honest:
 
@@ -359,7 +423,8 @@ Rules that keep the ladder honest:
 
 ## The Claude Code harness
 
-`direct-api` asks a model one question. `claude-code` gives the same task to
+`direct-api` asks a model one question (for a `decoy` task, one earlier
+message and then the question). `claude-code` gives the same task to
 the Claude Code agent as a person would use it, and writes the same run
 directory, so `grade` and `report` read it unchanged.
 
@@ -467,7 +532,8 @@ What a run refuses or records instead of guessing:
 
 It needs the `claude` CLI on the PATH and an `ANTHROPIC_API_KEY`; sessions
 are billed to that key, about one to three cents a task on Haiku 5.5. Tasks
-that need a prior turn (`decoy`) are left out, as on `direct-api`.
+that need a prior turn (`decoy`) are left out: a session here takes one
+prompt.
 
 ## Deliberately deferred
 

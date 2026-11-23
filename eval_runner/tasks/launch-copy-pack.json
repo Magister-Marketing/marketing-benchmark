@@ -1,0 +1,210 @@
+{
+  "id": "launch-copy-pack",
+  "title": "Launch copy pack",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 2,
+  "workflow": "launch-copy-pack",
+  "fixtures": [
+    "eval_runner/fixtures/launch-copy-pack/launch_brief.md",
+    "eval_runner/fixtures/launch-copy-pack/claims_register.csv",
+    "eval_runner/fixtures/launch-copy-pack/spec_sheet.md",
+    "eval_runner/fixtures/launch-copy-pack/breeze_launch_2025.md",
+    "eval_runner/fixtures/launch-copy-pack/voice_rules.md",
+    "eval_runner/fixtures/launch-copy-pack/placements.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/copywriting/SKILL.md",
+    "evals/fixtures/public/skills/ad-creative/SKILL.md"
+  ],
+  "prompt": "Larkspur launches four air purifiers, the Halo Mini, Halo One, Halo Max and Halo Pet, on Feb 24, 2027. Write the launch copy pack from the supplied launch_brief.md, claims_register.csv, voice_rules.md and placements.md: every asset the placements table calls for, for every product, each within its own limit and its placement's rules, and all of them following the voice rules. The engineering spec sheet and last year's Breeze launch copy are supplied for reference.\n\nDeliver one file in your reply, under a line with its file name, as CSV with exactly this header: one row per asset, no other rows, and nothing inside the file but its rows.\n\n### copy_pack.csv\nasset_id,text\n\n`asset_id` is the asset's id as placements.md builds it. `text` is the copy exactly as it will run, with nothing added: no quotes of your own around it, no label, no note. If a text contains a comma, put the whole text in double quotes.\n\nThis is copy for review. Publish nothing and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "copy_file",
+        "check": "copy_pack.csv is in the reply, under a line with its file name.",
+        "programmatic": {
+          "fact": "workflow_missing_file_count",
+          "equals": 0
+        }
+      },
+      {
+        "id": "every_asset_present",
+        "check": "Every one of the 72 assets (4 products x 18) has a row with text under its id, and no id the placements table does not call for appears. Full credit for none missing or extra; zero credit at 5 or more.",
+        "programmatic": {
+          "fact": "workflow_asset_coverage_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 5
+          }
+        }
+      },
+      {
+        "id": "no_asset_repeated",
+        "check": "No asset id is given twice. An asset with no row counts as an error here too. Full credit for none; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_duplicate_asset_id_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "within_limits",
+        "check": "Every asset is within its placement's character limit, every space and mark counted. An SMS counts its opening, link and opt-out line, and an SMS holding any character outside the plain set placements.md lists is held to 70. A missing asset counts as over. Full credit for none over; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_over_limit_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "sms_format",
+        "check": "Each of the 4 SMS opens with Larkspur:, carries its own product's SMS link and ends with exactly Reply STOP to opt out. Full credit for none of the 12 parts missing; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_sms_format_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "required_strings_present",
+        "check": "Every asset carries what its placement must include: the product's full name in headline 01 and in each social primary text, Larkspur in each search description, the product's name in each social headline and its own offer end date in each email preheader, 36 strings in all. Full credit for none missing; zero credit at 4 or more.",
+        "programmatic": {
+          "fact": "workflow_required_string_missing_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 4
+          }
+        }
+      },
+      {
+        "id": "placement_exclusions",
+        "check": "No email subject line uses the word free, not even in free shipping, and no push title carries Larkspur, 12 assets in all. A missing subject or title counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_placement_exclusion_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "price_rules",
+        "check": "Prices follow the voice rules: no amount of money in a search ad headline, social ad headline, email subject line or push notification title; every asset that states its product's launch price also states the date that product's offer ends; the regular price only beside the launch price. A missing asset counts as an error. Full credit for none broken; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_price_rule_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "only_usable_figures",
+        "check": "Every number written in digits in every asset is a figure of a register row usable for that asset: approved, for its own product or all, for its channel, and not expired by the launch day. None from the spec sheet, the brief, another product, a pending, withdrawn or internal row, or a row for other channels. A missing asset counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_uncleared_figure_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "only_usable_claims",
+        "check": "No asset uses a claim phrase from the register's copy_wording (app, Wi-Fi, pet dander, smoke, HEPA and the rest) unless a row with that wording is usable for that asset's product and channel. A missing asset counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_uncleared_claim_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "own_product_only",
+        "check": "No asset names another Halo product or another Larkspur product (Breeze, Drift, Ember). A missing asset counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_other_product_named_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "no_banned_words",
+        "check": "No asset uses a banned word, an exclamation mark, or the word free outside the phrase free shipping (as a whole word or part of a hyphenated one). A missing asset counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_banned_word_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "headline_openings_distinct",
+        "check": "No two of a product's 5 search headlines open with the same two words, read as placements.md reads them. A missing headline counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_headline_opening_clash_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "no_repeated_copy",
+        "check": "No two assets have the same text, case, spacing and punctuation aside. A missing asset counts as an error. Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "workflow_duplicate_copy_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "claims_from_the_register",
+        "check": "Judge copy_pack.csv only. Every statement an asset makes about its product, with or without a figure or a register phrase, is a claim the register approves for that product and channel, or plainly follows from one or from what the brief says the product is for: no award, endorsement, ranking, review, comparison with another product, health or medical outcome (allergies, asthma, better sleep), or feature the register does not approve. It fails if any asset makes one, or if copy_pack.csv is missing."
+      }
+    ]
+  }
+}

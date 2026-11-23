@@ -148,7 +148,10 @@ REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # Anthropic's effort scale has no xhigh; a candidate must name a level the
 # provider actually accepts rather than being silently clamped into one.
 ANTHROPIC_EFFORTS = ("low", "medium", "high", "max")
-ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens")
+# model_max_output_tokens is the most output tokens the model accepts in one
+# request (its provider's documented maximum). It is never sent: it bounds
+# the ceiling retry below, and an explicit max_output_tokens may not exceed it.
+ALLOWED_SETTINGS = ("reasoning_effort", "text_verbosity", "max_output_tokens", "model_max_output_tokens")
 OPENAI_ONLY_SETTINGS = ("text_verbosity",)
 CEILING_RETRY_MULTIPLIER = 2  # one retry with a doubled cap on empty+incomplete
 
@@ -159,9 +162,41 @@ def anthropic_web_search_tool(model: str) -> dict:
     return {"type": tool_type, "name": "web_search", "max_uses": WEB_SEARCH_MAX_USES}
 
 
+def _conversation_messages(conversation: list) -> list[dict]:
+    """Copy a text conversation for the wire after checking its shape: user
+    and assistant turns alternate, it starts and ends with the user, and every
+    turn is non-empty text.
+
+    An earlier assistant turn goes back as its text only, which each
+    provider's documentation accepts (checked 2026-11-20): Anthropic allows
+    omitting prior turns' thinking outside tool use; the OpenAI Responses API
+    takes `{"role": "assistant", "content": "<text>"}` in `input`; OpenRouter
+    treats passing reasoning back as optional, needed mainly for tool calls.
+    """
+    if not isinstance(conversation, list) or not conversation:
+        raise ProviderError("a conversation must be a non-empty list of turns")
+    messages = []
+    for index, turn in enumerate(conversation):
+        role = "user" if index % 2 == 0 else "assistant"
+        if (
+            not isinstance(turn, dict)
+            or turn.get("role") != role
+            or not isinstance(turn.get("content"), str)
+            or not turn["content"].strip()
+        ):
+            raise ProviderError(
+                f"conversation turn {index + 1} must be non-empty {role} text: "
+                "turns alternate user/assistant, starting and ending with user"
+            )
+        messages.append({"role": role, "content": turn["content"]})
+    if messages[-1]["role"] != "user":
+        raise ProviderError("a conversation must end with a user turn")
+    return messages
+
+
 def build_request(
     model_spec: str,
-    prompt: str,
+    prompt: str | list[dict],
     max_output_tokens: int,
     web_search: bool,
     api_key: str,
@@ -169,13 +204,23 @@ def build_request(
 ) -> tuple[str, dict, dict]:
     """Return (url, headers, body) for one generation request.
 
+    `prompt` is one user message, or a text conversation (a list of
+    `{"role", "content"}` turns, see `_conversation_messages`) whose last
+    turn is the one the model answers.
+
     `settings` are optional per-candidate knobs from models.json
-    (reasoning_effort, text_verbosity, max_output_tokens). Absent settings
-    are omitted from the request so the provider default applies. The
-    `max_output_tokens` argument is the Anthropic/OpenRouter ceiling; OpenAI
-    requests carry no cap unless the candidate sets one explicitly.
+    (reasoning_effort, text_verbosity, max_output_tokens,
+    model_max_output_tokens). Absent settings are omitted from the request so
+    the provider default applies. The `max_output_tokens` argument is the
+    Anthropic/OpenRouter ceiling; OpenAI requests carry no cap unless the
+    candidate sets one explicitly. `model_max_output_tokens`, the model's own
+    maximum, is never sent: `generate` uses it to bound the ceiling retry.
     """
     provider, model = split_model_spec(model_spec)
+    messages = (
+        [{"role": "user", "content": prompt}] if isinstance(prompt, str)
+        else _conversation_messages(prompt)
+    )
     settings = settings or {}
     unknown = set(settings) - set(ALLOWED_SETTINGS)
     if unknown:
@@ -186,6 +231,15 @@ def build_request(
     cap_override = settings.get("max_output_tokens")
     if cap_override is not None and (not isinstance(cap_override, int) or cap_override <= 0):
         raise ProviderError(f"invalid max_output_tokens {cap_override!r}")
+    model_max = settings.get("model_max_output_tokens")
+    if model_max is not None and (
+            not isinstance(model_max, int) or isinstance(model_max, bool) or model_max <= 0):
+        raise ProviderError(f"invalid model_max_output_tokens {model_max!r}")
+    if model_max is not None and cap_override is not None and cap_override > model_max:
+        raise ProviderError(
+            f"max_output_tokens {cap_override} is above the model's maximum "
+            f"(model_max_output_tokens {model_max}) for {model_spec}"
+        )
 
     if provider in ("anthropic", "openrouter"):
         openai_only = set(settings) & set(OPENAI_ONLY_SETTINGS)
@@ -212,7 +266,7 @@ def build_request(
         body: dict = {
             "model": model,
             "max_tokens": cap_override or max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         if effort is not None:
             # Current shape for Claude 5: adaptive thinking plus the effort
@@ -237,7 +291,7 @@ def build_request(
         body = {
             "model": model,
             "max_tokens": cap_override or max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "provider": {
                 "zdr": True,
                 "data_collection": "deny",
@@ -275,7 +329,8 @@ def build_request(
     # model's own maximum.
     body = {
         "model": model,
-        "input": prompt,
+        # One prompt stays a plain string, as it always was on the wire.
+        "input": prompt if isinstance(prompt, str) else messages,
     }
     if cap_override is not None:
         body["max_output_tokens"] = cap_override
@@ -435,7 +490,7 @@ def _merge_ceiling_retry_receipts(first: dict, last: dict) -> dict:
 
 def generate(
     model_spec: str,
-    prompt: str,
+    prompt: str | list[dict],
     max_output_tokens: int,
     web_search: bool = False,
     settings: dict | None = None,
@@ -444,7 +499,8 @@ def generate(
     retry_transport: bool = True,
     request_timeout_seconds: float | None = None,
 ) -> dict:
-    """One prompt in, one text completion out.
+    """One prompt (or a text conversation, see `build_request`) in, one text
+    completion out.
 
     Returns {text, input_tokens, output_tokens, web_search_calls,
     finish_reason, latency_seconds, provider, model}. Raises
@@ -479,17 +535,26 @@ def generate(
     # maximum — doubling cannot help, so the truncation is recorded honestly.
     # Anthropic and OpenRouter requests always carry a cap, so truncation
     # qualifies even when the candidate set no cap of its own; OpenAI requests
-    # are capped only when the candidate set one.
+    # are capped only when the candidate set one. The doubled cap never goes
+    # past the model's own maximum when the candidate names it
+    # (model_max_output_tokens): a request above it is rejected. A cap already
+    # at that maximum cannot be raised, so there is no retry, only the
+    # truncation recorded honestly.
     finish = result["finish_reason"] or ""
     explicit_cap = (settings or {}).get("max_output_tokens")
     effective_cap = explicit_cap or (
         max_output_tokens if provider in ("anthropic", "openrouter") else None
     )
+    raised_cap = effective_cap * CEILING_RETRY_MULTIPLIER if effective_cap else None
+    model_max = (settings or {}).get("model_max_output_tokens")
+    if raised_cap and model_max:
+        raised_cap = min(raised_cap, model_max)
     truncated = "incomplete" in finish or finish == "max_tokens"
-    if retry_empty_completion and not result["text"].strip() and truncated and effective_cap:
+    if (retry_empty_completion and not result["text"].strip() and truncated
+            and raised_cap and raised_cap > effective_cap):
         ceiling_retried = True
         raised = dict(settings or {})
-        raised["max_output_tokens"] = effective_cap * CEILING_RETRY_MULTIPLIER
+        raised["max_output_tokens"] = raised_cap
         url, headers, body = build_request(
             model_spec, prompt, max_output_tokens, web_search, api_key, raised
         )
@@ -499,8 +564,9 @@ def generate(
             exc.receipt = _merge_ceiling_retry_receipts(result, exc.receipt)
             raise
         result = _merge_ceiling_retry_receipts(result, parse_response(provider, payload))
-    latency = time.monotonic() - started
-
+    # On the receipt before the empty-completion error too: a call the model
+    # spent its whole output allowance on took that long, and is timed.
+    result["latency_seconds"] = round(time.monotonic() - started, 2)
     result["ceiling_retried"] = ceiling_retried
     if retry_empty_completion and not result["text"].strip():
         raise ProviderError(
@@ -509,13 +575,7 @@ def generate(
             f"ceiling_retried={ceiling_retried})",
             receipt=result, failure_kind="empty_completion",
         )
-    result.update(
-        {
-            "provider": provider,
-            "model": model,
-            "latency_seconds": round(latency, 2),
-        }
-    )
+    result.update({"provider": provider, "model": model})
     return result
 
 

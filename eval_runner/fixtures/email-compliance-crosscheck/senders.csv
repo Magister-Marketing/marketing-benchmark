@@ -1,0 +1,17 @@
+sender_id,brand,region,stream,allowed_from_addresses
+M01,Ostrel,US,marketing,hello@mail.ostrel.example;offers@mail.ostrel.example
+M02,Ostrel,US,transactional,orders@orders.ostrel.example
+M03,Ostrel,UK,marketing,hello@uk.ostrel.example
+M04,Ostrel,UK,transactional,orders@orders.ostrel.example
+M05,Ostrel,EU,marketing,hallo@eu.ostrel.example
+M06,Ostrel,EU,transactional,orders@orders.ostrel.example
+M07,Ostrel,CA,marketing,hello@ca.ostrel.example;news@news.ostrel.example
+M08,Ostrel,CA,transactional,orders@orders.ostrel.example
+M09,Tamsin,US,marketing,hello@mail.tamsin.example;deals@promo.tamsin.example
+M10,Tamsin,US,transactional,orders@shop.tamsin.example
+M11,Tamsin,UK,marketing,hello@mail.tamsin.example
+M12,Tamsin,UK,transactional,orders@shop.tamsin.example
+M13,Tamsin,EU,marketing,hello@mail.tamsin.example
+M14,Tamsin,EU,transactional,orders@shop.tamsin.example
+M15,Tamsin,CA,marketing,hello@mail.tamsin.example;deals@promo.tamsin.example
+M16,Tamsin,CA,transactional,orders@shop.tamsin.example

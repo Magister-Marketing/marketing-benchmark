@@ -1,0 +1,204 @@
+{
+  "id": "launch-workflow-chain",
+  "title": "Launch account built as a chain of six dependent files",
+  "split": "development",
+  "prompt_version": 1,
+  "rubric_version": 1,
+  "fixtures": [
+    "eval_runner/fixtures/launch-workflow-chain/campaign_brief.md",
+    "eval_runner/fixtures/launch-workflow-chain/audience_segments.csv",
+    "eval_runner/fixtures/launch-workflow-chain/product_catalogue.csv"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/ads/SKILL.md",
+    "evals/fixtures/public/skills/ad-creative/SKILL.md"
+  ],
+  "answers": {
+    "count": 5,
+    "single_number": true
+  },
+  "prompt": "Fennick Trailworks launches its new Fellside collection on paid social. Build the launch account from the supplied build brief, audience table and product catalogue. Follow the brief's six steps exactly; each step uses what the steps before it produced. Use only facts from the supplied files.\n\nDeliver five files in your reply. Put each one under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### segments.csv\nsegment_id,market,type,est_size\nOne row per segment chosen in step 1, with its market, type and est_size as the audience table gives them.\n\n### structure.csv\nsegment_id,campaign_name,ad_group_name,sku\nOne row per ad group of step 2, with the segment of its campaign and its product's sku.\n\n### ads.csv\nad_group_name,headline_1,headline_2,description\nOne row per ad group: its ad, written as step 3 says.\n\n### trafficking.csv\nad_group_name,final_url\nOne row per ad group: its final URL, built as step 4 says.\n\n### budget.csv\ncampaign_name,daily_budget\nOne row per campaign: its daily budget from step 5, in dollars.\n\nEnd your reply with the pre-launch check of step 6 as this answer block, counted from your own files, one line per answer: the label, a colon and the number alone.\n\nA1: <number of campaigns>\nA2: <number of ad groups>\nA3: <number of ads carrying the returning-visitor code>\nA4: <number of distinct products advertised>\nA5: <total of the daily budgets, in dollars>\n\nThis is a build for review. Create nothing in any ad account and fetch nothing external.",
+  "rubric": {
+    "completion": [
+      {
+        "id": "six_parts_present",
+        "check": "All five files (segments.csv, structure.csv, ads.csv, trafficking.csv, budget.csv) are in the reply, each under a line with its file name, and the reply ends with the answer block with all 5 labeled answers A1-A5, each the number alone.",
+        "programmatic": [
+          {
+            "fact": "chain_missing_file_count",
+            "equals": 0
+          },
+          {
+            "fact": "answer_count",
+            "equals": 5
+          }
+        ]
+      },
+      {
+        "id": "segments_chosen",
+        "check": "segments.csv lists exactly the 8 segments step 1's six rules leave (S02, S03, S04, S09, S10, S11, S15, S16), each with the market, type and est_size the audience table gives it. Full credit for none missing, extra or wrong; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "chain_segment_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "campaigns_named",
+        "check": "In structure.csv each of the 8 chosen segments has exactly one campaign, named by step 2's convention from the segment's own market, segment_code and type, and no other segment has a campaign. Full credit for none wrong, missing or extra; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "chain_campaign_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "ad_groups_built",
+        "check": "structure.csv has exactly the 30 ad groups step 2 produces (a launch product of the segment's interest sold in its market), each once, named by the convention, under its own campaign and segment, with its own sku. Full credit for none wrong, missing, repeated or extra; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_ad_group_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      }
+    ],
+    "skill_adherence": [
+      {
+        "id": "one_ad_per_ad_group",
+        "check": "Checked against the reply's own structure.csv: ads.csv has exactly one row for every ad group name structure.csv gives, written exactly as structure.csv writes it, and no row for any other name. Full credit for none missing, repeated or unknown; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_ad_key_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "ads_within_limits",
+        "check": "Every ad's headline_1 and headline_2 are at most 30 characters and its description at most 90, and none is empty. Full credit for no ad over or empty; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_ad_limit_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "ads_carry_required_facts",
+        "check": "Every ad, for the product and market its ad group has in the reply's own structure.csv, carries the product's ad_name in headline_1, one of its proof points in headline_2, its price in the campaign's market with the currency sign in the description, and the code FELL10 in the description exactly when its campaign is retargeting (no code in a prospecting ad). Full credit for none wrong; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_ad_required_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "ads_use_own_product_only",
+        "check": "No ad carries a fact of a product other than the one its ad group has in the reply's own structure.csv: no other product's ad_name, product_name or proof point, and no figure outside its own product's ad_name, proof points and price in the campaign's market (the retargeting code aside). Full credit for none; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_ad_foreign_fact_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "no_invented_claims",
+        "negative": true,
+        "check": "Judge ads.csv only. No ad claims anything about its product that the product's catalogue row does not state: no feature, material, rating, award, comparison, guarantee or offer beyond the row's ad_name, proof points and price (and, in a retargeting ad, the returning-visitor code). Wording that only introduces or frames a stated fact (\"New\", \"Shop now\", \"Built for the trail\") is not a claim. It fails if any ad states an unsupported claim, or if ads.csv is missing."
+      }
+    ],
+    "best_practices": [
+      {
+        "id": "tracking_rows_match_structure",
+        "check": "Checked against the reply's own structure.csv: trafficking.csv has exactly one row for every ad group name structure.csv gives, written exactly as structure.csv writes it, and no row for any other name. Full credit for none missing, repeated or unknown; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_tracking_key_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "urls_built_from_names",
+        "check": "Every final URL is step 4's, built from the reply's own structure.csv row for its ad group: the product's landing page in the campaign's store (us, gb or de), and exactly the four parameters utm_source=social, utm_medium=paid, utm_campaign = that row's campaign name in lower case and utm_content = its ad group name in lower case. Full credit for none wrong; zero credit at 3 or more.",
+        "programmatic": {
+          "fact": "chain_url_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 3
+          }
+        }
+      },
+      {
+        "id": "budget_rows_match_campaigns",
+        "check": "Checked against the reply's own structure.csv: budget.csv has exactly one row for every campaign name structure.csv gives, written exactly as structure.csv writes it, and no row for any other name. Full credit for none missing, repeated or unknown; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "chain_budget_key_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "budget_amounts_right",
+        "check": "Each of the 8 campaigns has the whole-dollar daily budget step 5 gives it ($180 each, then the remaining $2,160 in proportion to the segment's est_size by largest remainder), so the 8 add up to $3,600: FTW_FS27_US_HKX_PRO $958, FTW_FS27_US_PKR_PRO $610, FTW_FS27_US_CKR_RTG $228, FTW_FS27_UK_HKU_PRO $498, FTW_FS27_UK_SLU_PRO $414, FTW_FS27_UK_PKU_RTG $210, FTW_FS27_DE_SLD_PRO $464, FTW_FS27_DE_TND_RTG $218. Full credit for none wrong or missing; zero credit at 2 or more.",
+        "programmatic": {
+          "fact": "chain_budget_amount_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      },
+      {
+        "id": "prelaunch_check_matches_package",
+        "check": "Each of the five answers is the count the reply's own files give: A1 the campaigns and A2 the ad groups in structure.csv, A3 the ads in ads.csv whose description carries FELL10, A4 the distinct skus in structure.csv, and A5 the total of budget.csv. Full credit for all five matching; zero credit at 2 or more that do not.",
+        "programmatic": {
+          "fact": "chain_prelaunch_error_count",
+          "near": 0,
+          "tolerance": {
+            "kind": "absolute",
+            "full": 0,
+            "zero": 2
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+page_id,url,page_type,name,primary_keyword,secondary_keyword,attributes,price,in_stock,product_count,index,clicks_28d
+C-06,/collections/aquarium-filters,category,Aquarium Filters,aquarium filter,fish tank filters,,,,15,index,300
+C-21,/collections/aquarium-heaters,category,Aquarium Heaters,aquarium heaters,tank heaters,,,,8,index,120
+C-08,/collections/bird-cages,category,Bird Cages,bird cages,large bird cage,,,,9,index,140
+C-15,/collections/cat-carriers,category,Cat Carriers,cat carrier,carriers for cats,,,,11,index,260
+C-07,/collections/cat-litter,category,Cat Litter,cat litter,clumping cat litter,,,,22,index,1210
+C-19,/collections/cat-scratchers,category,Cat Scratchers,cat scratchers,scratching posts,,,,16,index,370
+C-11,/collections/cat-toys,category,Cat Toys,cat toys,interactive cat toys,,,,33,index,620
+C-02,/collections/cat-trees,category,Cat Trees,cat trees,cat towers,,,,24,index,880
+C-13,/collections/clearance,category,Clearance,pet supplies clearance,discount pet supplies,,,,57,noindex,640
+C-01,/collections/dog-beds,category,Dog Beds,dog beds,orthopedic dog beds,,,,38,index,1840
+C-27,/collections/dog-beds?page=2,category,"Dog Beds, Page 2",dog beds,dog bed sale,,,,38,noindex,90
+C-12,/collections/dog-beds?size=large,category,Dog Beds: Large,dog beds,large dog beds,,,,11,noindex,210
+C-04,/collections/dog-bowls,category,Dog Bowls,dog bowls,dog food bowls,,,,19,index,310
+C-17,/collections/dog-collars,category,Dog Collars,dog collars,personalized dog collars,,,,35,index,980
+C-14,/collections/dog-crates,category,Dog Crates,dog crates,wire dog crates,,,,17,index,760
+C-18,/collections/dog-grooming,category,Dog Grooming,dog grooming supplies,dog grooming tools,,,,29,index,450
+C-03,/collections/dog-harnesses,category,Dog Harnesses,dog harness,harnesses for dogs,,,,31,index,540
+C-16,/collections/dog-leashes,category,Dog Leashes,dog leashes,leads for dogs,,,,27,index,690
+C-10,/collections/dog-toys,category,Dog Toys,dog toys,durable dog toys,,,,46,index,1500
+C-26,/collections/dog-toys?sort=price,category,Dog Toys by Price,dog toys,cheap dog toys,,,,46,noindex,160
+C-23,/collections/dog-treats,category,Dog Treats,dog treats,training treats for dogs,,,,41,index,1320
+C-20,/collections/fish-food,category,Fish Food,fish food,tropical fish food,,,,13,index,180
+C-22,/collections/hamster-cages,category,Hamster Cages,hamster cages,small animal cages,,,,10,index,210
+C-25,/collections/new-arrivals,category,New Arrivals,new pet supplies,latest pet products,,,,64,noindex,400
+C-05,/collections/puppy-training,category,Puppy Training,puppy training pads,puppy pads,,,,12,index,410
+C-24,/collections/senior-dogs,category,Senior Dog Supplies,senior dog supplies,supplies for older dogs,,,,18,index,230
+C-09,/collections/small-animal-bedding,category,Small Animal Bedding,small animal bedding,hamster bedding,,,,14,index,95
+G-211,/guides/2023-gift-guide,guide,Gift Guide 2023,gifts for dog lovers,dog lover gift ideas,,,,,noindex,150
+G-204,/guides/aquarium-cycling,guide,Cycling a New Aquarium,how to cycle a fish tank,nitrogen cycle aquarium,,,,,index,340
+G-222,/guides/aquarium-heater-guide,guide,Choosing an Aquarium Heater,what size aquarium heater,aquarium heater wattage,,,,,index,150
+G-220,/guides/bird-cage-setup,guide,Setting Up a Bird Cage,bird cage setup,where to put a bird cage,,,,,index,90
+G-215,/guides/cat-carrier-training,guide,Getting a Cat Used to a Carrier,cat carrier,carrier training for cats,,,,,index,260
+G-221,/guides/cat-dental-care,guide,Cat Dental Care,cat dental care,how to clean cat teeth,,,,,index,140
+G-201,/guides/cat-tree-buying-guide,guide,How to Choose a Cat Tree,cat trees,how to choose a cat tree,,,,,index,1320
+G-209,/guides/catnip-guide-old,guide,Catnip Guide (old),catnip toys,what is catnip,,,,,noindex,300
+G-213,/guides/clean-fish-tank,guide,How to Clean a Fish Tank (2022),how to clean a fish tank,aquarium cleaning steps,,,,,index,220
+G-217,/guides/crate-training,guide,Crate Training a Puppy,crate training,how to crate train a puppy,,,,,index,520
+G-223,/guides/crate-training-old,guide,Crate Training (old),crate training,crate training schedule,,,,,noindex,700
+G-205,/guides/dog-bed-sizes,guide,Dog Bed Sizes,dog bed size chart,what size dog bed,,,,,index,510
+G-224,/guides/dog-treat-guide,guide,Choosing Dog Treats,healthy dog treats,low calorie dog treats,,,,,index,410
+G-214,/guides/fish-tank-cleaning,guide,"Fish Tank Cleaning, Step by Step",how to clean a fish tank,fish tank maintenance,,,,,index,400
+G-219,/guides/grooming-at-home,guide,Grooming Your Dog at Home,how to groom a dog at home,home dog grooming,,,,,index,270
+G-208,/guides/hamster-cage-setup,guide,Setting Up a Hamster Cage,hamster cage setup,hamster habitat ideas,,,,,index,80
+G-207,/guides/harness-fitting,guide,Fitting a Dog Harness,how to fit a dog harness,dog harness sizing,,,,,index,230
+G-212,/guides/hot-weather-dogs,guide,Keeping Dogs Cool,how to keep a dog cool in hot weather,dog heatstroke signs,,,,,index,390
+G-203,/guides/introduce-dog-to-cat,guide,Introducing a Dog to a Cat,how to introduce a dog to a new cat,dogs and cats living together,,,,,index,260
+G-218,/guides/leash-training,guide,Leash Training Basics,leash training a puppy,loose leash walking,,,,,index,300
+G-206,/guides/litter-box-placement,guide,Litter Box Placement,where to put a litter box,litter box placement,,,,,index,190
+G-226,/guides/print/senior-dog-care,guide,Caring for a Senior Dog (print),senior dog care,caring for an older dog,,,,,noindex,40
+G-202,/guides/puppy-potty-training,guide,Potty Training a Puppy,puppy training pads,potty training a puppy,,,,,index,120
+G-210,/guides/senior-dog-care,guide,Caring for a Senior Dog,senior dog care,caring for an older dog,,,,,index,450
+G-216,/guides/senior-dog-nutrition,guide,Feeding a Senior Dog,senior dog food,what to feed an older dog,,,,,index,330
+G-225,/guides/summer-sale-2024,guide,Summer Sale 2024,pet supplies sale,summer pet deals,,,,,noindex,260
+P-254,/products/aquarium-gravel,product,Natural Aquarium Gravel,aquarium gravel,fish tank gravel,rinsed river stone; 5 kg bag,15.00,yes,,index,85
+P-158,/products/aquarium-heater-100w,product,"Aquarium Heater, 100 W",aquarium heater,fish tank heater,adjustable thermostat; shatterproof glass,29.00,yes,,index,230
+P-149,/products/automatic-litter-box,product,Automatic Litter Box,self cleaning litter box,automatic litter box,sealed waste drawer; app alerts,249.00,no,,index,510
+P-212,/products/betta-pellets,product,Betta Pellets,betta fish food,betta pellets,floating pellets; 50 g jar,6.00,yes,,index,75
+P-257,/products/bird-perch-set,product,Bird Perch Set,bird perches,natural wood perch,manzanita wood; three sizes,14.00,yes,,index,55
+P-263,/products/car-seat-cover,product,Dog Car Seat Cover,dog car seat cover,back seat cover for dogs,waterproof fabric; side flaps,49.00,yes,,index,270
+P-206,/products/cardboard-scratcher,product,Cardboard Scratcher,cardboard cat scratcher,corrugated scratch pad,recycled cardboard; catnip included,12.00,no,,index,90
+P-272,/products/cat-water-fountain,product,Cat Water Fountain,cat water fountain,pet drinking fountain,carbon filter; quiet pump,35.00,yes,,index,440
+P-275,/products/cat-water-fountain-v1,product,Cat Water Fountain (first version),cat water fountain,pet water fountain,carbon filter; quiet pump,29.00,no,,noindex,50
+P-122,/products/catnip-mouse-trio,product,Catnip Mouse Trio,catnip toys,catnip mice,organic catnip; set of three,9.00,yes,,index,90
+P-125,/products/chew-ring-xl,product,Chew Ring XL,tough dog chew toy,dog chew ring,natural rubber; floats in water,15.00,no,,index,130
+P-224,/products/chicken-jerky-treats,product,Chicken Jerky Treats,chicken jerky dog treats,single ingredient dog treats,single ingredient; 200 g pouch,13.00,yes,,index,340
+P-119,/products/clearflow-aquarium-filter,product,ClearFlow Aquarium Filter,aquarium filter,hang on back filter,three-stage filtration; quiet motor,46.00,yes,,index,420
+P-170,/products/cloudrest-bed-large,product,"CloudRest Orthopedic Bed, Large",orthopedic dog bed,orthopedic bed for large dogs,memory foam base; washable cover,99.00,no,,index,480
+P-167,/products/cloudrest-bed-medium,product,"CloudRest Orthopedic Bed, Medium",orthopedic dog bed,orthopedic bed for medium dogs,memory foam base; washable cover,79.00,yes,,index,480
+P-164,/products/cloudrest-bed-small,product,"CloudRest Orthopedic Bed, Small",orthopedic dog bed,orthopedic bed for small dogs,memory foam base; washable cover,69.00,yes,,index,210
+P-278,/products/cloudrest-bed-xl,product,"CloudRest Orthopedic Bed, XL",orthopedic dog bed,orthopedic bed for giant dogs,memory foam base; washable cover,119.00,no,,noindex,600
+P-101,/products/cloudrest-orthopedic-dog-bed,product,CloudRest Orthopedic Dog Bed,dog bed,washable dog bed,memory foam base; washable cover,89.00,yes,,index,420
+P-161,/products/cloudrest-orthopedic-dog-bed-copy,product,CloudRest Orthopedic Dog Bed (copy),dog bed,orthopedic dog bed,memory foam base; washable cover,89.00,yes,,noindex,30
+P-269,/products/cooling-mat,product,Dog Cooling Mat,dog cooling mat,pressure activated cooling pad,gel-filled; no water needed,39.00,yes,,index,360
+P-245,/products/crinkle-tunnel,product,Crinkle Cat Tunnel,cat tunnel,crinkle tunnel,collapsible; three openings,17.00,yes,,index,140
+P-227,/products/dental-chews,product,"Dental Chews, 30 Pack",dental chews for dogs,dog teeth cleaning chews,vet-formulated texture; 30 chews,24.00,no,,index,410
+P-197,/products/deshedding-brush,product,Deshedding Brush,deshedding brush,dog undercoat brush,stainless teeth; release button,26.00,yes,,index,390
+P-266,/products/dog-raincoat,product,Dog Raincoat,dog raincoat,waterproof dog coat,reflective trim; hood,29.00,no,,index,180
+P-260,/products/dog-shampoo-old-listing,product,Dog Shampoo (old listing),dog shampoo,dog wash,soap-free formula; 500 ml bottle,14.00,no,,noindex,900
+P-251,/products/elevated-bowl-stand,product,Elevated Bowl Stand,raised dog bowl stand,elevated feeder,adjustable height; bamboo top,34.00,yes,,index,190
+P-128,/products/feather-wand,product,Feather Wand,cat feather wand,wand toy for cats,telescoping rod; refill feathers,11.00,yes,,index,210
+P-218,/products/finch-seed-mix,product,Finch Seed Mix,finch food,finch seed mix,millet and canary seed; 2 kg bag,11.00,yes,,index,60
+P-134,/products/flight-cage-xl,product,Flight Cage XL,flight cage for birds,large parakeet cage,rolling stand; seed guard,189.00,yes,,index,60
+P-173,/products/folding-crate-36,product,"Folding Dog Crate, 36 in",folding dog crate,36 inch dog crate,double doors; divider panel,129.00,yes,,index,300
+P-176,/products/folding-crate-42,product,"Folding Dog Crate, 42 in",folding dog crate,42 inch dog crate,double doors; leak-proof tray,149.00,yes,,index,150
+P-215,/products/hamster-cage-deluxe,product,Deluxe Hamster Cage,large hamster cage,hamster habitat,deep base; two levels,89.00,no,,index,130
+P-155,/products/hamster-wheel-silent,product,Silent Hamster Wheel,silent hamster wheel,quiet exercise wheel,ball-bearing spin; solid running track,22.00,no,,index,140
+P-146,/products/heated-cat-bed,product,Heated Cat Bed,heated cat bed,self warming cat bed,low-voltage pad; removable cover,49.00,yes,,index,290
+P-236,/products/indoor-cat-food-6lb,product,"Indoor Cat Food, 6 lb",indoor cat food,dry food for indoor cats,salmon recipe; hairball control,28.00,yes,,index,310
+P-242,/products/laser-pointer,product,Laser Pointer Toy,cat laser toy,laser pointer for cats,USB charging; auto shut-off,10.00,yes,,index,230
+P-116,/products/leakguard-training-pads,product,"LeakGuard Training Pads, 50 Pack",puppy training pads,absorbent puppy pads,five-layer core; scented attractant,24.00,yes,,index,655
+P-233,/products/litter-mat,product,Litter Mat,cat litter mat,litter trapping mat,honeycomb layers; waterproof base,19.00,yes,,index,150
+P-194,/products/martingale-collar,product,Martingale Collar,martingale collar,no slip dog collar,nylon webbing; chain loop,18.00,no,,index,160
+P-200,/products/nail-clippers,product,Dog Nail Clippers,dog nail clippers,nail trimmer for dogs,safety guard; non-slip grip,15.00,yes,,index,280
+P-182,/products/oatmeal-dog-shampoo,product,Oatmeal Dog Shampoo,dog shampoo,oatmeal shampoo for dogs,soap-free formula; 500 ml bottle,14.00,yes,,index,120
+P-137,/products/paper-bedding-30l,product,"Paper Bedding, 30 L",paper small animal bedding,dust free hamster bedding,unbleached paper; odour control,19.00,no,,index,115
+P-131,/products/pine-litter-20lb,product,"Pine Litter, 20 lb",pine cat litter,natural cat litter,compostable pine pellets; low dust,27.00,no,,index,340
+P-185,/products/puppy-shampoo,product,Tearless Puppy Shampoo,dog shampoo,tearless puppy shampoo,tear-free formula; 250 ml bottle,12.00,no,,index,95
+P-191,/products/reflective-leash,product,Reflective Dog Leash,reflective dog leash,night walking leash,reflective stitching; padded handle,22.00,yes,,index,140
+P-152,/products/rope-tug-toy,product,Rope Tug Toy,rope dog toy,tug toy for dogs,cotton rope; two handles,13.00,yes,,index,150
+P-188,/products/senior-dog-food-5lb,product,"Senior Dog Food, 5 lb",senior dog food,food for older dogs,chicken and brown rice; joint support blend,32.00,yes,,index,330
+P-203,/products/sisal-scratching-post,product,Sisal Scratching Post,cat scratcher,sisal scratching post,natural sisal rope; weighted base,29.00,yes,,index,220
+P-140,/products/slow-feeder-bowl,product,Slow Feeder Bowl,slow feeder dog bowl,puzzle feeder bowl,maze pattern; non-slip base,16.00,yes,,index,380
+P-179,/products/softside-cat-carrier,product,Softside Cat Carrier,cat carrier,softside carrier for cats,mesh windows; shoulder strap,39.00,yes,,index,260
+P-248,/products/squeaky-ball-set,product,Squeaky Ball Set,squeaky dog balls,dog ball toys,natural rubber; set of four,9.00,no,,index,115
+P-113,/products/steel-dog-bowl-large,product,"Steel Dog Bowl, Large",stainless steel dog bowl,elevated dog bowl,raised bamboo stand; dishwasher safe,18.00,yes,,index,75
+P-110,/products/steel-dog-bowl-small,product,"Steel Dog Bowl, Small",stainless steel dog bowl,dog water bowl,non-slip rubber base; dishwasher safe,12.00,yes,,index,75
+P-104,/products/summit-cat-tree,product,Summit Cat Tree,cat tree with hammock,multi level cat tree,sisal scratching posts; two hammocks,129.00,no,,index,260
+P-230,/products/top-entry-litter-box,product,Top Entry Litter Box,top entry litter box,covered litter box,grated lid; low-tracking design,45.00,yes,,index,200
+P-107,/products/trailmate-no-pull-harness,product,TrailMate No-Pull Harness,dog harness,no pull harness for dogs,front clip; reflective stitching,34.00,yes,,index,540
+P-143,/products/travel-water-bottle,product,Travel Water Bottle,dog travel water bottle,portable dog water bottle,leak-proof lock; fold-out bowl,21.00,no,,index,170
+P-221,/products/treat-pouch,product,Training Treat Pouch,dog treat pouch,training treat bag,magnetic closure; belt clip,16.00,yes,,index,105
+P-209,/products/tropical-flakes,product,Tropical Flakes,tropical fish flakes,fish flake food,colour-enhancing formula; 100 g tub,8.00,yes,,index,110
+P-239,/products/wet-cat-food-variety,product,Wet Cat Food Variety Pack,wet cat food,cat food variety pack,pate texture; 12 cans,18.00,no,,index,260

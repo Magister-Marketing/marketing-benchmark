@@ -1,0 +1,50 @@
+{
+  "id": "competitor-comparison",
+  "title": "Build a ten-company comparison table and test draft claims against it",
+  "split": "development",
+  "prompt_version": 2,
+  "rubric_version": 2,
+  "fixtures": [
+    "eval_runner/fixtures/competitor-comparison/comparison_brief.md",
+    "eval_runner/fixtures/competitor-comparison/tallyhour.md",
+    "eval_runner/fixtures/competitor-comparison/brisktime.md",
+    "eval_runner/fixtures/competitor-comparison/quillhour.md",
+    "eval_runner/fixtures/competitor-comparison/ticklog.md",
+    "eval_runner/fixtures/competitor-comparison/fenwork.md",
+    "eval_runner/fixtures/competitor-comparison/larchpoint.md",
+    "eval_runner/fixtures/competitor-comparison/clockwell.md",
+    "eval_runner/fixtures/competitor-comparison/pacemark.md",
+    "eval_runner/fixtures/competitor-comparison/hourglen.md",
+    "eval_runner/fixtures/competitor-comparison/ledgerline.md"
+  ],
+  "skills": [
+    "evals/fixtures/public/skills/competitor-profiling/SKILL.md"
+  ],
+  "prompt": "Priya Raman runs product marketing at Tallyhour, which sells time tracking and invoicing to agencies. Sales wants one comparison table of Tallyhour and its nine closest competitors, and Priya wants to know which of nine draft claims about Tallyhour the table can back. The supplied comparison brief defines the twenty attributes, the rules every cell follows and the claims, and the ten pricing pages are supplied as they were saved today. Use only those files.\n\nDeliver two files. Put each under a line with its file name, as CSV with exactly the header shown: one row per item, no totals row, and nothing inside the file but its rows. If a value contains a comma, put the value in double quotes.\n\n### comparison.csv\ncompany,free_plan,trial_days,entry_plan,entry_price_usd,entry_min_users,entry_projects,top_plan_price_usd,sso_on_entry,sso_cheapest_plan,audit_log_cheapest_plan,invoicing_on_entry,api_on_entry,approvals_on_entry,budgets_on_entry,phone_support_on_entry,mobile_app,uptime_sla_percent,eu_hosting,soc2_type2,dpa\nOne row per company, Tallyhour first, named as its page names it. Each cell holds the value the brief defines, written as its rule 8 says, or exactly `not stated`.\n\n### claims.csv\nclaim,verdict\nOne row per draft claim, by its number (1 to 9), with the verdict `supportable` or `not supportable`.\n\nAfter the two files, for each claim you mark not supportable, name in one sentence the company and the attribute whose cell keeps it from being supported.\n\nThis is internal research. Change nothing and fetch nothing external: the pages are the record.",
+  "rubric": {
+    "completion": [
+      {"id": "both_files", "check": "Both files (comparison.csv and claims.csv) are in the reply, each under a line with its file name.", "programmatic": {"fact": "comparison_missing_file_count", "equals": 0}},
+      {"id": "ten_companies_twenty_columns", "check": "comparison.csv has exactly one row for each of the ten companies and no other row, and a column for each of the twenty attributes.", "programmatic": {"fact": "comparison_structure_error_count", "equals": 0}},
+      {"id": "nine_claims_once", "check": "claims.csv has exactly one row for each of the nine claims, each with the verdict supportable or not supportable, and no other row.", "programmatic": {"fact": "comparison_claim_structure_error_count", "equals": 0}}
+    ],
+    "skill_adherence": [
+      {"id": "overrides_followed", "check": "The ten cells where a page's changelog or FAQ overrides its plan table follow the newer source (rule 3): Quillhour entry_min_users 3, Ticklog api_on_entry and approvals_on_entry yes, Fenwork trial_days 30 and entry_price_usd 24.00, Pacemark sso_on_entry yes and sso_cheapest_plan Plus, Hourglen trial_days 14, Ledgerline entry_min_users 2 and sso_cheapest_plan Team. One wrong fails.", "programmatic": {"fact": "comparison_override_cell_error_count", "equals": 0}},
+      {"id": "not_stated_kept", "check": "The 17 cells their pages do not state are exactly `not stated`: Brisktime free_plan, mobile_app and dpa; Quillhour top_plan_price_usd (Contact sales) and uptime_sla_percent (a status page); Fenwork entry_projects and dpa; Larchpoint entry_projects, api_on_entry and soc2_type2; Pacemark top_plan_price_usd (Contact sales), mobile_app and dpa; Hourglen entry_projects and uptime_sla_percent (an aim); Ledgerline uptime_sla_percent and dpa. A no, a zero or any other value fails.", "programmatic": {"fact": "comparison_not_stated_cell_error_count", "equals": 0}},
+      {"id": "prices_on_a_monthly_basis", "check": "The 17 other price cells are right on the brief's monthly basis (rule 7): the price billed monthly wherever there is one, not a lower annual-billing price (Tallyhour, Quillhour, Clockwell, Pacemark) nor a twelfth of a yearly price (Larchpoint, Ledgerline Business), and a twelfth of the yearly price for a plan sold only on annual billing (Brisktime 23.00 and 35.00, Ledgerline Starter 22.00). One wrong fails.", "programmatic": {"fact": "comparison_price_cell_error_count", "equals": 0}},
+      {"id": "look_alikes_read_right", "check": "The 19 cells decided against a statement nearby that reads otherwise are right: an introduction or feature list the plan table overrides (Brisktime sso_on_entry no; Clockwell budgets_on_entry and phone_support_on_entry no), footnotes (Larchpoint budgets_on_entry no, a paid add-on; Pacemark api_on_entry no, a paid add-on; Ledgerline budgets_on_entry yes, only a cap), a beta or a plan (Ticklog and Ledgerline mobile_app no; Pacemark eu_hosting no), reports not held (Brisktime, Fenwork and Hourglen soc2_type2 no), trials (Ticklog 0, Larchpoint 14, Ledgerline 0, whatever the demos and money-back guarantees say) and the highest SLA on any plan (Ticklog 99.95, Larchpoint 99.9, Clockwell 99.95, Pacemark 99.99). One wrong fails.", "programmatic": {"fact": "comparison_look_alike_cell_error_count", "equals": 0}},
+      {"id": "other_cells_right", "check": "Every other cell (137) is the value its page states. One wrong fails.", "programmatic": {"fact": "comparison_other_cell_error_count", "equals": 0}}
+    ],
+    "best_practices": [
+      {"id": "claim_1_verdict", "check": "Claim 1 (Tallyhour's entry plan is the cheapest) is marked supportable: its 21.00 is below every competitor's entry price on a monthly basis, the lowest of which are Clockwell's 22.00 and Ledgerline's 22.00.", "programmatic": {"fact": "comparison_claim_1_wrong", "equals": 0}},
+      {"id": "claim_2_verdict", "check": "Claim 2 (one of only two with a free plan) is marked not supportable: Brisktime's free_plan is not stated.", "programmatic": {"fact": "comparison_claim_2_wrong", "equals": 0}},
+      {"id": "claim_3_verdict", "check": "Claim 3 (no competitor includes single sign-on on its entry plan) is marked not supportable: Pacemark's changelog puts it on Plus.", "programmatic": {"fact": "comparison_claim_3_wrong", "equals": 0}},
+      {"id": "claim_4_verdict", "check": "Claim 4 (Tallyhour's trial is the longest of those offered) is marked not supportable: Fenwork's trial is 30 days by its FAQ.", "programmatic": {"fact": "comparison_claim_4_wrong", "equals": 0}},
+      {"id": "claim_5_verdict", "check": "Claim 5 (the only entry plan with both approvals and budgets) is marked not supportable: Ledgerline's Starter includes both, its budgets only capped.", "programmatic": {"fact": "comparison_claim_5_wrong", "equals": 0}},
+      {"id": "claim_6_verdict", "check": "Claim 6 (one of only three with a SOC 2 Type II report and EU hosting) is marked supportable: Tallyhour, Quillhour and Clockwell have both, and every other company lacks one, stated.", "programmatic": {"fact": "comparison_claim_6_wrong", "equals": 0}},
+      {"id": "claim_7_verdict", "check": "Claim 7 (Tallyhour's top plan cheaper than that of every competitor with EU hosting) is marked not supportable: Quillhour has EU hosting and its top plan price is not stated.", "programmatic": {"fact": "comparison_claim_7_wrong", "equals": 0}},
+      {"id": "claim_8_verdict", "check": "Claim 8 (every competitor's entry plan needs at least two users) is marked supportable: the fewest is two, Ledgerline's Starter by its changelog.", "programmatic": {"fact": "comparison_claim_8_wrong", "equals": 0}},
+      {"id": "claim_9_verdict", "check": "Claim 9 (the only entry plan with phone support) is marked supportable: every competitor's plan table, which overrides Clockwell's feature list, keeps phone support off its entry plan.", "programmatic": {"fact": "comparison_claim_9_wrong", "equals": 0}},
+      {"id": "blocked_claims_explained", "check": "For every claim the reply marks not supportable, it names in a sentence the company and the attribute whose cell keeps the claim from being supported, and that cell in the reply's own table is what the sentence says it is. A not-supportable verdict with no reason, or with a reason its own table contradicts, fails."}
+    ]
+  }
+}
