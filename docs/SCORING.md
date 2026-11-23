@@ -121,10 +121,13 @@ Every attempt gets one mark in the report's grid:
 
 The runner also computes a 0 to 100 average of each attempt's requirements,
 `composite_score` in `report.json`. This page calls it the **checklist score**.
-The runner's `report.md` heads that column "Score (0–100)" and puts it before
-the task count; `report.html` prints it as "score N/100" under the task
-count; the site calls it "requirements met". Whatever the label, it is not the
-score and not the percentage.
+The runner's `report.md` shows it in the column "Checklist score (0–100)",
+after the task count; `report.html` prints it as "checklist N/100" under the
+task count. On the site, a run's page gives the checklist as a count of
+requirements met (481 of 487, say), never as a percentage. The results from
+before the board started over, kept on the site's earlier page, used this
+figure as their score. Whatever the label, it is not the score and not the
+percentage.
 
 It is a diagnostic because it gives part credit, and a benchmark of
 marketing work should not. A task that misses one requirement of fourteen
@@ -243,8 +246,8 @@ So, with one attempt per task:
   prompts and rubrics. They are useful evidence, not untouched test results.
 - **Holdout** tasks are kept out of tuning. Once their answers have been read
   they are no longer untouched; [Tasks](TASKS.md) records which have been.
-- **The board** (`--split board` on `python -m eval_runner.bench run` and
-  `eval`) is 35 development tasks, five in each of seven areas, listed in
+- **The board** (`--split board` on `./eval.py` and on
+  `python -m eval_runner.bench run` and `eval`) is 35 development tasks, five in each of seven areas, listed in
   `eval_runner/board.json` with the tasks held back and left out.
 
 ## Tokens, time and cost

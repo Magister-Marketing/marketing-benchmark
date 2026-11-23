@@ -1647,7 +1647,7 @@ def test_report_scoreboard_html_and_json(tmp_path, capsys):
     assert "direct-api harness" in report
     assert "- Harness: direct-api" in report
     assert "## Results at a glance" in report
-    assert "| Model | Score (0–100) | Pass@1 |" in report
+    assert "| Model | Pass@1 | Checklist score (0–100) |" in report
     assert "**1/1 (100%)**" in report
     assert "**PASS**<br><sub>100.0 · 1/1 criteria</sub>" in report
     assert "Output tokens (total)" in report
