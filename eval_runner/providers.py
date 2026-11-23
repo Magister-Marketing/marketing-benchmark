@@ -40,6 +40,28 @@ OPENROUTER_MODEL_POLICIES = {
         "flex": False,
         "supports_reasoning": True,
     },
+    # The Gemini 4 family (2026-11-20): the same ZDR Vertex route as 3.8
+    # Flash, with a reasoning effort.
+    "google/gemini-4-hydrogen": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": True,
+    },
+    "google/gemini-4-argon": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": True,
+    },
+    "google/gemini-4-carbon": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": True,
+    },
+    "google/gemini-4-neon": {
+        "providers": ["google-vertex"],
+        "flex": False,
+        "supports_reasoning": True,
+    },
     "z-ai/glm-5.3": {
         "providers": ["fireworks", "together", "parasail", "novita"],
         "flex": False,

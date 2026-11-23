@@ -254,5 +254,50 @@
       "input_per_mtok": 0.1,
       "output_per_mtok": 0.5
     }
+  },
+  "claude-opus-5-5-medium": {
+    "model": "anthropic/claude-opus-5-5",
+    "reasoning_effort": "medium",
+    "max_output_tokens": 32000,
+    "pricing": {
+      "input_per_mtok": 4.0,
+      "output_per_mtok": 20.0
+    }
+  },
+  "gemini-4-hydrogen-medium": {
+    "model": "openrouter/google/gemini-4-hydrogen",
+    "reasoning_effort": "medium",
+    "pricing": {
+      "input_per_mtok": 1.5,
+      "output_per_mtok": 7.5
+    },
+    "max_output_tokens": 65536
+  },
+  "gemini-4-argon-medium": {
+    "model": "openrouter/google/gemini-4-argon",
+    "reasoning_effort": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    },
+    "max_output_tokens": 65536
+  },
+  "gemini-4-carbon-medium": {
+    "model": "openrouter/google/gemini-4-carbon",
+    "reasoning_effort": "medium",
+    "pricing": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    },
+    "max_output_tokens": 65536
+  },
+  "gemini-4-neon-medium": {
+    "model": "openrouter/google/gemini-4-neon",
+    "reasoning_effort": "medium",
+    "pricing": {
+      "input_per_mtok": 3.0,
+      "output_per_mtok": 15.0
+    },
+    "max_output_tokens": 65536
   }
 }
