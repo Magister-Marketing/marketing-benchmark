@@ -20,14 +20,18 @@ Each file's own version is in its frontmatter. At this pin:
 | `ad-creative/SKILL.md` | `skills/ad-creative/SKILL.md` | 2.9.4 |
 | `ads/SKILL.md` | `skills/ads/SKILL.md` | 2.2.1 |
 | `analytics/SKILL.md` | `skills/analytics/SKILL.md` | 2.3.2 |
+| `attribution/SKILL.md` | `skills/attribution/SKILL.md` | 1.1.9 |
+| `cold-email/SKILL.md` | `skills/cold-email/SKILL.md` | 2.0.0 |
 | `competitor-profiling/SKILL.md` | `skills/competitor-profiling/SKILL.md` | 2.0.1 |
 | `content-strategy/SKILL.md` | `skills/content-strategy/SKILL.md` | 2.0.1 |
+| `conversion-tracking/SKILL.md` | `skills/conversion-tracking/SKILL.md` | 1.0.6 |
 | `copy-editing/SKILL.md` | `skills/copy-editing/SKILL.md` | 2.0.0 |
 | `copywriting/SKILL.md` | `skills/copywriting/SKILL.md` | 2.1.7 |
 | `cro/SKILL.md` | `skills/cro/SKILL.md` | 2.0.0 |
 | `emails/SKILL.md` | `skills/emails/SKILL.md` | 2.0.3 |
 | `influencer-marketing/SKILL.md` | `skills/influencer-marketing/SKILL.md` | 1.4.3 |
 | `launch/SKILL.md` | `skills/launch/SKILL.md` | 2.0.1 |
+| `marketing-plan/SKILL.md` | `skills/marketing-plan/SKILL.md` | 1.2.3 |
 | `seo-audit/SKILL.md` | `skills/seo-audit/SKILL.md` | 2.0.0 |
 | `site-architecture/SKILL.md` | `skills/site-architecture/SKILL.md` | 2.0.0 |
 
@@ -39,6 +43,24 @@ skills, they contain workspace conventions (BRAND.md checks, "ask if not
 provided") that a single-shot benchmark prompt cannot satisfy; applying the
 skill sensibly with only the supplied fixtures is part of what the benchmark
 measures.
+
+## Which skill a task carries
+
+One rule for every board task: a task carries the skill or skills whose
+catalog description, at the pinned commit, names the work the task asks for.
+A skill whose description places that work elsewhere comes off. A Magister
+agent chooses skills from the same descriptions, so this is the choice the
+pack makes for itself: cold outbound carries `cold-email` (the `emails`
+description covers lifecycle sequences), a crawl triage carries `seo-audit`
+(`site-architecture` says "see seo-audit"), an attribution question carries
+`attribution`.
+
+Routing was last set by this rule on 2026-11-23, when eleven board tasks
+changed skills (the list is in the pull request for issue #42). A task's
+assembled prompt changes with its skills, so a "with skills" result from
+before that date is not comparable, on those tasks, with one from after.
+Apply the rule again when a refresh changes a description or adds a skill;
+`tests/test_skill_routing.py` checks the parts of it a test can.
 
 To refresh: copy the files from the fork checkout unchanged and update the
 pinned commit and the versions above. Refresh before any run whose "with

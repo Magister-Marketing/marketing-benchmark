@@ -9,7 +9,7 @@
     "eval_runner/fixtures/search-terms/search_terms_report.csv"
   ],
   "skills": [
-    "evals/fixtures/public/skills/analytics/SKILL.md"
+    "evals/fixtures/public/skills/ads/SKILL.md"
   ],
   "answers": {
     "count": 4,

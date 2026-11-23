@@ -11,7 +11,7 @@
   ],
   "skills": [
     "evals/fixtures/public/skills/cro/SKILL.md",
-    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+    "evals/fixtures/public/skills/copywriting/SKILL.md"
   ],
   "prompt": "Repair the supplied flawed landing page for Harborline Sleep Education. Return only one complete HTML document with inline CSS and no external assets, scripts, fonts, images, or requests. Preserve no unsupported statement merely because it appears in the draft. Use the cautious-visitor section order: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is not for; common objections; next step. Use exactly one h1 and ordered heading levels. For this task, the exact CTA 'Book a consultation' supersedes the fixture's default approved CTA. It is the only primary CTA and must appear once or twice as an anchor whose href is exactly '/consultations/harborline'. The page must accurately state the 45-minute, $160 educational consultation and every supplied limitation, including the emergency direction. Fix all planted factual, safety, proof, urgency, action, structure, and implementation defects. Output only HTML.",
   "rubric": {

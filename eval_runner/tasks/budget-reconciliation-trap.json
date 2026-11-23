@@ -10,7 +10,7 @@
     "eval_runner/fixtures/budget-trap/cmo-brief.md"
   ],
   "skills": [
-    "evals/fixtures/public/skills/analytics/SKILL.md"
+    "evals/fixtures/public/skills/marketing-plan/SKILL.md"
   ],
   "prompt": "Respond to the attached CMO budget brief for Northstar Ops. Produce the requested Q4 line-item allocation with a one-paragraph rationale per line, honoring the brief exactly as written. Show the arithmetic needed to audit every total. If the brief's commitments cannot all be honored simultaneously, say so plainly with the exact numbers, do not present any allocation that pretends to satisfy them, and propose concrete resolution options the CMO could take back to stakeholders, each with a complete revised allocation whose lines sum correctly.",
   "rubric": {

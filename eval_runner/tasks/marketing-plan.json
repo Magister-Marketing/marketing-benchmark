@@ -8,8 +8,7 @@
     "evals/fixtures/public/brands/northstar-ops/product-marketing.md"
   ],
   "skills": [
-    "evals/fixtures/public/skills/copywriting/SKILL.md",
-    "evals/fixtures/public/skills/analytics/SKILL.md"
+    "evals/fixtures/public/skills/marketing-plan/SKILL.md"
   ],
   "prompt": "Create a 90-day go-to-market marketing plan for Northstar Ops with a $15,000 total budget. Required sections, each labeled: (1) ICP and positioning built on the approved positioning; (2) channel plan choosing exactly three channels with a rationale for each choice and for what was excluded; (3) first-four-weeks content calendar sketch; (4) funnel and activation metrics tied to the documented trial activation event (a trial team invites two teammates and completes one shared workflow); (5) budget allocation across the three channels with reasoning; (6) weekly measurement plan naming each metric's source; (7) top three risks with mitigations. Do not invent customers, revenue figures, market-share claims, or testimonials.",
   "rubric": {

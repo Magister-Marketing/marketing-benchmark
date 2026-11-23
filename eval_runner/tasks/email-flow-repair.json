@@ -11,7 +11,7 @@
   ],
   "skills": [
     "evals/fixtures/public/skills/emails/SKILL.md",
-    "evals/fixtures/public/skills/copywriting/SKILL.md"
+    "evals/fixtures/public/skills/copy-editing/SKILL.md"
   ],
   "prompt": "An agency delivered the attached draft onboarding email sequence for the Cedar & Coil Arc Clip Lamp. Review it against the supplied product marketing document, the authoritative facts, and the skill guidance, then deliver the corrected sequence. Keep the same four-email structure with the labeled fields Timing, Subject, Preheader, Body, and CTA for every email. Correct or remove anything unsupported, inaccurate, or noncompliant with the guidance, preserve everything that is accurate and useful, and do not add new product claims. Output only the corrected sequence.",
   "rubric": {
