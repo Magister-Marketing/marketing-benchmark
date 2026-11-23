@@ -11,6 +11,10 @@ Before opening a change:
    validators.
 4. Run `make check` without provider credentials or paid model calls.
 5. Document any compatibility change to a manifest or plugin contract.
+6. Keep the docs in step with the change. A task added, changed, or moved on
+   or off the board goes into `eval_runner/board.json` (checked by
+   `tests/test_board.py`), `docs/TASKS.md` and `CHANGELOG.md` together. A
+   change to how answers are checked or counted goes into `docs/SCORING.md`.
 
 The final public contribution policy, code of conduct, and licensing terms are
 release blockers and have not been approved yet.

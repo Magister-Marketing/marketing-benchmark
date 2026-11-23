@@ -3960,7 +3960,7 @@ def _render_report_html(
             f'data-jump-model="{h(model_id)}">{h(model_id)}</button></td>',
             '<td class="matrix-score"><span class="score-main">'
             f'{row["tasks_passed"]}/{row["tasks_total"]}</span>'
-            f'<span class="score-sub">score {row["composite_score"]}/100 · '
+            f'<span class="score-sub">checklist {row["composite_score"]}/100 · '
             f'{h(run_detail)}</span></td>',
         ]
         for task_id in task_ids:
@@ -4597,7 +4597,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         "",
         "## Results at a glance",
         "",
-        f"| Model | Score (0–100) | {_score_column_label(repetitions)} | "
+        # The score first: tasks fully right, with its share of the tasks. The 0 to 100
+        # checklist average is a diagnostic and is labelled as one, never as "the score".
+        f"| Model | {_score_column_label(repetitions)} | Checklist score (0–100) | "
         + " | ".join(task_ids)
         + " | Output tokens (total) | Candidate cost (total) | Avg task time |",
         "|---|---:|---:|" + "---:|" * len(task_ids) + "---:|---:|---:|",
@@ -4621,7 +4623,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 f"{_criterion_fraction(tally)}</sub>"
             )
         lines.append(
-            f"| {row['model_id']} | **{row['composite_score']}** | {score} | "
+            f"| {row['model_id']} | {score} | {row['composite_score']} | "
             + " | ".join(task_cells)
             + f" | {row['total_tokens']} | {row['total_cost']} | "
             f"{row['average_latency']} |"
@@ -4667,7 +4669,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- Human-verified verdicts: {len(human)} of {len(verdicts)}",
         f"- Grade label: {label or 'default'}",
         "- Score: one point per task only when every criterion and configured run passes",
-        "- Score (0–100): mean of per-task scores; a task's score is the mean of its "
+        "- Checklist score (0–100): a diagnostic, not the score. The mean of per-task "
+        "checklist scores; a task's is the mean of its "
         "criterion scores (banded numeric checks earn partial credit), capped "
         f"at {GATED_SCORE_CAP:g} when a critical criterion fails or the deliverable "
         "is incomplete, and 0 when a critical criterion fails on oracle evidence "

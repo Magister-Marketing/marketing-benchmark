@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Docs: brought up to date with the board of November 23, 2026 and the code
+  that made it. `docs/SCORING.md` is the whole method: program checks, then
+  the judge with evidence, then the oracle; the score is tasks fully right,
+  and its only percentage is the share of tasks; right on average; the 0 to
+  100 average is the checklist score, a diagnostic with its caps, never the
+  score; `T` (out of output) and `E` (run error) as the code counts them; the
+  three setups; what "not human-verified" and a gap of a few tasks with one
+  attempt do and do not mean. `docs/TASKS.md` lists the 35 board tasks by
+  area, then the four held back and the ten left out as `board.json` records
+  them, with check counts taken from the rubrics (it had five tasks twice and
+  stale counts). New `docs/SIMULATED_COMPANIES.md` describes the
+  simulated-company tasks, which are not on the board. `MAGISTER_INTEGRATION.md`
+  and `ARCHITECTURE.md` describe how the Magister setup is actually run (a
+  test lane, a clean brand for every attempt) and the runner that makes the
+  board. The README's commands now match the code. No task, rubric or fixture
+  changed.
+- Reports: the score comes first and the checklist average is labelled as what
+  it is. `report.md`'s table now reads Model, `Pass@1` (tasks fully right and
+  their share of the tasks), then "Checklist score (0–100)", where it had
+  "Score (0–100)" first; `report.html` says "checklist N/100" under the task
+  count, where it said "score N/100". A percent of requirements met beside a
+  task count read like the score and is not it. `report.json` is unchanged.
+- Runner: `./eval.py` takes `--split board`, like `python -m eval_runner.bench
+  run` and `eval`, so one line runs, grades and reports the open board.
 - Board: `eval_runner/board.json` names the open board, seven areas of
   marketing with five tasks each (35 of the 45 development tasks), the four
   tasks held back, and the ten open tasks left out with why (fully right on

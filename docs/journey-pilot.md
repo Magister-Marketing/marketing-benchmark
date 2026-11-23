@@ -1,5 +1,10 @@
 # Realistic journey pilot v1
 
+[Back to the overview](../README.md) · [How scoring works](SCORING.md)
+
+A development suite of September 2026, run by `python -m eval_runner.journeys`.
+It is separate from the board: nothing here feeds the board's score.
+
 This is a small development suite, not a production reliability estimate or a
 leaderboard replacement. All names, messages, metrics and sites are invented.
 The scenarios reflect common workflows: iterative drafting, correcting a site
@@ -83,8 +88,9 @@ task rubrics and records judge-protocol provenance; earlier scores remain intact
 
 ## Journey grading protocol 3
 
-Conversation grading now has its own protocol version (3), retaining the shared
-single-answer instruction version (2) separately. It requires an ordered audit
+Conversation grading has its own protocol version (3). Each journey judgment
+also records the single-answer judge protocol it builds on
+(`base_judge_protocol_version`), which is 4 today. It requires an ordered audit
 of every response, checks budget pacing and full decision conditions across
 current deliverables, and permits lower budgets, requested revisions and
 explicitly superseded history. The native worksheet scenario requires verified

@@ -1,9 +1,20 @@
 # Fresh single-model comparison
 
+[Back to the overview](../README.md) · [How scoring works](SCORING.md)
+
+This is the procedure written for a strict single-model comparison in
+September 2026 (first written 2026-09-22). It is not how the board of
+November 23, 2026 was run: that board used the 35 board tasks, three models
+at medium effort, provider tools off, one attempt each, and three setups
+([How it is scored](SCORING.md#the-three-setups)). The strict-mode options
+below still exist on `python -m eval_runner.bench run`.
+
 Use the existing 20 direct-compatible tasks and a fixed evaluator for the
 first refreshed comparison. The decoy task, which needs a prior turn, was not
 in that set; the direct runner now sends that turn (two calls in one
-conversation), so the commands below, which name no `--tasks`, include it.
+conversation). The commands below name no `--tasks` or `--split`, so today
+they run every task in `eval_runner/tasks/`, not those 20; add `--tasks` to
+repeat that comparison.
 Previously inspected tasks, including those still labelled
 `holdout` in historical manifests, are development evidence here.
 

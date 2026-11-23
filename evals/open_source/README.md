@@ -7,6 +7,12 @@ It includes credential-free replay MCP fixtures, Claude Code and Codex CLI
 adapters, direct OpenAI Responses support, and a generic subprocess/JSONL
 adapter.
 
+This describes the agent-system engine in `evals/` and the `marketing-benchmark`
+command. The board at https://marketingbenchmark.ai is made by a different
+runner in the same repository, `eval_runner/` (`./eval.py` and
+`python -m eval_runner.bench`), which the repository's main README and
+`docs/SCORING.md` describe.
+
 No provider call occurs during validation, planning, grading, judging-packet
 generation, reporting, conformance, or replay-server tests. A generation run
 is paid and requires an adapter-specific confirmation plus a reviewed cost cap.

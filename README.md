@@ -16,7 +16,9 @@ Live board: **https://marketingbenchmark.ai** — every run, every answer, and
 every judge verdict, criterion by criterion. The board of November 23, 2026:
 three models at medium reasoning effort, the same 35 tasks (`--split board`),
 one attempt each, in three setups. The number is tasks fully right: a task
-counts only when the answer met every requirement in its brief.
+counts only when the answer met every requirement in its brief. The judge is
+Claude Sonnet 5.5 (`claude-sonnet-5-5`). The only percentage shown beside a
+score is that count as a share of the 35 tasks: 32 of 35 is 91%.
 
 | Model | Model only | + Marketing Skills | Inside Magister |
 |---|---:|---:|---:|
@@ -46,8 +48,8 @@ What to hold in mind when reading it:
 When skills are on (the default), each task's prompt carries the relevant
 **verbatim SKILL.md files from
 [marketingskills](https://github.com/coreyhaines31/marketingskills)**, the
-open marketing skill pack by Corey Haines, co-founder of Magister — the same
-files, at the same pinned commit, that ship on every Magister agent machine.
+open marketing skill pack by Corey Haines, co-founder of Magister: copied
+unchanged at the commit Magister's agent machines ran on 2026-11-20.
 `--no-skills` drops those blocks and changes nothing else, which is what
 makes the skills-vs-no-skills comparison a clean ablation. Provenance and
 the exact pin: [`evals/fixtures/public/skills/README.md`](evals/fixtures/public/skills/README.md).
@@ -56,9 +58,11 @@ the exact pin: [`evals/fixtures/public/skills/README.md`](evals/fixtures/public/
 
 | Guide | What it explains |
 |---|---|
-| **1. [Tasks](docs/TASKS.md)** | What the models are asked to do and the difference between development and holdout tasks. |
-| **2. [How it is scored](docs/SCORING.md)** | How an answer becomes a pass or fail, how repeats work, and what the efficiency numbers mean. |
-| **3. [Scored examples](docs/SCORED_EXAMPLES.md)** | Real answers from the run of August 31, 2026, what the judge noticed, and why each example passed or failed. |
+| **1. [Tasks](docs/TASKS.md)** | The board's 35 tasks in seven areas: what each asks for and what makes it hard, and the tasks held back or left out. |
+| **2. [How it is scored](docs/SCORING.md)** | How an answer is checked, what makes it right, the score and its percentage, how errors and cut-off answers count, and the three setups. |
+| **3. [Simulated companies](docs/SIMULATED_COMPANIES.md)** | A newer kind of task, not on the board yet: a model works inside an invented company, and code checks the company afterwards. |
+| **4. [Magister integration](docs/MAGISTER_INTEGRATION.md)** | How the Magister setup is run: on a test lane, every attempt from a clean brand. |
+| **5. [Scored examples](docs/SCORED_EXAMPLES.md)** | Three answers from a development run of August 20, 2026, and why each passed or failed. |
 
 ## What this benchmark does
 
@@ -71,7 +75,8 @@ For every task, the runner:
 3. creates an HTML report where every score can be traced back to the task,
    answer, and judge explanation.
 
-The main score is intentionally simple: **tasks passed ÷ tasks attempted**.
+The score is simple: **the number of tasks fully right**. Its percentage is
+that number as a share of the tasks.
 
 ## Run it yourself
 
@@ -101,17 +106,28 @@ The runner shows the number of paid API calls before it starts. When it
 finishes, it prints the location of the results. Open `report.html` for the
 shareable report.
 
-To reproduce the two direct configurations of the latest run:
+To run one model's two direct setups as the board of November 23, 2026 ran
+them (the 35 board tasks, medium effort, provider tools off, one attempt,
+judged by `claude-sonnet-5-5`):
 
 ```bash
-./eval.py gpt-5.6-sol-high --tools --env-file .env.local            # + skills
-./eval.py gpt-5.6-sol-high --tools --no-skills --env-file .env.local # plain
+# + Marketing Skills, then model only: each runs, grades and writes its report
+./eval.py gpt-6.2-sol-medium --split board --judge claude-sonnet-5-5 --env-file .env.local
+./eval.py gpt-6.2-sol-medium --split board --no-skills --judge claude-sonnet-5-5 --env-file .env.local
 ```
 
-The Magister configuration runs the same tasks through the production
-Magister agent on an internal test project, so it cannot be reproduced from
-this repository alone — its prompts, answers, and verdicts are published on
-the board like every other configuration.
+The board's other two models are `claude-opus-5-5-medium` and
+`gemini-4-neon-medium`. The same steps one at a time, for a run you want to
+grade later or again: `python -m eval_runner.bench run --models <id> --split
+board`, then `grade --run <run folder> --judge claude-sonnet-5-5`, then
+`report --run <run folder>`.
+
+The Magister setup runs the same tasks through Magister's agent on a test
+lane (an isolated copy of the product, not production), from Magister's own
+private repository, so it cannot be reproduced from this repository alone.
+Its prompts, answers and verdicts are published on the board like every
+other setup's. How it is run:
+[Magister integration](docs/MAGISTER_INTEGRATION.md).
 
 ### Agent arms
 
@@ -128,6 +144,12 @@ grades it with the site's judge, adds it to the site's data, and drafts a
 post for X. It needs a checkout of the site
 ([marketing-benchmark-web](https://github.com/Magister-Marketing/marketing-benchmark-web)),
 which sets the tasks and the judge, and Python 3.11 or newer (`PYTHON=.venv/bin/python`).
+
+It adds the model to the site's model board
+(`data/experiments/20261118-model-board` in the site's checkout), with
+provider web search on (`--tools`) and three attempts per task unless
+`reps=` says otherwise. It does not add a run to the board of November 23,
+2026, whose direct setups ran with tools off and one attempt per task.
 
 ```bash
 # 1. See the plan and the cost estimate; spends nothing
@@ -188,16 +210,19 @@ its single-call numbers beside the Magister run.
 
 ## Eval options
 
+The options of `./eval.py` (`./eval.py --help` lists them):
+
 | Option | Meaning |
 |---|---|
 | `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
 | `--split development` | Run tasks used for improving and checking the benchmark. |
 | `--split holdout` | Run the tasks kept out of tuning. [docs/TASKS.md](docs/TASKS.md) records which of them have had results read. |
-| `--split board` | Run the open board: seven areas of marketing, five tasks each, as listed in [eval_runner/board.json](eval_runner/board.json) with the tasks left out and why. |
-| `--repetitions 3` | Ask for three answers per model and task. All three must pass. The default is one. |
+| `--split board` | Run the open board: seven areas of marketing, five tasks each, as listed in [eval_runner/board.json](eval_runner/board.json) with the tasks held back and left out. |
+| `--repetitions 3` | Ask for three answers per model and task. All three must be right for the task to count. The default is one. |
 | `--no-skills` | Leave the marketingskills guidance out of the prompt (see the skills provenance note above). |
-| `--tools` | Allow the answering model to use provider-hosted web search. |
-| `--judge MODEL` | Choose the model that grades requirements needing interpretation. |
+| `--tools` | Allow the answering model to use provider-hosted web search. The board's direct setups ran without it. |
+| `--judge MODEL` | Choose the judge, the model that grades the requirements a program cannot check. The default is `claude-sonnet-5`; the board used `claude-sonnet-5-5`. |
+| `--judge-b MODEL` | Also grade with a second judge and report how often the two agree (paid). |
 | `--env-file PATH` | Load API keys from a local file. |
 | `-y` or `--yes` | Skip the paid-call confirmation. |
 

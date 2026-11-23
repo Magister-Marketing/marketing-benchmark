@@ -3,9 +3,15 @@
 [Back to the overview](../README.md) · [See all tasks](TASKS.md) ·
 [How scoring works](SCORING.md)
 
-These shortened examples come from the August 20, 2026 development run shown
-in the README. Each model answered each task once, skills were included, and
-web tools were off. The judge verdicts have not been human-verified.
+These shortened examples come from a development run of August 20, 2026
+(`20260820-234113-2b224909`: GPT-5.6 Luna at medium and at x-high effort).
+Each model answered each task once, with the skills in the prompt and web
+search off. The run was graded by Claude Sonnet 5 under the first judge
+protocol, with the rubric versions of that day; the ad performance rubric has
+changed since (version 2 then, 5 now). The examples show how the pass/fail
+rule works. They are not from the board, whose answers and verdicts are on
+https://marketingbenchmark.ai. The judge verdicts have not been
+human-verified.
 
 ## Example 1: one subtle detail changes the result
 
