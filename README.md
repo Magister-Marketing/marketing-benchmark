@@ -271,5 +271,5 @@ folder is ignored by Git unless a reviewed result is deliberately published.
 
 Built by [Magister Marketing](https://magistermarketing.com).
 
-> **Private staging project.** This repository is not currently open source
-> and does not grant a redistribution license.
+Released under the [MIT License](LICENSE). To report a security problem, see
+[SECURITY.md](SECURITY.md).
