@@ -111,18 +111,16 @@ them (the 35 board tasks, medium effort, provider tools off, one attempt,
 judged by `claude-sonnet-5-5`):
 
 ```bash
-# + Marketing Skills, then model only; each prints its run folder
-python -m eval_runner.bench run --models gpt-6.2-sol-medium --split board --env-file .env.local
-python -m eval_runner.bench run --models gpt-6.2-sol-medium --split board --no-skills --env-file .env.local
-
-# grade and report each run folder
-python -m eval_runner.bench grade --run eval_runner/results/<run-id> --judge claude-sonnet-5-5 --env-file .env.local
-python -m eval_runner.bench report --run eval_runner/results/<run-id>
+# + Marketing Skills, then model only: each runs, grades and writes its report
+./eval.py gpt-6.2-sol-medium --split board --judge claude-sonnet-5-5 --env-file .env.local
+./eval.py gpt-6.2-sol-medium --split board --no-skills --judge claude-sonnet-5-5 --env-file .env.local
 ```
 
 The board's other two models are `claude-opus-5-5-medium` and
-`gemini-4-neon-medium`. `./eval.py` does not accept `--split board`; use
-`python -m eval_runner.bench` as above.
+`gemini-4-neon-medium`. The same steps one at a time, for a run you want to
+grade later or again: `python -m eval_runner.bench run --models <id> --split
+board`, then `grade --run <run folder> --judge claude-sonnet-5-5`, then
+`report --run <run folder>`.
 
 The Magister setup runs the same tasks through Magister's agent on a test
 lane (an isolated copy of the product, not production), from Magister's own
@@ -219,6 +217,7 @@ The options of `./eval.py` (`./eval.py --help` lists them):
 | `--tasks headline,blog-post` | Run only the named tasks. Without this, every task is selected. |
 | `--split development` | Run tasks used for improving and checking the benchmark. |
 | `--split holdout` | Run the tasks kept out of tuning. [docs/TASKS.md](docs/TASKS.md) records which of them have had results read. |
+| `--split board` | Run the open board: seven areas of marketing, five tasks each, as listed in [eval_runner/board.json](eval_runner/board.json) with the tasks held back and left out. |
 | `--repetitions 3` | Ask for three answers per model and task. All three must be right for the task to count. The default is one. |
 | `--no-skills` | Leave the marketingskills guidance out of the prompt (see the skills provenance note above). |
 | `--tools` | Allow the answering model to use provider-hosted web search. The board's direct setups ran without it. |
@@ -226,11 +225,6 @@ The options of `./eval.py` (`./eval.py --help` lists them):
 | `--judge-b MODEL` | Also grade with a second judge and report how often the two agree (paid). |
 | `--env-file PATH` | Load API keys from a local file. |
 | `-y` or `--yes` | Skip the paid-call confirmation. |
-
-To run the open board, seven areas of marketing with five tasks each as
-listed in [eval_runner/board.json](eval_runner/board.json) with the tasks held
-back and left out, pass `--split board` to `python -m eval_runner.bench run`
-or `eval`; `./eval.py` does not accept it.
 
 Every run stores its exact prompts, answers, judgments, configuration, and
 HTML, Markdown, and JSON reports under `eval_runner/results/<run-id>/`. This

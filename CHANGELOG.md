@@ -16,9 +16,16 @@
   simulated-company tasks, which are not on the board. `MAGISTER_INTEGRATION.md`
   and `ARCHITECTURE.md` describe how the Magister setup is actually run (a
   test lane, a clean brand for every attempt) and the runner that makes the
-  board. The README's commands now match the code: `./eval.py` does not take
-  `--split board`, so the board is run with `python -m eval_runner.bench`.
-  No code, task, rubric, fixture or test changed.
+  board. The README's commands now match the code. No task, rubric or fixture
+  changed.
+- Reports: the score comes first and the checklist average is labelled as what
+  it is. `report.md`'s table now reads Model, `Pass@1` (tasks fully right and
+  their share of the tasks), then "Checklist score (0–100)", where it had
+  "Score (0–100)" first; `report.html` says "checklist N/100" under the task
+  count, where it said "score N/100". A percent of requirements met beside a
+  task count read like the score and is not it. `report.json` is unchanged.
+- Runner: `./eval.py` takes `--split board`, like `python -m eval_runner.bench
+  run` and `eval`, so one line runs, grades and reports the open board.
 - Board: `eval_runner/board.json` names the open board, seven areas of
   marketing with five tasks each (35 of the 45 development tasks), the four
   tasks held back, and the ten open tasks left out with why (fully right on

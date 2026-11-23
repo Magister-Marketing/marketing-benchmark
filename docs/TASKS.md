@@ -29,7 +29,7 @@ lists, and `tests/test_board.py` fails the build otherwise:
 - **left out**: 10 open tasks that stay in the repository and run by id, but
   are not on the board, each with the reason.
 
-`--split board` runs the board's 35 in the file's order (on
+`--split board` runs the board's 35 in the file's order (on `./eval.py`,
 `python -m eval_runner.bench run` and `python -m eval_runner.bench eval`).
 
 The descriptions below say what each task asks for and what makes it hard,

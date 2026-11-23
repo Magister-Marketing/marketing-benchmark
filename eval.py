@@ -6,6 +6,7 @@
     ./eval.py claude-haiku-4-5 --no-skills -y        # baseline arm, no prompt
     ./eval.py gpt-5.6-sol --tasks headline,blog-post # a task subset
     ./eval.py claude-sonnet-5 --split holdout         # the split kept out of tuning
+    ./eval.py claude-opus-5-5-medium --split board    # the open board's 35 tasks
     ./eval.py claude-sonnet-5 --repetitions 3         # explicitly run each task 3x
 
 The current execution harness is `direct-api`, and every new run records that
@@ -49,8 +50,8 @@ def main() -> int:
     )
     parser.add_argument("--tasks", help="comma-separated task ids (default: all)")
     parser.add_argument(
-        "--split", choices=("all",) + bench.TASK_SPLITS, default="all",
-        help="run all tasks or one task split (ignored when --tasks is set)",
+        "--split", choices=bench.TASK_SETS, default="all",
+        help="run all tasks, one task split, or the open board of 35 (ignored when --tasks is set)",
     )
     parser.add_argument(
         "--repetitions", type=int, default=bench.REPETITIONS_DEFAULT,
