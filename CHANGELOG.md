@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- `make bench-model` puts a model on the board the site's home page charts,
+  and says its score as the board does. It wrote to the model board retired
+  on 2026-11-20 (`data/experiments/20261118-model-board`), ran with provider
+  web search on and three attempts per task, and its draft post led with the
+  0 to 100 checklist average ("scored 97.9/100"). It now reads the board from
+  the site (`src/lib/current-meta.ts` names it) and runs as that board ran:
+  `--split board` (refused when `board.json` lists other tasks than the site),
+  tools off, the board's effort and judge, one attempt per task unless
+  `reps=`. The switches keep their names: none makes + Marketing Skills,
+  `plain=1` adds Model only, `inside=1` makes Inside Magister alone through
+  Magister's `make lane-bench` with the board's tasks (and refuses
+  `plain=1`). An export writes the entry the site reads (run id, setup,
+  judge, `ran_on` for a Magister run) and the model into the board's
+  `models`, and refuses first, changing nothing, what the site refuses:
+  another judge, tools on, a board task missing or titled otherwise, an
+  attempt lost to a run error (retry it first), another harness, a model at
+  another effort. The draft leads with tasks fully right ("got 26 of 35
+  marketing tasks fully right ... with the Marketing Skills, 20 without"),
+  ranks by tasks fully right with ties said as ties, states the attempts per
+  task, and links the run's page. The old board's helpers (its task
+  intersection, multi-effort names, references, score and cent formatting,
+  the run-error records) are gone; the site's earlier page still reads that
+  board, which this command no longer writes.
 - Docs: brought up to date with the board of November 23, 2026 and the code
   that made it. `docs/SCORING.md` is the whole method: program checks, then
   the judge with evidence, then the oracle; the score is tasks fully right,

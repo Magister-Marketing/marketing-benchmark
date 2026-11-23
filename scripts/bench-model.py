@@ -1,35 +1,56 @@
 #!/usr/bin/env python3
-"""Benchmark one model and put it on the results site, in one command.
+"""Benchmark one model on the results site's board, in one command.
 
-    make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web dry_run=1
-    make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web confirm=SPEND
-    make bench-model model=gpt-6.1-sol-high web=... plain=1 reps=3 confirm=SPEND
-    make bench-model model=gpt-6.1-sol-high web=... inside=1 magister=../magister-marketing confirm=SPEND
+    make bench-model model=claude-opus-5-5-medium web=../marketing-benchmark-web dry_run=1
+    make bench-model model=claude-opus-5-5-medium web=../marketing-benchmark-web confirm=SPEND
+    make bench-model model=claude-opus-5-5-medium web=... plain=1 confirm=SPEND
+    make bench-model model=claude-opus-5-5-medium web=... inside=1 magister=../magister-marketing confirm=SPEND
     make bench-model export=eval_runner/results/<run> web=...      # no spending
+
+The board is the one the site's home page charts: its checkout's
+src/lib/current-meta.ts names it, and its data/experiments/<board>/meta.json
+sets the runs' settings: the board's tasks (the runner's --split board, which
+must list the same ones), provider tools off, the board's effort (the model's
+id ends in it, e.g. -medium), the board's judge, and one attempt per task
+unless reps= says otherwise.
+
+The setups one invocation makes:
+
+    (default)   + Marketing Skills: ./eval.py <model> --split board --repetitions N --judge <board's> -y
+    plain=1     Model only, then + Marketing Skills (the same, once with --no-skills)
+    inside=1    Inside Magister only, from Magister's private repository on a
+                test lane: magister=<its checkout>'s `make lane-bench lane=<lane,
+                default bench> deploy=0 tasks=<the board's> repetitions=N
+                judge=<the board's>`, which measures the lane as it runs now.
+                Not with plain=1: run the direct setups in a second invocation.
 
 What it does, in order:
 
-1. Refuses a candidate that is not in eval_runner/models.json, and says how to
-   add one.
+1. Refuses, before spending: a candidate that is not in
+   eval_runner/models.json (and says how to add one), one not at the board's
+   effort, one the board already has in a setup it would run, and a runner
+   whose board is not the site's.
 2. Prints a cost estimate (the last comparable run's recorded cost, scaled
    by the candidate's list prices against that run's model's over the same
-   tokens, plus that run's judge cost) and the exact commands it will run. Nothing is spent without `confirm=SPEND`.
-3. Runs the one-call benchmark on the site's tasks: with the skills in the
-   prompt, and also without them when `plain=1` (`./eval.py <model> --tools
-   [--no-skills] --tasks ... --repetitions N --judge <site judge> -y`), which
-   grades the run and writes report.json. With `inside=1` it runs the same
-   tasks through the Magister agent on a test lane instead, through the
-   Magister monorepo's `make lane-bench`.
+   tokens, plus that run's judge cost) and the exact commands it will run.
+   Nothing is spent without confirm=SPEND.
+3. Runs each setup, which grades the run and writes report.json.
 4. Exports each graded run to the site: report.json copied unchanged to
-   data/runs/<run id>.json, and one entry added to the board's meta.json
-   (the setup, the judge from grading.json, any attempt lost to a run error
-   with the runner's record of it, and for a Magister run the test lane it ran
-   on). The site's build checks every number and claim against these files.
-5. Writes a tweet draft, tweet.txt, next to the run: plain text under 280
-   characters, every number read from the site's data the same way the
-   model's page reads it, with the page's URL. Then rewrites the draft of
-   every other run on the board that is on disk, since a new run moves their
-   ranks and counts.
+   data/runs/<run id>.json, the run added to the board's meta.json `runs` (run
+   id, setup, judge, and for a Magister run the test lane it ran on) and the
+   model to its `models`. A run the site would refuse is refused first, with
+   the reason, and nothing is changed: another judge, provider tools on, a
+   board task missing or titled otherwise than the site has it, an attempt
+   lost to a run error (`python -m eval_runner.bench retry` it first), a
+   harness that is none of the board's setups, a Magister run not made on a
+   test lane, a second run of a model in one setup.
+5. Writes a draft post for X, tweet.txt, next to the run: plain text under
+   280 characters, every number read from the site's data the way the board
+   reads it: tasks fully right out of the board's tasks (never the checklist
+   average), the model's other setups on the board, its rank by tasks fully
+   right among the board's runs in the setup (ties said as ties), the
+   attempts per task, and the run's page. Then rewrites the draft of every
+   other run on the board that is on disk, since a new run moves their ranks.
 
 Keys are read from --env-file (only the three provider keys eval.py reads).
 """
@@ -39,25 +60,36 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 import time
-from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELS_FILE = REPO_ROOT / "eval_runner" / "models.json"
 RESULTS_DIR = REPO_ROOT / "eval_runner" / "results"
-# The site's board: which runs it charts and who graded them.
-BOARD_META = Path("data") / "experiments" / "20261118-model-board" / "meta.json"
+# The runner's open board: the tasks --split board runs.
+BOARD_FILE = REPO_ROOT / "eval_runner" / "board.json"
+# The one place the site names the board its home page charts
+# (readCurrentMeta), and where each board's meta.json lives.
+CURRENT_SOURCE = Path("src") / "lib" / "current-meta.ts"
+CURRENT_NAME = re.compile(r'read<CurrentMeta>\(\s*"([^"]+)"\s*\)')
+EXPERIMENTS = Path("data") / "experiments"
 SITE_RUNS = Path("data") / "runs"
+TASK_BLURBS = Path("data") / "task-blurbs.json"
 SITE_URL = "https://marketingbenchmark.ai"
 CONFIRM_WORD = "SPEND"
 TWEET_LIMIT = 280
 HARNESS_PREFIXES = ("magister-", "claude-code-")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# The board's setups, in its order, as the site titles them.
+SETUP_TITLES = {"no-skills": "Model only", "skills": "+ Marketing Skills", "magister": "Inside Magister"}
+# A setup after a count in a post ("19 as the model only"), and after a rank.
+SETUP_WORDS = {"no-skills": "as the model only", "skills": "with the Marketing Skills", "magister": "inside Magister"}
+RANK_WORDS = {"no-skills": "with no skills", "skills": "with the skills", "magister": "inside Magister"}
 
 
 class Refusal(SystemExit):
@@ -96,12 +128,24 @@ def require_candidate(model: str, catalog: dict) -> dict:
 
 # ------------------------------------------------------------- the site
 
+def board_name(web: Path) -> str:
+    """The board the site's home page charts, as src/lib/current-meta.ts names it."""
+    source = web / CURRENT_SOURCE
+    found = CURRENT_NAME.search(source.read_text()) if source.is_file() else None
+    if not found:
+        raise Refusal(
+            f"{web} does not look like the results site: {CURRENT_SOURCE} does not name "
+            'the board its home page charts (read<CurrentMeta>("<experiment>"))'
+        )
+    return found.group(1)
+
+
 def site_paths(web: Path) -> tuple[Path, Path]:
-    meta = web / BOARD_META
+    meta = web / EXPERIMENTS / board_name(web) / "meta.json"
     runs = web / SITE_RUNS
     if not meta.is_file() or not runs.is_dir():
         raise Refusal(
-            f"{web} does not look like the results site: {BOARD_META} or {SITE_RUNS} is missing"
+            f"{web} does not look like the results site: {meta.relative_to(web)} or {SITE_RUNS} is missing"
         )
     return meta, runs
 
@@ -115,13 +159,31 @@ def site_report(web: Path, run_id: str) -> dict:
     return json.loads((web / SITE_RUNS / f"{run_id}.json").read_text())
 
 
-def board_tasks(web: Path, meta: dict) -> list[str]:
-    """The tasks every run on the board has, in the first run's order: the
-    tasks the site scores every run over."""
-    reports = [site_report(web, r["run_id"]) for r in meta["runs"]]
-    if not reports:
-        raise Refusal("the site's board lists no runs")
-    return [t for t in reports[0]["tasks"] if all(t in r["tasks"] for r in reports)]
+def shared_tasks(meta: dict) -> list[str]:
+    """The tasks every setup can do: the board's score is over these."""
+    return [t for t in meta["tasks"] if t not in meta.get("harness_only", [])]
+
+
+def due_tasks(meta: dict, setup: str) -> list[str]:
+    """The tasks a run in this setup must have made, as the site checks: all
+    of the board's for a Magister run, the shared ones for a direct call."""
+    return list(meta["tasks"]) if setup == "magister" else shared_tasks(meta)
+
+
+def runner_board_tasks() -> list[str]:
+    """The tasks --split board runs, area by area (eval_runner.bench.board_task_ids)."""
+    return [t for area in json.loads(BOARD_FILE.read_text())["areas"] for t in area["tasks"]]
+
+
+def require_same_board(meta: dict) -> None:
+    ours, theirs = runner_board_tasks(), list(meta["tasks"])
+    if sorted(ours) != sorted(theirs):
+        raise Refusal(
+            "the runner's board (eval_runner/board.json, what --split board runs) is not the "
+            f"site's (meta.json `tasks`): only in the runner's: "
+            f"{', '.join(t for t in ours if t not in theirs) or 'none'}; only on the site's: "
+            f"{', '.join(t for t in theirs if t not in ours) or 'none'}"
+        )
 
 
 def plain_model(candidate: str) -> str:
@@ -137,70 +199,36 @@ def model_of(report: dict) -> str:
 
 
 def setup_of(report: dict) -> str:
+    """The board setup a report (or run.json) was made in, as the site reads it."""
     harness = report.get("harness") or "direct-api"
-    if harness.startswith("direct-api"):
+    if harness == "direct-api":
         return "skills" if report.get("skills_included") else "no-skills"
-    if harness.startswith("magister-agent"):
+    if harness == "magister-agent":
         return "magister"
-    if harness.startswith("claude-code"):
-        return "claude-code"
-    raise Refusal(f"run {report.get('run_id')} has harness {harness!r}, which the site does not chart")
-
-
-# ---------------------------------------------- numbers, as the site reads them
-
-def js_fixed(value: float, digits: int) -> str:
-    """JavaScript's toFixed: the exact value rounded half up, so the draft
-    prints what the page prints."""
-    quantum = Decimal(1).scaleb(-digits)
-    return str(Decimal(value).quantize(quantum, rounding=ROUND_HALF_UP))
-
-
-def fmt_score(score: float) -> str:
-    return js_fixed(score, 1)
-
-
-def fmt_cents(dollars: float) -> str:
-    value = dollars * 100
-    return f"{js_fixed(value, 1 if value < 10 else 0)}¢"
-
-
-def entry_of(report: dict, tasks: list[str]) -> dict:
-    """What the site's board.ts entryOf reads from a report, over the board's
-    tasks: score, attempts, passes, cost per priced attempt, time."""
-    (candidate, stats), = report["models"].items()
-    scores = stats.get("task_scores") or {}
-    attempts = [
-        dict(task=s["task_id"], **run)
-        for s in report.get("submissions") or []
-        if s["model_id"] == candidate and s["task_id"] in tasks
-        for run in s["runs"]
-    ]
-    priced = [a for a in attempts if a.get("cost_usd") is not None]
-    timed = [a["latency_seconds"] for a in attempts if a.get("latency_seconds") is not None]
-    cost = sum(a["cost_usd"] for a in priced)
-    return {
-        "run_id": report["run_id"],
-        "candidate": candidate,
-        "model": plain_model(candidate),
-        "setup": setup_of(report),
-        "repetitions": report["repetitions"],
-        "score": sum(scores[t] for t in tasks) / len(tasks),
-        "attempts": len(attempts),
-        "passed": sum(1 for a in attempts if a.get("pass")),
-        "tasks_passed": sum(
-            1 for t in tasks if all(a.get("pass") for a in attempts if a["task"] == t)
-        ),
-        "cost_usd": cost,
-        "cost_missing": len(attempts) - len(priced),
-        "cost_per_attempt": cost / len(priced) if priced else 0.0,
-        "seconds": sum(timed) / len(timed) if timed else 0.0,
-    }
+    raise Refusal(
+        f"run {report.get('run_id')} was made with harness {harness!r}; the board's setups are "
+        "model only and + Marketing Skills (direct-api) and inside Magister (magister-agent)"
+    )
 
 
 def effort_of(model: str) -> str | None:
     last = model.split("-")[-1]
     return last if last in EFFORTS else None
+
+
+def base_of(model: str) -> str:
+    effort = effort_of(model)
+    return model[: -(len(effort) + 1)] if effort else model
+
+
+def require_board_effort(model: str, meta: dict) -> None:
+    effort = effort_of(model)
+    if effort != meta["effort"]:
+        raise Refusal(
+            f"the board runs every model at {meta['effort']} effort, and {model} is "
+            f"{f'at {effort} effort' if effort else 'not named with an effort'}: use its "
+            f"-{meta['effort']} id (add that to eval_runner/models.json first if it is missing)"
+        )
 
 
 # The names label_from_id gets wrong (data.ts MODEL_LABELS).
@@ -210,26 +238,10 @@ MODEL_LABELS = {"glm-5.3": "GLM-5.3"}
 def model_label(model: str) -> str:
     """The model's name as the site prints it (data.ts modelMeta: its
     MODEL_LABELS, else the same rule from the bench id), without the effort."""
-    effort = effort_of(model)
-    base = model[: -(len(effort) + 1)] if effort else model
+    base = base_of(model)
     if base in MODEL_LABELS:
         return MODEL_LABELS[base]
     return label_from_id(base)
-
-
-def board_label(model: str, entries: list[dict]) -> str:
-    """The model's name as the site's board prints it (board.ts): with its
-    effort, "GPT-6.2 Sol (low effort)", when the board has the model at more
-    than one effort, else plain."""
-    def base(m: str) -> str:
-        effort = effort_of(m)
-        return m[: -(len(effort) + 1)] if effort else m
-
-    effort = effort_of(model)
-    others = {effort_of(e["model"]) for e in entries if base(e["model"]) == base(model)}
-    if effort and len(others - {None}) > 1:
-        return f"{model_label(model)} ({effort} effort)"
-    return model_label(model)
 
 
 def label_from_id(base: str) -> str:
@@ -250,89 +262,85 @@ def label_from_id(base: str) -> str:
     return " ".join(words)
 
 
-# ------------------------------------------------------------- the tweet
+# ------------------------------------------------------------- the post
+
+def entry_of(report: dict, setup: str, tasks: list[str]) -> dict:
+    """What the board reads from a report over its tasks: its tasks fully
+    right, the tasks on which every attempt was right (fully-right.ts)."""
+    (candidate, _), = report["models"].items()
+    reps = report["repetitions"]
+    passed = dict.fromkeys(tasks, 0)
+    for sub in report.get("submissions") or []:
+        if sub["model_id"] == candidate and sub["task_id"] in passed:
+            passed[sub["task_id"]] += sum(1 for run in sub["runs"] if run.get("pass"))
+    return {
+        "run_id": report["run_id"],
+        "model": plain_model(candidate),
+        "setup": setup,
+        "repetitions": reps,
+        "right": sum(1 for n in passed.values() if n == reps),
+    }
+
 
 def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
-    """A draft under 280 characters about the run, from the site's data: its
-    score, attempts passed, cost per attempt, rank among the board's runs of
-    the same setup, the reference models that have a run in that setup, and,
-    when the model is also the judge, that it is."""
+    """A draft under 280 characters about the run, from the site's data, as
+    the board scores it: tasks fully right out of the board's tasks, the
+    model's other setups on the board, its rank by tasks fully right among
+    the board's runs in the same setup, the attempts per task, the other
+    models in the setup, and the run's page."""
     meta = read_meta(web)
-    tasks = board_tasks(web, meta)
-    entries = [entry_of(site_report(web, r["run_id"]), tasks) for r in meta["runs"]]
+    tasks = shared_tasks(meta)
+    entries = [entry_of(site_report(web, r["run_id"]), r["setup"], tasks) for r in meta["runs"]]
     entry = next((e for e in entries if e["run_id"] == run_id), None)
     if entry is None:
         raise Refusal(f"{run_id} is not on the site's board; export it first")
-    peers = [e for e in entries if e["setup"] == entry["setup"]]
-    # Ranked on the score as printed, as the site ranks (board.ts rankIn): two
-    # runs that print the same score share a rank.
-    shown = lambda e: Decimal(fmt_score(e["score"]))  # noqa: E731
-    rank = 1 + sum(1 for e in peers if shown(e) > shown(entry))
-    tied = sum(1 for e in peers if shown(e) == shown(entry)) > 1
-    label = model_label(entry["model"])
-    effort = effort_of(entry["model"])
-    name = f"{label} ({effort} effort)" if effort else label
-    url = f"{site_url}/models/{entry['model']}"
-    how = {
-        "skills": "One call per task, skills in the prompt.",
-        "no-skills": "One call per task, no skills.",
-        "magister": "Run inside Magister's agent.",
-        "claude-code": "Run inside Claude Code.",
-    }[entry["setup"]]
-    # As the model's page says it (src/lib/models.ts peersWord).
-    peers_word = {
-        "magister": "models inside Magister",
-        "claude-code": "models inside Claude Code",
-    }.get(entry["setup"], "models")
-    lost = entry["cost_missing"]
-    lost_note = f" ({lost} lost to a run error)" if lost else ""
-    # A run ranked against runs with more attempts per task says so, as the
-    # card's dagger does: one draw per task moves more than the mean of three.
-    most = max(e["repetitions"] for e in peers)
-    fewer = entry["repetitions"] < most
-    reps = entry["repetitions"]
-    fewer_note = (
-        f" {reps} attempt{'' if reps == 1 else 's'} per task; others ranked made {most}."
-        if fewer else ""
+    model, setup, reps = entry["model"], entry["setup"], entry["repetitions"]
+    label = model_label(model)
+    name = f"{label} ({meta['effort']} effort)"
+    # The model's other setups on the board, in the board's order, when they
+    # made as many attempts per task.
+    others = "".join(
+        f", {e['right']} {'without' if setup == 'skills' and e['setup'] == 'no-skills' else SETUP_WORDS[e['setup']]}"
+        for s in meta["setups"]
+        for e in entries
+        if e["setup"] == s != setup and e["model"] == model and e["repetitions"] == reps
     )
-    head = (
-        f"{name} scored {fmt_score(entry['score'])}/100 on the Marketing Benchmark, "
-        f"{'tied ' if tied else ''}#{rank} of {len(peers)} {peers_word}: "
-        f"{entry['passed']}/{entry['attempts']} attempts met every requirement"
-        f"{lost_note}, at {fmt_cents(entry['cost_per_attempt'])} an attempt. {how}{fewer_note}"
+    # Ranked on tasks fully right alone: two runs with as many share a rank.
+    peers = [e for e in entries if e["setup"] == setup]
+    rank = 1 + sum(1 for e in peers if e["right"] > entry["right"])
+    tied = sum(1 for e in peers if e["right"] == entry["right"]) > 1
+    counts = sorted({e["repetitions"] for e in peers})
+    mixed = f" (made {' or '.join(map(str, counts))} attempts per task)" if len(counts) > 1 else ""
+    ranked = (
+        f" {'Tied ' if tied else ''}#{rank} of {len(peers)} models {RANK_WORDS[setup]}{mixed}."
+        if len(peers) > 1 else ""
     )
-    # As the model's page and card say it (board.ts gradesItself).
-    effortless = entry["model"][: -len(effort) - 1] if effort else entry["model"]
-    if effortless == meta["judge_model"]:
-        head += " It is also the judge."
-    # A long name with every note can run over. The effort goes first, unless
-    # the board has this model at another effort too, when the name needs it;
-    # then the prose shortens, one phrase at a time. The notes (a lost
-    # attempt, fewer attempts, the judge) always stay.
-    shortenings = [(" on the Marketing Benchmark", ""), ("attempts met every requirement", "attempts passed")]
-    if effort and board_label(entry["model"], entries) == label:
-        shortenings.insert(0, (name, label))
-    for long, short in shortenings:
-        if len(head) + 1 + len(url) <= TWEET_LIMIT:
+    attempts = " One attempt per task." if reps == 1 else f" {reps} attempts per task, all {reps} right to count."
+    judge = " It is also the judge." if base_of(model) == meta["judge_model"] else ""
+
+    def head(bench: str = " on the Marketing Benchmark", who: str = name, rank_note: str = ranked) -> str:
+        return (
+            f"{who} got {entry['right']} of {len(tasks)} marketing tasks fully right{bench} "
+            f"{SETUP_WORDS[setup]}{others}.{rank_note}{attempts}{judge}"
+        )
+
+    url = f"{site_url}/runs/{run_id}"
+    # A long name with every note can run over: the benchmark's name goes
+    # first (the address names it), then the effort (every model on the board
+    # is at it), then the rank. The count, the model's other setups, the
+    # attempts and the judge always stay.
+    for text in (head(), head(bench=""), head(bench="", who=label), head(bench="", who=label, rank_note="")):
+        if len(text) + 1 + len(url) <= TWEET_LIMIT:
             break
-        head = head.replace(long, short, 1)
-    # The reference models that have a run in the same setup, best first,
-    # as many as fit.
-    refs = sorted(
-        (
-            e for e in peers
-            if e["model"] in meta.get("references", []) and e["model"] != entry["model"]
-        ),
-        key=lambda e: e["score"],
-        reverse=True,
-    )
+    # The other models in the setup, most tasks fully right first, while they fit.
     compare = ""
-    for e in refs:
-        piece = f"{board_label(e['model'], entries)} {fmt_score(e['score'])}"
+    for e in sorted((e for e in peers if e["model"] != model), key=lambda e: -e["right"]):
+        piece = f"{model_label(e['model'])} {e['right']}"
         trial = f"{compare} · {piece}" if compare else f"\nvs {piece}"
-        if len(head) + len(trial) + 1 + len(url) <= TWEET_LIMIT:
-            compare = trial
-    text = f"{head}{compare}\n{url}"
+        if len(text) + len(trial) + 1 + len(url) > TWEET_LIMIT:
+            break
+        compare = trial
+    text = f"{text}{compare}\n{url}"
     if len(text) > TWEET_LIMIT:
         raise Refusal(f"the draft is {len(text)} characters, over {TWEET_LIMIT}: {text!r}")
     return text
@@ -340,49 +348,28 @@ def tweet_for(web: Path, run_id: str, site_url: str = SITE_URL) -> str:
 
 # ------------------------------------------------------------- the export
 
-def run_errors(run_dir: Path, report: dict, setup: str) -> list[dict]:
-    """The attempts lost to a run error (marked E, not stopped at the output
-    limit), each with the runner's record of it and what that was."""
-    records = {}
-    attempts_file = run_dir / "attempts.jsonl"
-    if attempts_file.is_file():
-        records = {
-            (a.get("task_id"), a.get("repetition")): a.get("error")
-            for a in read_jsonl(attempts_file)
-        }
-    lost = []
-    for sub in report.get("submissions") or []:
-        for run in sub["runs"]:
-            if run.get("mark") != "E" or run.get("finish_reason") == "max_tokens":
-                continue
-            record = records.get((sub["task_id"], run["repetition"]))
-            if not record:
-                raise Refusal(
-                    f"{sub['task_id']} attempt {run['repetition']} was lost and "
-                    "attempts.jsonl has no error for it: the site needs the record"
-                )
-            timed_out = "timed out" in record.lower()
-            if setup == "magister":
-                cause = (
-                    "the test machine's connection to the test lane timed out; "
-                    "the record does not say which side failed"
-                    if timed_out
-                    else "the agent's stream failed before any answer came back"
-                )
-            else:
-                cause = (
-                    "the call to the provider timed out before any answer came back; "
-                    "the record does not say which side failed"
-                    if timed_out
-                    else "the call to the provider failed before any answer came back"
-                )
-            lost.append({
-                "task": sub["task_id"],
-                "repetition": run["repetition"],
-                "record": record,
-                "cause": cause,
-            })
-    return lost
+def lost_attempts(report: dict, tasks: list[str]) -> list[str]:
+    """The attempts at these tasks lost to a run error: marked E without
+    stopping at the output limit, as the site's board.ts tells them apart."""
+    return [
+        f"{sub['task_id']} attempt {run['repetition']}"
+        for sub in report.get("submissions") or []
+        if sub["task_id"] in tasks
+        for run in sub["runs"]
+        if run.get("mark") == "E" and run.get("finish_reason") != "max_tokens"
+    ]
+
+
+def mistitled(web: Path, report: dict, tasks: list[str]) -> list[str]:
+    """The board's tasks this run titles otherwise than data/task-blurbs.json,
+    each with both titles."""
+    blurbs = json.loads((web / TASK_BLURBS).read_text())["tasks"]
+    site_titles = {t: (blurbs.get(t) or {}).get("title") for t in tasks}
+    return sorted({
+        f"{sub['task_id']} is titled {sub.get('task_title')!r} here and {site_titles[sub['task_id']]!r} on the site"
+        for sub in report.get("submissions") or []
+        if sub["task_id"] in site_titles and sub.get("task_title") != site_titles[sub["task_id"]]
+    })
 
 
 def lane_of(run_dir: Path) -> str:
@@ -399,7 +386,8 @@ def lane_of(run_dir: Path) -> str:
 
 def export_run(run_dir: Path, web: Path, ran_on: str | None = None) -> dict:
     """Copy a graded run's report to the site and list it on the board.
-    Returns the board entry it added (or found)."""
+    Returns the board entry it added (or found). A run the site would refuse
+    is refused here first, before any file changes."""
     meta_path, runs_dir = site_paths(web)
     report_path = run_dir / "report.json"
     grading_path = run_dir / "grading.json"
@@ -420,44 +408,55 @@ def export_run(run_dir: Path, web: Path, ran_on: str | None = None) -> dict:
             f"{meta['judge_model']} (protocol {meta['judge_protocol_version']}). "
             "Grade it with the board's judge first."
         )
-    tasks = board_tasks(web, meta)
-    missing = [t for t in tasks if t not in report["tasks"]]
-    if missing:
-        raise Refusal(f"{run_id} lacks the board's tasks {', '.join(missing)}")
     setup = setup_of(report)
     model = model_of(report)
+    require_board_effort(model, meta)
+    if setup != "magister" and report.get("tools_enabled") is not False:
+        raise Refusal(f"{run_id} was made with the provider's tools on; the board's direct calls are made with them off")
+    due = due_tasks(meta, setup)
+    missing = [t for t in due if t not in report["tasks"]]
+    if missing:
+        raise Refusal(f"{run_id} lacks the board's tasks {', '.join(missing)}")
+    titles = mistitled(web, report, meta["tasks"])
+    if titles:
+        raise Refusal(
+            f"{run_id} titles a board task otherwise than the site: {'; '.join(titles)}. "
+            "The site's data/task-blurbs.json has to match the runner's tasks first."
+        )
+    lost = lost_attempts(report, due)
+    if lost:
+        raise Refusal(
+            f"{run_id} has attempts lost to a run error: {', '.join(lost)}. The board takes no run "
+            f"with a lost attempt: run them again with `python -m eval_runner.bench retry --run {run_dir}`, "
+            "grade the tasks it names, report, then export."
+        )
     listed = next((r for r in meta["runs"] if r["run_id"] == run_id), None)
     for other in meta["runs"]:
-        if other is listed:
-            continue
-        if other["setup"] == setup and model_of(site_report(web, other["run_id"])) == model:
+        if other is not listed and other["setup"] == setup and model_of(site_report(web, other["run_id"])) == model:
             raise Refusal(
                 f"the board already has {other['run_id']} for {model} ({setup}). If {run_id} "
                 "replaces it, take the old run out of meta.json and data/runs first."
             )
-
+    entry: dict = listed or {
+        "run_id": run_id,
+        "setup": setup,
+        "judge_model": grading["judge_model"],
+        "judge_protocol_version": grading["judge_protocol_version"],
+    }
+    if listed is None and setup == "magister":
+        entry["ran_on"] = ran_on or lane_of(run_dir)
     target = runs_dir / f"{run_id}.json"
     if target.exists() and target.read_bytes() != report_path.read_bytes():
         raise Refusal(f"{target} exists and differs from {report_path}; the site's copies are never edited")
+
     if not target.exists():
         shutil.copyfile(report_path, target)
-
     if listed is None:
-        entry: dict = {
-            "run_id": run_id,
-            "setup": setup,
-            "judge_model": grading["judge_model"],
-            "judge_protocol_version": grading["judge_protocol_version"],
-        }
-        if setup == "magister":
-            entry["ran_on"] = ran_on or lane_of(run_dir)
-        errors = run_errors(run_dir, report, setup)
-        if errors:
-            entry["run_errors"] = errors
         meta["runs"].append(entry)
+        if model not in meta["models"]:
+            meta["models"].append(model)
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
-        listed = entry
-    return listed
+    return entry
 
 
 # ------------------------------------------------------------- the estimate
@@ -565,7 +564,7 @@ def newest_run_since(marker: float, model: str, setup: str) -> Path:
             try:
                 run = json.loads((d / "run.json").read_text())
                 ours = [plain_model(m) for m in run.get("models") or {}] == [model] and setup_of(run) == setup
-            except (ValueError, Refusal):  # still being written, or a harness the site does not chart
+            except (ValueError, Refusal):  # still being written, or a harness the board does not chart
                 continue
             if ours:
                 fresh.append(d)
@@ -574,14 +573,12 @@ def newest_run_since(marker: float, model: str, setup: str) -> Path:
     return max(fresh, key=lambda d: d.name)
 
 
-def eval_command(args: argparse.Namespace, tasks: list[str], judge: str, plain: bool) -> list[str]:
-    cmd = [sys.executable, str(REPO_ROOT / "eval.py"), args.model, "--tools"]
+def eval_command(args: argparse.Namespace, judge: str, plain: bool) -> list[str]:
+    """A direct setup as the board ran it: its tasks, provider tools off."""
+    cmd = [sys.executable, str(REPO_ROOT / "eval.py"), args.model, "--split", "board"]
     if plain:
         cmd.append("--no-skills")
-    cmd += [
-        "--tasks", ",".join(tasks), "--repetitions", str(args.reps),
-        "--judge", judge, "-y",
-    ]
+    cmd += ["--repetitions", str(args.reps), "--judge", judge, "-y"]
     if args.env_file:
         cmd += ["--env-file", str(args.env_file)]
     return cmd
@@ -609,7 +606,7 @@ def run_and_export(
     if code != 0:
         print(
             f"bench-model: the run exited {code}; exporting {run_dir.name} as it stands "
-            "(an attempt lost to a run error is listed with the runner's record of it)",
+            "(the board refuses a run with an attempt lost to a run error: retry those first)",
             file=sys.stderr,
         )
     export_and_draft(run_dir, web, ran_on, site_url)
@@ -619,7 +616,7 @@ def export_and_draft(run_dir: Path, web: Path, ran_on: str | None, site_url: str
     entry = export_run(run_dir, web, ran_on)
     tweet = tweet_for(web, entry["run_id"], site_url)
     (run_dir / "tweet.txt").write_text(tweet + "\n")
-    print(f"\nExported {entry['run_id']} to {web} ({entry['setup']}).")
+    print(f"\nExported {entry['run_id']} to {web}'s board {board_name(web)} ({SETUP_TITLES[entry['setup']]}).")
     print(f"Tweet draft ({len(tweet)} characters), saved to {run_dir / 'tweet.txt'}:\n")
     print(tweet)
     refresh_drafts(web, site_url)
@@ -627,9 +624,9 @@ def export_and_draft(run_dir: Path, web: Path, ran_on: str | None, site_url: str
 
 def refresh_drafts(web: Path, site_url: str) -> list[Path]:
     """Rewrite the tweet draft of every run on the board. A new run moves the
-    others' ranks and counts ("#4 of 6"), so a draft written at an earlier
-    export goes stale; each is rewritten from the site's data as it stands,
-    in every folder of that run on disk. Returns the drafts changed."""
+    others' ranks ("#2 of 4"), so a draft written at an earlier export goes
+    stale; each is rewritten from the site's data as it stands, in every
+    folder of that run on disk. Returns the drafts changed."""
     meta = read_meta(web)
     changed, missing = [], []
     for r in meta["runs"]:
@@ -659,10 +656,10 @@ def refresh_drafts(web: Path, site_url: str) -> list[Path]:
 
 
 def setups_of(args: argparse.Namespace) -> list[str]:
-    """The board setups a run of this command makes."""
+    """The board setups a run of this command makes, in the board's order."""
     if args.inside:
         return ["magister"]
-    return ["skills", "no-skills"] if args.plain else ["skills"]
+    return ["no-skills", "skills"] if args.plain else ["skills"]
 
 
 def already_listed(web: Path, meta: dict, model: str, setups: list[str]) -> list[tuple[str, str]]:
@@ -676,54 +673,60 @@ def already_listed(web: Path, meta: dict, model: str, setups: list[str]) -> list
 
 
 def print_plan(
-    args: argparse.Namespace, web: Path, meta: dict, spec: dict, tasks: list[str], judge: str
+    args: argparse.Namespace, web: Path, meta: dict, spec: dict, judge: str, setups: list[str]
 ) -> list[list[str]]:
     """Print the estimate and the commands a run would make; return those commands."""
-    setups = setups_of(args)
-    print(f"bench-model: {args.model} ({spec['model']}), {len(tasks)} tasks from the site's board, "
-          f"{args.reps} attempts per task, judge {judge}")
+    meta_path, _ = site_paths(web)
+    print(f"bench-model: {args.model} ({spec['model']}) on the site's board {board_name(web)}: "
+          f"{len(meta['tasks'])} tasks (--split board), {args.reps} attempt{'' if args.reps == 1 else 's'} "
+          f"per task, provider tools off, {meta['effort']} effort, judge {judge}")
+    print(f"  setups: {', '.join(SETUP_TITLES[s] for s in setups)}")
     print(f"  list prices: ${spec['pricing']['input_per_mtok']}/M input, ${spec['pricing']['output_per_mtok']}/M output")
     total = 0.0
     commands = []
     for setup in setups:
         basis = comparable_run(meta, setup, args.like)
         if basis is None:
-            print(f"  {setup}: no comparable run on disk to price an estimate from; pass like=<run folder>")
+            print(f"  {SETUP_TITLES[setup]}: no comparable run on disk to price an estimate from; pass like=<run folder>")
         else:
-            est = estimate(basis, spec["pricing"], tasks, args.reps)
+            est = estimate(basis, spec["pricing"], due_tasks(meta, setup), args.reps)
             total += est["total_usd"]
             print(
-                f"  {setup}: about ${est['model_usd']:.2f} in model calls + ${est['judge_usd']:.2f} judge "
+                f"  {SETUP_TITLES[setup]}: about ${est['model_usd']:.2f} in model calls + ${est['judge_usd']:.2f} judge "
                 f"= ${est['total_usd']:.2f}: the recorded cost of {est['basis']} ({est['basis_model']}), "
                 f"{est['input_tokens'] / est['attempts']:,.0f} input and "
                 f"{est['output_tokens'] / est['attempts']:,.0f} output tokens an attempt, "
                 f"times {est['ratio']:.2f} for this model's list prices, over {est['attempts']} attempts"
             )
         if setup == "magister":
-            commands.append(lane_command(args, tasks, judge))
+            commands.append(lane_command(args, meta["tasks"], judge))
         else:
-            commands.append(eval_command(args, tasks, judge, plain=setup == "no-skills"))
-    print(f"  estimate in all: about ${total:.2f}. Reasoning effort, answer length and web "
-          "search move the real cost either way.")
+            commands.append(eval_command(args, judge, plain=setup == "no-skills"))
+    print(f"  estimate in all: about ${total:.2f}. Answer length moves the real cost either way.")
     if args.inside:
+        lanes = sorted({r["ran_on"] for r in meta["runs"] if r["setup"] == "magister" and r.get("ran_on")})
         print(
-            "  inside=1: the model must be in Magister's own model catalog on the lane's build "
+            "  inside=1: lane-bench measures the lane as it runs now (deploy=0), so bring it up first on "
+            "the Magister build to publish; the model must be in Magister's model catalog on that build "
             "(lane-bench enables it in the lane's catalog and stops if the Gateway does not know it)."
+            + (f" The board's Magister runs ran on {'; '.join(lanes)}." if lanes else "")
         )
     print("\nIt will run, then export each graded run to the site and draft a tweet:")
     for cmd in commands:
         print(f"  $ {shlex.join(cmd)}")
-    print(f"  export to {web / SITE_RUNS} and {web / BOARD_META}")
+    print(f"  export to {web / SITE_RUNS} and {meta_path}")
     return commands
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", help="candidate id from eval_runner/models.json")
+    parser.add_argument("--model", help="candidate id from eval_runner/models.json, at the board's effort")
     parser.add_argument("--web", type=Path, help="the results site's checkout (marketing-benchmark-web)")
-    parser.add_argument("--plain", action="store_true", help="also run without the skills")
-    parser.add_argument("--reps", type=int, default=3, help="attempts per task (default 3)")
-    parser.add_argument("--inside", action="store_true", help="run through Magister on a test lane instead")
+    parser.add_argument("--plain", action="store_true",
+                        help="also the Model only setup (--no-skills), beside + Marketing Skills")
+    parser.add_argument("--reps", type=int, default=1, help="attempts per task (default 1, as the board ran)")
+    parser.add_argument("--inside", action="store_true",
+                        help="the Inside Magister setup alone, on a test lane (not with --plain)")
     parser.add_argument("--magister", type=Path, help="Magister monorepo checkout (inside only)")
     parser.add_argument("--lane", default="bench", help="test lane for inside (default bench)")
     parser.add_argument("--env-file", type=Path, help="KEY=value file with the provider keys")
@@ -753,15 +756,19 @@ def main(argv: list[str] | None = None) -> int:
         raise Refusal("model=<candidate id> is required")
     catalog = load_catalog()
     spec = require_candidate(args.model, catalog)
+    require_board_effort(args.model, meta)
     judge = meta["judge_model"]
     if judge not in catalog:
         raise Refusal(f"the site's judge {judge!r} is not in eval_runner/models.json")
-    tasks = board_tasks(web, meta)
+    require_same_board(meta)
+    if args.inside and args.plain:
+        raise Refusal("inside=1 runs the Inside Magister setup alone; run plain=1 (the direct setups) as a second invocation")
     if args.inside and not args.magister:
         raise Refusal("inside=1 needs magister=<Magister monorepo checkout>, where `make lane-bench` lives")
 
-    commands = print_plan(args, web, meta, spec, tasks, judge)
-    listed = already_listed(web, meta, args.model, setups_of(args))
+    setups = setups_of(args)
+    commands = print_plan(args, web, meta, spec, judge, setups)
+    listed = already_listed(web, meta, args.model, setups)
     if listed:
         message = (
             "the board already has "
@@ -779,7 +786,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nNothing was spent. To run it, pass confirm={CONFIRM_WORD}.", file=sys.stderr)
         return 2
 
-    for cmd, setup in zip(commands, setups_of(args)):
+    for cmd, setup in zip(commands, setups):
         run_and_export(cmd, args.model, setup, web, args.ran_on, args.site_url)
     print(
         f"\nNext: cd {web} && pnpm build (checks every claim on the page against the new data), "
