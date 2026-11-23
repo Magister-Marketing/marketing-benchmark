@@ -57,8 +57,10 @@ fail.
    facts the program measured (with the instruction to trust them over its
    own counting) and, for data tasks, reference totals computed from the
    recorded input files, never from the answer. It is told to audit the whole
-   answer, to fail a requirement the answer is silent or unclear about, and
-   that one counterexample fails any requirement about every claim. For each
+   answer, to fail a requirement the answer is silent or unclear about
+   (except one that forbids something, which passes when the thing is
+   absent), and that one counterexample fails any requirement about every
+   claim. For each
    requirement it returns pass or fail and one sentence of evidence. It also
    says whether the answer delivered the task end to end (`completed`) and
    how the answer describes its own work (`complete`, `partial` or
