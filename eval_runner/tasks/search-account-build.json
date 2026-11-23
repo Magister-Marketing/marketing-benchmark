@@ -11,8 +11,8 @@
     "eval_runner/fixtures/search-account-build/keyword_export.csv"
   ],
   "skills": [
-    "evals/fixtures/public/skills/ad-creative/SKILL.md",
-    "evals/fixtures/public/skills/copywriting/SKILL.md"
+    "evals/fixtures/public/skills/ads/SKILL.md",
+    "evals/fixtures/public/skills/ad-creative/SKILL.md"
   ],
   "answers": {
     "count": 3,

@@ -8,7 +8,7 @@
     "eval_runner/fixtures/seo-crawl/crawl_export.csv"
   ],
   "skills": [
-    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+    "evals/fixtures/public/skills/seo-audit/SKILL.md"
   ],
   "answers": {
     "count": 6,

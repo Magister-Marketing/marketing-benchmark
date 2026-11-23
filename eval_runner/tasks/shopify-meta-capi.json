@@ -8,7 +8,7 @@
     "evals/fixtures/public/brands/cedar-and-coil/product-marketing.md",
     "evals/fixtures/public/brands/cedar-and-coil/sources/facts.md"
   ],
-  "skills": ["evals/fixtures/public/skills/analytics/SKILL.md"],
+  "skills": ["evals/fixtures/public/skills/conversion-tracking/SKILL.md"],
   "prompt": "Cedar & Coil sells the Arc Clip Lamp on Shopify and is preparing Meta ads. Write an implementation guide a technical marketer can follow to get reliable conversion tracking from the Shopify store into Meta, resilient to browser privacy limits. Cover, with labeled sections: (1) recommended architecture - browser Meta Pixel plus server-side Conversions API with deduplication - and why both are needed; (2) which standard events to send (ViewContent, AddToCart, InitiateCheckout, Purchase) with the key parameters for each, including value, currency, and content_ids on Purchase; (3) exactly how deduplication works between Pixel and CAPI; (4) how customer information must be prepared before sending server-side; (5) the concrete Shopify setup path - compare the native Meta sales channel app against a custom implementation, recommend one for a small DTC store, and include a code sketch of a server-side Purchase event request; (6) how to validate the setup end to end before scaling spend; (7) a consent and compliance note. Do not promise specific attribution recovery percentages.",
   "rubric": {
     "completion": [

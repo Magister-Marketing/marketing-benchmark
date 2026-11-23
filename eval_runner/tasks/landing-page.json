@@ -16,8 +16,8 @@
     "evals/fixtures/public/brands/harborline-sleep/sources/facts.md"
   ],
   "skills": [
-    "evals/fixtures/public/skills/cro/SKILL.md",
-    "evals/fixtures/public/skills/site-architecture/SKILL.md"
+    "evals/fixtures/public/skills/copywriting/SKILL.md",
+    "evals/fixtures/public/skills/cro/SKILL.md"
   ],
   "prompt": "Build a complete, production-quality landing page for Harborline Sleep Education's 45-minute virtual routine-planning consultation ($160) as a single HTML file with inline CSS and no external assets, scripts, fonts, or images. Order the sections the way a cautious first-time visitor decides: what this is and who it is for; how the consultation works; what is included; price; limitations and who it is NOT for (it is educational coaching, not a medical clinic, does not diagnose or treat sleep disorders, is not emergency care, outcomes are not guaranteed, insurance is not represented); common objections; then the next step. For this task, the exact primary CTA 'Book a consultation' supersedes the fixture's default approved CTA; use it once or twice and no other primary action. Use semantic HTML with descriptive headings. Output only the HTML file contents.",
   "rubric": {
