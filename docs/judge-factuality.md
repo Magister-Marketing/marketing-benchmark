@@ -1,5 +1,12 @@
 # Whole-answer factual grading
 
+[Back to the overview](../README.md) · [How scoring works](SCORING.md)
+
+How the judge protocol grew in September 2026. Protocol 4, in the last
+paragraph below, is the current one (`JUDGE_PROTOCOL_VERSION` in
+`eval_runner/bench.py`); the board of November 23, 2026 was graded under it
+by `claude-sonnet-5-5`.
+
 The September 18 development rerun passed short judge calibration probes but
 still received false passes for unsupported product attributes and unreconciled
 budget recommendations. Other checks did not cover lost product qualifications
