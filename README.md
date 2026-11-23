@@ -139,28 +139,42 @@ runs are in the [runner reference](eval_runner/README.md#the-claude-code-harness
 
 ### Benchmark a new model and put it on the site
 
-When a model comes out, one command runs it on the results site's tasks,
-grades it with the site's judge, adds it to the site's data, and drafts a
-post for X. It needs a checkout of the site
-([marketing-benchmark-web](https://github.com/Magister-Marketing/marketing-benchmark-web)),
-which sets the tasks and the judge, and Python 3.11 or newer (`PYTHON=.venv/bin/python`).
+When a model comes out, one command runs it on the board at
+https://marketingbenchmark.ai, grades it with the board's judge, adds it to
+the site's data, and drafts a post for X. It needs a checkout of the site
+([marketing-benchmark-web](https://github.com/Magister-Marketing/marketing-benchmark-web))
+and Python 3.11 or newer (`PYTHON=.venv/bin/python`).
 
-It adds the model to the site's model board
-(`data/experiments/20261118-model-board` in the site's checkout), with
-provider web search on (`--tools`) and three attempts per task unless
-`reps=` says otherwise. It does not add a run to the board of November 23,
-2026, whose direct setups ran with tools off and one attempt per task.
+The board is the one the site's home page charts: `src/lib/current-meta.ts`
+in the site's checkout names it, today `20261120-first-board`, and its
+`data/experiments/<board>/meta.json` sets every setting. A run is made as the
+board of November 23, 2026 was: its 35 tasks (`--split board`, which must
+list the same tasks as the site), provider tools off, the board's judge
+(`claude-sonnet-5-5`), and one attempt per task unless `reps=` says
+otherwise. The model must be at the board's effort: its id ends in
+`-medium`.
+
+Which setups one invocation makes:
+
+| Switches | Setups | What runs |
+|---|---|---|
+| (none) | + Marketing Skills | `./eval.py <model> --split board --repetitions 1 --judge claude-sonnet-5-5 -y` |
+| `plain=1` | Model only, then + Marketing Skills | the same, first with `--no-skills` |
+| `inside=1 magister=<checkout> [lane=bench]` | Inside Magister | that checkout's `make lane-bench lane=<lane> deploy=0 candidate=<model> tasks=<the board's 35> repetitions=1 judge=claude-sonnet-5-5` |
+
+`inside=1` runs the Magister setup alone and refuses `plain=1`; run the
+direct setups as a second invocation.
 
 ```bash
 # 1. See the plan and the cost estimate; spends nothing
-make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web dry_run=1
+make bench-model model=gpt-6-luna-medium web=../marketing-benchmark-web dry_run=1
 
-# 2. Run it: one call per task (two for the decoy task) with the skills in the prompt, 3 attempts each
-make bench-model model=gpt-6.1-sol-high web=../marketing-benchmark-web \
+# 2. Run it with the Marketing Skills: one call per task (two for a task that sends an earlier message first)
+make bench-model model=gpt-6-luna-medium web=../marketing-benchmark-web \
     env_file=.env.local confirm=SPEND
 
-# also without the skills, or another number of attempts per task
-make bench-model model=gpt-6.1-sol-high web=... plain=1 reps=3 env_file=... confirm=SPEND
+# also as the model only, or three attempts per task
+make bench-model model=gpt-6-luna-medium web=... plain=1 reps=3 env_file=... confirm=SPEND
 
 # 3. Check every claim on the site against the new data, then commit it there
 cd ../marketing-benchmark-web && pnpm build
@@ -168,45 +182,61 @@ cd ../marketing-benchmark-web && pnpm build
 
 What it does:
 
-- **Refuses a model that is not in `eval_runner/models.json`** and says what
-  an entry needs (`model`, `pricing`, and `reasoning_effort` for an effort
-  variant). Add it there, run `python -m eval_runner.bench validate`, then
-  rerun.
+- **Refuses before spending** a model that is not in
+  `eval_runner/models.json` (and says what an entry needs: `model`,
+  `pricing`, and `reasoning_effort` for an effort variant; add it, run
+  `python -m eval_runner.bench validate`, then rerun), a model not at the
+  board's effort, a model the board already has in a setup it would run (take
+  the old run out first if the new one replaces it), and a runner whose
+  `eval_runner/board.json` lists other tasks than the site's board.
 - **Prints an estimate before spending**: the last comparable run's recorded
-  cost (the newest run on the site in the same setup that is on disk, or
+  cost (the newest run on the board in the same setup that is on disk, or
   `like=<run folder>`), scaled by how the model's list prices compare with
   that run's model's over the same tokens, plus that run's judge cost. Nothing
   runs without `confirm=SPEND`.
-- **Runs, grades and reports** with `./eval.py <model> --tools [--no-skills]
-  --tasks <the site's tasks> --repetitions N --judge <the site's judge> -y`.
+- **Runs, grades and reports** each setup with the commands above.
 - **Exports each graded run to the site**: `report.json` copied unchanged to
-  `data/runs/<run id>.json`, and one entry added to
-  `data/experiments/20261118-model-board/meta.json` with its setup, the judge
-  from `grading.json`, and any attempt lost to a run error with the runner's
-  record of it. The model then has a page at `/models/<model id>` with a card
-  X shows when the page is posted. It refuses a run graded by another judge,
-  one missing any of the site's tasks, and a second run of a model in the same
-  setup (take the old one out first if the new one replaces it).
+  `data/runs/<run id>.json`; the run added to the board's `meta.json` `runs`
+  in the shape the site reads (`run_id`, `setup`, `judge_model`,
+  `judge_protocol_version`, and for a Magister run `ran_on`, the test lane
+  and Gateway revision it ran on); and the model added to its `models`, so
+  the board gives it a row. A run the site would refuse is refused first,
+  with the reason, and no file changes: one graded by another judge, one made
+  with the provider's tools on, one missing a board task or titling one
+  otherwise than the site's `data/task-blurbs.json`, one with an attempt lost
+  to a run error (run `python -m eval_runner.bench retry --run <run folder>`,
+  grade the tasks it names, report, then export), one from a harness that is
+  none of the board's setups, a Magister run not made on a test lane, and a
+  second run of a model in one setup. An attempt that ran out of output is
+  not refused: the board counts it failed.
 - **Writes `tweet.txt` next to the run**: under 280 characters, every number
-  read from the site's data as the model's page reads it (score, rank,
-  attempts that met every requirement, cost per task, and the reference
-  models that have a run), with the page's address. Every other run on the
-  board that is on disk gets its draft rewritten too, since a new run moves
-  their ranks ("#4 of 6"); it finds them in this checkout's results, sibling
-  checkouts' and any folder in `BENCH_RESULTS_DIRS`, and lists the runs it
-  could not find.
+  read from the site's data as the board reads it. It leads with tasks fully
+  right, never the checklist average: "Claude Opus 5.5 (medium effort) got 26
+  of 35 marketing tasks fully right on the Marketing Benchmark with the
+  Marketing Skills, 20 without, 32 inside Magister." Then the rank by tasks
+  fully right among the board's runs in that setup, ties said as ties ("Tied
+  #2 of 3 models inside Magister"), the attempts per task ("One attempt per
+  task."), the other models in the setup as they fit, and the run's page,
+  `/runs/<run id>` (a model on this board has no `/models/` page). A draft
+  that runs long drops the words "on the Marketing Benchmark", then the
+  effort, then the rank. Every other run on the board that is on disk gets
+  its draft rewritten too, since a new run moves their ranks; it finds them
+  in this checkout's results, sibling checkouts' and any folder in
+  `BENCH_RESULTS_DIRS`, and lists the runs it could not find.
 
 `make bench-model export=<run folder> web=...` does the export and the draft
 alone, for a run already graded; it spends nothing.
 
-**Inside Magister.** `inside=1 magister=<Magister monorepo checkout>` runs the
-same tasks through the Magister agent on a test lane instead (`lane=bench` by
-default) by calling that checkout's `make lane-bench`, then exports the run
-the same way, with the test lane and Gateway revision it ran on. The model
-must first be in Magister's own model catalog on the lane's build:
-`lane-bench` enables it in the lane's catalog and stops if the lane's Gateway
-does not know it. Run the one-call benchmark first, so the model's page has
-its single-call numbers beside the Magister run.
+**Inside Magister.** `inside=1` hands the run to Magister's private
+repository, as the board's Magister runs were made: that checkout's
+`make lane-bench` runs the board's tasks through the Magister agent on a test
+lane, every attempt in a fresh session, grades the run with this runner and
+the board's judge, and leaves the run folder here; `bench-model` then exports
+it with the test lane and Gateway revision it ran on. It passes `deploy=0`,
+so `lane-bench` measures the lane as it runs now: bring the lane up on the
+Magister build to publish first. The model must be in Magister's own model
+catalog on that build: `lane-bench` enables it in the lane's catalog and
+stops if the lane's Gateway does not know it.
 
 ## Eval options
 

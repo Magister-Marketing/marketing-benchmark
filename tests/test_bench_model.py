@@ -16,52 +16,61 @@ bm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bm)
 
 TASKS = ["alpha", "beta"]
+TITLES = {"alpha": "Alpha task", "beta": "Beta task"}
 JUDGE = "claude-sonnet-5-5"
+# Not the live board's name: the board is the one the site's
+# src/lib/current-meta.ts names, never a name kept in the script.
+BOARD = "20261201-test-board"
+EARLIER = "20261118-model-board"
+URL = "https://marketingbenchmark.ai/runs/"
 
 
-def report(run_id, candidate, *, harness="direct-api", skills=True, reps=1,
-           scores=None, passes=None, cost=0.05, lost=()):
-    """A report.json shaped like the runner's, for two tasks."""
-    scores = scores or {t: 90.0 for t in TASKS}
+def report(run_id, candidate, *, harness="direct-api", skills=True, reps=1, tools=False,
+           tasks=TASKS, scores=None, passes=None, cost=0.05, lost=(), cut=()):
+    """A report.json shaped like the runner's. `passes` says per task whether
+    its attempts were right; `lost` attempts are run errors, `cut` ones ran out
+    of output."""
+    scores = scores or {t: 90.0 for t in tasks}
     passes = passes or {}
     subs = []
-    for task in TASKS:
+    for task in tasks:
         runs = []
         for rep in range(1, reps + 1):
-            gone = (task, rep) in lost
+            gone, short = (task, rep) in lost, (task, rep) in cut
+            right = passes.get(task, True) and not gone and not short
             runs.append({
                 "repetition": rep,
-                "mark": "E" if gone else ("P" if passes.get(task, True) else "F"),
-                "pass": (not gone) and passes.get(task, True),
-                "finish_reason": None if gone else "stop",
+                "mark": "E" if gone else "T" if short else "P" if right else "F",
+                "pass": right,
+                "finish_reason": None if gone else "max_tokens" if short else "stop",
                 "cost_usd": None if gone else cost,
-                "latency_seconds": None if gone else 10.0,
             })
-        subs.append({"task_id": task, "model_id": candidate, "runs": runs})
+        subs.append({"task_id": task, "task_title": TITLES[task], "model_id": candidate, "runs": runs})
     return {
         "run_id": run_id,
         "harness": harness,
         "skills_included": skills,
-        "tools_enabled": True,
+        "tools_enabled": tools,
         "repetitions": reps,
-        "tasks": list(TASKS),
-        "models": {candidate: {"task_scores": scores, "composite_score": sum(scores.values()) / 2}},
+        "tasks": list(tasks),
+        "models": {candidate: {"task_scores": scores, "composite_score": sum(scores.values()) / len(scores)}},
         "submissions": subs,
     }
 
 
-def write_run(root: Path, rep: dict, *, judge=JUDGE, errors=None, identity=None,
-              pricing=None, tokens=(1000, 200)) -> Path:
+def write_run(root: Path, rep: dict, *, identity=None, pricing=None) -> Path:
     run_dir = root / rep["run_id"]
     run_dir.mkdir(parents=True)
     (run_dir / "report.json").write_text(json.dumps(rep, indent=2) + "\n")
     (run_dir / "grading.json").write_text(json.dumps({
-        "judge_model": judge, "judge_protocol_version": 4,
+        "judge_model": JUDGE, "judge_protocol_version": 4,
         "judge_usage": {"calls": 4, "cost_usd": 0.4},
     }))
     candidate = next(iter(rep["models"]))
     (run_dir / "run.json").write_text(json.dumps({
         "run_id": rep["run_id"],
+        "harness": rep["harness"],
+        "skills_included": rep["skills_included"],
         "models": {candidate: {"pricing": pricing or {"input_per_mtok": 1.0, "output_per_mtok": 5.0}}},
         **({"eval_identity": identity} if identity else {}),
     }))
@@ -70,55 +79,127 @@ def write_run(root: Path, rep: dict, *, judge=JUDGE, errors=None, identity=None,
         for run in sub["runs"]:
             lines.append(json.dumps({
                 "task_id": sub["task_id"], "repetition": run["repetition"],
-                "input_tokens": tokens[0], "output_tokens": tokens[1],
-                "error": (errors or {}).get((sub["task_id"], run["repetition"])),
+                "input_tokens": 1000, "output_tokens": 200,
             }))
     (run_dir / "attempts.jsonl").write_text("\n".join(lines) + "\n")
     return run_dir
 
 
+def board_meta(web: Path) -> Path:
+    return web / "data" / "experiments" / BOARD / "meta.json"
+
+
+def meta_of(web: Path) -> dict:
+    return json.loads(board_meta(web).read_text())
+
+
+def add_to_board(web: Path, rep: dict, setup: str) -> None:
+    """Put a report on the board by hand, as the site's own data has it."""
+    (web / "data" / "runs" / f"{rep['run_id']}.json").write_text(json.dumps(rep))
+    meta = meta_of(web)
+    model = bm.plain_model(next(iter(rep["models"])))
+    if model not in meta["models"]:
+        meta["models"].append(model)
+    meta["runs"].append({"run_id": rep["run_id"], "setup": setup, "judge_model": JUDGE,
+                         "judge_protocol_version": 4})
+    board_meta(web).write_text(json.dumps(meta, indent=2) + "\n")
+
+
+@pytest.fixture(autouse=True)
+def runner_board(tmp_path, monkeypatch) -> Path:
+    """The runner's board.json, holding the site's two tasks."""
+    path = tmp_path / "board.json"
+    path.write_text(json.dumps({"areas": [{"id": "one", "title": "One", "tasks": TASKS}]}))
+    monkeypatch.setattr(bm, "BOARD_FILE", path)
+    return path
+
+
 @pytest.fixture
 def site(tmp_path: Path) -> Path:
-    """A results site with one model on its board."""
+    """A results site whose home page charts BOARD, with GPT-6.2 Sol on it
+    with the Marketing Skills (one of the two tasks fully right), and the
+    earlier model board its earlier page still reads."""
     web = tmp_path / "web"
     (web / "data" / "runs").mkdir(parents=True)
-    meta = web / bm.BOARD_META
-    meta.parent.mkdir(parents=True)
-    old = report("20260101-000000-aaaaaaaa", "gpt-6.2-sol-high", scores={"alpha": 98.0, "beta": 96.0}, cost=0.08)
-    (web / "data" / "runs" / f"{old['run_id']}.json").write_text(json.dumps(old))
-    meta.write_text(json.dumps({
-        "judge": "Claude Sonnet 5.5", "judge_model": JUDGE, "judge_protocol_version": 4,
-        "earlier_judge": "Claude Sonnet 5", "references": ["gpt-6.2-sol-high", "claude-opus-5-5-high"],
-        "runs": [{"run_id": old["run_id"], "setup": "skills", "judge_model": JUDGE, "judge_protocol_version": 4}],
+    (web / "src" / "lib").mkdir(parents=True)
+    (web / "src" / "lib" / "current-meta.ts").write_text(
+        "export function readCurrentMeta(): CurrentMeta {\n"
+        f'  current ??= read<CurrentMeta>("{BOARD}");\n'
+        "  return current;\n}\n"
+    )
+    earlier = web / "data" / "experiments" / EARLIER / "meta.json"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(json.dumps({"judge_model": JUDGE, "judge_protocol_version": 4, "runs": []}) + "\n")
+    board_meta(web).parent.mkdir(parents=True)
+    board_meta(web).write_text(json.dumps({
+        "id": BOARD, "runner_commit": "05dcffe", "judge": "Claude Sonnet 5.5",
+        "judge_model": JUDGE, "judge_protocol_version": 4, "effort": "medium",
+        "models": [], "setups": ["no-skills", "skills", "magister"], "tasks": TASKS,
+        "harness_only": [], "runs": [],
     }, indent=2) + "\n")
+    (web / "data" / "task-blurbs.json").write_text(json.dumps({
+        "source": "test", "tasks": {t: {"title": TITLES[t], "produce": "p", "challenge": "c"} for t in TASKS},
+    }))
+    add_to_board(web, report("20260101-000000-aaaaaaaa", "gpt-6.2-sol-medium", passes={"beta": False},
+                             scores={"alpha": 98.0, "beta": 96.0}), "skills")
     return web
 
 
 def test_unknown_candidate_is_refused_with_how_to_add_it(site):
     with pytest.raises(SystemExit) as stop:
-        bm.main(["--web", str(site), "--model", "gpt-9-nova", "--dry-run"])
+        bm.main(["--web", str(site), "--model", "gpt-9-nova-medium", "--dry-run"])
     assert "not in eval_runner/models.json" in str(stop.value)
     assert '"pricing"' in str(stop.value)
 
 
-def test_dry_run_prints_the_estimate_and_spends_nothing(site, tmp_path, monkeypatch, capsys):
-    like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high", cost=0.10),
-                     pricing={"input_per_mtok": 2.0, "output_per_mtok": 10.0})
+def test_a_checkout_that_does_not_name_its_board_is_refused(site):
+    (site / "src" / "lib" / "current-meta.ts").write_text("export const nothing = 1;\n")
+    with pytest.raises(SystemExit, match="does not name the board its home page charts"):
+        bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--dry-run"])
+
+
+def test_dry_run_prints_the_boards_plan_and_estimate_and_spends_nothing(site, tmp_path, monkeypatch, capsys):
+    # The basis has claude-opus-5-5-medium's list prices, so its cost carries over unscaled.
+    like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-medium", cost=0.10),
+                     pricing={"input_per_mtok": 4.0, "output_per_mtok": 20.0})
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("a dry run must not run anything"))
-    code = bm.main(["--web", str(site), "--model", "gpt-6.1-sol-high", "--like", str(like), "--dry-run"])
+    code = bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--like", str(like), "--dry-run"])
     out = capsys.readouterr().out
     assert code == 0
     assert "Dry run: nothing was spent." in out
-    # gpt-6.1-sol-high has the same list prices: two tasks, three attempts each
-    # at $0.10, plus the judge's $0.10 a call for six calls.
-    assert "about $0.60 in model calls + $0.60 judge = $1.20" in out
-    assert "eval.py gpt-6.1-sol-high --tools --tasks alpha,beta --repetitions 3 --judge claude-sonnet-5-5 -y" in out
+    assert f"the site's board {BOARD}" in out and "1 attempt per task, provider tools off" in out
+    assert "setups: + Marketing Skills\n" in out
+    # One attempt at each of two tasks at $0.10, plus the judge's $0.10 a call for two calls.
+    assert "about $0.20 in model calls + $0.20 judge = $0.40" in out
+    assert "eval.py claude-opus-5-5-medium --split board --repetitions 1 --judge claude-sonnet-5-5 -y" in out
+    assert "--tools" not in out and "web search" not in out
+    assert str(board_meta(site)) in out
+    # plain=1 adds the model only setup, run first, as the board orders them.
+    bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--like", str(like),
+             "--plain", "--reps", "3", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "setups: Model only, + Marketing Skills\n" in out
+    assert out.index("--split board --no-skills --repetitions 3") < out.index("--split board --repetitions 3")
+
+
+def test_inside_hands_the_boards_tasks_to_lane_bench(site, tmp_path, capsys):
+    magister = tmp_path / "magister"
+    bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--inside", "--magister", str(magister),
+             "--lane", "bench2", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "setups: Inside Magister\n" in out
+    assert (f"make -C {magister} lane-bench lane=bench2 bench_repo={bm.REPO_ROOT} confirm=RUN_LANE_BENCH "
+            "deploy=0 candidate=claude-opus-5-5-medium tasks=alpha,beta repetitions=1 judge=claude-sonnet-5-5") in out
+    assert "eval.py" not in out
+    with pytest.raises(SystemExit, match="inside=1 runs the Inside Magister setup alone"):
+        bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--inside", "--magister", str(magister),
+                 "--plain", "--dry-run"])
 
 
 def test_the_estimate_scales_a_decoy_attempts_cost_over_both_turns_tokens(tmp_path):
     """The report's cost of a decoy task's attempt is both turns, so the
     price ratio that scales it weighs both turns' tokens."""
-    run = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high"))
+    run = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-medium"))
     rows = [json.loads(line) for line in (run / "attempts.jsonl").read_text().splitlines()]
     rows[0].update(decoy_prompt_sha256="d", decoy_input_tokens=500, decoy_output_tokens=10)
     (run / "attempts.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
@@ -126,103 +207,178 @@ def test_the_estimate_scales_a_decoy_attempts_cost_over_both_turns_tokens(tmp_pa
     assert (est["input_tokens"], est["output_tokens"]) == (2500, 410)
 
 
-def test_without_the_confirmation_word_nothing_runs(site, tmp_path, monkeypatch):
-    like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high"))
+def test_only_the_confirmation_word_runs_it(site, tmp_path, monkeypatch, capsys):
+    results = tmp_path / "results"
+    like = write_run(results, report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-medium"))
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("ran without confirm=SPEND"))
-    assert bm.main(["--web", str(site), "--model", "gpt-6.1-sol-high", "--like", str(like), "--confirm", "yes"]) == 2
+    assert bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--like", str(like), "--confirm", "yes"]) == 2
+    # With it, the board's command runs, and the run it made is exported and drafted.
+    ran = []
+
+    def fake_run(cmd, cwd=None):
+        ran.append(cmd)
+        write_run(results, report("20260103-000000-f0f0f0f0", "claude-opus-5-5-medium"))
+        return 0
+
+    monkeypatch.setattr(bm, "RESULTS_DIR", results)
+    monkeypatch.setattr(bm, "search_dirs", lambda: [results])
+    monkeypatch.setattr(subprocess, "call", fake_run)
+    assert bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--like", str(like), "--confirm", "SPEND"]) == 0
+    assert [c[2:] for c in ran] == [["claude-opus-5-5-medium", "--split", "board", "--repetitions", "1",
+                                     "--judge", JUDGE, "-y"]]
+    assert meta_of(site)["runs"][-1]["run_id"] == "20260103-000000-f0f0f0f0"
+    assert (results / "20260103-000000-f0f0f0f0" / "tweet.txt").read_text().startswith(
+        "Claude Opus 5.5 (medium effort) got 2 of 2 marketing tasks fully right")
 
 
 def test_a_model_already_on_the_board_is_refused_before_spending(site, tmp_path, monkeypatch):
-    like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-high"))
+    like = write_run(tmp_path / "results", report("20260102-000000-bbbbbbbb", "gpt-6.2-sol-medium"))
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("spent on a run that export would refuse"))
-    with pytest.raises(SystemExit, match="already has 20260101-000000-aaaaaaaa for gpt-6.2-sol-high"):
-        bm.main(["--web", str(site), "--model", "gpt-6.2-sol-high", "--like", str(like), "--confirm", "SPEND"])
-    # Without the skills it has no run yet, so plain alone would go ahead; and
+    with pytest.raises(SystemExit, match="already has 20260101-000000-aaaaaaaa for gpt-6.2-sol-medium"):
+        bm.main(["--web", str(site), "--model", "gpt-6.2-sol-medium", "--like", str(like), "--confirm", "SPEND"])
+    # As the model only it has no run yet, so plain alone would go ahead; and
     # inside Magister the model has no run either.
-    assert bm.already_listed(site, json.loads((site / bm.BOARD_META).read_text()),
-                             "gpt-6.2-sol-high", ["no-skills", "magister"]) == []
+    assert bm.already_listed(site, meta_of(site), "gpt-6.2-sol-medium", ["no-skills", "magister"]) == []
+
+
+def test_a_model_at_another_effort_is_refused_before_spending_and_at_export(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("spent on a run the board refuses"))
+    with pytest.raises(SystemExit, match="the board runs every model at medium effort"):
+        bm.main(["--web", str(site), "--model", "gpt-6.2-sol-high", "--dry-run"])
+    before = board_meta(site).read_text()
+    run = write_run(tmp_path / "results", report("20260103-000000-a1a1a1a1", "gpt-6-luna-high"))
+    with pytest.raises(SystemExit, match="medium effort"):
+        bm.export_run(run, site)
+    assert board_meta(site).read_text() == before
+    assert not (site / "data" / "runs" / "20260103-000000-a1a1a1a1.json").exists()
+
+
+def test_a_runner_board_that_is_not_the_sites_is_refused_before_spending(site, runner_board, monkeypatch):
+    runner_board.write_text(json.dumps({"areas": [{"id": "one", "title": "One", "tasks": ["alpha", "gamma"]}]}))
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("spent on the wrong tasks"))
+    with pytest.raises(SystemExit, match="only in the runner's: gamma; only on the site's: beta"):
+        bm.main(["--web", str(site), "--model", "claude-opus-5-5-medium", "--dry-run"])
 
 
 def test_export_copies_the_report_unchanged_and_lists_the_run(site, tmp_path):
-    rep = report("20260103-000000-cccccccc", "gpt-6-astra-high", reps=3, cost=0.2,
-                 scores={"alpha": 100.0, "beta": 33.3}, lost={("beta", 1), ("beta", 2)})
-    run = write_run(tmp_path / "results", rep,
-                    errors={("beta", 1): "openai call failed (TimeoutError: The read operation timed out)",
-                            ("beta", 2): "openai call failed (TimeoutError: The read operation timed out)"})
+    # Three attempts per task, one of which ran out of output: the board
+    # counts that attempt failed and takes the run.
+    rep = report("20260103-000000-cccccccc", "claude-opus-5-5-medium", reps=3, cut={("beta", 2)})
+    run = write_run(tmp_path / "results", rep)
+    earlier = (site / "data" / "experiments" / EARLIER / "meta.json").read_text()
     entry = bm.export_run(run, site)
     copied = site / "data" / "runs" / "20260103-000000-cccccccc.json"
     assert copied.read_bytes() == (run / "report.json").read_bytes()
-    meta = json.loads((site / bm.BOARD_META).read_text())
+    meta = meta_of(site)
+    # The shape the site's runs hold, and nothing it does not read.
+    assert entry == {"run_id": "20260103-000000-cccccccc", "setup": "skills",
+                     "judge_model": JUDGE, "judge_protocol_version": 4}
     assert meta["runs"][-1] == entry
-    assert entry["setup"] == "skills" and entry["judge_model"] == JUDGE
-    assert [(e["task"], e["repetition"]) for e in entry["run_errors"]] == [("beta", 1), ("beta", 2)]
-    assert entry["run_errors"][0]["record"].startswith("openai call failed")
-    assert "timed out" in entry["run_errors"][0]["cause"]
+    assert meta["models"] == ["gpt-6.2-sol-medium", "claude-opus-5-5-medium"]
+    # The earlier board, which the site's earlier page still reads, is left alone.
+    assert (site / "data" / "experiments" / EARLIER / "meta.json").read_text() == earlier
     # Exporting again changes nothing.
-    before = (site / bm.BOARD_META).read_text()
+    before = board_meta(site).read_text()
     bm.export_run(run, site)
-    assert (site / bm.BOARD_META).read_text() == before
+    assert board_meta(site).read_text() == before
 
 
-def test_export_refuses_another_judge(site, tmp_path):
-    run = write_run(tmp_path / "results", report("20260103-000000-dddddddd", "gpt-6-astra-high"), judge="claude-sonnet-5")
-    with pytest.raises(SystemExit, match="graded by claude-sonnet-5"):
+def _another_judge(rep, run):
+    grading = json.loads((run / "grading.json").read_text())
+    (run / "grading.json").write_text(json.dumps({**grading, "judge_model": "claude-sonnet-5"}))
+
+
+def _retitled(rep, run):
+    rep["submissions"][1]["task_title"] = "Beta task, renamed"
+    (run / "report.json").write_text(json.dumps(rep))
+
+
+@pytest.mark.parametrize("change, kwargs, refusal", [
+    (_another_judge, {}, "graded by claude-sonnet-5"),
+    (None, {"tools": True}, "with the provider's tools on"),
+    (None, {"tasks": ["alpha"]}, "lacks the board's tasks beta"),
+    (_retitled, {}, "beta is titled"),
+    (None, {"lost": {("beta", 1)}}, "lost to a run error: beta attempt 1. .*bench retry --run .*/results/20260103-000000-dddddddd`"),
+    (None, {"harness": "claude-code", "skills": False}, "harness 'claude-code'"),
+])
+def test_export_refuses_what_the_site_refuses_and_changes_nothing(site, tmp_path, change, kwargs, refusal):
+    rep = report("20260103-000000-dddddddd", "claude-opus-5-5-medium", **kwargs)
+    run = write_run(tmp_path / "results", rep)
+    if change:
+        change(rep, run)
+    before = board_meta(site).read_text()
+    with pytest.raises(SystemExit, match=refusal):
         bm.export_run(run, site)
+    assert board_meta(site).read_text() == before
+    assert not (site / "data" / "runs" / "20260103-000000-dddddddd.json").exists()
 
 
 def test_export_refuses_a_second_run_of_a_model_in_one_setup(site, tmp_path):
-    run = write_run(tmp_path / "results", report("20260103-000000-eeeeeeee", "gpt-6.2-sol-high"))
+    run = write_run(tmp_path / "results", report("20260103-000000-eeeeeeee", "gpt-6.2-sol-medium"))
     with pytest.raises(SystemExit, match="already has 20260101-000000-aaaaaaaa"):
         bm.export_run(run, site)
 
 
 def test_export_of_a_magister_run_says_which_test_lane(site, tmp_path):
-    rep = report("20260103-000000-ffffffff", "magister-gpt-6.2-sol-high", harness="magister-agent", skills=False)
+    rep = report("20260103-000000-ffffffff", "magister-gpt-6.2-sol-medium", harness="magister-agent",
+                 skills=False, tools=True)
     run = write_run(tmp_path / "results", rep, identity={"eval_target": "lane:bench", "gateway_sha": "d0afdad5034d895a"})
     entry = bm.export_run(run, site)
-    assert entry["setup"] == "magister"
-    assert entry["ran_on"] == "a test lane (bench), not production (gateway d0afdad50)"
+    assert entry == {"run_id": "20260103-000000-ffffffff", "setup": "magister", "judge_model": JUDGE,
+                     "judge_protocol_version": 4,
+                     "ran_on": "a test lane (bench), not production (gateway d0afdad50)"}
+    assert meta_of(site)["models"] == ["gpt-6.2-sol-medium"]
 
 
 def test_export_refuses_a_magister_run_not_made_on_a_test_lane(site, tmp_path):
-    rep = report("20260103-000000-abababab", "magister-gpt-6.2-sol-high", harness="magister-agent", skills=False)
+    rep = report("20260103-000000-abababab", "magister-gpt-6.2-sol-medium", harness="magister-agent", skills=False)
     run = write_run(tmp_path / "results", rep, identity={"eval_target": "canary"})
     with pytest.raises(SystemExit, match="test lane"):
         bm.export_run(run, site)
 
 
-def test_tweet_reads_the_site_and_stays_under_280(site, tmp_path):
-    rep = report("20260103-000000-12121212", "gpt-6.1-sol-high", reps=3, cost=0.10133,
-                 scores={"alpha": 99.0, "beta": 96.8}, passes={"beta": False})
-    run = write_run(tmp_path / "results", rep)
-    bm.export_run(run, site)
-    text = bm.tweet_for(site, rep["run_id"])
-    assert len(text) <= 280
-    assert text.startswith("GPT-6.1 Sol (high effort) scored 97.9/100 on the Marketing Benchmark, #1 of 2 models: ")
-    assert "3/6 attempts met every requirement, at 10¢ an attempt." in text
-    assert "vs GPT-6.2 Sol 97.0" in text  # the reference with a run; Opus 5.5 has none
-    assert "Opus" not in text
-    assert text.endswith("https://marketingbenchmark.ai/models/gpt-6.1-sol-high")
+def test_the_draft_leads_with_tasks_fully_right_never_the_checklist(site, tmp_path):
+    results = tmp_path / "results"
+    # Both tasks right with the skills, one without; the checklist average
+    # (97.9) is not the score and never appears.
+    skills = report("20260103-000000-12121212", "claude-opus-5-5-medium", scores={"alpha": 99.0, "beta": 96.8})
+    plain = report("20260103-000000-13131313", "claude-opus-5-5-medium", skills=False, passes={"beta": False})
+    bm.export_run(write_run(results, skills), site)
+    bm.export_run(write_run(results, plain), site)
+    text = bm.tweet_for(site, skills["run_id"])
+    assert text == (
+        "Claude Opus 5.5 (medium effort) got 2 of 2 marketing tasks fully right on the Marketing Benchmark "
+        "with the Marketing Skills, 1 without. #1 of 2 models with the skills. One attempt per task.\n"
+        "vs GPT-6.2 Sol 1\n"
+        f"{URL}20260103-000000-12121212"
+    )
+    assert "/100" not in text and "97.9" not in text and "%" not in text
+    # Alone in its setup, a run has no rank to give.
+    assert bm.tweet_for(site, plain["run_id"]) == (
+        "Claude Opus 5.5 (medium effort) got 1 of 2 marketing tasks fully right on the Marketing Benchmark "
+        "as the model only, 2 with the Marketing Skills. One attempt per task.\n"
+        f"{URL}20260103-000000-13131313"
+    )
 
 
 def test_an_export_refreshes_every_runs_draft(site, tmp_path, monkeypatch, capsys):
     results, copy = tmp_path / "results", tmp_path / "other-checkout"
     monkeypatch.setattr(bm, "search_dirs", lambda: [results, copy])
     # The board's run has a folder in two checkouts, each with the draft
-    # written when it was the only model: "#1 of 1".
+    # written when it was the only model.
     old_id = "20260101-000000-aaaaaaaa"
     old = json.loads((site / "data" / "runs" / f"{old_id}.json").read_text())
     stale = [write_run(results, old) / "tweet.txt", write_run(copy, old) / "tweet.txt"]
     for draft in stale:
-        draft.write_text("GPT-6.2 Sol (high effort) scored 97.0/100 ..., #1 of 1 models: ...\n")
-    new = report("20260103-000000-78787878", "gpt-6-luna-xhigh", scores={"alpha": 99.0, "beta": 99.0})
+        draft.write_text("GPT-6.2 Sol (medium effort) got 1 of 2 marketing tasks fully right ...\n")
+    new = report("20260103-000000-78787878", "gpt-6-luna-medium")
     run = write_run(results, new)
     bm.main(["--web", str(site), "--export", str(run)])
-    assert "#1 of 2 models" in (run / "tweet.txt").read_text()
-    assert (run / "tweet.txt").read_text().startswith("GPT-6 Luna (xhigh effort) scored 99.0/100")
+    assert (run / "tweet.txt").read_text().startswith("GPT-6 Luna (medium effort) got 2 of 2 marketing tasks")
+    assert "#1 of 2 models with the skills" in (run / "tweet.txt").read_text()
     for draft in stale:
         assert draft.read_text() == bm.tweet_for(site, old_id) + "\n"
-        assert "#2 of 2 models" in draft.read_text()
+        assert "#2 of 2 models with the skills" in draft.read_text()
     assert "2 changed" in capsys.readouterr().out
     # A second export of the same run finds nothing stale.
     bm.main(["--web", str(site), "--export", str(run)])
@@ -234,112 +390,87 @@ def test_a_run_going_at_the_same_time_is_not_taken_for_this_one(tmp_path, monkey
     monkeypatch.setattr(bm, "RESULTS_DIR", results)
     marker = time.time() - 1
 
-    def fresh(run_id, cand, skills=True):
-        d = write_run(results, report(run_id, cand, skills=skills))
-        (d / "run.json").write_text(json.dumps(
-            {"models": {cand: {}}, "harness": "direct-api", "skills_included": skills}))
-        return d
+    def fresh(run_id, cand, skills=True, harness="direct-api"):
+        return write_run(results, report(run_id, cand, skills=skills, harness=harness))
 
-    ours = fresh("20260103-000000-90909090", "gpt-6-luna-high")
+    ours = fresh("20260103-000000-90909090", "gpt-6-luna-medium")
     # Started later in the same checkout: another model, and the same model
     # without the skills.
-    fresh("20260103-000001-91919191", "gpt-6.2-sol-low")
-    plain = fresh("20260103-000002-92929292", "gpt-6-luna-high", skills=False)
+    fresh("20260103-000001-91919191", "gpt-6.2-sol-medium")
+    plain = fresh("20260103-000002-92929292", "gpt-6-luna-medium", skills=False)
     # A run that has only begun writing its run.json, and one in a harness
-    # the site does not chart, are passed over.
+    # the board does not chart, are passed over.
     (results / "20260103-000003-93939393").mkdir()
     (results / "20260103-000003-93939393" / "run.json").write_text('{"models": {"gpt-6-lu')
-    odd = fresh("20260103-000004-94949494", "gpt-6-luna-high")
-    (odd / "run.json").write_text(json.dumps({"models": {"gpt-6-luna-high": {}}, "harness": "journeys"}))
-    assert bm.newest_run_since(marker, "gpt-6-luna-high", "skills") == ours
-    assert bm.newest_run_since(marker, "gpt-6-luna-high", "no-skills") == plain
-    with pytest.raises(SystemExit, match="no new run folder for gpt-6-luna-xhigh"):
-        bm.newest_run_since(marker, "gpt-6-luna-xhigh", "skills")
+    fresh("20260103-000004-94949494", "gpt-6-luna-medium", harness="journeys")
+    assert bm.newest_run_since(marker, "gpt-6-luna-medium", "skills") == ours
+    assert bm.newest_run_since(marker, "gpt-6-luna-medium", "no-skills") == plain
+    with pytest.raises(SystemExit, match="no new run folder for gemini-4-neon-medium"):
+        bm.newest_run_since(marker, "gemini-4-neon-medium", "skills")
 
 
-def test_a_claude_code_run_exports_and_gets_a_draft(site, tmp_path):
-    rep = report("20260103-000000-cdcdcdcd", "claude-code-claude-haiku-5-5-high", harness="claude-code", skills=False)
-    run = write_run(tmp_path / "results", rep)
-    assert bm.export_run(run, site)["setup"] == "claude-code"
-    text = bm.tweet_for(site, rep["run_id"])
-    assert "#1 of 1 models inside Claude Code" in text and "Run inside Claude Code." in text
-
-
-def test_runs_that_print_the_same_score_share_a_rank(site, tmp_path):
-    # 96.98 prints as 97.0, the board run's score, so the two share first place.
-    rep = report("20260103-000000-34343434", "gpt-6.1-sol-high", scores={"alpha": 98.0, "beta": 95.96})
-    run = write_run(tmp_path / "results", rep)
-    bm.export_run(run, site)
-    assert "tied #1 of 2 models" in bm.tweet_for(site, rep["run_id"])
+def test_runs_with_as_many_tasks_fully_right_share_a_rank(site, tmp_path):
+    # One of two tasks fully right, like the board's GPT-6.2 Sol run: a tie,
+    # however far apart their checklist averages are.
+    rep = report("20260103-000000-34343434", "gpt-6-luna-medium", passes={"beta": False},
+                 scores={"alpha": 60.0, "beta": 40.0})
+    bm.export_run(write_run(tmp_path / "results", rep), site)
+    assert "Tied #1 of 2 models with the skills." in bm.tweet_for(site, rep["run_id"])
+    assert "Tied #1 of 2 models with the skills." in bm.tweet_for(site, "20260101-000000-aaaaaaaa")
 
 
 def test_the_draft_says_when_the_model_is_also_the_judge(site, tmp_path):
-    rep = report("20260103-000000-56565656", "claude-sonnet-5-5-high")
-    run = write_run(tmp_path / "results", rep)
-    bm.export_run(run, site)
+    rep = report("20260103-000000-56565656", "claude-sonnet-5-5-medium")
+    bm.export_run(write_run(tmp_path / "results", rep), site)
     text = bm.tweet_for(site, rep["run_id"])
-    assert text.startswith("Claude Sonnet 5.5 (high effort) scored")
+    assert text.startswith("Claude Sonnet 5.5 (medium effort) got 2 of 2 marketing tasks fully right")
     assert "It is also the judge." in text and len(text) <= 280
 
 
-def test_a_model_at_several_efforts_is_named_with_its_effort(site, tmp_path, monkeypatch):
-    monkeypatch.setattr(bm, "search_dirs", lambda: [tmp_path / "results"])
-    # With GPT-6.2 Sol at high only, the reference reads "GPT-6.2 Sol".
-    luna = report("20260103-000000-a1a1a1a1", "gpt-6-luna-xhigh", scores={"alpha": 95.0, "beta": 95.0})
-    bm.export_run(write_run(tmp_path / "results", luna), site)
-    assert "vs GPT-6.2 Sol 97.0" in bm.tweet_for(site, luna["run_id"])
-    # Once Sol is on the board at low effort too, the site names each Sol run
-    # with its effort, and so does the draft.
-    low = report("20260103-000000-b2b2b2b2", "gpt-6.2-sol-low", scores={"alpha": 96.0, "beta": 96.0})
-    bm.export_run(write_run(tmp_path / "results", low), site)
-    text = bm.tweet_for(site, luna["run_id"])
-    assert "vs GPT-6.2 Sol (high effort) 97.0" in text
-    assert bm.tweet_for(site, low["run_id"]).startswith("GPT-6.2 Sol (low effort) scored 96.0/100")
-
-
-def test_a_run_with_fewer_attempts_than_its_peers_says_so(site, tmp_path):
-    # The board's run made 3 attempts per task; this one made 1.
+def test_a_run_ranked_beside_another_number_of_attempts_says_so(site, tmp_path):
+    # The board's run made 3 attempts per task; this one makes 1.
     old = json.loads((site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").read_text())
     old["repetitions"] = 3
     (site / "data" / "runs" / "20260101-000000-aaaaaaaa.json").write_text(json.dumps(old))
-    rep = report("20260103-000000-c3c3c3c3", "gpt-6-luna-high", scores={"alpha": 99.0, "beta": 99.0})
+    rep = report("20260103-000000-c3c3c3c3", "gpt-6-luna-medium")
     bm.export_run(write_run(tmp_path / "results", rep), site)
     text = bm.tweet_for(site, rep["run_id"])
-    assert "#1 of 2 models" in text
-    assert "1 attempt per task; others ranked made 3." in text and len(text) <= 280
-    # The run with the most attempts says nothing of it.
-    assert "per task;" not in bm.tweet_for(site, "20260101-000000-aaaaaaaa")
+    assert "#1 of 2 models with the skills (made 1 or 3 attempts per task). One attempt per task." in text
+    assert len(text) <= 280
+    # Three attempts per task are said as what makes a task count.
+    assert "3 attempts per task, all 3 right to count." in bm.tweet_for(site, "20260101-000000-aaaaaaaa")
 
 
 def test_a_long_draft_shortens_its_prose_and_keeps_every_note(site, tmp_path):
-    # A one-attempt run of the judge's own model (no effort to drop) inside
-    # Magister, beside a three-attempt run: the fewer-attempts note and the
-    # judge note together run long.
-    peer = report("20260103-000000-d4d4d4d4", "magister-gpt-6.1-sol-high", harness="magister-agent",
-                  skills=False, reps=3, scores={"alpha": 80.0, "beta": 80.0})
-    bm.export_run(write_run(tmp_path / "results", peer, identity={"eval_target": "lane:bench", "gateway_sha": "abc"}), site)
-    rep = report("20260103-000000-e5e5e5e5", "magister-claude-sonnet-5-5", harness="magister-agent",
-                 skills=False, scores={"alpha": 90.0, "beta": 90.0}, cost=0.05)
-    bm.export_run(write_run(tmp_path / "results", rep, identity={"eval_target": "lane:bench", "gateway_sha": "abc"}), site)
+    # The judge's own model in all three setups, its Magister run ranked
+    # beside a three-attempt one: in full it runs to 334 characters. The
+    # benchmark's name goes (307), then the effort (291), then the rank.
+    for setup, skills in (("no-skills", False), ("skills", True)):
+        add_to_board(site, report(f"20260103-00000{int(skills)}-b0b0b0b0", "claude-sonnet-5-5-medium",
+                                  skills=skills, passes={"beta": skills}), setup)
+    lane = {"eval_target": "lane:bench", "gateway_sha": "abc"}
+    peer = report("20260103-000000-d4d4d4d4", "magister-gpt-6.2-sol-medium", harness="magister-agent",
+                  skills=False, reps=3, passes={"beta": False})
+    bm.export_run(write_run(tmp_path / "results", peer, identity=lane), site)
+    rep = report("20260103-000000-e5e5e5e5", "magister-claude-sonnet-5-5-medium", harness="magister-agent",
+                 skills=False)
+    bm.export_run(write_run(tmp_path / "results", rep, identity=lane), site)
     text = bm.tweet_for(site, rep["run_id"])
+    assert text == (
+        "Claude Sonnet 5.5 got 2 of 2 marketing tasks fully right inside Magister, 1 as the model only, "
+        "2 with the Marketing Skills. One attempt per task. It is also the judge.\n"
+        "vs GPT-6.2 Sol 1\n"
+        f"{URL}20260103-000000-e5e5e5e5"
+    )
     assert len(text) <= 280
-    assert "1 attempt per task; others ranked made 3." in text and "It is also the judge." in text
-    assert "on the Marketing Benchmark" not in text
-
-
-def test_numbers_round_as_the_page_does():
-    assert bm.fmt_score(96.25) == "96.3"  # JavaScript's toFixed rounds this tie up
-    assert bm.fmt_score(97.866) == "97.9"
-    assert bm.fmt_cents(0.0186) == "1.9¢"
-    assert bm.fmt_cents(0.4415) == "44¢"
 
 
 @pytest.mark.parametrize("bench_id, label", [
     ("gpt-6.1-sol-high", "GPT-6.1 Sol"),
     ("gpt-6-astra-high", "GPT-6 Astra"),
-    ("claude-opus-5-5-high", "Claude Opus 5.5"),
+    ("claude-opus-5-5-medium", "Claude Opus 5.5"),
     ("claude-haiku-4-5", "Claude Haiku 4.5"),
-    ("gemini-3.8-flash-high", "Gemini 3.8 Flash"),
+    ("gemini-4-neon-medium", "Gemini 4 Neon"),
     ("glm-5.3", "GLM-5.3"),
 ])
 def test_model_names_match_the_site(bench_id, label):
