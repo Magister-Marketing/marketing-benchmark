@@ -1,211 +1,209 @@
 # Tasks
 
 [Back to the overview](../README.md) · [How scoring works](SCORING.md) ·
-[See scored examples](SCORED_EXAMPLES.md)
+[See scored examples](SCORED_EXAMPLES.md) ·
+[Simulated companies](SIMULATED_COMPANIES.md)
 
-A task is a realistic marketing assignment with its own source material and
-pass/fail checklist. Every model in a comparison receives the same task
-package.
+A task is a realistic marketing assignment with its own source material and a
+pass/fail checklist. Every model and setup on a board receives the same task.
 
-- **The assignment** says what to produce.
-- **The source material** supplies the facts the model may use.
-- **The skill guidance** is the relevant verbatim SKILL.md from
-  [marketingskills](https://github.com/coreyhaines31/marketingskills), Corey
-  Haines's open skill pack that ships on every Magister agent machine
-  (provenance: `evals/fixtures/public/skills/README.md`).
-- **The checklist** defines every requirement the answer must pass.
+- **The assignment** (the task's `prompt`) says what to produce and in what
+  form.
+- **The source material** (its `fixtures`) supplies the facts the model may
+  use. Brands, people and figures are invented, except the headline pairs of
+  the two forecast tasks, which come from real tests.
+- **The skill guidance** is the task's listed SKILL.md files from
+  [marketingskills](https://github.com/coreyhaines31/marketingskills). Only the
+  "+ Marketing Skills" setup gets them in the prompt
+  ([provenance](../evals/fixtures/public/skills/README.md)).
+- **The checklist** (its `rubric`) lists every requirement the answer must
+  meet. Some are checked by a program, the rest by the judge
+  ([how](SCORING.md#how-an-answer-is-checked)).
 
-The task files linked below are the source of truth.
+The task files in `eval_runner/tasks/` are the source of truth. There are 49.
+`eval_runner/board.json` places every one of them in exactly one of three
+lists, and `tests/test_board.py` fails the build otherwise:
 
-## Development tasks
+- **the board**: 35 tasks, five in each of seven areas of marketing;
+- **held back**: the 4 tasks of the holdout split;
+- **left out**: 10 open tasks that stay in the repository and run by id, but
+  are not on the board, each with the reason.
 
-These are the practice and calibration set. We can inspect their answers and
-use what we learn to make unclear requirements clearer. Because we have seen
-the results, these tasks are useful for development—not as a claim about
-performance on an untouched test.
+`--split board` runs the board's 35 in the file's order (on
+`python -m eval_runner.bench run` and `python -m eval_runner.bench eval`).
 
-| Task | What the model must produce | What makes it challenging | Checks |
+The descriptions below say what each task asks for and what makes it hard,
+as its prompt and files set it out. They do not give the answers. "Checks"
+is the number of requirements in the task's current rubric, and how many of
+them a program decides.
+
+This page covers the tasks where a model writes an answer from supplied files.
+A second, newer kind, where a model works inside a simulated company, is
+described in [Simulated companies](SIMULATED_COMPANIES.md). It is not on the
+board.
+
+## The board: 35 tasks in seven areas
+
+### Copywriting
+
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Hero headlines](../eval_runner/tasks/headline.json) | Five grounded launch headlines with distinct angles and rationales | Staying punchy while using only supported product facts | 6 |
-| [Conflicting brief repair](../eval_runner/tasks/source-conflict-repair.json) | A 12-item conflict audit and one corrected Meta concept | Separating atomic claims and following the authoritative sources | 18 |
-| [Attribution sensitivity](../eval_runner/tasks/attribution-sensitivity.json) | First-touch and last-touch revenue comparisons | Deduplicating orders, retaining refunds, and separating robust from model-dependent conclusions | 10 |
-| [Factorial ad test](../eval_runner/tasks/factorial-ad-test.json) | A four-cell 2×2 creative experiment | Holding variables constant while obeying exact budget, stop, win, and inconclusive rules | 13 |
-| [Landing-page repair](../eval_runner/tasks/landing-page-repair.json) | A corrected single-file HTML page | Removing planted factual, safety, proof, action, and structural defects | 19 |
-| [SEO blog post](../eval_runner/tasks/blog-post.json) | A useful long-form article about furnace noises, with an SEO title and meta description, from a dated sources file and a site map | Using only current figures when a later source has replaced four (the price, a filter interval, and an interim call summary's count and shares, each listed after the source that replaces it); linking exactly the eight pages a written rule picks from a 139-page site map (live, tagged furnace, most sessions, a tie broken by URL, with redirects, noindex pages, a dead page and pages tagged otherwise above the cutoff) with each page's keyword as the link text; and keeping safety and emergency advice responsible. Prompt 3, rubric 4 (hardened 2026-11-20: every direct setup passed all nine checks of rubric 3); 11 of the 14 checks are a program's | 14 |
-| [Meta ad concepts](../eval_runner/tasks/ad-creatives.json) | Three feed-ad concepts with a fixed call to action | Making the concepts genuinely different and testable without inventing proof | 9 |
-| [Ad performance analysis](../eval_runner/tasks/ad-performance-analysis.json) | A founder-ready analysis of four weeks of campaign data | Correct arithmetic, missing data, trends, and a bounded next test | 10 |
-| [90-day marketing plan](../eval_runner/tasks/marketing-plan.json) | A focused B2B SaaS plan with three channels and a $15,000 budget | Sequencing the plan and measuring only fully observed activation cohorts | 8 |
-| [Landing page](../eval_runner/tasks/landing-page.json) | A complete single-file HTML landing page | Exact visitor flow, careful claims, one action, and valid page structure | 10 |
-| [Shopify to Meta tracking](../eval_runner/tasks/shopify-meta-capi.json) | A practical Pixel and Conversions API implementation guide | Correct deduplication, stable retry data, privacy, and end-to-end validation | 11 |
-| [Email-flow repair](../eval_runner/tasks/email-flow-repair.json) | A corrected four-email onboarding sequence | Finding every planted defect with no defect categories named in the prompt | 14 |
-| [Budget reconciliation trap](../eval_runner/tasks/budget-reconciliation-trap.json) | A Q4 allocation response to an infeasible brief | Catching that the commitments exceed the cap and saying so with exact numbers | 8 |
-| [Analytics source conflict](../eval_runner/tasks/analytics-source-conflict.json) | A reconciliation of contradictory Meta and GA4 reports | Computing both sources' truths without inventing a single reconciled number or undocumented causes | 9 |
-| [Quarterly paid-media review](../eval_runner/tasks/ads-ledger-analysis.json) | A CMO-ready review of a 784-row daily ads export with five labeled figures | Computing refund-adjusted CPA, wasted spend, and ROAS exactly; `no_invented_data` is backed by the oracle, so estimated figures score 0 | 12 |
-| [Quarterly paid-media review, decoy file](../eval_runner/tasks/ads-ledger-analysis-decoy.json) | The same review, after a look-alike "preliminary" export with the same name, shape, and dates but different numbers was shared one turn earlier for reference | Computing from the file this request supplied, not the one already sitting in the workspace; every figure from the wrong file is outside the zero-credit band, so the oracle scores it 0. Runs wherever a prior turn can be sent: the direct setups (the look-alike message, the model's reply, then the request, as one conversation of two calls) and Magister; not Claude Code | 13 |
-| [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritized defect list across UTM links, GTM/GA4 tags, and consent defaults | Finding all twelve planted defects (Performance Max counts separately from search) without flagging the conforming decoys | 18 |
+| [Hero headlines](../eval_runner/tasks/headline.json) | Five launch headline options for a product's website hero, each with a one-line rationale | Staying punchy while every product fact comes from the supplied sources | 6 (1) |
+| [Conflicting brief repair](../eval_runner/tasks/source-conflict-repair.json) | A 12-row register of the agency brief's unsupported or contradictory claims, and one corrected Meta ad concept | Splitting the brief into separate claims and following the authoritative sources wherever they disagree with it | 18 (0) |
+| [Price change rollout](../eval_runner/tasks/price-change-rollout.json) | All 14 customer-facing assets of a subscription product, returned after a price change, with a change log and labelled figures | Changing everything the change brief changes and nothing else, with every ad and the banner inside its limit and the brief's notices exactly where it says | 19 (18) |
+| [Launch copy pack](../eval_runner/tasks/launch-copy-pack.json) | Every asset a placements table calls for, for four air purifiers, as one file of copy | Every figure and claim must come from a claims-register row usable for that product and channel on the launch day, within each placement's limit and the voice rules; a spec sheet and last year's launch copy are supplied for reference only | 15 (14) |
+| [Claims check](../eval_runner/tasks/claims-check.json) | A verdict on each of 150 numbered claims across six product pages (supported, contradicted or unsupported), and the pages rewritten | Deciding each claim by the prompt's rules: final lab results only, figures for the same product, measure and group of people, and prices and offers in force on the day the pages go live | 14 (13) |
 
-Added on 2026-11-17 (the first draft was run once and discarded; the judged checks of these versions are not calibrated yet):
+### Paid ads
 
-| Task | What the model must produce | What makes it challenging | Checks |
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Technical SEO triage](../eval_runner/tasks/seo-technical-triage.json) | A prioritised fix list from a 165-URL site crawl, with six labeled figures | Counting five issue types exactly while leaving correctly configured look-alikes (canonicalised filter pages, noindex cart and search pages, one-hop redirects) unflagged, and ordering the issue types by the traffic of the pages each affects | 14 |
-| [Search terms review](../eval_runner/tasks/search-terms-negatives.json) | Negative keywords by theme, terms to keep, and terms to promote, from a month of search terms | Blocking what the business does not sell without blocking its own brand name, two converting terms, or product searches with too few clicks to judge | 12 |
-| [A/B test readout](../eval_runner/tasks/ab-test-readout.json) | A readout and recommendation for a pricing-page test, with seven labeled figures | Seeing that the test was read early and that the visitor split is not the planned 50/50, and not shipping on a secondary metric | 17 |
-| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a 455-keyword export, the site's pages and competitor outlines for three candidate topics, opening with six labeled lines (topic, primary and secondary keywords, title, meta description, internal links) and closing with six labeled figures | Computing winnable clicks from a click-through table for every eligible keyword, with those the site already wins removed: the topic with the most searches, the most eligible searches, and the most clicks when the clicks a ranking keyword already gets are left in is a different one, and the target topic's biggest keyword ranks fifth, so it is not the primary. Prompt 4, rubric 5 (hardened 2026-11-20: every setup passed all 15 checks of rubric 4); 12 of the 16 checks are a program's | 16 |
-| [A/B test readout](../eval_runner/tasks/ab-test-readout.json) | A readout and decision for a pricing-page test from 616 daily rows by device and traffic source and a plan with written decision rules, with eleven labeled figures (hardened on 2026-11-20) | The dashboard's pooled lift is up while variant B is down on both devices, because the plan split mobile 70/30; the first week's lift fades and the plan leaves that week out of every figure; QA visits forced into variant B must come out; the 70/30 split is not a mismatch, and the billing-ticket guardrail is breached only over the window the plan reads | 15 |
-| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a keyword export, the site's pages and competitor outlines for three candidate topics | Picking the topic the numbers support when the highest-volume keyword has buying intent and already ranks on another page | 15 |
-| [Re-engagement programme](../eval_runner/tasks/lifecycle-reengagement.json) | An audience with counts, segments and a three-email flow, from a 260-row subscriber export and an email policy | Leaving out everyone without consent, including past buyers, and following the policy's offer, cadence and sunset rules | 15 |
-| [Monthly report](../eval_runner/tasks/monthly-report-reconcile.json) | A founder-ready report with six labeled figures, from ad, analytics and order exports that disagree | Reconciling double-fired events, refunds, test orders and platform over-claiming into one set of real results | 15 |
-| [Search account build](../eval_runner/tasks/search-account-build.json) | Five files for a new Google Ads account: keywords by campaign and ad group, exclusions with reasons, negatives, daily budgets and one ad per ad group, from a 208-keyword export and an account standard | Applying seven steps of rules to every keyword without one slip: the first matching rule wins, an exclusion beats the brand name, budgets are scaled to a cap and then floored, and each ad has limits, required words and banned ones | 19 |
-| [Lifecycle programme](../eval_runner/tasks/lifecycle-program.json) | Five files for a tea club's lifecycle email programme, from a 300-customer export and a written policy: who is suppressed and why, everyone else's segment, the holdout, 24 emails with days, subjects, preheaders and offer codes, and the local send time of every step in every timezone | Rules that interact across 300 people (the first suppression reason that applies, the first segment that fits, a holdout by id, a cap for gift plans), send times that move out of quiet hours, and two dozen short pieces of copy with a required phrase each, hard limits and no repeats, all agreeing with each other | 20 |
-| [Launch brief to trafficking sheet](../eval_runner/tasks/launch-trafficking.json) | Three files for a product launch to three audiences on Meta, Google Search, LinkedIn and email: a budget by channel and week, 114 text fields across 36 assets, and a tracked final URL for each asset | Many short pieces of copy under hard, differing character limits, each with strings it must and must not carry, written for its own audience and never reused across audiences; a budget with a rounding rule and a weekly minimum; URLs built exactly to a tracking standard, with one landing page not live | 19 |
-| [Cold outbound sequences](../eval_runner/tasks/outbound-sequence.json) | Three files for a B2B cold outbound programme, from a 200-lead list, a written standard and a facts sheet: who is excluded and why, everyone else's segment and country group, and 30 emails across 10 sequences with send days, subjects and bodies | Seven exclusion reasons and four segments decided in order over 200 leads, country rules that change which steps are sent and which exact sentence an email must carry, 30 emails under a subject limit and a word limit with a required footer, forbidden phrases and no repeated subject, merge fields that are allowed only where every lead in the sequence has a value, and no figure that is not in the facts | 22 |
-| [Price change rollout](../eval_runner/tasks/price-change-rollout.json) | All 14 customer-facing assets of a subscription product returned after a price change, a plan rename and a longer trial: pricing page, FAQ, emails, six ads, a one-pager, a help article and a banner, with a change log | Changing everything the brief changes and nothing else: prices however the old copy wrote them, savings that must be worked out again, a plan name that is also an ordinary word and part of a feature's name, a number that equals an old price and is not one, an ad already at its character limit, one sentence that keeps the old price, and three assets that must come back character for character | 19 |
-| [Which headline won?](../eval_runner/tasks/headline-forecast.json) | A pick and a confidence for each of 100 pairs of headlines from real tests, where one beat the other by a wide margin | Telling which headline people really clicked more, and knowing how sure to be: a coin flip scores nothing, nine right in ten passes | 4 |
-| [Which headline won? Never published](../eval_runner/tasks/headline-forecast-unpublished.json) | The same for 100 pairs of headlines the publisher did not go on to use | The same, where no headline can be recognised from having spread on the web | 4 |
+| [Meta ad concepts](../eval_runner/tasks/ad-creatives.json) | Three Meta feed ad concepts with labelled fields and a fixed call to action | Concepts aimed at genuinely different audience motivations, each testable, without inventing proof | 9 (2) |
+| [Search account build](../eval_runner/tasks/search-account-build.json) | Five files for a new Google Ads account (keywords by campaign and ad group, exclusions with reasons, negatives, daily budgets, one ad per ad group) from a keyword export and an account standard | Applying the standard's ordered steps to every keyword in the export without a slip, with every ad inside its limits and wording rules | 19 (18) |
+| [Search terms review](../eval_runner/tasks/search-terms-negatives.json) | Negative keywords by theme, terms to promote and terms kept, from a month's search terms report, with labelled figures | Blocking what the business does not sell or do without blocking searches it wants, and promoting only the terms the definitions allow | 12 (5) |
+| [Launch brief to trafficking sheet](../eval_runner/tasks/launch-trafficking.json) | Three files for a launch on Meta, Google Search, LinkedIn and email: a budget by channel and week, every asset's text fields, and a tracked final URL per asset | Many short pieces of copy under differing hard limits, each written for its own audience, with ids and URLs built exactly to a tracking standard | 19 (18) |
+| [Channel budget allocation](../eval_runner/tasks/channel-budget-allocation.json) | A quarter's demand budget split across twelve channels, three regions and three months in $10,000 blocks: every cell, the licence fees, which named constraints bind, and labelled figures | Finding the one split that projects the most leads while every rule in the planning brief holds at once; last quarter's results are supplied too | 17 (16) |
 
-The three tasks from Content brief down were drafted as holdout tasks. Their
-recorded answers have been read and one rubric was changed because of what
-they showed, so by the rule under "Holdout tasks" they are development
-tasks, and no held-out result is claimed from them. In these six tasks every
-figure a program checks is recomputed by separate code in the tests; the
-checks a judge makes are not calibrated yet.
+### SEO and content
 
-Known limits of those six tasks:
-
-- To fix in their next prompt version: an answer written with a full stop as
-  the thousands separator (`12.480`) is read as 12.48, because a full stop is
-  always the decimal point. The prompts say thousands separators are fine
-  without saying which; they should say "a comma as thousands separator".
-  The content brief's prompt 4 says "Write thousands with a comma".
-- To fix in the next rubric version of the A/B test readout: the critical
-  criterion says a readout may state the expected count per variant under the
-  planned 50/50 split (11,750). That a readout fails when it gives that count
-  as the sample size the plan required of each variant (18,000) is said only
-  in the judge's reference, not in the criterion's own text.
-  The A/B test readout's version 4 says so.
-
-Conversion tasks added on 2026-11-20 for the 35-task board. No setup has run
-them yet and their judged checks are not calibrated. Every figure a program
-checks is recomputed from the fixtures by separate code in
-`tests/test_tasks_conversion.py`. The A/B test readout above was hardened the
-same day (prompt version 4, rubric version 5), with its tests in the same file.
-
-| Task | What the model must produce | What makes it challenging | Checks |
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Test plan sizing](../eval_runner/tasks/test-plan-sizing.json) | A 150-row calendar file for a backlog of A/B tests across twelve storefronts: each test's page weekly users, sample size, weeks, start week and status, every row checked by program, and a note for the growth lead | Traps spread through the backlog: storefronts that count sessions at their own users per session, outage weeks to leave out of a page's mean, lifts in percentage points, tests on half their page's traffic, and weeks that round up; then one priority order over every storefront, each with its own freeze week and limit on tests at once, decides which of the tests that fit in four weeks get a slot | 10 |
-| [Funnel drop-off](../eval_runner/tasks/funnel-dropoff.json) | A diagnosis of a checkout drop from a 1,154-row daily funnel export over ten segments, a release log and 13 suspected causes: a per-segment file (six step rates, a verdict, the broken step, its day and its orders lost) and a ruling per cause, each checked row by row, and four store figures (version 2) | Two real breaks on different days, segments and steps, the second not to be pinned on the first release; three double-firings to halve first, one over the first break's day, one shared with a crawler that the automated rule only catches after the halving, one that fakes two breaks at the end; dips inside the range, and steps below it for one, two and four days that recover | 14 |
+| [SEO blog post](../eval_runner/tasks/blog-post.json) | A long-form article answering "Why is my furnace making noise?", with an SEO title, a meta description and a booking link | Using only the current figure where a later source replaced an earlier one, linking exactly the pages a written rule picks from a site map, and keeping safety and emergency advice responsible | 14 (11) |
+| [Content brief](../eval_runner/tasks/seo-content-brief.json) | A content brief for one new article, from a keyword export, the site's pages and competitors' outlines for three candidate topics | Choosing the topic and its keywords by the brief's own definitions of winnable clicks, not by search volume alone | 16 (12) |
+| [Technical SEO triage](../eval_runner/tasks/seo-technical-triage.json) | A prioritised fix list from a site crawl, with labelled figures | Counting each issue type exactly under the given definitions, leaving correctly configured URLs alone, and ordering the issues by the traffic of the pages they affect | 14 (7) |
+| [Redirect map](../eval_runner/tasks/seo-redirect-map.json) | A file of 301 and 410 redirects for a shop moving platform, with labelled counts | Applying the agreed migration rules to every old URL, in order, against the old crawl and the new site's staging crawl | 15 (15) |
+| [Titles and meta descriptions](../eval_runner/tasks/seo-titles-meta.json) | A title and a meta description for every page the SEO lead's rules cover, with labelled counts | Hard rules on every page (lengths, suffixes, keywords, prices) and pages that share a keyword, which the rules settle | 16 (16) |
 
-Strategy tasks added on 2026-11-20 for the 35-task board. Version 1 of each was run once, by one model, and passed outright, so these are version 2, much larger; version 2 has not been run, and its judged checks are not calibrated. Every figure a program checks is computed from the fixtures by `eval_runner/task_facts_strategy.py` and recomputed by separate code in `tests/test_tasks_strategy.py`:
+### Email and lifecycle
 
-| Task | What the model must produce | What makes it challenging | Checks |
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Channel budget allocation](../eval_runner/tasks/channel-budget-allocation.json) | A quarterly budget split across six channels in whole $5,000 blocks, from diminishing-returns forecasts and channel terms: blocks, spend, fee and leads per channel, which of ten named constraints bind, and five labeled figures | Finding the one best split when the rules interact: the account executives can take only 520 leads from two of the channels, one channel's fee is monthly and held all quarter, one has a 4-block minimum order and one a contracted commitment. Buying the best blocks as if the AEs could take every lead projects 85 more leads and breaks the cap, and scores zero on every check it touches | 14 |
-| [Competitor comparison](../eval_runner/tasks/competitor-comparison.json) | A 72-cell table of 12 attributes for us and five competitors, read from six saved pricing pages under a brief's rules, and a verdict on five draft claims about us | Every cell is the value its page states or exactly `not stated`: monthly prices beside lower annual ones, annual-only plans put on a monthly basis, single sign-on listed in an introduction but sold on a higher plan only, three FAQs that contradict their plan tables (the FAQ wins), a price withheld behind "Contact sales" and a gap that is not a no. Each trap costs its own check and the one claim it decides | 14 |
-| [Launch timeline](../eval_runner/tasks/launch-timeline.json) | The start and finish of each of 24 launch tasks under written scheduling rules, the launch date, the critical path, the slack of three tasks, whether the promised date holds, and the smallest set of optional tasks to cut to make it | Owners do one task at a time in ID order, so the critical path runs through the designer's queue, not the dependencies; two outside start dates and three holidays move the dates. A dependency-only critical path says the date holds (9 April against 16) and scores zero on every check it touches; the longest task and the longest optional task both have slack, and the first useful cut alone falls a day short | 14 |
-SEO tasks added on 2026-11-20 for the 35-task board. A program checks every row and figure against an oracle
-that reads only the fixtures (`eval_runner/task_facts_seo.py`), and the tests compute each one again with
-separate code. No model has been run on them yet:
+| [Email-flow repair](../eval_runner/tasks/email-flow-repair.json) | A corrected four-email onboarding sequence | Finding every defect in an agency draft against the supplied facts and guidance, with no kinds of defect named, while keeping what is accurate | 14 (0) |
+| [Re-engagement programme](../eval_runner/tasks/lifecycle-reengagement.json) | An audience with counts and exclusions, a three-email flow in two versions, and what happens next, from a subscriber export | Applying the given definitions and the email policy (consent, offers, cadence, sunset) exactly | 15 (6) |
+| [Cold outbound sequences](../eval_runner/tasks/outbound-sequence.json) | Three files for a cold outbound programme: exclusions with reasons, every other lead's segment and country group, and every email of every sequence | Deciding exclusions, segments and country rules in order over every lead, then writing each email within the standard's limits and required wording, using only the facts sheet | 22 (21) |
+| [Email compliance crosscheck](../eval_runner/tasks/email-compliance-crosscheck.json) | A verdict on each scheduled email of two brands in four regions (pass, or each broken rule's code with the row that proves it), a fix for each code, and labelled counts | Joining each email, on its own send date, with the sending policy and six other exports: audiences and consent, the sender map, registered addresses, promotions, prices and DNS records | 14 (13) |
+| [Email send calendar](../eval_runner/tasks/email-send-calendar.json) | A month's send calendar for a campaign plan, every subscriber's email count for the month, and labelled figures | Following the calendar policy and its frequency cap exactly, with each campaign's audience counted on its own send date | 13 (12) |
 
-| Task | What the model must produce | What makes it challenging | Checks |
+### Landing pages and conversion
+
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Redirect map](../eval_runner/tasks/seo-redirect-map.json) | A redirect file for a shop moving platform, from a 327-URL crawl of the old site, the new site's URL list and ten migration rules in order, with four labeled counts | Applying the first rule that fits to every URL: products matched by SKU when a successor took a retired product's slug, colour pages the new site folds into one product page, old redirects and the new site's own redirects followed to a live page, parameter URLs and unchanged pages left out, a date stripped only when it is a date, and retired products with no signal at all gone instead of redirected | 15 |
-| [Titles and meta descriptions](../eval_runner/tasks/seo-titles-meta.json) | A title and a meta description for each of the 99 indexed pages of a 113-page inventory, with three labeled counts | Hard length limits, a suffix per page type, the exact keyword in each, prices only on in-stock products, a product's attribute and a category's count, and pages that share a keyword: the one with the most clicks keeps it (ties by page type, then id), the rest switch to their secondary keyword and may not use the one they gave up; size variants share a keyword, three pages tie, four noindex pages out-click the page that keeps it and take no part, and a singular is not a plural | 16 |
+| [Landing page](../eval_runner/tasks/landing-page.json) | A complete single-file HTML landing page for a paid consultation | The section order a cautious first-time visitor needs, careful claims and limitations, one primary action, and valid page structure | 10 (4) |
+| [Landing-page repair](../eval_runner/tasks/landing-page-repair.json) | A corrected single-file HTML page | Fixing every planted factual, safety, proof, urgency, action, structure and implementation defect while keeping the required section order and call to action | 19 (4) |
+| [A/B test readout](../eval_runner/tasks/ab-test-readout.json) | A readout and recommendation for a pricing-page test, from daily results by device and traffic source and the test plan, with labelled figures | Reading the test as the plan written before launch says (its window, the visits it counts, its decision rules) rather than by the dashboard's pooled headline | 15 (12) |
+| [Funnel drop-off](../eval_runner/tasks/funnel-dropoff.json) | A diagnosis of a checkout conversion drop: each segment's step rates and verdict, a ruling on each suspected cause, and store figures | Following the analysts' rules on four weeks of daily funnel data by device, browser and step, beside a release log and a list of suspected causes | 14 (12) |
+| [Test plan sizing](../eval_runner/tasks/test-plan-sizing.json) | A calendar for a backlog of 150 A/B tests (each test's traffic, sample size, weeks, start week and status) and a note for the growth lead | Applying the experimentation rules and each storefront's settings to every test, then fitting what runs into a four-week calendar | 10 (8) |
 
-Email tasks added on 2026-11-20 for the 35-task board (not run yet; the one judged check of each is not calibrated):
+### Analytics and measurement
 
-| Task | What the model must produce | What makes it challenging | Checks |
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Email send calendar](../eval_runner/tasks/email-send-calendar.json) | February's calendar for 12 campaigns to six overlapping segments of an 800-subscriber list: each campaign's send date (or none), audience size and the reason it moved; every subscriber's email count for the month; five labeled figures | A per-subscriber cap of 3 emails in any 7 consecutive days, applied in priority order and counting campaigns already placed on later dates, together with blackout dates, send days by type, a teaser gap that moves a launch, and deadlines; audiences that depend on the send date, because subscribers join during the month and pauses end on given days (and some pauses ended in January); collisions that exist only for people in two segments, one campaign that cannot go out, and unsubscribed people whose segment overlaps would move campaigns if they were counted. Every one of the 800 subscriber rows is checked | 13 |
-| [Email compliance audit](../eval_runner/tasks/email-compliance-audit.json) | A verdict for each of the 150 live emails before a platform move (pass, or the codes of the sending policy it breaks), a fix for each code, and three labeled counts, from the policy, a consent table of 17 audiences and the DNS records of seven sending domains | 116 violations under six codes across 87 emails, and look-alikes in every rule: DMARC `p=none` beside `sp=quarantine`, a revoked key at the required selector with a live one at another, a second SPF record, the brand's own root domain, against `~all`, `pct=25`, `sp=none` and an empty key at an unused selector that all pass; a registered PO box and a `·`-separated address against a wrong suite, ZIP or street; tags without spaces or for preferences against `{{ unsubscribe_url }}` and capital letters; "up to" the highest discount, "sitewide" with no exclusions and a stated shipping minimum; a review request, a promotion followed by a support block; an unconfirmed EU audience listed second, a Canadian audience at exactly 24 months. Every one of the 150 rows is checked | 13 |
-| [Channel budget allocation](../eval_runner/tasks/channel-budget-allocation.json) | The split of a $1,400,000 quarter across 12 channels, 3 regions and 3 months in $10,000 blocks: all 108 cells (blocks, spend, leads), the licence months and fees, which of 25 named constraints bind, and eight labeled figures | 416 forecast blocks under rules that interact: regional minimums and maximums, monthly pacing and a field-marketing limit per region and month, contracted blocks, three licences priced by the number of months a channel is live, a vendor forecast given as cumulative leads, and a forecast range and last quarter's actuals that play no part. Ignoring the field limit, a minimum, the pacing or a licence's terms each moves at least four cells and scores zero on every check it touches | 17 |
-| [Competitor comparison](../eval_runner/tasks/competitor-comparison.json) | A 200-cell table of 20 attributes for us and nine competitors, read from ten saved pricing pages under a brief's rules, and a verdict on nine draft claims about us | Each page has a plan table, footnotes, a feature list, a security section, an FAQ and a dated changelog, and 63 cells carry a trap: changelog and FAQ entries that override the table (the newest wins), annual-billing and yearly prices beside the monthly ones, plans sold only annually, "Contact sales", footnotes that make a feature a paid add-on beside one that only caps it, summaries the table contradicts, betas and plans, SOC 2 Type I reports, money-back guarantees, aims and status pages, and gaps that are not a no. A claim is supportable only if it holds whatever a not-stated cell really is; each claim turns on one trap | 18 |
-| [Launch timeline](../eval_runner/tasks/launch-timeline.json) | The start, finish and slack of each of 96 launch tasks under written scheduling rules, the launch date, the critical path, whether the promised date holds, and the smallest set of optional tasks to cut to make it | Ten people in two offices with different holidays, a part-timer working three days and one working four, two people away for part of the plan, three suppliers whose durations run in calendar days, lead times in calendar days on some dependencies, five outside start dates, and owners who take their tasks one at a time in ID order. A dependency-only critical path says the date holds (24 May against 1 June) and scores zero on every check it touches; one calendar for both offices, or ignoring the part-time days, the time off or the suppliers' calendar, moves the dates of at least four tasks | 12 |
+| [Ad performance analysis](../eval_runner/tasks/ad-performance-analysis.json) | A founder-ready analysis of four weeks of Meta campaign data | Correct arithmetic over gaps in the data, the trend that matters, and a bounded next test | 10 (0) |
+| [Quarterly paid-media review](../eval_runner/tasks/ads-ledger-analysis.json) | A CMO-ready review of a raw daily ads export, with five labelled figures | Computing refund-adjusted figures exactly from the rows by the given definitions; a figure presented as computed that the data cannot give fails on the oracle's evidence | 12 (6) |
+| [Attribution sensitivity](../eval_runner/tasks/attribution-sensitivity.json) | First-touch and last-touch revenue and ROAS by channel, and a budget recommendation | Removing duplicate orders, keeping refunds, and separating conclusions that hold under both models from those that depend on the choice | 10 (0) |
+| [Tracking audit](../eval_runner/tasks/tracking-audit.json) | A prioritised defect list across campaign links, GTM and GA4 tags and consent settings, and what was checked and found clean | Finding every real defect against the documented standards without flagging items that conform | 20 (0) |
+| [Shopify to Meta tracking](../eval_runner/tasks/shopify-meta-capi.json) | An implementation guide for Pixel and Conversions API tracking from Shopify to Meta | Correct deduplication, stable retry data, careful handling of customer data, and end-to-end validation | 11 (0) |
 
-Copy tasks added on 2026-11-20 for the 35-task board. No model has answered them yet, and the one judged check of each is not calibrated:
+### Strategy and planning
 
-| Task | What the model must produce | What makes it challenging | Checks |
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Launch copy pack](../eval_runner/tasks/launch-copy-pack.json) | 72 assets for four air purifiers across nine placements (search, social, email, SMS, push), from a launch brief, a 133-row claims register, voice rules and a placements table | Every figure and claim phrase must come from a register row usable for that product and that channel (approved, not pending, withdrawn or internal, not another product's, not expired by the launch day); engineering figures a little off the approved ones, last year's launch copy written under looser rules, prices with each product's own offer date, an SMS limit that counts the opt-out line and drops to 70 for one curly apostrophe, and no two of a product's headlines opening alike | 15 |
-| [Catalog descriptions](../eval_runner/tasks/catalog-descriptions.json) | 60 product descriptions in twelve families of near-identical variants, from a spec table, a certificate register, a warranty policy and last season's descriptions | A fixed spec line per row; the warranty from the row or else the category's policy; only the standards whose certificates are valid on the publish date (seven listed ones lapsed, were suspended or expired); nothing for a blank weight or country; no fact borrowed from a sibling variant or kept from last season's stale copy | 12 |
-| [Claims check](../eval_runner/tasks/claims-check.json) | A verdict for each of 150 numbered claims on six product pages, from lab results, an owner survey, price history, offers, a policy and an awards list, and the six pages rewritten | Traps on every page: retests where the June row (listed first) disagrees with the final one, one country's survey figure, a sibling model's figure, prices and offers not in force on the day, a discontinued model that is lighter, a shortlist read as an award, a retailer-only model, review counts near a respondent count, and conditions the rewrite must keep; each kept or corrected claim is checked where it stands | 14 |
-| [Email compliance crosscheck](../eval_runner/tasks/email-compliance-crosscheck.json) | A verdict for each of 150 scheduled emails of two brands in four regions (pass, or each broken rule's code with the id of the row that proves it), a fix for each code, and three labeled counts, from a sending policy and seven exports: the emails, audiences with consent and last-activity dates, a sender map, registered addresses, a promotions calendar, a date-effective price sheet and DNS records | 121 violations under seven codes in 81 emails, most of them found only by joining sources on the email's own send date: consent windows that differ by region, consent type and message type (sends exactly on the window's last day pass, a day later fail), a promotion's region-specific discount and dates, the price row in effect after a mid-period rise, the sender map's address for the brand, region and stream on top of the DNS checks, and a series rule where an email fails because of two earlier emails to the same audience. A right code citing the wrong row is wrong. Every one of the 150 rows is checked | 14 |
+| [90-day marketing plan](../eval_runner/tasks/marketing-plan.json) | A 90-day plan for a B2B SaaS with three channels and a $15,000 budget | Sequencing the plan and measuring activation by the documented event, without inventing customers or figures | 8 (0) |
+| [Budget reconciliation](../eval_runner/tasks/budget-reconciliation-trap.json) | A Q4 allocation in reply to a CMO's budget brief | Checking whether the brief's commitments can all be honoured at once, saying so with exact numbers if not, and offering complete revised allocations | 8 (0) |
+| [Launch timeline](../eval_runner/tasks/launch-timeline.json) | The start, finish and slack of each of 96 launch tasks, the launch date, the critical path, whether the promised date holds, and the smallest cut that makes it | Scheduling exactly by the brief's rules with every person's own calendar: offices, working days, time off and outside suppliers | 12 (11) |
+| [Policy casebook](../eval_runner/tasks/policy-casebook.json) | A ruling on each of 40 proposed marketing actions, with the one clause that decides it | Judgement across a long policy with no sums: definitions, exceptions, dated changes, and the policy's own procedure for choosing the deciding clause | 10 (10) |
+| [Brief, then the client's amendment](../eval_runner/tasks/brief-amendment.json) | The final launch plan, email schedule and ad sheet for three markets after the client amends a signed-off brief, with a note on what changed | Applying each change everywhere it reaches and nothing else, including effects the amendment does not spell out; the signed-off brief arrives as an earlier message in the same conversation | 17 (16) |
 
-Experimental tasks added on 2026-11-20 for the 35-task board, each built to isolate one way of being hard so the ways can be compared (not run yet; the judged checks are not calibrated). Every figure a program checks is computed from the fixtures by `eval_runner/task_facts_experiments.py` and recomputed by separate code in `tests/test_tasks_experiments.py`:
+## Held back: the holdout split
 
-| Task | What the model must produce | What makes it challenging | Checks |
+The four tasks of the holdout split are kept off the board and out of tuning.
+They are not untouched: the agent-setup runs of 2026-11-16 graded them and
+their results were read. So a `--split holdout` result is a result on tasks
+whose answers have been seen.
+
+| Task | What is produced | What makes it hard | Checks (by program) |
 |---|---|---|---:|
-| [Launch build as a chain](../eval_runner/tasks/launch-workflow-chain.json) | Six dependent deliverables for a paid social launch: the audience segments six written rules choose, 8 campaigns and 30 ad groups named by a convention, one ad per ad group, a tracked URL per ad group, daily budgets by segment size, and a pre-launch count of what was built | Consistency along the chain, not the size of any one step: every later file is checked against the reply's own earlier files, so one ad group name, campaign name, product or count that drifts between files fails that file's agreement check even when each file is right on its own. The rules choose a partner duplicate over a smaller first-party one, keep the UK store at `gb`, put the returning-visitor code on retargeting ads only and allow no figure outside the ad's own product row | 14 |
-| [Brief, then the client's amendment](../eval_runner/tasks/brief-amendment.json) | The final launch plan, email schedule and ad sheet for three markets after the client amends a signed-off brief, with a note on what changed. The brief and its product sheet arrive one turn earlier, "for reference, the request follows"; the amendment is the request | Applying six changes everywhere they reach and leaving everything else as signed off. Three knock-ons the amendment never mentions: the withdrawn kettle takes the bundle it belongs to with it, which changes the product every launch email features (and in the US only the price rise makes it the coffee machine); the new launch date puts the UK teaser on a UK holiday. One change looks like it applies and does not: a UK price that starts after launch. The plan built from the brief alone scores zero on every check the amendment touches, and the amendment applied literally scores zero on the four knock-ons. Runs where a prior turn can be sent: the direct setups and Magister, not Claude Code | 17 |
-| [Policy casebook](../eval_runner/tasks/policy-casebook.json) | A ruling on each of 40 proposed marketing actions (a discount stack, an influencer post, a comparative claim, a giveaway in a given market, a co-branded email): allowed, allowed with a named condition, or not allowed, with the one clause that decides it, under a 30 KB brand and promotions policy | Judgement across clauses, with no sums: the clause that names the subject is often not the one that decides. Definitions change what a clause covers (free shipping is not a price reduction, a contractor is an influencer, a transactional email with a code is marketing), exceptions displace rules and exceptions to exceptions put them back, a dated change log replaces clauses from its effective dates (and one entry is approved but not yet in force), and the policy's own procedure picks the strictest ruling, a Part 2 clause on a tie, and a Part 2 clause no outside exception can displace. A right ruling with the wrong clause counts as wrong. A test proves from a machine-readable copy of the rules that every case has exactly one deciding clause | 10 |
+| [Launch capacity](../eval_runner/tasks/launch-capacity-trap.json) | A reply to an over-committed four-week launch production schedule | Checking every commitment against the team's capacity and dates before agreeing to any of it | 9 (0) |
+| [Platform limits](../eval_runner/tasks/platform-limits-gauntlet.json) | One promotion in eleven labelled fields across Google, Meta, LinkedIn and SMS | Hard character limits and exact required strings, checked by program | 10 (6) |
+| [Rate-card reconciliation](../eval_runner/tasks/rate-card-reconciliation.json) | An invoice audit against a signed agreement, a rate card and a delivery log | Choosing the right rate from several candidates and quantifying the billing errors without disputing what is correct | 10 (0) |
+| [Unsupportable claims](../eval_runner/tasks/unsupportable-claims-brief.json) | A landing section and a promotional email that deliver a franchise brief without its unsupportable claims | Declining what the facts cannot support, openly, without inventing support or silently dropping it | 10 (3) |
+
+## Left out
+
+These ten tasks stay in the repository and run by id (`--tasks <id>`), but
+are not on the board. The reasons are those `eval_runner/board.json` records.
+
+| Task | Why it is not on the board |
+|---|---|
+| [Which headline won?](../eval_runner/tasks/headline-forecast.json) | A forecast of real tests. It cannot be scored like the rest until the results are known, so it belongs to a forecast track of its own. |
+| [Which headline won? Never published](../eval_runner/tasks/headline-forecast-unpublished.json) | The same. |
+| [Catalog descriptions](../eval_runner/tasks/catalog-descriptions.json) | Fully right on every recorded attempt (GPT-6.2 Sol three times with and without skills, Gemini 4 Neon, Claude Opus 5.5), 2026-11-21: it separates nobody. |
+| [Competitor comparison](../eval_runner/tasks/competitor-comparison.json) | The same, 2026-11-21. |
+| [Factorial ad test](../eval_runner/tasks/factorial-ad-test.json) | Fully right in all nine cells of the first-attempt pilot (three models, three setups), 2026-11-20: it separates nobody. |
+| [Lifecycle programme](../eval_runner/tasks/lifecycle-program.json) | The same, 2026-11-20. |
+| [Monthly report](../eval_runner/tasks/monthly-report-reconcile.json) | Fully right in eight of the nine cells of that pilot; three harder analytics tasks cover the same ground. |
+| [Analytics source conflict](../eval_runner/tasks/analytics-source-conflict.json) | Fully right in seven of the nine cells of that pilot; attribution sensitivity and the tracking audit cover source conflicts harder. |
+| [Quarterly paid-media review, decoy file](../eval_runner/tasks/ads-ledger-analysis-decoy.json) | A variant of the quarterly paid-media review that only two harnesses can deliver, so not every setup shares it; the plain version is on the board. |
+| [Launch build as a chain](../eval_runner/tasks/launch-workflow-chain.json) | A third launch build of its kind: the trafficking sheet and the search account build are on the board, and each area holds five. |
+
+## How some tasks are built
+
+### Tasks that return files
+
+Most of the tasks added in November 2026 ask for one or more small CSV files
+inside the reply, under fixed headers, often with a labelled answer block at
+the end. A program reads every row and figure and compares it with a
+reference computed from the task's own files, by code in
+`eval_runner/task_facts_*.py` or `eval_runner/workflows/`, and the tests in
+`tests/test_tasks_*.py` and `tests/test_workflow_*.py` check those
+references. What a program cannot see is left to the judge: one or two
+checks on most of these tasks, none on some. A count can be banded, so a near
+miss earns part of the checklist score, but the task is right only when every
+check passes.
+
+For the tasks built by `eval_runner/workflows/`, every count measures the
+work against the reference, so a file left out is that many errors, never
+zero. The files the model reads are generated by the same module that grades
+them, so the standard the model reads and the rules the checker applies are
+the same constants (`python3 scripts/gen_workflow_tasks.py --check` confirms
+the files match).
+
+### Tasks with an earlier message
+
+A task with a `decoy` block sends a message one turn before the request. On
+the board this is the client-amendment task: the signed-off brief comes
+first, the amendment second. The direct setups send it as one conversation of
+two calls, and the Magister setup as an earlier chat turn in the same
+session. Claude Code takes a single prompt, so these tasks list the
+harnesses that can run them (`harnesses` in the task file). The earlier
+turn's cost and time are counted with the task's.
 
 ### Forecast tasks
 
-The two "Which headline won?" tasks grade a judgment against what happened,
+The two "Which headline won?" tasks grade a judgement against what happened,
 not work against a brief. Each pair is two headlines from one real test on
-Upworthy's site, with the same story, image and excerpt and visitors assigned
-at random, where the click rates differed at p < 0.001. A program counts the
-picks that match the record and scores the stated confidence; the one judged
-check is that the reply did not claim to look the tests up. Both bars are one
-reference forecaster, right nine times in ten and saying 90, with credit in a
-straight line up from a coin flip with no opinion. Count one model's result on
-a set as good to about four points either way: that is what 100 pairs give.
-The pairs come
-from the Upworthy Research Archive (Matias, Munger, Le Quere and Ebersole,
-2021; CC BY 4.0): `eval_runner/fixtures/headline-forecast/NOTICE.md` has the
-source, the licence and how the pairs were chosen. The archive is public, so
-a model may have seen it; the second task holds only headlines that were not
-the ones published. A forecast task carries `"forecast": true`, which keeps
-it out of a report's false-confidence figure: a reply with every pick made is
-complete, and a pick that turned out wrong is a miss, not unfinished work.
+Upworthy's site, from the Upworthy Research Archive (Matias, Munger, Le Quere
+and Ebersole, 2021; CC BY 4.0). `eval_runner/fixtures/headline-forecast/NOTICE.md`
+has the source, the licence and how the pairs were chosen. The archive is
+public, so a model may have seen it; the second task holds only headlines the
+publisher did not go on to use. A forecast task carries `"forecast": true`,
+which keeps it out of a report's false-confidence figure.
 
-### Workflow tasks
+## Known limits
 
-Search account build is the first workflow task. A workflow task hands over a
-few files and asks for several deliverables that depend on each other, each
-as a small CSV file inside the reply. Its checks are a program's, counted
-against a reference the task's own module computes
-(`eval_runner/workflows/`): how many keywords are in the wrong ad group, how
-many budgets are off, how many headlines run over. One judged check is left
-for what a program cannot see. A count is banded, so a near miss earns part of
-the score, and the task is still passed only when every check is. Every count
-measures work against the reference, so a file left out is that many errors,
-never zero.
-
-The files a workflow task supplies are generated by the module that grades
-it (`python3 scripts/gen_workflow_tasks.py --check`): the standard the
-candidate reads and the rules the checker applies are the same constants.
-
-## Holdout tasks
-
-These are the final-exam set. Their purpose is to show whether a benchmark
-improvement also works on assignments that were not used to tune it. Once a
-holdout answer is inspected, that task should be moved into development and
-replaced before another untouched-result claim.
-
-The August 25, 2026 runs inspected both earlier holdout batches, so all seven
-of those tasks now sit in the development table above. The batch below was
-built on what those runs taught: detection tasks whose authoritative facts
-sit in the prompt saturate quickly, while infeasibility traps and dense
-interacting constraints discriminate.
-
-These four are not untouched: the 2026-11-16 runs graded them and their
-results were read. They remain the holdout split for now, so a
-`--split holdout` result is a result on tasks whose answers have been seen.
-The holdout split:
-
-| Task | What the model must produce | What makes it challenging | Checks |
-|---|---|---|---:|
-| [Launch capacity trap](../eval_runner/tasks/launch-capacity-trap.json) | A four-week production schedule response to an over-committed launch brief | Spotting that designer hours are infeasible while copywriter hours fit, plus an independent freeze-date conflict | 9 |
-| [Platform limits gauntlet](../eval_runner/tasks/platform-limits-gauntlet.json) | One coordinated promotion in eleven labeled fields across Google, Meta, LinkedIn, and SMS | Hard character limits and exact required strings, enforced programmatically | 10 |
-| [Rate-card reconciliation](../eval_runner/tasks/rate-card-reconciliation.json) | An invoice audit against a signed agreement, rate card, and delivery log | Choosing the one correct rate among four candidates and quantifying three planted billing errors without disputing the clean line | 10 |
-| [Unsupportable claims brief](../eval_runner/tasks/unsupportable-claims-brief.json) | A landing section and promo email that fulfill a franchise brief minus its unsupportable claims | Declining exactly the four unsupported demands without fabricating them or silently dropping them | 10 |
+- An answer block reads a full stop as the decimal point, so a figure
+  written with a full stop as the thousands separator (`12.480`) is read as
+  12.48. Most prompts that allow separators say to use a comma. Three board
+  prompts say only that thousands separators are fine: the search terms
+  review, the re-engagement programme and the technical SEO triage (and,
+  off the board, the monthly report). Their next prompt versions should say
+  "a comma as thousands separator".
 
 ## How tasks stay comparable
 
-Every task records a prompt version and a rubric version. A run also saves a
-snapshot of the exact task, prompt, and source material it used. That means a
-later wording change cannot quietly rewrite the evidence from an older run.
+Every task records a prompt version and a rubric version. A run saves a
+snapshot of the exact task, prompt and source material it used, so a later
+wording change cannot quietly rewrite the evidence of an older run.
 
 For the full file format and versioning rules, see the
 [direct-model runner reference](../eval_runner/README.md).
