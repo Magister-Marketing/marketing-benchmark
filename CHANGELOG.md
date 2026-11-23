@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Public release: the repository is released under the MIT License
+  (`LICENSE`, and `license = "MIT"` in `pyproject.toml`, which now needs
+  setuptools 77 or newer to build). `SECURITY.md` asks for vulnerability
+  reports through GitHub's private vulnerability reporting. The README and
+  `CONTRIBUTING.md` no longer call the project a private staging project.
 - `make bench-model` puts a model on the board the site's home page charts,
   and says its score as the board does. It wrote to the model board retired
   on 2026-11-20 (`data/experiments/20261118-model-board`), ran with provider

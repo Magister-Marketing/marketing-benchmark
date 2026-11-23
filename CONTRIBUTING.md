@@ -1,7 +1,9 @@
 # Contributing
 
-Marketing Benchmark is currently a private staging project. Contributions are
-reviewed through pull requests in this repository.
+Contributions are welcome, through pull requests in this repository. By
+contributing you agree that your contribution is released under the
+repository's [MIT License](LICENSE). Report security problems privately, as
+[SECURITY.md](SECURITY.md) describes, never in an issue.
 
 Before opening a change:
 
@@ -15,6 +17,3 @@ Before opening a change:
    or off the board goes into `eval_runner/board.json` (checked by
    `tests/test_board.py`), `docs/TASKS.md` and `CHANGELOG.md` together. A
    change to how answers are checked or counted goes into `docs/SCORING.md`.
-
-The final public contribution policy, code of conduct, and licensing terms are
-release blockers and have not been approved yet.
